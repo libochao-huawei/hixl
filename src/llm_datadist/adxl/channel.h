@@ -75,18 +75,25 @@ class Channel {
   Status SetSocketNonBlocking(int32_t fd);
   void StopHeartbeat();
   Status SendControlMsg(const std::function<Status(int32_t fd)> &func);
+  Status CommWithFd(const std::function<Status(int32_t)> &func);
+  Status SendHeartBeat(const std::function<Status(int32_t)> &func);
   static void SetHeartbeatTimeout(int64_t timeout_in_millis);
   int32_t GetFd() const { return fd_; }
   void UpdateHeartbeatTime();
   bool IsHeartbeatTimeout() const;
 
+  rtStream_t &GetStream();
+  std::mutex &GetTransferMutex();
+
  private:
   ChannelInfo channel_info_;
   rtStream_t stream_;
   std::mutex mutex_;
-  bool with_heartbeat_;
+  std::atomic<bool> with_heartbeat_;
   std::chrono::steady_clock::time_point last_heartbeat_time_;
   static int64_t timeout_in_millis_;
+
+  std::mutex transfer_mutex_;
 
   int32_t fd_;
   RecvState recv_state_ = RecvState::WAITING_FOR_HEADER;

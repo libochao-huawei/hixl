@@ -66,14 +66,14 @@ class LLMDataDist(object):
 
     def init(self, options: Dict[str, str]) -> None:
         """
-        初始化LLM Engine
+        初始化LLM DataDist
 
         Args:
             options: Engine相关options
         """
         if self._is_initialized:
             return
-        raise_if_false(LLMDataDist.llm_engine_instance is None, 'Cannot init multiple LLM engines',
+        raise_if_false(LLMDataDist.llm_engine_instance is None, 'Cannot init multiple LLMDataDists',
                        status_code=LLMStatusCode.LLM_FAILED)
         check_isinstance("options", options, dict)
         self._engine_options = options
@@ -194,7 +194,7 @@ class LLMDataDist(object):
 
     def finalize(self) -> None:
         """
-        释放LLM Engine相关资源
+        释放LLM DataDist相关资源
         """
         if not self._is_initialized:
             return
@@ -318,7 +318,7 @@ class LLMDataDist(object):
 
     def _check_is_inited(self):
         if not self._is_initialized:
-            raise RuntimeError('llm engine is not initialized')
+            raise RuntimeError('llm datadist is not initialized')
     
     @property
     def kv_cache_manager(self) -> 'KvCacheManager':
@@ -343,7 +343,7 @@ def _shutdown_handler():
         try:
             LLMDataDist.llm_engine_instance.finalize()
         except LLMException as e:
-            log.warn(f'error occurred while finalize llm engine: {e} '
+            log.warn(f'error occurred while finalize llm datadist: {e} '
                      f'may cause by already finalized by another framework')
 
 
