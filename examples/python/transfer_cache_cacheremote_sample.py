@@ -14,13 +14,13 @@ import argparse
 import os
 import logging
 import datetime
+from typing import Optional
 from llm_datadist import LLMDataDist, LLMRole, LLMConfig, CacheDesc, DataType, BlocksCacheKey, \
     Placement, LLMClusterInfo, LLMStatusCode, TransferWithCacheKeyConfig, LayerSynchronizer
 import torch
 import torch.distributed as dist
 import torch_npu
 import torchair
-from typing import Optional
 
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
@@ -29,6 +29,7 @@ BLOCKS_NUM = 3
 KV_SHAPE = 10
 PROMPT_CLUSTER_ID = 0
 DECODER_CLUSTER_ID = 1
+
 
 def init_process_group(rank, world_size, master_ip, backend='gloo'):
     os.environ['MASTER_ADDR'] = master_ip
@@ -53,12 +54,14 @@ def init_llm_datadist(role: LLMRole, cluster_id, device_id: int, local_host_ip, 
     logging.info(f"init {role} success, cluster_id={cluster_id}")
     return datadist
 
+
 class LayerSynchronizerImpl(LayerSynchronizer):
     def __init__(self, ret=True):
         self._ret = ret
     
     def synchronize_layer(self, layer_index: int, timeout_in_millis: Optional[int]) -> bool:
         return self._ret
+
 
 def run_prompt_sample(datadist, local_host_ip, remote_host_ip):
     # 1. 注册内存
@@ -99,6 +102,7 @@ def run_prompt_sample(datadist, local_host_ip, remote_host_ip):
     cache_manager.unregister_cache(cache.cache_id)
     datadist.finalize()
     logging.info('[finalize] success')
+
 
 def run_decoder_sample(datadist, local_host_ip, remote_host_ip):
     # 1. 注册内存
