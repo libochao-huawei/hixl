@@ -148,7 +148,7 @@ HcclResult HcclApiStub::HcclBatchPut(HcclComm comm,
                                      uint32_t remoteRank,
                                      HcclOneSideOpDesc *desc,
                                      uint32_t descNum,
-                                     rtStream_t stream) {
+                                     aclrtStream stream) {
   LLMLOGI("remote_rank = %u, num_tasks = %u", remoteRank, descNum);
   for (uint32_t i = 0; i < descNum; ++i) {
     auto src = desc[i].localAddr;
@@ -164,7 +164,7 @@ HcclResult HcclApiStub::HcclBatchGet(HcclComm comm,
                                      uint32_t remoteRank,
                                      HcclOneSideOpDesc *desc,
                                      uint32_t descNum,
-                                     rtStream_t stream) {
+                                     aclrtStream stream) {
   LLMLOGI("remote_rank = %u, num_tasks = %u", remoteRank, descNum);
   for (uint32_t i = 0; i < descNum; ++i) {
     auto dst = desc[i].localAddr;

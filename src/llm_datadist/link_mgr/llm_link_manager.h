@@ -39,7 +39,7 @@ class LLMLinkManager : public CommLinkManager {
  private:
   int32_t device_id_;
   uint64_t cluster_id_;
-  rtContext_t rt_context_;
+  aclrtContext rt_context_;
   LinkMsgHandler msg_handler_;
   std::mutex mutex_;
   std::string listen_port_;

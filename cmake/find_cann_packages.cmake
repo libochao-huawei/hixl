@@ -21,6 +21,7 @@ if (NOT ENABLE_TEST)
     find_package_if_target_not_exists(ascendcl MODULE REQUIRED)
     find_package_if_target_not_exists(metadef MODULE REQUIRED)
     find_package_if_target_not_exists(ascend_hal MODULE REQUIRED)
+    find_package_if_target_not_exists(acl_rt MODULE REQUIRED)
 else ()
     add_library(hccl_headers INTERFACE)
     target_include_directories(hccl_headers INTERFACE
@@ -69,5 +70,12 @@ else ()
     target_include_directories(ascendcl_headers INTERFACE
         ${CANN_INSTALL_PATH}/include
         ${CANN_INSTALL_PATH}/include/acl
+    )
+
+    add_library(acl_rt_headers INTERFACE)
+    target_include_directories(acl_rt_headers INTERFACE
+        ${CANN_INSTALL_PATH}/include
+        ${CANN_INSTALL_PATH}/include/external
+        ${CANN_INSTALL_PATH}/include/external/acl
     )
 endif()
