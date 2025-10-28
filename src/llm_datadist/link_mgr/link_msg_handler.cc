@@ -267,7 +267,7 @@ ge::Status LinkMsgHandler::ConnectedProcess(int32_t fd, bool &keep_fd) {
 }
 
 ge::Status LinkMsgHandler::SetEntityMemInfo(const LLMExchangeInfo &peer_exchange_info,
-                                            EntityPtr entity, EntityMemInfoPtr &mem_info_ptr) {
+                                            EntityPtr entity, EntityMemInfoPtr &mem_info_ptr) const {
   // prepare mem
   entity->SetEntityMemInfo(mem_info_ptr);
   auto &remote_mems = entity->GetRemoteMems();
@@ -351,7 +351,7 @@ ge::Status LinkMsgHandler::GenerateLocalCommRes(const ClusterInfo &cluster) {
   return ge::SUCCESS;
 }
 
-ge::Status LinkMsgHandler::DisconnectInfoProcess(const LLMDisconnectInfo &peer_disconnect_info) {
+ge::Status LinkMsgHandler::DisconnectInfoProcess(const LLMDisconnectInfo &peer_disconnect_info) const {
   return comm_entity_manager_->DestroyEntity(peer_disconnect_info.cluster_id);
 }
 
