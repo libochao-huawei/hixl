@@ -14,7 +14,7 @@
 #include <mutex>
 #include <utility>
 #include "nlohmann/json.hpp"
-#include "runtime/rt.h"
+#include "acl/acl.h"
 #include "adxl/adxl_types.h"
 #include "adxl_checker.h"
 #include "hccl/hccl_adapter.h"
@@ -67,7 +67,7 @@ class Channel {
                       const std::vector<TransferOpDesc> &op_descs,
                       int32_t timeout_in_millis);
   Status TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
-                       rtStream_t stream);
+                       aclrtStream stream);
 
   Status SetSocketNonBlocking(int32_t fd);
   void StopHeartbeat();
@@ -79,12 +79,12 @@ class Channel {
   void UpdateHeartbeatTime();
   bool IsHeartbeatTimeout() const;
 
-  rtStream_t &GetStream();
+  aclrtStream &GetStream();
   std::mutex &GetTransferMutex();
 
  private:
   ChannelInfo channel_info_;
-  rtStream_t stream_ = nullptr;
+  aclrtStream stream_ = nullptr;
   std::mutex mutex_;
   std::atomic<bool> with_heartbeat_{false};
   std::chrono::steady_clock::time_point last_heartbeat_time_;

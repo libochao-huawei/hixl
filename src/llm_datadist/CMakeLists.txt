@@ -58,14 +58,13 @@ target_link_libraries(llm_datadist PRIVATE
         $<BUILD_INTERFACE:slog_headers>
         $<BUILD_INTERFACE:mmpa_headers>
         $<BUILD_INTERFACE:hccl_headers>
-        $<BUILD_INTERFACE:runtime_headers>
-        $<BUILD_INTERFACE:msprof_headers>
+        $<BUILD_INTERFACE:ascendcl_headers>
         PUBLIC c_sec
         static_mmpa
         alog
         error_manager
         metadef # for acend string
-        runtime
+        ascendcl
         json
         -ldl
         -O2 -fPIC -Wextra -Wfloat-equal
@@ -117,14 +116,13 @@ target_link_libraries(cann_hixl PRIVATE
         $<BUILD_INTERFACE:slog_headers>
         $<BUILD_INTERFACE:mmpa_headers>
         $<BUILD_INTERFACE:hccl_headers>
-        $<BUILD_INTERFACE:runtime_headers>
-        $<BUILD_INTERFACE:msprof_headers>
+        $<BUILD_INTERFACE:ascendcl_headers>
         PUBLIC c_sec
         static_mmpa
         alog
         error_manager
         metadef # for acend string
-        runtime
+        ascendcl
         json
         -ldl
         -O2 -fPIC -Wextra -Wfloat-equal

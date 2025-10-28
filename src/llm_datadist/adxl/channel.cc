@@ -61,8 +61,8 @@ Status Channel::Initialize() {
                                                                     channel_info_.timeout_sec));
   auto cost = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
   LLMLOGI("HcclCommPrepare success, cost=%ld ms.", cost);
-  ADXL_CHK_ACL_RET(rtStreamCreateWithFlags(&stream_, RT_STREAM_PRIORITY_DEFAULT,
-                   RT_STREAM_FAST_LAUNCH | RT_STREAM_FAST_SYNC));
+  ADXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&stream_, 0,
+                   ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC));
   LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
 }
@@ -74,9 +74,9 @@ std::string Channel::GetChannelId() const {
 Status Channel::Finalize() {
   auto ret = SUCCESS;
   if (stream_ != nullptr) {
-    auto rt_ret = rtStreamAbort(stream_);
-    LLMLOGI("Call rtStreamAbort ret:%d.", ret);
-    ret = rt_ret != RT_ERROR_NONE ? FAILED : ret;
+    auto rt_ret = aclrtStreamAbort(stream_);
+    LLMLOGI("Call aclrtStreamAbort ret:%d.", ret);
+    ret = rt_ret != ACL_ERROR_NONE ? FAILED : ret;
   }
 
   for (const auto &reg_handle_it : channel_info_.registered_mems) {
@@ -88,9 +88,9 @@ Status Channel::Finalize() {
   auto hccl_ret = llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
   ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
   if (stream_ != nullptr) {
-    auto rt_ret = rtStreamDestroy(stream_);
-    LLMLOGI("Call rtStreamDestroy ret:%d.", ret);
-    ret = rt_ret != RT_ERROR_NONE ? FAILED : ret;
+    auto rt_ret = aclrtDestroyStream(stream_);
+    LLMLOGI("Call aclrtDestroyStream ret:%d.", ret);
+    ret = rt_ret != ACL_ERROR_NONE ? FAILED : ret;
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
@@ -103,7 +103,7 @@ Status Channel::Finalize() {
 }
 
 Status Channel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
-                              rtStream_t stream) {
+                              aclrtStream stream) {
   auto trans_func = [this, operation, &stream](HcclOneSideOpDesc *descs, uint32_t desc_num) -> Status {
     HcclResult ret = HCCL_SUCCESS;
     if (operation == READ) {
@@ -130,7 +130,7 @@ Status Channel::TransferSync(TransferOp operation,
   const auto start = std::chrono::steady_clock::now();
   ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Transfer failed.");
 
-  ADXL_CHK_ACL_RET(rtStreamSynchronizeWithTimeout(stream_, timeout_in_millis));
+  ADXL_CHK_ACL_RET(aclrtSynchronizeStreamWithTimeout(stream_, timeout_in_millis));
   const auto end = std::chrono::steady_clock::now();
   const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   LLMLOGI("%s success, num = %zu, cost = %ld us.",
@@ -196,7 +196,7 @@ bool Channel::IsHeartbeatTimeout() const {
   return false;
 }
 
-rtStream_t &Channel::GetStream() {
+aclrtStream &Channel::GetStream() {
   return stream_;
 }
 
