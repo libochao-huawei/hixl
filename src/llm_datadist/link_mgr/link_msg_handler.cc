@@ -139,7 +139,7 @@ ge::Status LinkMsgHandler::Initialize(const std::map<ge::AscendString, ge::Ascen
     comm_config_.hcclRdmaServiceLevel = service_level;
     LLMLOGI("set rdma service level to %u.", service_level);
   }
-  LLM_ASSERT_RT_OK(rtCtxGetCurrent(&rt_context_));
+  LLM_ASSERT_RT_OK(aclrtGetCurrentContext(&rt_context_));
   const auto &buffer_and_size = cache_manager_->GetCacheTableBufferAndSize();
   LLM_CHK_STATUS_RET(comm_mem_manager_->RegisterCommMemAddr(buffer_and_size.first,
                                                           buffer_and_size.second,

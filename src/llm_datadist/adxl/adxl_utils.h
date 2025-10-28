@@ -12,13 +12,12 @@
 #define CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_ADXL_UTILS_H
 
 #include "hccl/hccl_types.h"
-#include "runtime/rt.h"
-#include "external/runtime/rt_error_codes.h"
+#include "acl/acl.h"
 #include "adxl/adxl_types.h"
 
 namespace adxl {
 Status HcclError2AdxlStatus(HcclResult ret);
-Status AclError2AdxlStatus(rtError_t ret);
+Status AclError2AdxlStatus(aclError ret);
 Status LLMError2AdxlStatus(ge::Status ret);
 }  // namespace adxl
 #endif  // CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_ADXL_UTILS_H

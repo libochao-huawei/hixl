@@ -26,9 +26,9 @@ Status HcclError2AdxlStatus(HcclResult ret) {
   return FAILED;
 }
 
-Status AclError2AdxlStatus(rtError_t ret) {
-  static const std::map<rtError_t, Status> acl2adxl = {
-      {RT_ERROR_NONE, SUCCESS},
+Status AclError2AdxlStatus(aclError ret) {
+  static const std::map<aclError, Status> acl2adxl = {
+      {ACL_ERROR_NONE, SUCCESS},
       {ACL_ERROR_RT_STREAM_SYNC_TIMEOUT, TIMEOUT},
   };
   const auto &it = acl2adxl.find(ret);
