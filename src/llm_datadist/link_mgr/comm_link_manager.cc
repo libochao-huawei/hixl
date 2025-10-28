@@ -121,7 +121,7 @@ void CommLinkManager::CheckUnlink(PrepareMemArg &req, bool &check_unlink_flag) {
 ge::Status CommLinkManager::DestroyRes(EntityCommInfoPtr comm_ptr, std::vector<EntityPtr> &comm_entities) const {
   LLMLOGI("Start call DestroyRes");
   ge::Status unlink_ret = ge::SUCCESS;
-  LLM_CHK_BOOL_EXEC(rtCtxSetCurrent(rt_context_) == RT_ERROR_NONE, unlink_ret = ge::LLM_UNLINK_FAILED);
+  LLM_CHK_BOOL_EXEC(aclrtSetCurrentContext(rt_context_) == ACL_ERROR_NONE, unlink_ret = ge::LLM_UNLINK_FAILED);
   for (const auto &entity : comm_entities) {
     std::lock_guard<std::mutex> pull_lock(entity->GetPullMutex());
     std::lock_guard<std::mutex> process_lock(entity->GetProcessMutex());
@@ -174,7 +174,7 @@ ge::Status CommLinkManager::PrepareMem(PrepareMemArg &req) {
   std::vector<uint64_t> cluster_ids;
   std::vector<uint32_t> rank_ids;
   std::map<uint64_t, EntityPtr> cluster2entity;
-  LLM_ASSERT_RT_OK(rtCtxSetCurrent(rt_context_));
+  LLM_ASSERT_RT_OK(aclrtSetCurrentContext(rt_context_));
 
   auto local_rank_id = req.cluster2rank[cluster_id_];
   for (auto &iter : req.cluster2rank) {
@@ -252,7 +252,7 @@ void CommLinkManager::Finalize() {
 }
 
 ge::Status CommLinkManager::Initialize(const std::map<ge::AscendString, ge::AscendString> &options) {
-  LLM_ASSERT_RT_OK(rtCtxGetCurrent(&rt_context_));
+  LLM_ASSERT_RT_OK(aclrtGetCurrentContext(&rt_context_));
   const auto it = options.find(LLM_OPTION_RDMA_TRAFFIC_CLASS);
   if (it != options.end()) {
     LLM_CHK_STATUS_RET(LLMUtils::ToNumber(it->second.GetString(), rdmaTrafficClass_),
@@ -301,8 +301,8 @@ ge::Status CommLinkManager::Link(std::string &cluster_name, const std::map<uint6
                            "Link num is over limit:%u.", kMaxLinkNum);
   }
   auto local_rank = cluster2rank.at(cluster_id_);
-  LLM_CHK_BOOL_RET_STATUS(rtCtxSetCurrent(rt_context_) == RT_ERROR_NONE, ge::LLM_UNLINK_FAILED,
-                         "Set runtime context failed.");
+  LLM_CHK_BOOL_RET_STATUS(aclrtSetCurrentContext(rt_context_) == ACL_ERROR_NONE, ge::LLM_UNLINK_FAILED,
+                         "Set aclrt context failed.");
   HcclCommConfig config{};
   HcclAdapter::GetInstance().HcclCommConfigInit(&config);
   LLM_ASSERT_EOK(strcpy_s(config.hcclCommName, COMM_NAME_MAX_LENGTH, cluster_name.data()));

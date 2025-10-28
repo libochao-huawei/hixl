@@ -351,16 +351,16 @@ bool LLMUtils::IsTimeout(const std::chrono::high_resolution_clock::time_point& s
   return (elapsed.count() >= timeout_ms);
 }
 
-TemporaryRtContext::TemporaryRtContext(rtContext_t context) {
+TemporaryRtContext::TemporaryRtContext(aclrtContext context) {
   if (context != nullptr) {
-    (void) rtCtxGetCurrent(&prev_context_);
-    LLM_CHK_ACL(rtCtxSetCurrent(context));
+    (void) aclrtGetCurrentContext(&prev_context_);
+    LLM_CHK_ACL(aclrtSetCurrentContext(context));
   }
 }
 
 TemporaryRtContext::~TemporaryRtContext() {
   if (prev_context_ != nullptr) {
-    LLM_CHK_STATUS(rtCtxSetCurrent(prev_context_));
+    LLM_CHK_STATUS(aclrtSetCurrentContext(prev_context_));
   }
 }
 }  // namespace llm

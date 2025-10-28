@@ -55,17 +55,17 @@ target_compile_options(llm_datadist PRIVATE
 
 target_link_libraries(llm_datadist PRIVATE
         $<BUILD_INTERFACE:intf_pub>
+        $<BUILD_INTERFACE:acl_rt_headers>
         $<BUILD_INTERFACE:slog_headers>
         $<BUILD_INTERFACE:mmpa_headers>
         $<BUILD_INTERFACE:hccl_headers>
-        $<BUILD_INTERFACE:runtime_headers>
         $<BUILD_INTERFACE:msprof_headers>
         PUBLIC c_sec
+        acl_rt
         static_mmpa
         alog
         error_manager
         metadef # for acend string
-        runtime
         json
         -ldl
         -O2 -fPIC -Wextra -Wfloat-equal
@@ -114,17 +114,17 @@ target_compile_options(cann_hixl PRIVATE
 
 target_link_libraries(cann_hixl PRIVATE
         $<BUILD_INTERFACE:intf_pub>
+        $<BUILD_INTERFACE:acl_rt_headers>
         $<BUILD_INTERFACE:slog_headers>
         $<BUILD_INTERFACE:mmpa_headers>
         $<BUILD_INTERFACE:hccl_headers>
-        $<BUILD_INTERFACE:runtime_headers>
         $<BUILD_INTERFACE:msprof_headers>
         PUBLIC c_sec
+        acl_rt
         static_mmpa
         alog
         error_manager
         metadef # for acend string
-        runtime
         json
         -ldl
         -O2 -fPIC -Wextra -Wfloat-equal

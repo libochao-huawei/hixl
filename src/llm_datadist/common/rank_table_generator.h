@@ -17,6 +17,8 @@
 #include "common/llm_inner_types.h"
 #include "common/common.h"
 
+#include "acl/acl.h"
+
 namespace llm {
 class RankTableGenerator {
  public:
@@ -32,7 +34,7 @@ class LocalCommResGenerator {
   static ge::Status Generate(const std::string &server_id,
                              int32_t device_id,
                              std::string &local_comm_res);
-  static ge::Status GetDeviceIp(uint32_t phy_device_id, std::string &device_ip);
+  static ge::Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip);
 };
 
 class RankTableGeneratorFactory {
