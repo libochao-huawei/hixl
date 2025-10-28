@@ -9,7 +9,7 @@
  */
 
 #include "adxl_inner_engine.h"
-#include "runtime/rt.h"
+#include "acl/acl.h"
 #include "hccl/hccl_adapter.h"
 #include "common/llm_utils.h"
 #include "common/llm_scope_guard.h"
@@ -94,7 +94,7 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
     }
     for (auto &mem : npu_pool_memorys_) {
       if (mem != nullptr) {
-        rtFree(mem);
+        aclrtFree(mem);
       }
     }
     npu_pool_memorys_.clear();
@@ -104,8 +104,7 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
   for (size_t i = 0; i < kMemPoolNum; ++i) {
     npu_mem_pools_[i] = llm::MakeUnique<llm::LlmMemPool>(config);
     ADXL_CHECK_NOTNULL(npu_mem_pools_[i], "Failed to create memory pool");
-    ADXL_CHK_BOOL_RET_STATUS(rtMalloc(&npu_pool_memorys_[i], npu_pool_size, RT_MEMORY_HBM | RT_MEM_MALLOC_HUGE_FIRST,
-                                      LLM_MODULE_NAME_U16) == RT_ERROR_NONE,
+    ADXL_CHK_BOOL_RET_STATUS(aclrtMalloc(&npu_pool_memorys_[i], npu_pool_size, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_ERROR_NONE,
                              FAILED, "Failed to allocate memory for memory_pool, pool size = %lu.", npu_pool_size);
     ADXL_CHK_LLM_RET(npu_mem_pools_[i]->Initialize(npu_pool_memorys_[i], npu_pool_size),
                      "Failed to initialize memory pool, pool size = %lu.", npu_pool_size);
@@ -137,8 +136,8 @@ void AdxlInnerEngine::Finalize() {
   }
   for (auto &mem : npu_pool_memorys_) {
     if (mem != nullptr) {
-      auto ret = rtFree(mem);
-      LLMLOGI("Call rtFree ret:%d.", ret);
+      auto ret = aclrtFree(mem);
+      LLMLOGI("Call aclrtFree ret:%d.", ret);
     }
   }
   if (buffer_transfer_service_ != nullptr) {

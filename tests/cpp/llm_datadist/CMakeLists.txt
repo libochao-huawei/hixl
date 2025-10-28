@@ -73,14 +73,14 @@ target_link_libraries(llm_datadist_test
         c_sec
         mmpa_headers
         hccl_headers
-        runtime_headers
+        ascendcl_headers
         metadef_headers
         intf_pub
         json
         -ldl
         slog_stub
         mmpa_stub
-        runtime_stub
+        ascendcl_stub
         msprof_headers
         GTest::gtest GTest::gtest_main
         GTest::gmock

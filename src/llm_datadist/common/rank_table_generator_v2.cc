@@ -12,7 +12,7 @@
 #include <map>
 #include <set>
 #include "nlohmann/json.hpp"
-#include "runtime/rt.h"
+#include "acl/acl.h"
 #include "llm_datadist/llm_datadist.h"
 
 namespace llm {
@@ -107,7 +107,7 @@ ge::Status RankTableGeneratorV2::MergeRankTable(int32_t local_device_id,
                            "Please check local option:%s, it only supports one device that is used.",
                            llm_datadist::OPTION_LOCAL_COMM_RES);
     uint32_t phy_device_id = 0U;
-    LLM_CHK_RT_RET(rtGetDevicePhyIdByIndex(static_cast<uint32_t>(local_device_id), &phy_device_id));
+    LLM_CHK_RT_RET(aclrtGetPhyDevIdByLogicDevId(static_cast<uint32_t>(local_device_id), &phy_device_id));
     LLM_CHK_BOOL_RET_STATUS(std::to_string(phy_device_id) == server.device_list[0].device_id,
                            ge::LLM_PARAM_INVALID,
                            "Please check local option:%s, device_id:%s should be %u, logic device id:%d.",
@@ -221,22 +221,22 @@ ge::Status RankTableGeneratorV2::GenerateLocalCommRes(const std::string &server_
   server_info.server_id = server_id;
   rank_table_v2::DeviceInfo device_info{};
   uint32_t phy_device_id = 0U;
-  LLM_CHK_RT_RET(rtGetDevicePhyIdByIndex(static_cast<uint32_t>(device_id), &phy_device_id));
+  LLM_CHK_RT_RET(aclrtGetPhyDevIdByLogicDevId(static_cast<uint32_t>(device_id), &phy_device_id));
   device_info.device_id = std::to_string(phy_device_id);
   LLM_CHK_STATUS_RET(LocalCommResGenerator::GetDeviceIp(phy_device_id, device_info.device_ip),
                     "Failed to get device_ip, phy_device_id:%u", phy_device_id);
   int64_t super_device_id = 0U;
-  LLM_CHK_RT_RET(rtGetDeviceInfo(static_cast<uint32_t>(device_id),
-                                RT_MODULE_TYPE_SYSTEM,
-                                kInfoTypeSuperDeviceId,
-                                &super_device_id));
+  //LLM_CHK_RT_RET(aclrtGetDeviceInfo(static_cast<uint32_t>(device_id),
+  //                              RT_MODULE_TYPE_SYSTEM,
+  //                              kInfoTypeSuperDeviceId,
+  //                              &super_device_id));
   device_info.super_device_id = std::to_string(super_device_id);
   rank_table_v2::SuperPodInfo pod_info{};
   int64_t super_pod_id = 0U;
-  LLM_CHK_RT_RET(rtGetDeviceInfo(static_cast<uint32_t>(device_id),
-                                RT_MODULE_TYPE_SYSTEM,
-                                kInfoTypeSuperPodId,
-                                &super_pod_id));
+  //LLM_CHK_RT_RET(aclrtGetDeviceInfo(static_cast<uint32_t>(device_id),
+  //                              RT_MODULE_TYPE_SYSTEM,
+  //                              kInfoTypeSuperPodId,
+  //                              &super_pod_id));
   pod_info.super_pod_id = std::to_string(super_pod_id);
   rank_table_v2::ServerIdInfo server_id_info{};
   server_id_info.server_id = server_id;
