@@ -394,13 +394,8 @@ aclError AclRuntimeStub::aclrtGetMemInfo(aclrtMemAttr attr, size_t *free_size, s
 }
 
 // no change for rt here
-aclError AclRuntimeStub::aclrtGetSocVersion(char *version, const uint32_t maxLen) {
-  if (strlen(g_soc_version) == 0) {
-    strncpy_s(version, maxLen, g_soc_version, strlen(g_soc_version));
-  } else {
-    strncpy_s(version, maxLen, g_soc_version, strlen(g_soc_version));
-  }
-  return ACL_ERROR_NONE;
+const char* AclRuntimeStub::aclrtGetSocName() {
+  return g_soc_version;
 }
 
 aclError AclRuntimeStub::aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value) {
@@ -408,8 +403,24 @@ aclError AclRuntimeStub::aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr
   return ACL_ERROR_NONE;
 }
 
-aclError AclRuntimeStub::aclrtGetDevicePhyIdByIndex(uint32_t devIndex, uint32_t *phyId) {
-  *phyId = devIndex;
+aclError AclRuntimeStub::aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, int32_t *const phyDevId) {
+  *phyDevId = logicDevId;
+  return ACL_ERROR_NONE;
+}
+
+aclError AclRuntimeStub::aclrtMemcpyBatch(void **dsts, size_t *destMax, void **srcs, size_t *sizes, size_t numBatches,
+                          aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs, size_t *failIndex)
+{
+  *failIndex = 0;
+  if (__FUNCTION__ == g_acl_stub_mock) {
+    return ACL_ERROR_RT_INTERNAL_ERROR;
+  }
+
+  if (dsts != nullptr && srcs != nullptr) {
+    for (size_t i = 0; i < numBatches; i++) {
+      memcpy_s(dsts[i], destMax[i], srcs[i], sizes[i]);
+    }
+  }
   return ACL_ERROR_NONE;
 }
 }
@@ -549,16 +560,23 @@ aclError aclrtGetMemInfo(aclrtMemAttr attr, size_t *free_size, size_t *total) {
   return llm::AclRuntimeStub::GetInstance()->aclrtGetMemInfo(attr, free_size, total);
 }
 
-aclError aclrtGetSocVersion(char *version, const uint32_t maxLen) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtGetSocVersion(version, maxLen);
+const char* aclrtGetSocName() {
+  return llm::AclRuntimeStub::GetInstance()->aclrtGetSocName();
 }
 
 aclError aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value) {
   return llm::AclRuntimeStub::GetInstance()->aclrtGetDeviceInfo(deviceId, attr, value);
 }
 
-aclError aclrtGetDevicePhyIdByIndex(uint32_t devIndex, uint32_t *phyId) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtGetDevicePhyIdByIndex(devIndex, phyId);
+aclError aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, int32_t *const phyDevId) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtGetPhyDevIdByLogicDevId(logicDevId, phyDevId);
+}
+
+aclError aclrtMemcpyBatch(void **dsts, size_t *destMax, void **srcs, size_t *sizes, size_t numBatches,
+                          aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs, size_t *failIndex)
+{
+  return llm::AclRuntimeStub::GetInstance()->aclrtMemcpyBatch(dsts, destMax, srcs, sizes, numBatches,
+                                                              attrs, attrsIndexex, numAttrs, failIndex);
 }
 
 #ifdef __cplusplus

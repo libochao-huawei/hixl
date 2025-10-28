@@ -30,8 +30,8 @@ constexpr size_t kServerPoolIndex = 1U;
 }  // namespace
 
 Status BufferTransferService::Initialize() {
-  ADXL_CHK_ACL_RET(rtCtxGetCurrent(&rt_context_));
-  ADXL_CHK_ACL_RET(rtGetDevice(&device_id_));
+  ADXL_CHK_ACL_RET(aclrtGetCurrentContext(&rt_context_));
+  ADXL_CHK_ACL_RET(aclrtGetDevice(&device_id_));
   buffer_req_processor_ = std::thread([this]() { ProcessBufferReqFirstStep(); });
   buffer_resp_processor_ = std::thread([this]() { ProcessBufferResp(); });
   buffer_second_step_processor_ = std::thread([this]() { ProcessBufferReqSecondStep(); });
@@ -197,8 +197,8 @@ Status BufferTransferService::FlushBatch(const ChannelPtr &channel, const std::v
       type == TransferType::kReadRD2D) {
     buffer_req.src_addrs = std::move(src_addrs);
   } else {
-    auto kind = (type == TransferType::kWriteD2RH || type == TransferType::kWriteD2RD) ? RT_MEMCPY_DEVICE_TO_DEVICE
-                                                                                       : RT_MEMCPY_HOST_TO_DEVICE;
+    auto kind = (type == TransferType::kWriteD2RH || type == TransferType::kWriteD2RD) ? ACL_MEMCPY_DEVICE_TO_DEVICE
+                                                                                       : ACL_MEMCPY_HOST_TO_DEVICE;
     ADXL_CHK_STATUS_RET(
         ProcessCopy(channel, src_addrs, buffer_addrs, buffer_req.buffer_lens, std::make_pair(kind, left_timeout)),
         "Copy failed");
@@ -232,8 +232,8 @@ Status BufferTransferService::TransferLargeData(const ChannelPtr &channel, const
     left_timeout = timeout - time_cost;
     if (type == TransferType::kWriteH2RH || type == TransferType::kWriteH2RD || type == TransferType::kWriteD2RH ||
         type == TransferType::kWriteD2RD) {
-      auto kind = (type == TransferType::kWriteD2RH || type == TransferType::kWriteD2RD) ? RT_MEMCPY_DEVICE_TO_DEVICE
-                                                                                         : RT_MEMCPY_HOST_TO_DEVICE;
+      auto kind = (type == TransferType::kWriteD2RH || type == TransferType::kWriteD2RD) ? ACL_MEMCPY_DEVICE_TO_DEVICE
+                                                                                         : ACL_MEMCPY_HOST_TO_DEVICE;
       ADXL_CHK_STATUS_RET(ProcessCopy(channel, buffer_req.src_addrs, buffer_addrs, buffer_req.buffer_lens,
                                       std::make_pair(kind, left_timeout)),
                           "Copy failed");
@@ -275,7 +275,7 @@ std::vector<uintptr_t> BufferTransferService::GenerateBufferReq(BufferReq &buffe
 }
 
 void BufferTransferService::ProcessBufferReqFirstStep() {
-  rtCtxSetCurrent(rt_context_);
+  aclrtSetCurrentContext(rt_context_);
   while (!stop_signal_.load()) {
     std::pair<ChannelPtr, BufferReq> req;
     {
@@ -299,7 +299,7 @@ void BufferTransferService::ProcessBufferReqFirstStep() {
 }
 
 void BufferTransferService::ProcessBufferReqSecondStep() {
-  rtCtxSetCurrent(rt_context_);
+  aclrtSetCurrentContext(rt_context_);
   while (!stop_signal_.load()) {
     std::pair<ChannelPtr, BufferReq> req;
     {
@@ -374,7 +374,7 @@ Status BufferTransferService::D2DTransfer(const ChannelPtr &channel, TransferOp 
   auto left_timeout = timeout - time_cost;
   auto timeout_in_millis = left_timeout / kMillisToMicros;
   ADXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, TIMEOUT, "Transfer timeout.");
-  ADXL_CHK_ACL_RET(rtStreamSynchronizeWithTimeout(stream, timeout_in_millis));
+  ADXL_CHK_ACL_RET(aclrtSynchronizeStreamWithTimeout(stream, timeout_in_millis));
   LLMLOGI("D2D time cost:%lu us, data num:%zu.",
           std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count(),
           op_descs.size());
@@ -410,14 +410,14 @@ Status BufferTransferService::HandleBufferCopy(const ChannelPtr &channel, Buffer
     dev_buffer_addr += buffer_req.buffer_lens[i];
   }
   if (is_read) {
-    auto kind = (type == TransferType::kReadRD2H || type == TransferType::kReadRD2D) ? RT_MEMCPY_DEVICE_TO_DEVICE
-                                                                                     : RT_MEMCPY_HOST_TO_DEVICE;
+    auto kind = (type == TransferType::kReadRD2H || type == TransferType::kReadRD2D) ? ACL_MEMCPY_DEVICE_TO_DEVICE
+                                                                                     : ACL_MEMCPY_HOST_TO_DEVICE;
     ADXL_CHK_STATUS_RET(ProcessCopy(channel, buffer_req.dst_addrs, copy_buff_addrs, buffer_req.buffer_lens,
                                     std::make_pair(kind, left_timeout)),
                         "Copy failed.");
   } else {
-    auto kind = (type == TransferType::kWriteH2RD || type == TransferType::kWriteD2RD) ? RT_MEMCPY_DEVICE_TO_DEVICE
-                                                                                       : RT_MEMCPY_DEVICE_TO_HOST;
+    auto kind = (type == TransferType::kWriteH2RD || type == TransferType::kWriteD2RD) ? ACL_MEMCPY_DEVICE_TO_DEVICE
+                                                                                       : ACL_MEMCPY_HOST_TO_HOST;
     ADXL_CHK_STATUS_RET(ProcessCopy(channel, copy_buff_addrs, buffer_req.dst_addrs, buffer_req.buffer_lens,
                                     std::make_pair(kind, left_timeout)),
                         "Copy failed.");
@@ -442,30 +442,30 @@ Status BufferTransferService::ProcessCopy(const ChannelPtr &channel, const std::
                                           const std::vector<uintptr_t> &dst_addrs, std::vector<size_t> &sizes,
                                           CopyExtraInfo extra_info) {
   auto &kind = extra_info.first;
-  if ((kind == RT_MEMCPY_DEVICE_TO_DEVICE) || !support_batch_copy_batch_) {
+  if ((kind == ACL_MEMCPY_DEVICE_TO_DEVICE) || !support_batch_copy_batch_) {
     return ProcessCopyWithAsync(channel, src_addrs, dst_addrs, sizes, extra_info);
   } else {
     auto start = std::chrono::steady_clock::now();
     std::vector<void *> void_dst_addrs(dst_addrs.size());
     std::vector<void *> void_src_addrs(dst_addrs.size());
-    std::vector<rtMemcpyBatchAttr> attrs(dst_addrs.size());
+    std::vector<aclrtMemcpyBatchAttr> attrs(dst_addrs.size());
     std::vector<size_t> attrsIds(dst_addrs.size());
     size_t idx = 0;
     for (size_t i = 0; i < dst_addrs.size(); i++) {
-      auto loc = rtMemLocation{static_cast<uint32_t>(device_id_), rtMemLocationType::RT_MEMORY_LOC_DEVICE};
-      auto another_loc = rtMemLocation{0, rtMemLocationType::RT_MEMORY_LOC_HOST};
-      if (kind == RT_MEMCPY_DEVICE_TO_HOST) {
-        attrs[i] = rtMemcpyBatchAttr{another_loc, loc, {}};
+      auto loc = aclrtMemLocation{static_cast<uint32_t>(device_id_), aclrtMemLocationType::ACL_MEM_LOCATION_TYPE_DEVICE};
+      auto another_loc = aclrtMemLocation{0, aclrtMemLocationType::ACL_MEM_LOCATION_TYPE_HOST};
+      if (kind == ACL_MEMCPY_HOST_TO_HOST) {
+        attrs[i] = aclrtMemcpyBatchAttr{another_loc, loc, {}};
       } else {
-        attrs[i] = rtMemcpyBatchAttr{loc, another_loc, {}};
+        attrs[i] = aclrtMemcpyBatchAttr{loc, another_loc, {}};
       }
       attrsIds[i] = idx++;
       void_src_addrs[i] = llm::ValueToPtr(src_addrs[i]);
       void_dst_addrs[i] = llm::ValueToPtr(dst_addrs[i]);
     }
     size_t fail_idx;
-    auto ret = rtsMemcpyBatch(void_dst_addrs.data(), void_src_addrs.data(), sizes.data(), dst_addrs.size(),
-                              attrs.data(), attrsIds.data(), attrs.size(), &fail_idx);
+    auto ret = aclrtMemcpyBatch(void_dst_addrs.data(), sizes.data(), void_src_addrs.data(), sizes.data(),
+                                dst_addrs.size(), attrs.data(), attrsIds.data(), attrs.size(), &fail_idx);
     if (ret == ACL_ERROR_RT_FEATURE_NOT_SUPPORT) {
       // fallback
       support_batch_copy_batch_ = false;
@@ -473,7 +473,7 @@ Status BufferTransferService::ProcessCopy(const ChannelPtr &channel, const std::
     }
     LLMLOGI("Batch copy time cost:%lu us",
             std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
-    return ret == RT_ERROR_NONE ? SUCCESS : FAILED;
+    return ret == ACL_ERROR_NONE ? SUCCESS : FAILED;
   }
   return SUCCESS;
 }
@@ -485,7 +485,7 @@ Status BufferTransferService::ProcessCopyWithAsync(const ChannelPtr &channel, co
   auto &stream = channel->GetStream();
   auto start = std::chrono::steady_clock::now();
   for (size_t i = 0; i < src_addrs.size(); ++i) {
-    ADXL_CHK_ACL_RET(rtMemcpyAsync(llm::ValueToPtr(dst_addrs[i]), sizes[i], llm::ValueToPtr(src_addrs[i]), sizes[i],
+    ADXL_CHK_ACL_RET(aclrtMemcpyAsync(llm::ValueToPtr(dst_addrs[i]), sizes[i], llm::ValueToPtr(src_addrs[i]), sizes[i],
                                    extra_info.first, stream));
   }
   uint64_t time_cost =
@@ -494,7 +494,7 @@ Status BufferTransferService::ProcessCopyWithAsync(const ChannelPtr &channel, co
   auto left_timeout = timeout - time_cost;
   auto timeout_in_millis = left_timeout / kMillisToMicros;
   ADXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, TIMEOUT, "Transfer timeout.");
-  ADXL_CHK_ACL_RET(rtStreamSynchronizeWithTimeout(stream, timeout_in_millis));
+  ADXL_CHK_ACL_RET(aclrtSynchronizeStreamWithTimeout(stream, timeout_in_millis));
   LLMLOGI("Async copy time cost:%lu us",
           std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
   return SUCCESS;
@@ -538,7 +538,7 @@ Status BufferTransferService::HandleCtrlMsg(const ChannelPtr &channel, const Buf
 }
 
 void BufferTransferService::ProcessBufferResp() {
-  rtCtxSetCurrent(rt_context_);
+  aclrtSetCurrentContext(rt_context_);
   while (!stop_signal_.load()) {
     std::pair<ChannelPtr, BufferResp> resp;
     {
@@ -570,8 +570,8 @@ Status BufferTransferService::HandleBufferResp(const ChannelPtr &channel, Buffer
         buffer_addrs.emplace_back(buffer_addr);
         buffer_addr += buffer_resp.buffer_lens[i];
       }
-      auto kind = (type == TransferType::kReadRH2D || type == TransferType::kReadRD2D) ? RT_MEMCPY_DEVICE_TO_DEVICE
-                                                                                       : RT_MEMCPY_DEVICE_TO_HOST;
+      auto kind = (type == TransferType::kReadRH2D || type == TransferType::kReadRD2D) ? ACL_MEMCPY_DEVICE_TO_DEVICE
+                                                                                       : ACL_MEMCPY_HOST_TO_HOST;
       ADXL_CHK_STATUS_RET(ProcessCopy(channel, buffer_addrs, buffer_resp.src_addrs, buffer_resp.buffer_lens,
                                       std::make_pair(kind, buffer_resp.timeout)),
                           "Copy failed.");

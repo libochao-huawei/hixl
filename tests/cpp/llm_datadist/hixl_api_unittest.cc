@@ -31,7 +31,6 @@ class HixlUTest : public ::testing::Test {
  protected:
   // 在测试类中设置一些准备工作，如果需要的话
   void SetUp() override {
-    SetMockRtGetDeviceWay(1);
     llm::MockMmpaForHcclApi::Install();
     llm::AutoCommResRuntimeMock::Install();
     llm::HcclAdapter::GetInstance().Initialize();
@@ -41,14 +40,12 @@ class HixlUTest : public ::testing::Test {
     llm::HcclAdapter::GetInstance().Finalize();
     llm::MockMmpaForHcclApi::Reset();
     llm::AutoCommResRuntimeMock::Reset();
-    SetMockRtGetDeviceWay(0);
   }
 };
 
 class HccnToolTest : public ::testing::Test {
   protected:
   void SetUp() override {
-    SetMockRtGetDeviceWay(1);
     llm::MockMmpaForHcclApi::Install();
     llm::AutoCommResRuntimeMock::InstallWithoutHccnConfFile();
     llm::AutoCommResRuntimeMock::DeleteHccnConfIfExist();
@@ -59,14 +56,12 @@ class HccnToolTest : public ::testing::Test {
     llm::HcclAdapter::GetInstance().Finalize();
     llm::MockMmpaForHcclApi::Reset();
     llm::AutoCommResRuntimeMock::Reset();
-    SetMockRtGetDeviceWay(0);
   }
 };
 
 class HccnGetIpTest : public ::testing::Test {
   protected:
   void SetUp() override {
-    SetMockRtGetDeviceWay(1);
     llm::MockHccnTool::Install();
     llm::AutoCommResRuntimeMock::Install();
     llm::HcclAdapter::GetInstance().Initialize();
@@ -76,14 +71,12 @@ class HccnGetIpTest : public ::testing::Test {
     llm::HcclAdapter::GetInstance().Finalize();
     llm::MockHccnTool::Reset();
     llm::AutoCommResRuntimeMock::Reset();
-    SetMockRtGetDeviceWay(0);
   }
 };
 
 class HccnGetOutputTest : public ::testing::Test {
   protected:
   void SetUp() override {
-    SetMockRtGetDeviceWay(1);
     llm::MockGetHccnResult::Install();
     llm::AutoCommResRuntimeMock::Install();
     llm::HcclAdapter::GetInstance().Initialize();
@@ -93,7 +86,6 @@ class HccnGetOutputTest : public ::testing::Test {
     llm::HcclAdapter::GetInstance().Finalize();
     llm::MockGetHccnResult::Reset();
     llm::AutoCommResRuntimeMock::Reset();
-    SetMockRtGetDeviceWay(0);
   }
 };
 

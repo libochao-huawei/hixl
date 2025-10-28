@@ -18,7 +18,7 @@ target_link_libraries(ascendcl_stub
     PRIVATE
         intf_pub
         c_sec
-        msprof_headers
+        mmpa_headers
     PUBLIC
         ascendcl_headers
 )
