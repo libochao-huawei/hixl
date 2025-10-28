@@ -130,7 +130,7 @@ ge::Status DataCacheEngine::PullCache(int64_t cache_id, const CacheKey &cache_ke
   LLM_CHK_BOOL_RET_STATUS(entity->CheckEntityInfo(), ge::LLM_NOT_YET_LINK,
                          "pull cache must wait until the query_register_mem_status return ok");
   LLM_DISMISSABLE_GUARD(abort_stream, [this]() -> void {
-    LLM_CHK_ACL(rtStreamAbort(req_stream_));
+    LLM_CHK_ACL(aclrtStreamAbort(req_stream_));
   });
   if (access_remote_cache_) {
     DataTransferClient client(*entity, req_stream_);
@@ -162,9 +162,9 @@ ge::Status DataCacheEngine::PullCache(int64_t cache_id, const CacheKey &cache_ke
 ge::Status DataCacheEngine::SwapBlocks(const Cache &src, const Cache &dst, const uint64_t block_size,
                                        const uint32_t type,
                                        const std::vector<std::pair<int64_t, int64_t>> &block_mapping) const {
-  rtContext_t user_ctx = nullptr;
-  (void)rtCtxGetCurrent(&user_ctx);
-  LLM_MAKE_GUARD(set_user_ctx, [&user_ctx]() { (void)rtCtxSetCurrent(user_ctx); });
+  aclrtContext user_ctx = nullptr;
+  (void)aclrtGetCurrentContext(&user_ctx);
+  LLM_MAKE_GUARD(set_user_ctx, [&user_ctx]() { (void)aclrtSetCurrentContext(user_ctx); });
   SwapImpl swap_impl(device_id_);
   LLM_CHK_STATUS_RET(swap_impl.SwapBlocksV2(src, dst, block_size, type, block_mapping));
   return ge::SUCCESS;
@@ -173,9 +173,9 @@ ge::Status DataCacheEngine::SwapBlocks(const Cache &src, const Cache &dst, const
 ge::Status DataCacheEngine::Initialize(const std::map<ge::AscendString, ge::AscendString> &options) {
   int32_t device_id;
   LLM_CHK_STATUS_RET(LLMUtils::ParseDeviceId(options, device_id), "Failed to get device id");
-  LLM_ASSERT_RT_OK(rtSetDevice(device_id));
+  LLM_ASSERT_RT_OK(aclrtSetDevice(device_id));
   device_id_ = device_id;
-  LLM_ASSERT_RT_OK(rtCtxGetCurrent(&rt_context_));
+  LLM_ASSERT_RT_OK(aclrtGetCurrentContext(&rt_context_));
   LLM_CHK_STATUS_RET(LLMUtils::ParseFlag(kLlmOptionEnableRemoteCacheAccessible, options, access_remote_cache_),
                     "Failed to parse option %s", kLlmOptionEnableRemoteCacheAccessible);
   LLM_CHK_STATUS_RET(cache_manager_->Initialize(access_remote_cache_));
@@ -185,7 +185,7 @@ ge::Status DataCacheEngine::Initialize(const std::map<ge::AscendString, ge::Asce
   LLM_CHK_STATUS_RET(InitializeMemoryPool(options), "Failed to initialize memory pool");
   // create stream
   LLM_ASSERT_RT_OK(
-      rtStreamCreateWithFlags(&req_stream_, RT_STREAM_PRIORITY_DEFAULT, RT_STREAM_FAST_LAUNCH | RT_STREAM_FAST_SYNC));
+      aclrtCreateStreamWithConfig(&req_stream_, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC));
   LLM_CHECK_NOTNULL(comm_entity_manager_);
   LLM_CHECK_NOTNULL(comm_mem_manager_);
   LLM_CHECK_NOTNULL(cache_manager_);
@@ -197,20 +197,20 @@ void DataCacheEngine::Finalize() const{
     TemporaryRtContext with_context(rt_context_);
     cache_manager_->Finalize();
     if (npu_pool_memory_ != nullptr) {
-      LLM_CHK_ACL(rtFree(npu_pool_memory_));
+      LLM_CHK_ACL(aclrtFree(npu_pool_memory_));
     }
     if (host_pool_memory_ != nullptr) {
-      LLM_CHK_ACL(rtFreeHost(host_pool_memory_));
+      LLM_CHK_ACL(aclrtFreeHost(host_pool_memory_));
     }
     if (req_stream_ != nullptr) {
-      LLM_CHK_ACL(rtStreamDestroy(req_stream_));
+      LLM_CHK_ACL(aclrtDestroyStream(req_stream_));
     }
     if (transfer_stream_ != nullptr) {
-      LLM_CHK_ACL(rtStreamDestroy(transfer_stream_));
+      LLM_CHK_ACL(aclrtDestroyStream(transfer_stream_));
     }
   }
   if (device_id_ != -1) {
-    LLM_CHK_ACL(rtDeviceReset(device_id_));
+    LLM_CHK_ACL(aclrtResetDevice(device_id_));
   }
 }
 
@@ -242,7 +242,7 @@ ge::Status DataCacheEngine::InitializeDeviceMemoryPool(const std::map<ge::Ascend
   npu_mem_pool_ = MakeUnique<LlmMemPool>(config);
   LLM_CHECK_NOTNULL(npu_mem_pool_, "Failed to create memory pool");
   LLM_CHK_BOOL_RET_STATUS(
-      rtMalloc(&npu_pool_memory_, npu_pool_size_, RT_MEMORY_HBM, LLM_MODULE_NAME_U16) == RT_ERROR_NONE,
+      aclrtMalloc(&npu_pool_memory_, npu_pool_size_, ACL_MEM_TYPE_HIGH_BRAND_WIDTH) == ACL_ERROR_NONE,
       ge::LLM_OUT_OF_MEMORY, "Failed to allocate memory for memory_pool, config = %s", json_str.c_str());
   LLM_CHK_STATUS_RET(npu_mem_pool_->Initialize(npu_pool_memory_, npu_pool_size_),
                     "Failed to initialize memory pool, config = %s", json_str.c_str());
@@ -270,7 +270,7 @@ ge::Status DataCacheEngine::InitializeHostMemoryPool(const std::map<ge::AscendSt
   config.page_mem_size_total_threshold = host_pool_size;
   host_mem_pool_ = MakeUnique<LlmMemPool>(config);
   LLM_CHECK_NOTNULL(host_mem_pool_);
-  LLM_CHK_ACL_RET(rtMallocHost(&host_pool_memory_, host_pool_size, LLM_MODULE_NAME_U16));
+  LLM_CHK_ACL_RET(aclrtMallocHost(&host_pool_memory_, host_pool_size));
   LLM_CHK_STATUS_RET(host_mem_pool_->Initialize(host_pool_memory_, host_pool_size),
                     "Failed to initialize host memory pool, config = %s", json_str.c_str());
   LLM_CHK_STATUS_RET(
@@ -318,7 +318,7 @@ ge::Status DataCacheEngine::RemoveCacheKey(const CacheKey &cache_key) const {
 }
 
 ge::Status DataCacheEngine::CopyCache(const CopyCacheParam &copy_cache_param) const {
-  LLM_CHK_ACL_RET(rtCtxSetCurrent(rt_context_));
+  LLM_CHK_ACL_RET(aclrtSetCurrentContext(rt_context_));
   return cache_manager_->CopyCache(copy_cache_param);
 }
 
@@ -428,15 +428,15 @@ ge::Status DataCacheEngine::TransferCache(const uint64_t task_id, const Transfer
                          "check failed, tensor_num_per_layer expect [1, %lu]", cache_entry.cache_addrs.size());
   LLMLOGI("Transfer cache with tensor num per layer:%lu.", transfer_cache_config.tensor_num_per_layer);
   TemporaryRtContext with_context(rt_context_);
-  rtError_t ret = RT_ERROR_NONE;
+  aclError ret = ACL_ERROR_NONE;
   std::call_once(create_stream_once_flag_, [&ret, this]() {
-    ret = rtStreamCreateWithFlags(&transfer_stream_, RT_STREAM_PRIORITY_DEFAULT,
-                                  RT_STREAM_FAST_LAUNCH | RT_STREAM_FAST_SYNC);
+    ret = aclrtCreateStreamWithConfig(&transfer_stream_, 0,
+                                  ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC);
   });
   LLM_ASSERT_RT_OK(ret, "create transfer stream failed");
   LLM_ASSERT_NOTNULL(transfer_stream_, "transfer stream is nullptr");
   LLM_DISMISSABLE_GUARD(abort_stream, [this]() -> void {
-    LLM_CHK_ACL(rtStreamAbort(transfer_stream_));
+    LLM_CHK_ACL(aclrtStreamAbort(transfer_stream_));
   });
   LayerWiseTransferJob layer_wise_transfer_job(*entity, transfer_stream_);
   LLM_CHK_STATUS_RET(layer_wise_transfer_job.TransferCache(cache_entry, transfer_cache_config, transfer_block_config,
