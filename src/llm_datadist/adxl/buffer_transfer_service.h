@@ -20,7 +20,7 @@
 #include "control_msg_handler.h"
 
 namespace adxl {
-using CopyExtraInfo = std::pair<rtMemcpyKind_t, uint64_t>;
+using CopyExtraInfo = std::pair<aclrtMemcpyKind, uint64_t>;
 class BufferTransferService {
  public:
   BufferTransferService(std::vector<llm::LlmMemPool *> npu_mem_pools, uint64_t buffer_size)
@@ -88,7 +88,7 @@ class BufferTransferService {
   std::vector<llm::LlmMemPool*> npu_mem_pools_;
   uint64_t buffer_size_;
 
-  rtContext_t rt_context_{nullptr};
+  aclrtContext rt_context_{nullptr};
   int32_t device_id_{-1};
   bool support_batch_copy_batch_ = true;
 

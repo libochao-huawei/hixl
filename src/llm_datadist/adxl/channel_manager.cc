@@ -30,7 +30,7 @@ constexpr int32_t kEpollWaitTimeInMillis = 1000;
 int64_t ChannelManager::wait_time_in_millis_ = kWaitTimeInMillis;
 
 Status ChannelManager::Initialize(BufferTransferService *buffer_transfer_service) {
-  ADXL_CHK_ACL_RET(rtCtxGetCurrent(&rt_context_));
+  ADXL_CHK_ACL_RET(aclrtGetCurrentContext(&rt_context_));
   buffer_transfer_service_ = buffer_transfer_service;
   epoll_fd_ = epoll_create1(0);
   if (epoll_fd_ == -1) {
@@ -47,7 +47,7 @@ Status ChannelManager::Initialize(BufferTransferService *buffer_transfer_service
   });
   // receive msg thread
   msg_receiver_ = std::thread([this]() {
-    rtCtxSetCurrent(rt_context_);
+    aclrtSetCurrentContext(rt_context_);
     while (!stop_signal_.load()) {
       HandleEpoolEvents();
       CheckHeartbeatTimeouts();
