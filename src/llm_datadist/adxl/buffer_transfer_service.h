@@ -72,10 +72,10 @@ class BufferTransferService {
 
   Status ProcessCopy(const ChannelPtr &channel,
                      const std::vector<uintptr_t> &src_addrs, const std::vector<uintptr_t> &dst_addrs,
-                     std::vector<size_t> &sizes, rtMemcpyKind_t kind, uint64_t timeout);
+                     std::vector<size_t> &sizes, aclrtMemcpyKind kind, uint64_t timeout);
 
   Status ProcessCopyWithAsync(const ChannelPtr &channel, const std::vector<uintptr_t> &src_addrs,
-                              const std::vector<uintptr_t> &dst_addrs, std::vector<size_t> &sizes, rtMemcpyKind_t kind,
+                              const std::vector<uintptr_t> &dst_addrs, std::vector<size_t> &sizes, aclrtMemcpyKind kind,
                               uint64_t timeout) const;
 
   Status D2DTransfer(const ChannelPtr &channel, TransferOp transfer_op, std::vector<TransferOpDesc> &op_descs,
@@ -86,7 +86,7 @@ class BufferTransferService {
   std::vector<llm::LlmMemPool*> npu_mem_pools_;
   uint64_t buffer_size_;
 
-  rtContext_t rt_context_{nullptr};
+  aclrtContext rt_context_{nullptr};
   int32_t device_id_{-1};
   bool support_batch_copy_batch_ = true;
 

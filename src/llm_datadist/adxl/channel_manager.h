@@ -65,7 +65,7 @@ class ChannelManager {
   std::map<int32_t, ChannelPtr> fd_to_channel_map_;
 
   std::thread msg_receiver_;
-  rtContext_t rt_context_{nullptr};
+  aclrtContext rt_context_{nullptr};
 };
 }  // namespace adxl
 

@@ -155,8 +155,8 @@ void MsgHandlerPlugin::RegisterConnectedProcess(ConnectedProcess proc) {
 
 ge::Status MsgHandlerPlugin::DoConnectedProcess(int32_t conn_fd) {
   LLM_DISMISSABLE_GUARD(close_fd, ([conn_fd]() { close(conn_fd); }));
-  LLM_CHK_BOOL_RET_STATUS(rtCtxSetCurrent(rt_context_) == RT_ERROR_NONE, ge::LLM_PARAM_INVALID,
-                         "Set runtime context failed.");
+  LLM_CHK_BOOL_RET_STATUS(aclrtSetCurrentContext(rt_context_) == ACL_ERROR_NONE, ge::LLM_PARAM_INVALID,
+                         "Set aclrt context failed.");
   constexpr int32_t kTimeInSec = 60;
   struct timeval timeout;
   timeout.tv_sec = kTimeInSec;
@@ -210,7 +210,7 @@ ge::Status MsgHandlerPlugin::DoAccept() {
 }
 
 ge::Status MsgHandlerPlugin::StartDaemon(uint32_t listen_port) {
-  LLM_ASSERT_RT_OK(rtCtxGetCurrent(&rt_context_));
+  LLM_ASSERT_RT_OK(aclrtGetCurrentContext(&rt_context_));
   sockaddr_in bind_address;
   int32_t on = 1;
   (void)memset_s(&bind_address, sizeof(sockaddr_in), 0, sizeof(sockaddr_in));
