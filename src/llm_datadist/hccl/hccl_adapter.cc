@@ -208,7 +208,7 @@ HcclResult HcclAdapter::HcclRemapRegisteredMemory(HcclComm *comm,
   return ret;
 }
 
-HcclResult HcclAdapter::HcclRegisterGlobalMem(HcclMem *mem, void **mem_handle) {
+HcclResult HcclAdapter::HcclRegisterGlobalMem(HcclMem *mem, void **mem_handle) const {
   auto ret = HCCL_E_NOT_SUPPORT;
   if (hccl_register_global_mem_func_ != nullptr) {
     ret = hccl_register_global_mem_func_(mem, mem_handle);
@@ -217,7 +217,7 @@ HcclResult HcclAdapter::HcclRegisterGlobalMem(HcclMem *mem, void **mem_handle) {
   return ret;
 }
 
-HcclResult HcclAdapter::HcclDeregisterGlobalMem(void *mem_handle) {
+HcclResult HcclAdapter::HcclDeregisterGlobalMem(void *mem_handle) const {
   auto ret = HCCL_E_NOT_SUPPORT;
   if (hccl_deregister_global_mem_func_ != nullptr) {
     ret = hccl_deregister_global_mem_func_(mem_handle);
@@ -226,7 +226,7 @@ HcclResult HcclAdapter::HcclDeregisterGlobalMem(void *mem_handle) {
   return ret;
 }
 
-HcclResult HcclAdapter::HcclCommBindMem(HcclComm comm, void *mem_handle) {
+HcclResult HcclAdapter::HcclCommBindMem(HcclComm comm, void *mem_handle) const {
   auto ret = HCCL_E_NOT_SUPPORT;
   if (hccl_comm_bind_mem_func_ != nullptr) {
     ret = hccl_comm_bind_mem_func_(comm, mem_handle);
@@ -235,7 +235,7 @@ HcclResult HcclAdapter::HcclCommBindMem(HcclComm comm, void *mem_handle) {
   return ret;
 }
 
-HcclResult HcclAdapter::HcclCommUnbindMem(HcclComm comm, void *mem_handle) {
+HcclResult HcclAdapter::HcclCommUnbindMem(HcclComm comm, void *mem_handle) const {
   auto ret = HCCL_E_NOT_SUPPORT;
   if (hccl_comm_unbind_mem_func_ != nullptr) {
     ret = hccl_comm_unbind_mem_func_(comm, mem_handle);
@@ -244,7 +244,7 @@ HcclResult HcclAdapter::HcclCommUnbindMem(HcclComm comm, void *mem_handle) {
   return ret;
 }
 
-HcclResult HcclAdapter::HcclCommPrepare(HcclComm comm, HcclPrepareConfig *prepare_config, int32_t timeout) {
+HcclResult HcclAdapter::HcclCommPrepare(HcclComm comm, HcclPrepareConfig *prepare_config, int32_t timeout) const {
   auto ret = HCCL_E_NOT_SUPPORT;
   if (hccl_comm_prepare_func_ != nullptr) {
     const auto start = std::chrono::steady_clock::now();

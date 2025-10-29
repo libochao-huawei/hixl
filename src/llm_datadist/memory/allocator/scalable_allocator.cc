@@ -22,7 +22,7 @@ constexpr size_t kRatioBase = 100U;
 
 std::atomic_size_t ScalableAllocator::global_allocator_id_(0U);
 
-ScalableAllocator::ScalableAllocator(SpanAllocator &span_allocator, const ScalableConfig &cfg)
+ScalableAllocator::ScalableAllocator(const SpanAllocator &span_allocator, const ScalableConfig &cfg)
     : allocator_id_(++global_allocator_id_),
       allocator_id_with_type_("[allocator_" + std::to_string(allocator_id_) + "]"),
       config_{cfg},

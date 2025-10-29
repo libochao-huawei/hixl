@@ -363,7 +363,7 @@ Status BufferTransferService::HandleBufferD2D(const ChannelPtr &channel, BufferR
 
 Status BufferTransferService::D2DTransfer(const ChannelPtr &channel, TransferOp transfer_op,
                                           std::vector<TransferOpDesc> &op_descs, uint64_t timeout,
-                                          const std::chrono::steady_clock::time_point &start) {
+                                          const std::chrono::steady_clock::time_point &start) const{
   auto &stream = channel->GetStream();
   ADXL_CHK_STATUS_RET(channel->TransferAsync(transfer_op, op_descs, stream), "transfer failed.");
   uint64_t time_cost =
@@ -668,7 +668,7 @@ Status BufferTransferService::SendBufferReq(const ChannelPtr &channel, BufferReq
   return SUCCESS;
 }
 
-bool BufferTransferService::CheckTimeout(const BufferReq &req) {
+bool BufferTransferService::CheckTimeout(const BufferReq &req) const {
   uint64_t time_cost =
       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - req.recv_start_time)
           .count();
