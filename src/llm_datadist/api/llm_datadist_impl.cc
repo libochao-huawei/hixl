@@ -555,7 +555,7 @@ Status LlmDataDist::UnlinkLlmClusters(const std::vector<ClusterInfo> &clusters,
   return ret;
 }
 
-Status LlmDataDist::AllocateCache(const CacheDesc &cache_desc, Cache &cache) const {
+Status LlmDataDist::AllocateCache(const CacheDesc &cache_desc, const Cache &cache) const {
   (void) cache_desc;
   (void) cache;
   LLMLOGE(LLM_FEATURE_NOT_ENABLED, "The feature is not supported.");
