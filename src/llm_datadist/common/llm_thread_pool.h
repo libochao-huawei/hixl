@@ -26,6 +26,7 @@
 #include <queue>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "llm_datadist/llm_error_codes.h"
