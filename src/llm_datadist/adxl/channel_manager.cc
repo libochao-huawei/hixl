@@ -164,7 +164,7 @@ Status ChannelManager::ProcessReceivedData(const ChannelPtr &channel) {
   return SUCCESS;
 }
 
-Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) {
+Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) const {
   ADXL_CHK_BOOL_RET_STATUS(channel->expected_body_size_ > sizeof(ControlMsgType), FAILED,
                            "Received msg invalid, channel:%s.", channel->GetChannelId().c_str());
   auto data = channel->recv_buffer_.data();

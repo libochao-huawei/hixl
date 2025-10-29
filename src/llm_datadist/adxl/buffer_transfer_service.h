@@ -79,9 +79,9 @@ class BufferTransferService {
                               uint64_t timeout);
 
   Status D2DTransfer(const ChannelPtr &channel, TransferOp transfer_op, std::vector<TransferOpDesc> &op_descs,
-                     uint64_t timeout, const std::chrono::steady_clock::time_point &start);
+                     uint64_t timeout, const std::chrono::steady_clock::time_point &start) const;
 
-  bool CheckTimeout(const BufferReq &req);
+  bool CheckTimeout(const BufferReq &req) const;
 
   std::vector<llm::LlmMemPool*> npu_mem_pools_;
   uint64_t buffer_size_;

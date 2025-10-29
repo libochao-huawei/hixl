@@ -245,7 +245,7 @@ Status ChannelMsgHandler::StopDaemon() {
 }
 
 Status ChannelMsgHandler::CreateChannel(const ChannelInfo &channel_info, bool is_client,
-                                        const std::vector<AddrInfo> &remote_addrs) {
+                                        const std::vector<AddrInfo> &remote_addrs) const {
   LLMLOGI("Start to create channel, channel_id:%s, local_rank:%u, peer_rank:%u, is_client:%d",
          channel_info.channel_id.c_str(), channel_info.local_rank_id,
          channel_info.peer_rank_id, static_cast<int32_t>(is_client));
@@ -353,7 +353,7 @@ Status ChannelMsgHandler::ProcessConnectRequest(int32_t fd, const std::vector<ch
 }
 
 Status ChannelMsgHandler::DisconnectInfoProcess(ChannelType channel_type,
-                                                const ChannelDisconnectInfo &peer_disconnect_info) {
+                                                const ChannelDisconnectInfo &peer_disconnect_info) const {
   LLMLOGI("Destroy channel in disconnect process.");
   return channel_manager_->DestroyChannel(channel_type, peer_disconnect_info.channel_id);
 }
