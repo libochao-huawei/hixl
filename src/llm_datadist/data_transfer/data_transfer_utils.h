@@ -23,7 +23,7 @@ class DataTransferUtils {
   static ge::Status SendCache(const rtStream_t stream, CommEntity &comm_entity,
                               std::list<HcclOneSideOpDesc> &transfer_tasks);
   static ge::Status SendBatchCache(const rtStream_t stream, const std::vector<HcclOneSideOpDesc> &desces,
-                                   const CommEntity &comm_entity);
+                                   CommEntity &comm_entity);
 };
 }  // namespace llm
 #endif  // CANN_GRAPH_ENGINE_RUNTIME_LLM_ENGINE_DATA_TRANSFER_DATA_TRANSFER_UTILS_H_
