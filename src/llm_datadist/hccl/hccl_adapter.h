@@ -55,7 +55,7 @@ class HcclAdapter {
   HcclResult HcclBatchGet(HcclComm comm, uint32_t remote_rank, HcclOneSideOpDesc *desc, uint32_t desc_num,
                           rtStream_t stream) const;
   HcclResult HcclRemapRegisteredMemory(HcclComm *comm, HcclMem *mem_info_array, uint64_t comm_size,
-                                       uint64_t arraySize) const;
+                                       uint64_t array_size) const;
   HcclResult HcclRegisterGlobalMem(HcclMem *mem, void **mem_handle);
   HcclResult HcclDeregisterGlobalMem(void *mem_handle);
   HcclResult HcclCommBindMem(HcclComm comm, void *mem_handle);
