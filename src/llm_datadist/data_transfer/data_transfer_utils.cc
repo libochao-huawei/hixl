@@ -17,7 +17,7 @@ constexpr uint64_t kMaxBatchPutNum = 64U;
 }  // namespace
 
 ge::Status DataTransferUtils::SendBatchCache(const rtStream_t stream, const std::vector<HcclOneSideOpDesc> &desces,
-                                             CommEntity &comm_entity) {
+                                             const CommEntity &comm_entity) {
   size_t start = 0U;
   while (start < desces.size()) {
     size_t end = std::min(start + kMaxBatchPutNum, desces.size());
