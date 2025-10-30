@@ -266,4 +266,3 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineRD2HWithBuffer) {
   engine1.Finalize();
   engine2.Finalize();
 }
-}  // namespace llm_datadist

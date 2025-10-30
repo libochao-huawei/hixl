@@ -71,11 +71,11 @@ class ChannelMsgHandler {
   static Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);
   Status StartDaemon(uint32_t listen_port);
   Status StopDaemon();
-  Status CreateChannel(const ChannelInfo &channel_info, bool is_client, const std::vector<AddrInfo> &remote_addrs);
+  Status CreateChannel(const ChannelInfo &channel_info, bool is_client, const std::vector<AddrInfo> &remote_addrs) const;
   Status ConnectInfoProcess(const ChannelConnectInfo &peer_channel_info,
                             int32_t timeout, bool is_client);
   Status ProcessConnectRequest(int32_t fd, const std::vector<char> &msg, bool &keep_fd);
-  Status DisconnectInfoProcess(ChannelType channel_type, const ChannelDisconnectInfo &peer_disconnect_info);
+  Status DisconnectInfoProcess(ChannelType channel_type, const ChannelDisconnectInfo &peer_disconnect_info) const;
   Status ProcessDisconnectRequest(int32_t fd, const std::vector<char> &msg);
   Status ConnectedProcess(int32_t fd, bool &keep_fd);
   template<typename T>

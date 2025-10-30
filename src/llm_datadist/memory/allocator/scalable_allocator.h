@@ -32,7 +32,7 @@
 namespace llm {
 class ScalableAllocator : public MemoryPool {
  public:
-  explicit ScalableAllocator(SpanAllocator &span_allocator, const ScalableConfig &cfg = ScalableConfig());
+  explicit ScalableAllocator(const SpanAllocator &span_allocator, const ScalableConfig &cfg = ScalableConfig());
   ~ScalableAllocator() override;
 
   PageSpan *Alloc(ge::Allocator &allocator, const MemSize size) override;
@@ -84,7 +84,7 @@ class ScalableAllocator : public MemoryPool {
   Link<PageSpan> occupied_spans_;
   std::vector<SpanLayer *> span_layers_;
   std::unique_ptr<SpanLayerLut> span_layer_lut_;
-  SpanAllocator &span_allocator_;
+  const SpanAllocator &span_allocator_;
   SpanLayerAllocator layer_allocator_;
   static std::atomic_size_t global_allocator_id_;
   MemSize max_occupied_size_{0U};
