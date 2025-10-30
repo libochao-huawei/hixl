@@ -17,7 +17,7 @@
 namespace llm {
 class LayerWiseTransferJob {
  public:
-  LayerWiseTransferJob(CommEntity &comm_entity, rtStream_t stream);
+  LayerWiseTransferJob(const CommEntity &comm_entity, rtStream_t stream);
   ~LayerWiseTransferJob() = default;
   ge::Status TransferCache(const CacheEntry &cache_entry,
                            const TransferCacheConfig &transfer_cache_config,
@@ -43,14 +43,14 @@ class LayerWiseTransferJob {
   ge::Status SynchronizeTransferCache(const int32_t timeout_in_ms);
   ge::Status SynchronizeTransferCacheWithRecord(const int32_t timeout_in_ms);
   ge::Status FillRemoteLayerAddrs(int32_t timeout_in_ms,
-                                  TransferCacheConfig &transfer_cache_config,
+                                  TransferCacheConfig &transfer_config,
                                   const TransferBlockConfig &transfer_block_config);
 
   ge::Status ValidateRemoteCache(const CacheEntry &remote_cache_entry, const TransferCacheConfig &transfer_cache_config,
-                                 const TransferBlockConfig &transfer_block_config);
+                                 const TransferBlockConfig &transfer_block_config) const;
 
   rtStream_t stream_;
-  CommEntity *comm_entity_;
+  const CommEntity *comm_entity_;
   std::list<HcclOneSideOpDesc> layer_transfer_tasks_;
   rtEvent_t event_{nullptr};
 };
