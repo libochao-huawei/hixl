@@ -32,14 +32,12 @@ constexpr uint32_t kBaseBlockSize = 262144;       // 0.25M
 constexpr uint32_t kExecuteRepeatNum = 5;
 constexpr int32_t kPortMaxValue = 65535;
 
-#define CHECK_ACL(x)                                                                  \
-  do {                                                                                \
-    aclError __ret = x;                                                               \
-    if (__ret != ACL_ERROR_NONE) {                                                    \
-      std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __ret << std::endl; \
-    }                                                                                 \
-  } while (0)
-}  // namespace
+void CheckAcl(aclError ret) {
+  if (ret != ACL_ERROR_NONE){
+    std::cerr << __FILE__ << ":" << __LINE__ << "aclError:" << ret << std::endl;
+  }
+}
+} // namespace
 
 int32_t Initialize(Hixl &hixl_engine, const char *local_engine, bool use_buffer_pool) {
   std::map<AscendString, AscendString> options;
@@ -164,9 +162,9 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   bool connected = false;
   bool is_host = (transfer_mode == "h2d" || transfer_mode == "h2h");
   if (is_host) {
-    CHECK_ACL(aclrtMallocHost(reinterpret_cast<void **>(&src), kTransferMemSize)); 
+    CheckAcl(aclrtMallocHost(reinterpret_cast<void **>(&src), kTransferMemSize)); 
   } else {
-    CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&src), kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY));
+    CheckAcl(aclrtMalloc(reinterpret_cast<void **>(&src), kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY));
   }
 
   bool need_register = !(is_host && use_buffer_pool);
@@ -228,9 +226,9 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   void *buffer = nullptr;
   bool is_host = (transfer_mode == "d2h" || transfer_mode == "h2h");
   if (is_host){
-    CHECK_ACL(aclrtMallocHost(&buffer, kTransferMemSize));
+    CheckAcl(aclrtMallocHost(&buffer, kTransferMemSize));
   } else{
-    CHECK_ACL(aclrtMalloc(&buffer, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY));
+    CheckAcl(aclrtMalloc(&buffer, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY));
   }
   auto addr = reinterpret_cast<uintptr_t>(buffer);
 
@@ -309,7 +307,7 @@ int32_t main(int32_t argc, char **argv) {
     return -1;
   }
   auto tcp_port = static_cast<uint16_t>(input_tcp_port);
-  CHECK_ACL(aclrtSetDevice(device));
+  CheckAcl(aclrtSetDevice(device));
 
   if (transfer_mode != "d2d" && transfer_mode != "h2d" && transfer_mode != "d2h" && transfer_mode != "h2h"){
     printf("[ERROR] Invalid value for transfer_mode: %s\n", transfer_mode.c_str());
@@ -328,6 +326,6 @@ int32_t main(int32_t argc, char **argv) {
   } else {
     ret = RunServer(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, use_buffer_pool);
   }
-  CHECK_ACL(aclrtResetDevice(device));
+  CheckAcl(aclrtResetDevice(device));
   return ret;
 }
