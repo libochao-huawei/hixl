@@ -48,10 +48,10 @@ ge::Status SwapImpl::SwapBlocks(const std::vector<uintptr_t> &src_addrs, const s
                dst_index, copy_size, ordered_block.size());
         const auto copy_start = std::chrono::steady_clock::now();
         if (copy_info.copy_type == CopyType::kMemcpyEx) {
-          LLM_CHK_ACL_RET(rtMemcpyEx(reinterpret_cast<void *>(dst), copy_size, reinterpret_cast<void *>(src), copy_size,
+          LLM_CHK_ACL_RET(rtMemcpyEx(static_cast<void *>(dst), copy_size, static_cast<void *>(src), copy_size,
                                    copy_info.copy_kind));
         } else {
-          LLM_CHK_ACL_RET(rtMemcpy(reinterpret_cast<void *>(dst), copy_size, reinterpret_cast<void *>(src), copy_size,
+          LLM_CHK_ACL_RET(rtMemcpy(static_cast<void *>(dst), copy_size, static_cast<void *>(src), copy_size,
                                  copy_info.copy_kind));
         }
         const auto copy_end = std::chrono::steady_clock::now();
