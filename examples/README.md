@@ -15,3 +15,4 @@
 |---|---|---|
 | [cppSamples](https://gitcode.com/cann/hixl/tree/master/examples/cpp) | C++样例 | C++ |
 | [pythonSamples](https://gitcode.com/cann/hixl/tree/master/examples/python) | Python样例 | Python |
+| [thirdPartiesSamples](https://gitcode.com/cann/hixl/tree/master/examples/third_parties) | Hixl对接其他社区样例 | C++/Python |
