@@ -81,7 +81,7 @@ ge::Status LocalCommResGenerator::Generate(const std::string &server_id,
   return ge::SUCCESS;
 }
 
-ge::Status LocalCommResGenerator::GetDeviceIp(uint32_t phy_device_id, std::string &device_ip) {
+ge::Status LocalCommResGenerator::GetDeviceIp(int32_t phy_device_id, std::string &device_ip) {
   constexpr const char *kFilePath = "/etc/hccn.conf";
   char_t resolved_path[MMPA_MAX_PATH] = {};
   auto mm_ret = mmRealPath(kFilePath, &(resolved_path[0U]), MMPA_MAX_PATH);

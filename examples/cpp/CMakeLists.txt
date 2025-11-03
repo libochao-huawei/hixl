@@ -34,6 +34,7 @@ foreach(target_name IN LISTS targets_list)
         add_executable(${target_name} ${source_file})
         target_include_directories(${target_name} PRIVATE
             ${HIXL_INC_DIR}
+            ${ACL_RT_PATH}/include
             ${CANN_INSTALL_PATH}/include
         )
         target_compile_options(${target_name} PRIVATE
@@ -47,7 +48,8 @@ foreach(target_name IN LISTS targets_list)
         )
         target_link_libraries(${target_name} PRIVATE
             llm_datadist
-            ascendcl
+            acl_rt_headers
+            acl_rt
             -pthread
             -lrt
         )
