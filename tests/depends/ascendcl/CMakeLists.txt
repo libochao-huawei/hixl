@@ -24,3 +24,20 @@ target_link_libraries(ascendcl_stub
 )
 
 stub_module(ascendcl ascendcl_stub)
+
+add_library(acl_rt_stub SHARED src/ascendcl_stub.cc)
+target_compile_options(acl_rt_stub PRIVATE -g)
+target_compile_definitions(acl_rt_stub PRIVATE
+    $<$<STREQUAL:${ENABLE_OPEN_SRC},True>:ONLY_COMPILE_OPEN_SRC>
+)
+target_include_directories(acl_rt_stub PRIVATE ${CMAKE_CURRENT_LIST_DIR}/src)
+target_link_libraries(acl_rt_stub
+    PRIVATE
+        intf_pub
+        c_sec
+        msprof_headers
+    PUBLIC
+        ascendcl_headers
+)
+
+stub_module(ascendcl acl_rt_stub)
