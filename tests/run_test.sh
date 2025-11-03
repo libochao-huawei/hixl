@@ -121,6 +121,7 @@ build() {
         -D CANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH} \
         -D CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
         -D CMAKE_INSTALL_PREFIX=${OUTPUT_PATH} \
+        -D ACL_RT_PATH=${ACL_RT_PATH} \
         ..
   if [ $? -ne 0 ]
   then
