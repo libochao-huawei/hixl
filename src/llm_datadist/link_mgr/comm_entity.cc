@@ -524,7 +524,7 @@ ge::Status CommEntity::BatchPutAsync(std::vector<HcclOneSideOpDesc> &op_descs, r
   return ge::SUCCESS;
 }
 
-SendStatisticInfo &CommEntity::GetSendStatisticInfo(rtStream_t stream) {
+SendStatisticInfo &CommEntity::GetSendStatisticInfo(rtStream_t stream) const{
   auto stream_to_use = stream != nullptr ? stream : stream_;
   std::lock_guard<std::mutex> lk(info_mutex_);
   const auto &iter = send_statistic_infos_.find(stream_to_use);
@@ -555,7 +555,7 @@ ge::Status CommEntity::BatchGetAsync(std::vector<HcclOneSideOpDesc> &op_descs, r
   return ge::SUCCESS;
 }
 
-RecvStatisticInfo &CommEntity::GetRecvStatisticInfo() {
+RecvStatisticInfo &CommEntity::GetRecvStatisticInfo() const {
   return recv_statistic_info_;
 }
 
@@ -604,7 +604,7 @@ void CommEntity::Dump() const {
           recv_statistic_info_.pull_min_cost, pull_avg_time);
 }
 
-ge::Status CommEntity::SendRequest(const FillRequestFunc &fill_request_func, rtStream_t stream) {
+ge::Status CommEntity::SendRequest(const FillRequestFunc &fill_request_func, rtStream_t stream) const {
   uint64_t req_size = 0U;
   auto &req_info = *PtrToPtr<void, TransferCacheReq>(info_.send_buffer_req_ptr);
   fill_request_func(req_info, req_size);
@@ -687,7 +687,7 @@ const std::chrono::steady_clock::time_point &CommEntity::GetTimeoutPoint() const
   return timeout_point_;
 }
 
-void CommEntity::ClearResponseFlags() {
+void CommEntity::ClearResponseFlags() const{
   *PtrToPtr<void, int32_t>(info_.local_resp_flag_ptr) = 0;
 }
 
@@ -747,7 +747,7 @@ ge::Status BufferedSender::Flush() {
   return ge::SUCCESS;
 }
 
-CacheAccessTable &CommEntity::GetCacheAccessTable() {
+CacheAccessTable &CommEntity::GetCacheAccessTable() cosnt {
   return cache_access_table_;
 }
 }  // namespace llm

@@ -32,7 +32,7 @@ ge::Status DataTransferUtils::SendBatchCache(const rtStream_t stream, const std:
 }
 
 ge::Status DataTransferUtils::SendCache(const rtStream_t stream, CommEntity &comm_entity,
-                                        std::list<HcclOneSideOpDesc> &transfer_tasks, rtEvent_t &event) {
+                                        std::list<HcclOneSideOpDesc> &transfer_tasks, rtEvent_t &event) const {
   auto &send_statistic_info = comm_entity.GetSendStatisticInfo(stream);
   std::vector<HcclOneSideOpDesc> desces;
   while (desces.size() < kMaxTaskNum) {
@@ -64,7 +64,7 @@ ge::Status DataTransferUtils::SendCache(const rtStream_t stream, CommEntity &com
 }
 
 ge::Status DataTransferUtils::SendCache(const rtStream_t stream, CommEntity &comm_entity,
-                                        std::list<HcclOneSideOpDesc> &transfer_tasks) {
+                                        std::list<HcclOneSideOpDesc> &transfer_tasks) const {
   std::vector<HcclOneSideOpDesc> desces;
   while (!transfer_tasks.empty()) {
     HcclOneSideOpDesc send_task = transfer_tasks.front();
