@@ -30,7 +30,7 @@ using HcclBatchPutFunc = HcclResult (*)(HcclComm comm, uint32_t remote_rank, Hcc
 using HcclBatchGetFunc = HcclResult (*)(HcclComm comm, uint32_t remote_rank, HcclOneSideOpDesc *desc, uint32_t desc_num,
                                         rtStream_t stream);
 using HcclRemapRegisteredMemoryFunc = HcclResult (*)(HcclComm *comm, HcclMem *mem_info_array, uint64_t comm_size,
-                                                     uint64_t arraySize);
+                                                     uint64_t array_size);
 
 using HcclRegisterGlobalMemFunc = HcclResult (*)(HcclMem *mem, void **mem_handle);
 using HcclDeregisterGlobalMemFunc = HcclResult (*)(void *mem_handle);
@@ -89,6 +89,27 @@ class HcclAdapter {
 class HcclUtils {
  public:
   static ge::Status ConvertHcclErrorCode(HcclResult hccl_result, ge::Status default_status = ge::FAILED);
+};
+
+template<typename T>
+class FunctionLoader{
+ private:
+  union FunctionPointerConverter {
+    void* from;
+    T to;
+  };
+
+ public:
+  static T load(void* so_handle, const char* func_name) {
+    void* symbol = mmDlsym(so_handle, func_name);
+        if (!symbol) {
+            return nullptr;
+        }
+        
+        FunctionPointerConverter converter;
+        converter.from = symbol;
+        return converter.to;
+  }
 };
 }  // namespace llm
 
