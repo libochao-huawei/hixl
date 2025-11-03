@@ -168,10 +168,10 @@ class CommEntity {
   void SetEntityCommInfo(EntityCommInfoPtr comm_info);
   ge::Status BatchPutAsync(std::vector<HcclOneSideOpDesc> &op_descs, rtStream_t stream = nullptr);
   ge::Status BatchGetAsync(std::vector<HcclOneSideOpDesc> &op_descs, rtStream_t stream = nullptr);
-  SendStatisticInfo &GetSendStatisticInfo(rtStream_t stream = nullptr);
-  RecvStatisticInfo &GetRecvStatisticInfo();
+  SendStatisticInfo &GetSendStatisticInfo(rtStream_t stream = nullptr) const;
+  RecvStatisticInfo &GetRecvStatisticInfo() const;
   void Dump() const;
-  ge::Status SendRequest(const FillRequestFunc &fill_request_func, rtStream_t stream);
+  ge::Status SendRequest(const FillRequestFunc &fill_request_func, rtStream_t stream) const;
   ge::Status SendResponse(const FillResponseFunc &fill_response_func);
   ge::Status SendResponse(ge::Status status);
   ge::Status GetResponse(const ResponseInfo *&response_info,
@@ -181,14 +181,14 @@ class CommEntity {
   void SetDataTransferJob(std::unique_ptr<DataTransferJob> &&data_transfer_job);
   void SetTimeoutPoint(const std::chrono::steady_clock::time_point &timeout_point);
   const std::chrono::steady_clock::time_point &GetTimeoutPoint() const;
-  void ClearResponseFlags();
+  void ClearResponseFlags() const;
   const std::pair<uint64_t, uint64_t> &GetCacheKeyToRemove() const;
   void SetCacheKeyToRemove(const std::pair<uint64_t, uint64_t> &cache_key_to_remove);
   std::mutex &GetPullMutex();
   std::mutex &GetProcessMutex();
   void *GetTransferBuffer() const;
   ge::Status SetRemoteAddresses();
-  CacheAccessTable &GetCacheAccessTable();
+  CacheAccessTable &GetCacheAccessTable() const;
 
  private:
   std::mutex process_mutex_;

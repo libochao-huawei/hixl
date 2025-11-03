@@ -21,7 +21,7 @@ constexpr uint64_t kMaxBatchPutNum = 64U;
 constexpr uint64_t kBlocksCacheKey = 1UL;
 constexpr uint64_t kCacheKeyByIdType = 2UL;
 }  // namespace
-LayerWiseTransferJob::LayerWiseTransferJob(CommEntity &comm_entity, rtStream_t stream)
+LayerWiseTransferJob::LayerWiseTransferJob(const CommEntity &comm_entity, rtStream_t stream)
     : stream_(stream), comm_entity_(&comm_entity) {}
 
 ge::Status LayerWiseTransferJob::GenerateCacheToCacheTask(const CacheEntry &cache_entry,
@@ -227,7 +227,7 @@ ge::Status LayerWiseTransferJob::FillRemoteLayerAddrs(int32_t timeout_in_ms,
 
 ge::Status LayerWiseTransferJob::ValidateRemoteCache(const CacheEntry &remote_cache_entry,
                                                      const TransferCacheConfig &transfer_cache_config,
-                                                     const TransferBlockConfig &transfer_block_config) {
+                                                     const TransferBlockConfig &transfer_block_config) const {
   LLM_CHK_BOOL_RET_STATUS(remote_cache_entry.remote_accessible, ge::LLM_PARAM_INVALID,
                          "remote cache is not remote accessible.");
   // validate layer_index
