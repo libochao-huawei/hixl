@@ -18,15 +18,6 @@
 #include "common/common.h"
 
 #include "acl/acl.h"
-#ifdef __cplusplus
-extern "C" {
-#endif
-aclError aclrtGetPhyDevIdByLogicDevId(uint32_t devIndex, uint32_t *phyId);
-aclError aclrtMemcpyBatch(void **dsts, size_t *destMax, void **srcs, size_t *sizes, size_t numBatches,
-                          aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs, size_t *failIndex);
-#ifdef __cplusplus
-}
-#endif
 
 namespace llm {
 class RankTableGenerator {
@@ -43,7 +34,7 @@ class LocalCommResGenerator {
   static ge::Status Generate(const std::string &server_id,
                              int32_t device_id,
                              std::string &local_comm_res);
-  static ge::Status GetDeviceIp(uint32_t phy_device_id, std::string &device_ip);
+  static ge::Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip);
 };
 
 class RankTableGeneratorFactory {
