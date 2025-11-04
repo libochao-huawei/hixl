@@ -59,7 +59,6 @@ target_link_libraries(llm_datadist PRIVATE
         $<BUILD_INTERFACE:slog_headers>
         $<BUILD_INTERFACE:mmpa_headers>
         $<BUILD_INTERFACE:hccl_headers>
-        $<BUILD_INTERFACE:msprof_headers>
         PUBLIC c_sec
         acl_rt
         static_mmpa
@@ -118,7 +117,6 @@ target_link_libraries(cann_hixl PRIVATE
         $<BUILD_INTERFACE:slog_headers>
         $<BUILD_INTERFACE:mmpa_headers>
         $<BUILD_INTERFACE:hccl_headers>
-        $<BUILD_INTERFACE:msprof_headers>
         PUBLIC c_sec
         acl_rt
         static_mmpa

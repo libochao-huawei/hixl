@@ -20,7 +20,6 @@ target_link_libraries(mmpa_stub
         intf_pub
         metadef_headers
         ascendcl_headers
-        msprof_headers
         slog_headers
         c_sec
         -ldl
