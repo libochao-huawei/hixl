@@ -56,44 +56,44 @@ ge::Status HcclAdapter::LoadSo() {
   LLMLOGI("Start to load funcs");
 
   hccl_exchange_mem_desc_func_ =
-      llm::FunctionLoader<HcclExchangeMemDescFunc>::load(mmDlsym(so_handle_, kHcclExchangeMemDescName));
+      llm::FunctionLoader<HcclExchangeMemDescFunc>::load(so_handle_, kHcclExchangeMemDescName);
   LLM_CHECK_NOTNULL(hccl_exchange_mem_desc_func_, ",failed to get function:%s.", kHcclExchangeMemDescName);
 
-  hccl_batch_put_func_ = llm::FunctionLoader<HcclBatchPutFunc>::load(mmDlsym(so_handle_, kHcclBatchPutName));
+  hccl_batch_put_func_ = llm::FunctionLoader<HcclBatchPutFunc>::load(so_handle_, kHcclBatchPutName);
   LLM_CHECK_NOTNULL(hccl_batch_put_func_, ",failed to get function:%s.", kHcclBatchPutName);
 
-  hccl_batch_get_func_ = llm::FunctionLoader<HcclBatchGetFunc>::load(mmDlsym(so_handle_, kHcclBatchGetName));
+  hccl_batch_get_func_ = llm::FunctionLoader<HcclBatchGetFunc>::load(so_handle_, kHcclBatchGetName);
   LLM_CHECK_NOTNULL(hccl_batch_get_func_, ",failed to get function:%s.", kHcclBatchGetName);
 
-  hccl_remap_registered_memory_func_ = llm::FunctionLoader<HcclRemapRegisteredMemoryFunc>::load(mmDlsym(so_handle_,
-      kHcclRemapRegisteredMemoryName));
+  hccl_remap_registered_memory_func_ = llm::FunctionLoader<HcclRemapRegisteredMemoryFunc>::load(so_handle_,
+      kHcclRemapRegisteredMemoryName);
   LLM_CHECK_NOTNULL(hccl_remap_registered_memory_func_, ",failed to get function:%s.", kHcclRemapRegisteredMemoryName);
 
-  hccl_comm_prepare_func_ = llm::FunctionLoader<HcclCommPrepareFunc>::load(mmDlsym(so_handle_,
-      kHcclCommPrepareName));
+  hccl_comm_prepare_func_ = llm::FunctionLoader<HcclCommPrepareFunc>::load(so_handle_,
+      kHcclCommPrepareName);
 
-  hccl_register_global_mem_func_ = llm::FunctionLoader<HcclRegisterGlobalMemFunc>::load(mmDlsym(so_handle_,
-      kHcclRegisterGlobalMemName));
+  hccl_register_global_mem_func_ = llm::FunctionLoader<HcclRegisterGlobalMemFunc>::load(so_handle_,
+      kHcclRegisterGlobalMemName);
   LLM_CHECK_NOTNULL(hccl_register_global_mem_func_, ",failed to get function:%s.", kHcclRegisterGlobalMemName);
 
-  hccl_deregister_global_mem_func_ = llm::FunctionLoader<HcclDeregisterGlobalMemFunc>::load(mmDlsym(so_handle_,
-      kHcclDeregisterGlobalMemName));
+  hccl_deregister_global_mem_func_ = llm::FunctionLoader<HcclDeregisterGlobalMemFunc>::load(so_handle_,
+      kHcclDeregisterGlobalMemName);
   LLM_CHECK_NOTNULL(hccl_deregister_global_mem_func_, ",failed to get function:%s.", kHcclDeregisterGlobalMemName);
 
-  hccl_comm_bind_mem_func_ = llm::FunctionLoader<HcclCommBindMemFunc>::load(mmDlsym(so_handle_,
-      kHcclCommBindMemName));
+  hccl_comm_bind_mem_func_ = llm::FunctionLoader<HcclCommBindMemFunc>::load(so_handle_,
+      kHcclCommBindMemName);
   LLM_CHECK_NOTNULL(hccl_comm_bind_mem_func_, ",failed to get function:%s.", kHcclCommBindMemName);
 
-  hccl_comm_unbind_mem_func_ = llm::FunctionLoader<HcclCommUnbindMemFunc>::load(mmDlsym(so_handle_,
-      kHcclCommUnbindMemName));
+  hccl_comm_unbind_mem_func_ = llm::FunctionLoader<HcclCommUnbindMemFunc>::load(so_handle_,
+      kHcclCommUnbindMemName);
   LLM_CHECK_NOTNULL(hccl_comm_unbind_mem_func_, ",failed to get function:%s.", kHcclCommUnbindMemName);
 
   hccl_comm_init_cluster_info_mem_func_ =
-      llm::FunctionLoader<HcclCommInitClusterInfoMemConfigFunc>::load(mmDlsym(so_handle_, kHcclCommInitClusterInfoMemName));
+      llm::FunctionLoader<HcclCommInitClusterInfoMemConfigFunc>::load(so_handle_, kHcclCommInitClusterInfoMemName);
   LLM_CHECK_NOTNULL(hccl_comm_init_cluster_info_mem_func_, ",failed to get function:%s.",
                    kHcclCommInitClusterInfoMemName);
 
-  hccl_comm_destroy_func_ = llm::FunctionLoader<HcclCommDestroyFunc>::load(mmDlsym(so_handle_, kHcclCommDestroyName));
+  hccl_comm_destroy_func_ = llm::FunctionLoader<HcclCommDestroyFunc>::load(so_handle_, kHcclCommDestroyName);
   LLM_CHECK_NOTNULL(hccl_comm_destroy_func_, ",failed to get function:%s.", kHcclCommDestroyName);
 
   LLMLOGI("Success to load so:%s", kHcclSoName);
