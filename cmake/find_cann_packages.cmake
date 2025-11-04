@@ -13,9 +13,7 @@ find_package_if_target_not_exists(securec MODULE REQUIRED)
 
 if (NOT ENABLE_TEST)
     find_package_if_target_not_exists(slog MODULE REQUIRED)
-    find_package_if_target_not_exists(runtime MODULE REQUIRED)
     find_package_if_target_not_exists(mmpa MODULE REQUIRED)
-    find_package_if_target_not_exists(msprof MODULE REQUIRED)
     find_package_if_target_not_exists(hccl MODULE REQUIRED)
     find_package_if_target_not_exists(ascendcl MODULE REQUIRED)
     find_package_if_target_not_exists(metadef MODULE REQUIRED)
@@ -37,25 +35,10 @@ else ()
         ${CANN_INSTALL_PATH}/include/experiment/mmpa/sub_inc
     )
 
-    add_library(msprof_headers INTERFACE)
-    target_include_directories(msprof_headers INTERFACE
-        ${CANN_INSTALL_PATH}/include/experiment
-        ${CANN_INSTALL_PATH}/include/experiment/msprof
-        ${CANN_INSTALL_PATH}/include/experiment/msprof/toolchain
-    )
-
     add_library(metadef_headers INTERFACE)
     target_include_directories(metadef_headers INTERFACE
         ${CANN_INSTALL_PATH}/include/
         ${CANN_INSTALL_PATH}/include/external
-    )
-
-    add_library(runtime_headers INTERFACE)
-    target_include_directories(runtime_headers INTERFACE
-        ${CANN_INSTALL_PATH}/include/experiment
-        ${CANN_INSTALL_PATH}/include/experiment/runtime
-        ${CANN_INSTALL_PATH}/include/experiment/runtime/external
-        ${CANN_INSTALL_PATH}/include/experiment/runtime/external/runtime
     )
 
     add_library(slog_headers INTERFACE)
@@ -74,7 +57,6 @@ else ()
     add_library(acl_rt_headers INTERFACE)
     target_include_directories(acl_rt_headers INTERFACE
         ${CANN_INSTALL_PATH}/include
-        ${CANN_INSTALL_PATH}/include/external
-        ${CANN_INSTALL_PATH}/include/external/acl
+        ${CANN_INSTALL_PATH}/include/acl
     )
 endif()

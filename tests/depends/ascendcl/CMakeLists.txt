@@ -18,7 +18,6 @@ target_link_libraries(ascendcl_stub
     PRIVATE
         intf_pub
         c_sec
-        msprof_headers
     PUBLIC
         ascendcl_headers
 )
@@ -35,7 +34,6 @@ target_link_libraries(acl_rt_stub
     PRIVATE
         intf_pub
         c_sec
-        msprof_headers
     PUBLIC
         ascendcl_headers
 )

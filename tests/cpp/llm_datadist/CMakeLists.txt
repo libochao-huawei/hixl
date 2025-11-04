@@ -81,7 +81,6 @@ target_link_libraries(llm_datadist_test
         slog_stub
         mmpa_stub
         acl_rt_stub
-        msprof_headers
         GTest::gtest GTest::gtest_main
         GTest::gmock
         -Wl,--no-as-need
