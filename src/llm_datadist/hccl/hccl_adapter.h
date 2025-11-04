@@ -56,11 +56,11 @@ class HcclAdapter {
                           rtStream_t stream) const;
   HcclResult HcclRemapRegisteredMemory(HcclComm *comm, HcclMem *mem_info_array, uint64_t comm_size,
                                        uint64_t arraySize) const;
-  HcclResult HcclRegisterGlobalMem(HcclMem *mem, void **mem_handle);
-  HcclResult HcclDeregisterGlobalMem(void *mem_handle);
-  HcclResult HcclCommBindMem(HcclComm comm, void *mem_handle);
-  HcclResult HcclCommUnbindMem(HcclComm comm, void *mem_handle);
-  HcclResult HcclCommPrepare(HcclComm comm, HcclPrepareConfig *prepare_config, int32_t timeout);
+  HcclResult HcclRegisterGlobalMem(HcclMem *mem, void **mem_handle) const;
+  HcclResult HcclDeregisterGlobalMem(void *mem_handle) const;
+  HcclResult HcclCommBindMem(HcclComm comm, void *mem_handle) const;
+  HcclResult HcclCommUnbindMem(HcclComm comm, void *mem_handle) const;
+  HcclResult HcclCommPrepare(HcclComm comm, HcclPrepareConfig *prepare_config, int32_t timeout) const;
   HcclAdapter(const HcclAdapter &) = delete;
   HcclAdapter(const HcclAdapter &&) = delete;
   HcclAdapter &operator=(const HcclAdapter &) = delete;
