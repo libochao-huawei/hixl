@@ -44,7 +44,7 @@ unset(_cmake_targets_not_defined)
 unset(_cmake_expected_targets)
 
 find_path(${_INCLUDE_DIR}
-    NAMES external/acl/acl.h
+    NAMES acl/acl.h
     NO_CMAKE_SYSTEM_PATH
     NO_CMAKE_FIND_ROOT_PATH)
 
@@ -78,7 +78,7 @@ if(acl_rt_FOUND)
 
     add_library(acl_rt_headers INTERFACE IMPORTED)
     set_target_properties(acl_rt_headers PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${acl_rt_INCLUDE_DIR};${acl_rt_INCLUDE_DIR}/external;${acl_rt_INCLUDE_DIR}/external/acl"
+        INTERFACE_INCLUDE_DIRECTORIES "${acl_rt_INCLUDE_DIR};${acl_rt_INCLUDE_DIR}/acl"
     )
 
     include(CMakePrintHelpers)
