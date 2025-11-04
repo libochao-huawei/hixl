@@ -13,8 +13,6 @@ target_link_libraries(hccl_stub
     PRIVATE
         intf_pub
         slog_headers
-        runtime_headers
-        msprof_headers
     PUBLIC
         hccl_headers
 )
