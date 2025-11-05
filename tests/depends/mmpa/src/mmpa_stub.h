@@ -48,6 +48,10 @@ class MmpaStubApiGe {
     return ret;
   };
 
+  virtual std::string HccnOutPut(std::string command) {
+    return "";
+  }
+
   virtual int32_t Sleep(UINT32 microSecond) {
     INT32 ret = usleep(microSecond);
     if (ret != EN_OK) {
