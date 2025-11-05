@@ -44,6 +44,24 @@ class HixlUTest : public ::testing::Test {
   }
 };
 
+class HccnToolTest : public ::testing::Test {
+  protected:
+  void SetUp() override {
+    SetMockRtGetDeviceWay(1);
+    llm::MockMmpaForHcclApi::Install();
+    llm::AutoCommResRuntimeMock::InstallWithoutHccnConfFile();
+    llm::AutoCommResRuntimeMock::DeleteHccnConfIfExist();
+    llm::HcclAdapter::GetInstance().Initialize();
+  }
+
+  void TearDown() override {
+    llm::HcclAdapter::GetInstance().Finalize();
+    llm::MockMmpaForHcclApi::Reset();
+    llm::AutoCommResRuntimeMock::Reset();
+    SetMockRtGetDeviceWay(0);
+  }
+};
+
 TEST_F(HixlUTest, TestHixl) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
@@ -84,6 +102,19 @@ TEST_F(HixlUTest, TestHixl) {
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
+}
+
+TEST_F(HccnToolTest, TestHccnConfNotExist) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  std::map<AscendString, AscendString> options1;
+  options1[OPTION_RDMA_TRAFFIC_CLASS] = "1";
+  options1[OPTION_RDMA_SERVICE_LEVEL] = "1";
+  EXPECT_EQ(engine1.Initialize("127.0.0.1", options1), SUCCESS);
+}
+
+TEST_F(HccnToolTest, TestExtractIp) {
+  EXPECT_EQ(ExtractIpAddress("127.0.0.1"), "127.0.0.1")
 }
 
 TEST_F(HixlUTest, TestHixlInitFailed) {

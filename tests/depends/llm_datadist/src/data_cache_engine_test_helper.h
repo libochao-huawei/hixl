@@ -76,7 +76,13 @@ class MockMmpaForHcclApi : public llm::MmpaStubApiGe {
       stub_path = "/tmp/hccn.conf";
     }
     memcpy_s(realPath, realPathLen, stub_path.c_str(), stub_path.length());
-    return 0;
+    std::string tempPath = "/tmp/hccn.conf";
+    if (FILE *file = fopen(tempPath.c_str(), "r")) {
+      fclose(file);
+      return 0;
+    } else {
+      return 1;
+    }
   }
 
  private:
@@ -152,6 +158,22 @@ class AutoCommResRuntimeMock : public llm::RuntimeStub {
   static void Reset() {
     llm::RuntimeStub::Reset();
     RemoveHccnConfFile();
+  }
+
+  static void InstallWithoutHccnConfFile() {
+    llm::RuntimeStub::SetInstance(std::make_shared<AutoCommResRuntimeMock>());
+  }
+
+  static void ResetWithoutHccnConfFile() {
+    llm::RuntimeStub::Reset();
+  }
+
+  static void DeleteHccnConfIfExist() {
+    std::string path = "/tmp/hccn.conf";
+    if (FILE *file = fopen(path.c_str(), "r")) {
+      fclose(file);
+      std::remove(path.c_str());
+    }
   }
 
   rtError_t rtGetSocVersion(char *version, const uint32_t maxLen) override {
