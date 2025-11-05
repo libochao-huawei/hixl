@@ -21,11 +21,13 @@ set(LLM_DATADIST_TEST_FILES
         hixl_api_unittest.cc
         adxl_engine_api_unittest.cc
         segment_table_unittest.cc
+        test_hccn_tool.cc
 )
 set(LLM_DATADIST_STUB_SRC_FILES
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/data_cache_engine_test_helper.cc"
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/ascend_string_stub.cc"
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/hccl_stub.cc"
+        "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/hccn_stub.cc"
 )
 
 file(GLOB LLM_V2_SRC_LIST
