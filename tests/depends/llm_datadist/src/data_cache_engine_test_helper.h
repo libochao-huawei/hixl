@@ -154,6 +154,22 @@ class AutoCommResRuntimeMock : public llm::RuntimeStub {
     RemoveHccnConfFile();
   }
 
+  static void InstallWithoutHccnConfFile() {
+    llm::RuntimeStub::SetInstance(std::make_shared<AutoCommResRuntimeMock>());
+  }
+
+  static void ResetWithoutHccnConfFile() {
+    llm::RuntimeStub::Reset();
+  }
+
+  static void DeleteHccnConfIfExist() {
+    std::string path = "/tmp/hccn.conf";
+    if (FILE *file = fopen(path.c_str(), "r")) {
+      fclose(file);
+      std::remove(path.c_str());
+    }
+  }
+
   rtError_t rtGetSocVersion(char *version, const uint32_t maxLen) override {
     (void)strcpy_s(version, maxLen, "Ascend910_9391");
     return RT_ERROR_NONE;
