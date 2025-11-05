@@ -83,6 +83,10 @@ INT32 mmClose(INT32 fd) {
   return EN_OK;
 }
 
+std::string GetHccnOutput(std::string command) {
+  return "ipaddr:127.0.0.1";
+}
+
 mmSsize_t mmWrite(INT32 fd, VOID *mm_buf, UINT32 mm_count) {
   return llm::MmpaStub::GetInstance().GetImpl()->Write(fd, mm_buf, mm_count);
 }
