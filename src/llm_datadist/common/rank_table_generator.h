@@ -15,6 +15,7 @@
 #include "llm_datadist/llm_error_codes.h"
 #include "common/llm_inner_types.h"
 #include "common/common.h"
+#include <gtest/gtest.h>
 
 namespace llm {
 class RankTableGenerator {
@@ -32,6 +33,15 @@ class LocalCommResGenerator {
                              int32_t device_id,
                              std::string &local_comm_res);
   static ge::Status GetDeviceIp(uint32_t phy_device_id, std::string &device_ip);
+
+ private:
+  static bool IsEmpty(const std::string &str);
+  static std::string ExtractIpAddress(const std::string &output_str);
+  static std::string PreProcess(std::string str);
+  static std::string GetHccnOutput(std::string command);
+  static std::string GetIpAddressFromHccnTool(uint32_t phy_device_id);
+
+  FRIEND_TEST(HccnToolTest, TestExtractIp);
 };
 
 class RankTableGeneratorFactory {
