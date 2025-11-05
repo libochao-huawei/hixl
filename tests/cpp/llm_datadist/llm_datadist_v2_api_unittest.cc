@@ -42,6 +42,22 @@ class LlmDataDistUTest : public ::testing::Test {
   }
 };
 
+// class HccnToolTest : public ::testing::Test {
+//   protected:
+//   void SetUp() override {
+//     llm::MockMmpaForHcclApi::Install();
+//     llm::AutoCommResRuntimeMock::InstallWithoutHccnConfFile();
+//     llm::AutoCommResRuntimeMock::DeleteHccnConfIfExist();
+//     llm::HcclAdapter::GetInstance().Initialize();
+//   }
+
+//   void TearDown() override {
+//     llm::HcclAdapter::GetInstance().Finalize();
+//     llm::MockMmpaForHcclApi::Reset();
+//     llm::AutoCommResRuntimeMock::ResetWithoutHccnConfFile();
+//   }
+// };
+
 TEST_F(LlmDataDistUTest, TestLocalCommResA2) {
   LlmDataDist llm_datadist_p(1U, LlmRole::kPrompt);
   std::map<AscendString, AscendString> options_p;
@@ -144,6 +160,66 @@ TEST_F(LlmDataDistUTest, TestLocalCommResA2) {
   llm_datadist_p.Finalize();
   llm_datadist_d.Finalize();
 }
+
+// TEST_F(HccnToolTest, TestHccnConfNotExist) {
+//   LlmDataDist llm_datadist_p(1U, LlmRole::kPrompt);
+//   std::map<AscendString, AscendString> options_p;
+//   options_p[llm_datadist::OPTION_LISTEN_IP_INFO] = "127.0.0.1:26000";
+//   options_p[llm_datadist::OPTION_DEVICE_ID] = "0";
+//   options_p["llm.LocalCommRes"] = R"(
+//     {
+//       "server_count": "1",
+//       "server_list": [{
+//         "device": [{
+//           "device_id": "0",
+//           "device_ip": "1.1.1.1"
+//         }],
+//         "server_id": "127.0.0.1"
+//       }],
+//       "status": "completed",
+//       "version": "1.0"
+//     }
+//     )";
+
+//   EXPECT_EQ(llm_datadist_p.Initialize(options_p), SUCCESS);
+
+//   LlmDataDist llm_datadist_d(2U, LlmRole::kDecoder);
+//   std::map<AscendString, AscendString> options_d;
+//   options_d[llm_datadist::OPTION_DEVICE_ID] = "1";
+//   options_d["llm.LocalCommRes"] = R"(
+//     {
+//       "server_count": "1",
+//       "server_list": [{
+//         "device": [{
+//           "device_id": "1",
+//           "device_ip": "1.1.1.2"
+//         }],
+//         "server_id": "127.0.0.1"
+//       }],
+//       "status": "completed",
+//       "version": "1.0"
+//     }
+//     )";
+
+//   EXPECT_EQ(llm_datadist_d.Initialize(options_d), SUCCESS);
+
+//   // link
+//   ClusterInfo cluster_info;
+//   IpInfo ip_info;
+//   ip_info.ip = "127.0.0.1";
+//   ip_info.port = 26000;
+//   cluster_info.local_ip_infos = {ip_info};
+//   cluster_info.remote_ip_infos = {ip_info};
+//   std::vector<ge::Status> rets;
+//   std::string path = "/tmp/hccn.conf";
+//   if (FILE *file = fopen(path.c_str(), "r")) {
+//     fclose(file);
+//     std::cout << "The conf file still exists!" << std::endl;
+//   } else {
+//     std::cout << "The conf file does not exist." << std::endl;
+//   }
+//   EXPECT_EQ(llm_datadist_d.LinkLlmClusters({cluster_info}, rets), ge::SUCCESS);
+// }
 
 TEST_F(LlmDataDistUTest, TestLocalCommResA3) {
   LlmDataDist llm_datadist_p(1U, LlmRole::kPrompt);
