@@ -32,6 +32,10 @@ class LocalCommResGenerator {
                              int32_t device_id,
                              std::string &local_comm_res);
   static ge::Status GetDeviceIp(uint32_t phy_device_id, std::string &device_ip);
+  static std::string ExtractIpAddress(const std::string &output_str);
+  static ge::Status PreProcess(std::string str, std::string ip);
+  static std::string GetHccnOutput(std::string command);
+  static std::string GetIpAddressFromHccnTool(uint32_t phy_device_id);
 };
 
 class RankTableGeneratorFactory {
