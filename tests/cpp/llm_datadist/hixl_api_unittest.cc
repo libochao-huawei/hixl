@@ -16,6 +16,7 @@
 
 #include "hixl/hixl.h"
 #include "adxl/channel_manager.h"
+#include "common/rank_table_generator.h"
 #include "dlog_pub.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
@@ -36,6 +37,24 @@ class HixlUTest : public ::testing::Test {
     llm::HcclAdapter::GetInstance().Initialize();
   }
   // 在测试类中进行清理工作，如果需要的话
+  void TearDown() override {
+    llm::HcclAdapter::GetInstance().Finalize();
+    llm::MockMmpaForHcclApi::Reset();
+    llm::AutoCommResRuntimeMock::Reset();
+    SetMockRtGetDeviceWay(0);
+  }
+};
+
+class HccnToolTest : public ::testing::Test {
+  protected:
+  void SetUp() override {
+    SetMockRtGetDeviceWay(1);
+    llm::MockMmpaForHcclApi::Install();
+    llm::AutoCommResRuntimeMock::InstallWithoutHccnConfFile();
+    llm::AutoCommResRuntimeMock::DeleteHccnConfIfExist();
+    llm::HcclAdapter::GetInstance().Initialize();
+  }
+
   void TearDown() override {
     llm::HcclAdapter::GetInstance().Finalize();
     llm::MockMmpaForHcclApi::Reset();
@@ -84,6 +103,37 @@ TEST_F(HixlUTest, TestHixl) {
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
+}
+
+TEST_F(HccnToolTest, TestHccnConfNotExist) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  std::map<AscendString, AscendString> options1;
+  options1[OPTION_RDMA_TRAFFIC_CLASS] = "1";
+  options1[OPTION_RDMA_SERVICE_LEVEL] = "1";
+  llm::MockMmpaForHcclApi::mmaccess_return_value = 0;
+  EXPECT_EQ(engine1.Initialize("127.0.0.1", options1), SUCCESS);
+}
+
+TEST_F(HccnToolTest, TestExtractIp) {
+  std::string output = "ipaddr:127.0.0.1";
+  EXPECT_EQ(llm::LocalCommResGenerator::ExtractIpAddress(output), "127.0.0.1");
+}
+
+TEST_F(HccnToolTest, TestPreProcess) {
+  std::string str = "ipaddr:127.0.0.1";
+  std::string ip = "";
+  EXPECT_EQ(llm::LocalCommResGenerator::PreProcess(str, ip), ge::SUCCESS);
+}
+
+TEST_F(HccnToolTest, TestHccnOutput) {
+  std::string cmd = "hccs_tool";
+  EXPECT_EQ(llm::LocalCommResGenerator::GetHccnOutput(cmd).find("not found") != std::string::npos, true);
+}
+
+TEST_F(HccnToolTest, TestGetIpAddressFromHccnTool) {
+  llm::MockMmpaForHcclApi::mmaccess_return_value = 1;
+  EXPECT_EQ(llm::LocalCommResGenerator::GetIpAddressFromHccnTool(0), "");
 }
 
 TEST_F(HixlUTest, TestHixlInitFailed) {
