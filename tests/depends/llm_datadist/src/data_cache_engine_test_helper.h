@@ -54,10 +54,10 @@ class HcclApiStub {
   static std::unique_ptr<HcclApiStub> instance_;
 };
 
-class MockMmpaForHcclApi : public llm::MmpaStubApiGe {
- public:
+class MockMmpaForHccnTool : public llm::MmpaStubApiGe {
+  public:
   static void Install() {
-    llm::MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpaForHcclApi>());
+    llm::MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpaForHccnTool>());
   }
   static void Reset() {
     HcclApiStub::ResetStub();
@@ -77,6 +77,27 @@ class MockMmpaForHcclApi : public llm::MmpaStubApiGe {
     }
     memcpy_s(realPath, realPathLen, stub_path.c_str(), stub_path.length());
     return 0;
+  }
+}
+
+class MockMmpaForHcclApi : public llm::MmpaStubApiGe {
+ public:
+  static void Install() {
+    llm::MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpaForHcclApi>());
+  }
+  static void Reset() {
+    HcclApiStub::ResetStub();
+    llm::MmpaStub::GetInstance().Reset();
+  }
+
+  void *DlOpen(const char *file_name, int32_t mode) override;
+
+  void *DlSym(void *handle, const char *func_name) override;
+
+  int32_t DlClose(void *handle) override;
+
+  int32_t RealPath(const CHAR *path, CHAR *realPath, INT32 realPathLen) override {
+    return 1;
   }
 
  private:
@@ -152,6 +173,22 @@ class AutoCommResRuntimeMock : public llm::RuntimeStub {
   static void Reset() {
     llm::RuntimeStub::Reset();
     RemoveHccnConfFile();
+  }
+
+  static void InstallWithoutHccnConfFile() {
+    llm::RuntimeStub::SetInstance(std::make_shared<AutoCommResRuntimeMock>());
+  }
+
+  static void ResetWithoutHccnConfFile() {
+    llm::RuntimeStub::Reset();
+  }
+
+  static void DeleteHccnConfIfExist() {
+    std::string path = "/tmp/hccn.conf";
+    if (FILE *file = fopen(path.c_str(), "r")) {
+      fclose(file);
+      std::remove(path.c_str());
+    }
   }
 
   rtError_t rtGetSocVersion(char *version, const uint32_t maxLen) override {
