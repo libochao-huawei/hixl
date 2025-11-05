@@ -76,8 +76,20 @@ class MockMmpaForHcclApi : public llm::MmpaStubApiGe {
       stub_path = "/tmp/hccn.conf";
     }
     memcpy_s(realPath, realPathLen, stub_path.c_str(), stub_path.length());
-    return 0;
+    std::string tempPath = "/tmp/hccn.conf";
+    if (FILE *file = fopen(tempPath.c_str(), "r")) {
+      if (fclose(file) == 0) {
+        std::cout << "Successfully closed the file /tmp/hccn.conf" << std::endl;
+      }
+      return 0;
+    } else {
+      return 1;
+    }
   }
+
+  std::string HccnOutPut(std::string command) override {
+    return "ipaddr:127.0.0.1";
+  } 
 
  private:
   static HcclResult HcclExchangeMemDesc(HcclComm comm, uint32_t remoteRank, HcclMemDescs *local, int timeout,
@@ -152,6 +164,26 @@ class AutoCommResRuntimeMock : public llm::RuntimeStub {
   static void Reset() {
     llm::RuntimeStub::Reset();
     RemoveHccnConfFile();
+  }
+
+  static void InstallWithoutHccnConfFile() {
+    llm::RuntimeStub::SetInstance(std::make_shared<AutoCommResRuntimeMock>());
+  }
+
+  static void ResetWithoutHccnConfFile() {
+    llm::RuntimeStub::Reset();
+  }
+
+  static void DeleteHccnConfIfExist() {
+    std::string path = "/tmp/hccn.conf";
+    if (FILE *file = fopen(path.c_str(), "r")) {
+      if (fclose(file) == 0) {
+        std::cout << "Successfully closed the file /tmp/hccn.conf" << std::endl;
+      }
+      if (std::remove(path.c_str())) {
+        std::cout << "Successfully deleted the file /tmp/hccn.conf" << std::endl;
+      }
+    }
   }
 
   rtError_t rtGetSocVersion(char *version, const uint32_t maxLen) override {
