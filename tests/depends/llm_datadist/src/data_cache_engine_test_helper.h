@@ -154,6 +154,13 @@ class AutoCommResRuntimeMock : public llm::RuntimeStub {
     RemoveHccnConfFile();
   }
 
+  static void DeleteHccnConfIfExist() {
+    std::string path = "/tmp/hccn.conf";
+    if (fs::exists(path.c_str())) {
+      std::remove(path.c_str());
+    }
+  }
+
   rtError_t rtGetSocVersion(char *version, const uint32_t maxLen) override {
     (void)strcpy_s(version, maxLen, "Ascend910_9391");
     return RT_ERROR_NONE;
