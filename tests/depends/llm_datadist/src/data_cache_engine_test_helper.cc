@@ -16,6 +16,7 @@ HcclMem hccl_mems[16];
 int cnt = 0;
 
 int32_t AutoCommResRuntimeMock::device_id_ = 0;
+int32_t MockMmpaForHcclApi::mmaccess_return_value = 0;
 
 std::unique_ptr<HcclApiStub> HcclApiStub::instance_;
 void DataCacheEngineTestContext::Finalize() {
@@ -252,4 +253,5 @@ void *MockMmpaForHcclApi::DlSym(void *handle, const char *func_name) {
 int32_t MockMmpaForHcclApi::DlClose(void *handle) {
   return 0;
 }
+
 }  // namespace llm
