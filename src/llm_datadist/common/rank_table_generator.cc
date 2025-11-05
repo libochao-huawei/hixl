@@ -81,6 +81,63 @@ ge::Status LocalCommResGenerator::Generate(const std::string &server_id,
   return ge::SUCCESS;
 }
 
+bool LocalCommResGenerator::IsEmpty(const std::string &str) {
+  return all_of(str.begin(), str.end(), [](unsigned char ch) {
+    return std::isspace(ch);
+  });
+}
+
+std::string LocalCommResGenerator::ExtractIpAddress(const std::string &output_str) {
+  const std::string prefix = "ipaddr:";
+  auto pos = output_str.find(prefix);
+  pos += prefix.length();
+  auto end = output_str.find("\n", pos);
+  std::string ip_addr = output_str.substr(pos, end - pos);
+  return ip_addr;
+}
+
+std::string LocalCommResGenerator::PreProcess(std::string str) {
+  if (IsEmpty(str)) {
+    LLMEVENT("Device ip not set.");
+    return "";
+  }
+  if (str.find("ipaddr:") != std::string::npos) {
+    return ExtractIpAddress(str);
+  }
+  return "not processed";
+}
+
+std::string LocalCommResGenerator::GetHccnOutput(std::string command) {
+  std::string command_with_stderr = command + " 2>&1";
+  std::array<char, 128> buffer;
+  std::string result;
+  std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command_with_stderr.c_str(), "r"), pclose);
+  if (!pipe) {
+    LLMLOGE(ge::FAILED, "calling command %s failed, cannot create subprocess.", command_with_stderr.c_str());
+  }
+  while (fgets(buffer.data(), buffer.size(), pipe.get())) {
+    result += buffer.data();
+  }
+  return result;
+}
+
+std::string LocalCommResGenerator::GetIpAddressFromHccnTool(uint32_t phy_device_id) {
+  std::string result;
+  std::string command = "/usr/local/Ascend/drivers/tools/hccn_tool -i " + std::to_string(phy_device_id) + " -ip -g";
+  result = GetHccnOutput(command);
+  std::string tmp_str = PreProcess(result);
+  if (tmp_str == "not processed") {
+    command = "hccn_tool -i " + std::to_string(phy_device_id) + " -ip -g";
+    result = GetHccnOutput(command);
+    tmp_str = PreProcess(result);
+    if (tmp_str == "not processed") {
+      LLMEVENT("Please add hccn install path to PATH environment varibale.");
+      return "";
+    }
+  }
+  return tmp_str;
+}
+
 ge::Status LocalCommResGenerator::GetDeviceIp(uint32_t phy_device_id, std::string &device_ip) {
   constexpr const char *kFilePath = "/etc/hccn.conf";
   char_t resolved_path[MMPA_MAX_PATH] = {};
@@ -106,6 +163,13 @@ ge::Status LocalCommResGenerator::GetDeviceIp(uint32_t phy_device_id, std::strin
                             "address format is invalid: %s, expect address_${phy_device_id}=${device_ip}",
                             line.c_str());
       device_ip = addess_val.back();
+      LLM_CHK_STATUS_RET(LLMUtils::CheckIp(device_ip), "device ip:%s is invalid.", device_ip.c_str());
+      return ge::SUCCESS;
+    }
+  } else {
+    const auto result = GetIpAddressFromHccnTool(phy_device_id);
+    if (result != "") {
+      device_ip = result;
       LLM_CHK_STATUS_RET(LLMUtils::CheckIp(device_ip), "device ip:%s is invalid.", device_ip.c_str());
       return ge::SUCCESS;
     }
