@@ -252,4 +252,13 @@ void *MockMmpaForHcclApi::DlSym(void *handle, const char *func_name) {
 int32_t MockMmpaForHcclApi::DlClose(void *handle) {
   return 0;
 }
+
+void *MockMmpaForHccnTool::DlOpen(const char *file_name, int32_t mode) {
+  return (void *) 0x10000000;
+}
+
+int32_t MockMmpaForHccnTool::DlClose(void *handle) {
+  return 0;
+}
+
 }  // namespace llm
