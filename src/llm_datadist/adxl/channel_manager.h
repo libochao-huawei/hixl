@@ -36,6 +36,7 @@ class ChannelManager {
   Status AddSocketToEpoll(int32_t fd, ChannelPtr channel);
 
  private:
+  const int max_channel = 512;
   std::vector<ChannelPtr> GetAllClientChannel();
   std::vector<ChannelPtr> GetAllServerChannel();
 

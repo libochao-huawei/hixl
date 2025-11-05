@@ -91,6 +91,9 @@ class Channel {
   static int64_t timeout_in_millis_;
 
   std::mutex transfer_mutex_;
+  
+  std::atomic<int> transfer_count;
+  std::atomic<bool> disconnect_flag;
 
   int32_t fd_ = -1;
   RecvState recv_state_ = RecvState::WAITING_FOR_HEADER;
