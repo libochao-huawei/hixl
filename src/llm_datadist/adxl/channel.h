@@ -92,8 +92,9 @@ class Channel {
 
   std::mutex transfer_mutex_;
   
-  std::atomic<int> transfer_count;
-  std::atomic<bool> disconnect_flag;
+  std::atomic<int> transfer_count_{0};
+  std::atomic<bool> disconnect_flag_{false};
+  bool has_transfered_ = false;
 
   int32_t fd_ = -1;
   RecvState recv_state_ = RecvState::WAITING_FOR_HEADER;

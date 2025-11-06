@@ -40,9 +40,6 @@ Status Channel::Initialize() {
         &channel_info_.comm_config,
         &channel_info_.comm));
   }
-
-  disconnect_flag.store(false, std::memory_order_release);
-  transfer_count.store(0, std::memory_order_release);
   
   std::vector<void *> bind_handles;
   LLM_DISMISSABLE_GUARD(fail_guard, ([this, &bind_handles]() {
@@ -102,8 +99,8 @@ Status Channel::Finalize() {
     fd_ = -1;
   }
   with_heartbeat_.store(false, std::memory_order_release);
-  disconnect_flag.store(true, std::memory_order_release);
-  transfer_count.store(0, std::memory_order_release);
+  disconnect_flag_.store(true, std::memory_order_release);
+  transfer_count_.store(0, std::memory_order_release);
   return ret;
 }
 

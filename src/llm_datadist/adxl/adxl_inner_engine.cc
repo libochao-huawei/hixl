@@ -26,6 +26,25 @@ constexpr const char *kDisabledPoolConfig = "0:0";
 constexpr uint64_t kNeedUseBufferThresh = 256 * 1024U;
 constexpr size_t kMemPoolNum = 2U;
 }
+
+void AdxlInnerEngine::ChannelRecycleThreadFunc(int32_t timeout_in_millis){
+  while(is_initialized_.load()){
+    AscendString remote_engine;
+    {
+      std::unique_lock<std::mutex> lk(recycle_mutex_);
+      recycle_cv_.wait(lk, [this] {
+        return !recycle_channel_queue_.empty();
+      });
+      remote_engine = std::move(recycle_channel_queue_.front());
+      recycle_channel_queue_.pop();
+    }
+
+    ADXL_CHK_STATUS_RET(AdxlInnerEngine::Disconnect(remote_engine, timeout_in_millis),
+                      "Failed to disconnect, remote engine:%s, timeout:%d ms",
+                      remote_engine.GetString(), timeout_in_millis);
+  }
+}
+
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   std::lock_guard<std::mutex> lk(mutex_);
   ADXL_CHK_LLM_RET(llm::HcclAdapter::GetInstance().Initialize(), "HcclSoManager initialize failed.");
@@ -33,7 +52,12 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get()), "Failed to init msg handler.");
   ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
   ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
-  is_initialized_ = true;
+  {
+    std::lock_guard<std::mutex> qlock(recycle_mutex_);
+    recycle_channel_queue_ = {};
+  }
+  channel_recycle_thread_ = std::thread(&AdxlInnerEngine::ChannelRecycleThreadFunc, this);
+  is_initialized_.store(true);
   return SUCCESS;
 }
 
@@ -128,6 +152,18 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
 }
 
 void AdxlInnerEngine::Finalize() {
+  is_initialized_.store(false);
+  if (channel_recycle_thread_.joinable()) {
+    channel_recycle_thread_.join();
+  }
+
+  while (!recycle_channel_queue_.empty()) {
+    AscendString remote_engine = recycle_channel_queue_.front();
+    recycle_channel_queue_.pop();
+    ADXL_CHK_STATUS_RET(AdxlInnerEngine::Disconnect(remote_engine, 1000),
+                      "Failed to disconnect, remote engine:%s, timeout:1000 ms",
+                      remote_engine.GetString());
+  }
   channel_manager_.Finalize();
   msg_handler_.Finalize();
   for (auto &mem_handle : pool_mem_handles_) {
@@ -163,6 +199,7 @@ Status AdxlInnerEngine::DeregisterMem(MemHandle mem_handle) {
 Status AdxlInnerEngine::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
   LLMEVENT("Start to connect, local engine:%s, remote engine:%s, timeout:%d ms.",
           local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+
   ADXL_CHK_STATUS_RET(msg_handler_.Connect(remote_engine.GetString(), timeout_in_millis),
                       "Failed to connect, remote engine:%s, timeout:%d ms",
                       remote_engine.GetString(), timeout_in_millis);
