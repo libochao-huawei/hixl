@@ -72,7 +72,7 @@ List[int]
 
 - `List[int]`: List of bytes read for each operation (positive = success, negative = error)
 
-测试接口的详细信息，可以参考[Mooncake接口文档](https://kvcache-ai.github.io/Mooncake/python-api-reference/mooncake-store.html)
+测试接口的详细信息，可以参考Mooncake接口文档
 
 ### 环境准备（已安装可跳过）
 
@@ -89,7 +89,7 @@ List[int]
 ```bash
 mooncake_master \
   --enable_http_metadata_server=true \
-  --http_metadata_server_host=0.0.0.0 \
+  --http_metadata_server_host= <运行时填入http server host> \
   --http_metadata_server_port=8080
 ```
 
