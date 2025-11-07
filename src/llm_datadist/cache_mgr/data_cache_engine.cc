@@ -23,7 +23,6 @@
 #include "base/err_msg.h"
 #include "common/llm_checker.h"
 #include "common/llm_scope_guard.h"
-#include "llm_datadist/llm_engine_types.h"
 
 namespace llm {
 namespace {
