@@ -178,7 +178,7 @@ void CommEntityManager::HandleCacheRequest() {
   }
 }
 
-void CommEntityManager::SetCommMemManager(CommMemManager *comm_mem_manager) {
+void CommEntityManager::SetCommMemManager(CommMemManager *comm_mem_manager_) {
   comm_mem_manager_ = comm_mem_manager;
 }
 
