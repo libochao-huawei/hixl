@@ -17,7 +17,7 @@
 namespace llm {
 class LayerWiseTransferJob {
  public:
-  LayerWiseTransferJob(CommEntity &comm_entity, rtStream_t stream);
+  LayerWiseTransferJob(const CommEntity &comm_entity, rtStream_t stream);
   ~LayerWiseTransferJob() = default;
   ge::Status TransferCache(const CacheEntry &cache_entry,
                            const TransferCacheConfig &transfer_cache_config,
