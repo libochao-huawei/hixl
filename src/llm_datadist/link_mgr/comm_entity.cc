@@ -44,8 +44,8 @@ ge::Status RegBufferPool::Initialize() {
   if (is_host_) {
     LLM_CHK_ACL_RET(rtMallocHost(&buffer_, buffer_size, LLM_MODULE_NAME_U16));
   } else {
-    LLM_CHK_ACL_RET(rtMalloc(&buffer_, buffer_size,
-                             RT_MEMORY_HBM | RT_MEM_MALLOC_HUGE_FIRST, LLM_MODULE_NAME_U16));
+    rtMallocPolicy type = static_cast<rtMallocPolicy>(RT_MEMORY_HBM | RT_MEM_MALLOC_HUGE_FIRST);
+    LLM_CHK_ACL_RET(rtMalloc(&buffer_, buffer_size, type, LLM_MODULE_NAME_U16));
   }
   LLM_DISMISSABLE_GUARD(fail_guard, ([this]() {
     if (is_host_) {
