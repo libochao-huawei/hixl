@@ -42,7 +42,7 @@ ScalableAllocator::ScalableAllocator(SpanAllocator &span_allocator, const Scalab
 
 ScalableAllocator::~ScalableAllocator() {
   try {
-    (void) Finalize();
+    (void) ScalableAllocator::Finalize();
     span_layers_.clear();
   } catch (const std::exception &) {
     // do nothing
