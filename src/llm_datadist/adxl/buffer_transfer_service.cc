@@ -362,7 +362,7 @@ Status BufferTransferService::HandleBufferD2D(const ChannelPtr &channel, BufferR
 }
 
 Status BufferTransferService::D2DTransfer(const ChannelPtr &channel, TransferOp transfer_op,
-                                          std::vector<TransferOpDesc> &op_descs, uint64_t timeout,
+                                          const std::vector<TransferOpDesc> &op_descs, uint64_t timeout,
                                           const std::chrono::steady_clock::time_point &start) {
   auto &stream = channel->GetStream();
   ADXL_CHK_STATUS_RET(channel->TransferAsync(transfer_op, op_descs, stream), "transfer failed.");
@@ -477,7 +477,7 @@ Status BufferTransferService::ProcessCopy(const ChannelPtr &channel, const std::
 
 Status BufferTransferService::ProcessCopyWithAsync(const ChannelPtr &channel, const std::vector<uintptr_t> &src_addrs,
                                                    const std::vector<uintptr_t> &dst_addrs, std::vector<size_t> &sizes,
-                                                   rtMemcpyKind_t kind, uint64_t timeout) const {
+                                                   rtMemcpyKind_t kind, uint64_t timeout) {
   auto &stream = channel->GetStream();
   auto start = std::chrono::steady_clock::now();
   for (size_t i = 0; i < src_addrs.size(); ++i) {
@@ -671,7 +671,7 @@ Status BufferTransferService::SendBufferReq(const ChannelPtr &channel, BufferReq
   return SUCCESS;
 }
 
-bool BufferTransferService::CheckTimeout(const BufferReq &req) const {
+bool BufferTransferService::CheckTimeout(const BufferReq &req) {
   uint64_t time_cost =
       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - req.recv_start_time)
           .count();
