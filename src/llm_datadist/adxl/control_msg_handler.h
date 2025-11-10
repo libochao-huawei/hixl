@@ -24,7 +24,13 @@ struct ProtocolHeader {
   uint64_t body_size;
 };
 
-enum class ControlMsgType : int32_t { kHeartBeat = 1, kBufferReq = 2, kBufferResp = 3, kEnd };
+enum class ControlMsgType : int32_t { 
+  kHeartBeat = 1, 
+  kBufferReq = 2, 
+  kBufferResp = 3, 
+  kRequestDisconnect = 4,      // Server请求Client断链（合并查询和断链）
+  kEnd 
+};
 
 struct HeartbeatMsg {
   char msg;
@@ -113,6 +119,21 @@ inline void to_json(nlohmann::json &j, const HeartbeatMsg &msg) {
 
 inline void from_json(const nlohmann::json &j, HeartbeatMsg &msg) {
   j.at("msg").get_to(msg.msg);
+}
+
+// Server请求Client断链的消息（合并查询和断链）
+struct RequestDisconnectMsg {
+  std::string channel_id;     // 需要断链的channel_id
+  uint64_t timeout{0};        // 超时时间
+};
+
+inline void to_json(nlohmann::json &j, const RequestDisconnectMsg &msg) {
+  j = nlohmann::json{{"channel_id", msg.channel_id}, {"timeout", msg.timeout}};
+}
+
+inline void from_json(const nlohmann::json &j, RequestDisconnectMsg &msg) {
+  j.at("channel_id").get_to(msg.channel_id);
+  j.at("timeout").get_to(msg.timeout);
 }
 
 class ControlMsgHandler {

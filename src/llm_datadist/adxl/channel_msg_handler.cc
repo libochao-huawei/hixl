@@ -18,6 +18,9 @@
 #include "channel.h"
 #include "common/llm_checker.h"
 #include "common/llm_scope_guard.h"
+#include "adxl_utils.h"
+#include "control_msg_handler.h"
+#include <algorithm>
 
 namespace adxl {
 
@@ -169,15 +172,43 @@ Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> 
   llm::HcclAdapter::GetInstance().HcclCommConfigInit(&comm_config_);
   ADXL_CHK_STATUS_RET(ParseTrafficClass(options), "Failed to parse traffic class");
   ADXL_CHK_STATUS_RET(ParseServiceLevel(options), "Failed to parse service level");
+  
+  // 解析水位线配置
+  ADXL_CHK_STATUS_RET(ParseWaterlineConfig(options), "Failed to parse waterline config");
+  
   if (listen_port_ > 0) {
     ADXL_CHK_STATUS_RET(StartDaemon(listen_port_), "Failed to start listen deamon, port = %u", listen_port_);
     LLMEVENT("start daemon success, listen on port:%u", listen_port_);
   }
   segment_table_ = segment_table;
+  
+  // 设置断链回调给ChannelManager
+  channel_manager_->SetDisconnectCallback([this](const std::string& channel_id, int32_t timeout_ms) {
+    return Disconnect(channel_id, timeout_ms);
+  });
+  
+  // 启动淘汰线程
+  if (high_waterline_ > 0 && low_waterline_ > 0) {
+    stop_eviction_ = false;
+    eviction_thread_ = std::thread([this]() { EvictionLoop(); });
+    LLMLOGI("Eviction thread started with waterline: max=%d, high=%d, low=%d", 
+            max_channel_, high_waterline_, low_waterline_);
+  }
+  
   return SUCCESS;
 }
 
 void ChannelMsgHandler::Finalize() {
+  // 停止淘汰线程
+  if (eviction_thread_.joinable()) {
+    {
+      std::lock_guard<std::mutex> lock(evict_mutex_);
+      stop_eviction_ = true;
+    }
+    evict_cv_.notify_all();
+    eviction_thread_.join();
+  }
+  
   StopDaemon();
   std::lock_guard<std::mutex> lock(mutex_);
   for (const auto &it : handle_to_addr_) {
@@ -404,6 +435,14 @@ Status ChannelMsgHandler::Connect(const std::string &remote_engine, int32_t time
   auto channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine);
   ADXL_CHK_BOOL_RET_STATUS(channel == nullptr, ALREADY_CONNECTED,
                            "remote_engine:%s is already connected.", remote_engine.c_str());
+  
+  // 检查水位线，如果达到高水位则触发淘汰（非阻塞）
+  if (ShouldTriggerEviction()) {
+    LLMLOGI("Trigger eviction: current channels=%d, high_waterline=%d", 
+            GetTotalChannelCount(), high_waterline_);
+    MaybeScheduleEviction();  // 只入队，不等待
+  }
+  
   std::string remote_ip;
   int32_t remote_port = -1;
   ADXL_CHK_STATUS_RET(ParseListenInfo(remote_engine, remote_ip, remote_port), "Failed to parse listen info");
@@ -498,5 +537,304 @@ Status ChannelMsgHandler::Disconnect(const std::string &remote_engine, int32_t t
   LLMEVENT("Success to disconnect, local engine:%s, remote engine:%s, timeout:%d ms.",
           listen_info_.c_str(), remote_engine.c_str(), timeout_in_millis);
   return SUCCESS;
+}
+
+Status ChannelMsgHandler::ParseWaterlineConfig(const std::map<AscendString, AscendString> &options) {
+  // 解析 max_channel
+  auto max_it = options.find(OPTION_MAX_CHANNEL);
+  if (max_it != options.end()) {
+    std::string max_str = max_it->second.GetString();
+    if (!llm::LLMUtils::ToNumber(max_str, max_channel_)) {
+      LLMLOGW("Invalid max_channel: %s, use default: %d", max_str.c_str(), kDefaultMaxChannel);
+      max_channel_ = kDefaultMaxChannel;
+    }
+    ADXL_CHK_BOOL_RET_STATUS(max_channel_ > 0, PARAM_INVALID, 
+                             "max_channel must be positive");
+  }
+  
+  // 解析 high_waterline（只支持0~1的小数）
+  auto high_it = options.find(OPTION_HIGH_WATERLINE);
+  if (high_it != options.end()) {
+    std::string high_str = high_it->second.GetString();
+    double high_value = 0.0;
+    if (!llm::LLMUtils::ToNumber(high_str, high_value)) {
+      LLMLOGW("Invalid high_waterline: %s, use default: %.2f", 
+              high_str.c_str(), kDefaultHighWaterline);
+      high_waterline_ratio_ = kDefaultHighWaterline;
+    } else {
+      if (high_value > 0.0 && high_value <= 1.0) {
+        high_waterline_ratio_ = high_value;
+      } else {
+        LLMLOGW("Invalid high_waterline: %.2f (must be 0~1), use default: %.2f", 
+                high_value, kDefaultHighWaterline);
+        high_waterline_ratio_ = kDefaultHighWaterline;
+      }
+    }
+  } else {
+    high_waterline_ratio_ = kDefaultHighWaterline;
+  }
+  
+  // 解析 low_waterline（只支持0~1的小数）
+  auto low_it = options.find(OPTION_LOW_WATERLINE);
+  if (low_it != options.end()) {
+    std::string low_str = low_it->second.GetString();
+    double low_value = 0.0;
+    if (!llm::LLMUtils::ToNumber(low_str, low_value)) {
+      LLMLOGW("Invalid low_waterline: %s, use default: %.2f", 
+              low_str.c_str(), kDefaultLowWaterline);
+      low_waterline_ratio_ = kDefaultLowWaterline;
+    } else {
+      if (low_value > 0.0 && low_value <= 1.0) {
+        low_waterline_ratio_ = low_value;
+      } else {
+        LLMLOGW("Invalid low_waterline: %.2f (must be 0~1), use default: %.2f", 
+                low_value, kDefaultLowWaterline);
+        low_waterline_ratio_ = kDefaultLowWaterline;
+      }
+    }
+  } else {
+    low_waterline_ratio_ = kDefaultLowWaterline;
+  }
+  
+  // 校验：low_waterline < high_waterline
+  ADXL_CHK_BOOL_RET_STATUS(low_waterline_ratio_ < high_waterline_ratio_, PARAM_INVALID,
+                           "low_waterline (%.2f) must be less than high_waterline (%.2f)",
+                           low_waterline_ratio_, high_waterline_ratio_);
+  
+  // 计算阈值（通道数）
+  high_waterline_ = static_cast<int>(max_channel_ * high_waterline_ratio_);
+  low_waterline_ = static_cast<int>(max_channel_ * low_waterline_ratio_);
+  
+  // 确保至少为1
+  high_waterline_ = std::max(1, high_waterline_);
+  low_waterline_ = std::max(1, low_waterline_);
+  
+  // 最终校验：low_waterline < high_waterline <= max_channel
+  ADXL_CHK_BOOL_RET_STATUS(low_waterline_ < high_waterline_, PARAM_INVALID,
+                           "low_waterline (%d) must be less than high_waterline (%d)",
+                           low_waterline_, high_waterline_);
+  ADXL_CHK_BOOL_RET_STATUS(high_waterline_ <= max_channel_, PARAM_INVALID,
+                           "high_waterline (%d) must be less than or equal to max_channel (%d)",
+                           high_waterline_, max_channel_);
+  
+  LLMLOGI("Waterline config: max_channel=%d, high_waterline=%.2f (%d), low_waterline=%.2f (%d)",
+          max_channel_, high_waterline_ratio_, high_waterline_, 
+          low_waterline_ratio_, low_waterline_);
+  
+  return SUCCESS;
+}
+
+int ChannelMsgHandler::GetTotalChannelCount() const {
+  auto client_channels = channel_manager_->GetAllClientChannel();
+  auto server_channels = channel_manager_->GetAllServerChannel();
+  return static_cast<int>(client_channels.size() + server_channels.size());
+}
+
+bool ChannelMsgHandler::ShouldTriggerEviction() const {
+  return GetTotalChannelCount() >= high_waterline_;
+}
+
+void ChannelMsgHandler::MaybeScheduleEviction() {
+  int current_count = GetTotalChannelCount();
+  
+  // 计算需要淘汰的数量
+  int need_expire = current_count - low_waterline_;
+  if (need_expire <= 0) {
+    return;  // 已经在低水位以下，不需要淘汰
+  }
+  
+  // 选择淘汰候选
+  std::vector<EvictItem> candidates = SelectEvictionCandidates(need_expire);
+  
+  if (candidates.empty()) {
+    LLMLOGW("No candidates for eviction, current channels=%d", current_count);
+    return;
+  }
+  
+  // 入队
+  {
+    std::lock_guard<std::mutex> lock(evict_mutex_);
+    for (const auto& item : candidates) {
+      evict_queue_.push(item);
+      pending_evictions_++;
+    }
+    LLMLOGI("Scheduled %zu evictions, pending=%d", candidates.size(), pending_evictions_);
+  }
+  
+  // 通知淘汰线程
+  evict_cv_.notify_one();
+}
+
+std::vector<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectEvictionCandidates(int need_count) {
+  auto client_channels = channel_manager_->GetAllClientChannel();
+  auto server_channels = channel_manager_->GetAllServerChannel();
+  
+  std::vector<ChannelPtr>* target_channels = nullptr;
+  ChannelType target_type;
+  if (client_channels.size() >= server_channels.size()) {
+    target_channels = &client_channels;
+    target_type = ChannelType::kClient;
+  } else {
+    target_channels = &server_channels;
+    target_type = ChannelType::kServer;
+  }
+  
+  struct ChannelState {
+    ChannelPtr channel;
+    std::string channel_id;
+    int transfer_count;
+    bool has_transferred;
+    bool disconnect_flag;
+  };
+  
+  std::vector<ChannelState> states;
+  states.reserve(target_channels->size());
+  
+  for (const auto& channel : *target_channels) {
+    ChannelState state;
+    state.channel = channel;
+    state.channel_id = channel->GetChannelId();
+    state.transfer_count = channel->GetTransferCount();
+    state.has_transferred = channel->GetHasTransferred();
+    state.disconnect_flag = channel->IsDisconnecting();
+    states.push_back(state);
+  }
+  
+  // 排序：1. has_transferred==false优先，2. 按建链顺序（已按顺序）
+  std::sort(states.begin(), states.end(), 
+            [](const ChannelState& a, const ChannelState& b) {
+              // 第一优先级：has_transferred==false优先
+              if (a.has_transferred != b.has_transferred) {
+                return !a.has_transferred;  // false排在前面
+              }
+              // 第二优先级：保持原有顺序（建链顺序）
+              return false;
+            });
+  
+  std::vector<EvictItem> candidates;
+  for (const auto& state : states) {
+    // 跳过正在使用或正在断链的通道
+    if (state.transfer_count > 0 || state.disconnect_flag) {
+      continue;
+    }
+    
+    EvictItem item;
+    item.channel_id = state.channel_id;
+    item.channel_type = target_type;
+    candidates.push_back(item);
+    
+    if (candidates.size() >= static_cast<size_t>(need_count)) {
+      break;
+    }
+  }
+  
+  return candidates;
+}
+
+void ChannelMsgHandler::EvictionLoop() {
+  while (true) {
+    std::unique_lock<std::mutex> lock(evict_mutex_);
+    
+    // 等待队列有数据或停止信号
+    evict_cv_.wait(lock, [this] { 
+      return !evict_queue_.empty() || stop_eviction_; 
+    });
+    
+    if (stop_eviction_) {
+      break;
+    }
+    
+    // 每次只处理一条
+    if (evict_queue_.empty()) {
+      continue;
+    }
+    
+    EvictItem item = evict_queue_.front();
+    evict_queue_.pop();
+    pending_evictions_--;
+    
+    lock.unlock();  // 尽快释放锁
+    
+    // 处理单条任务
+    bool has_evicted = ProcessEviction(item);
+    
+    // 如果成功淘汰，重置所有通道的has_transferred标志
+    if (has_evicted) {
+      ResetAllTransferFlags();
+    }
+    
+    // 重新检查水位线，如果还需要淘汰，继续选择候选
+    if (ShouldTriggerEviction()) {
+      MaybeScheduleEviction();  // 重新选择候选并入队
+    }
+  }
+}
+
+bool ChannelMsgHandler::ProcessEviction(const EvictItem &item) {
+  // 获取通道
+  auto channel = channel_manager_->GetChannel(item.channel_type, item.channel_id);
+  if (channel == nullptr) {
+    return false;  // 通道已不存在，跳过
+  }
+  
+  // 再次检查通道状态（可能已被其他线程使用）
+  if (channel->GetTransferCount() > 0 || channel->IsDisconnecting()) {
+    return false;  // 正在使用，跳过
+  }
+  
+  // 执行断链
+  Status ret = FAILED;
+  if (item.channel_type == ChannelType::kServer) {
+    // Server端：发送kRequestDisconnect消息给Client，通知Client断链
+    int32_t fd = channel->GetFd();
+    if (fd < 0) {
+      LLMLOGW("Channel %s has invalid fd, cannot send request disconnect", item.channel_id.c_str());
+      return false;
+    }
+    
+    RequestDisconnectMsg req_msg;
+    req_msg.channel_id = item.channel_id;
+    req_msg.timeout = 1000000;  // 1秒，单位微秒
+    
+    ret = channel->SendControlMsg([this, &req_msg](int32_t fd) {
+      return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnect, req_msg, req_msg.timeout);
+    });
+    
+    if (ret == SUCCESS) {
+      LLMLOGI("Sent request disconnect to client for channel: %s", item.channel_id.c_str());
+      // Server端发送消息后，等待Client端执行断链，这里不直接调用Disconnect
+      // Client端收到消息后会调用Disconnect，从而也会断开Server端的连接
+      return true;
+    } else {
+      LLMLOGW("Failed to send request disconnect for channel: %s, ret=%d", item.channel_id.c_str(), ret);
+      return false;
+    }
+  } else {
+    // Client端：直接调用Disconnect
+    ret = Disconnect(item.channel_id, 1000);  // 使用1秒超时
+    if (ret == SUCCESS) {
+      LLMLOGI("Evicted client channel: %s", item.channel_id.c_str());
+      return true;
+    } else {
+      LLMLOGW("Failed to evict client channel: %s, ret=%d", item.channel_id.c_str(), ret);
+      return false;
+    }
+  }
+}
+
+void ChannelMsgHandler::ResetAllTransferFlags() {
+  auto client_channels = channel_manager_->GetAllClientChannel();
+  auto server_channels = channel_manager_->GetAllServerChannel();
+  
+  // 重置所有通道的has_transferred
+  for (auto& channel : client_channels) {
+    channel->SetHasTransferred(false);
+  }
+  for (auto& channel : server_channels) {
+    channel->SetHasTransferred(false);
+  }
+  
+  LLMLOGI("Reset all transfer flags, client=%zu, server=%zu", 
+          client_channels.size(), server_channels.size());
 }
 }  // namespace adxl

@@ -13,9 +13,14 @@
 
 #include <map>
 #include <mutex>
+#include <queue>
+#include <thread>
+#include <atomic>
+#include <condition_variable>
 #include "channel_manager.h"
 #include "common/msg_handler_plugin.h"
 #include "segment_table.h"
+#include "adxl_utils.h"
 
 namespace adxl {
 enum class ChannelMsgType : int32_t {
@@ -66,6 +71,42 @@ class ChannelMsgHandler {
 
   Status Connect(const std::string &remote_engine, int32_t timeout_in_millis);
   Status Disconnect(const std::string &remote_engine, int32_t timeout_in_millis);
+
+ private:
+  // 淘汰相关结构
+  struct EvictItem {
+    std::string channel_id;
+    ChannelType channel_type;
+  };
+  
+  // 水位线配置（通过Option配置，初始化后不变）
+  // 使用adxl_utils.h中定义的常量
+  
+  int max_channel_{kDefaultMaxChannel};
+  double high_waterline_ratio_{kDefaultHighWaterline};
+  double low_waterline_ratio_{kDefaultLowWaterline};
+  int high_waterline_{0};  // 计算后的阈值
+  int low_waterline_{0};
+  
+  // 淘汰队列和线程
+  std::mutex evict_mutex_;
+  std::condition_variable evict_cv_;
+  std::queue<EvictItem> evict_queue_;
+  int pending_evictions_{0};
+  bool stop_eviction_{false};
+  std::thread eviction_thread_;
+  
+  // 水位线配置解析
+  Status ParseWaterlineConfig(const std::map<AscendString, AscendString> &options);
+  
+  // 淘汰相关方法
+  int GetTotalChannelCount() const;
+  bool ShouldTriggerEviction() const;
+  void MaybeScheduleEviction();
+  void EvictionLoop();
+  std::vector<EvictItem> SelectEvictionCandidates(int need_count);
+  bool ProcessEviction(const EvictItem &item);  // 返回是否成功淘汰
+  void ResetAllTransferFlags();
 
  private:
   static Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);

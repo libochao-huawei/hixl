@@ -9,6 +9,7 @@
  */
 
 #include "channel_manager.h"
+#include "control_msg_handler.h"
 #include <sys/epoll.h>
 #include <netinet/tcp.h>
 #include <cstring>
@@ -188,6 +189,42 @@ Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) {
       buffer_transfer_service_->PushBufferResp(channel, buffer_resp);
     }
     LLMLOGI("Recv buffer resp for channel:%s", channel->GetChannelId().c_str());
+  } else if (*msg_type == ControlMsgType::kRequestDisconnect) {
+    // Client端处理Server的断链请求
+    RequestDisconnectMsg req_msg{};
+    ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), req_msg), "Failed to deserialize RequestDisconnectMsg");
+    LLMLOGI("Recv request disconnect for channel:%s, target:%s", channel->GetChannelId().c_str(), req_msg.channel_id.c_str());
+    
+    // 验证channel_id是否匹配
+    if (channel->GetChannelId() != req_msg.channel_id) {
+      LLMLOGW("Channel id mismatch: local=%s, request=%s", channel->GetChannelId().c_str(), req_msg.channel_id.c_str());
+      return PARAM_INVALID;
+    }
+    
+    // 检查是否可以断链
+    if (channel->GetTransferCount() > 0 || channel->IsDisconnecting()) {
+      LLMLOGW("Channel %s is busy, cannot disconnect. transfer_count=%d, disconnecting=%d", 
+              req_msg.channel_id.c_str(), channel->GetTransferCount(), channel->IsDisconnecting());
+      return BUSY;
+    }
+    
+    // 可以断链，调用回调执行断链
+    if (disconnect_callback_) {
+      int32_t timeout_ms = static_cast<int32_t>(req_msg.timeout / 1000);  // 转换为毫秒
+      if (timeout_ms <= 0) {
+        timeout_ms = 1000;  // 默认1秒
+      }
+      Status ret = disconnect_callback_(req_msg.channel_id, timeout_ms);
+      if (ret == SUCCESS) {
+        LLMLOGI("Successfully disconnected channel %s by request", req_msg.channel_id.c_str());
+      } else {
+        LLMLOGW("Failed to disconnect channel %s by request, ret=%d", req_msg.channel_id.c_str(), ret);
+      }
+      return ret;
+    } else {
+      LLMLOGW("Disconnect callback not set, cannot disconnect channel %s", req_msg.channel_id.c_str());
+      return FAILED;
+    }
   } else {
     LLMLOGW("Unsupported msg type: %d", *msg_type);
   }

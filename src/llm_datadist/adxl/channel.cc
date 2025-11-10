@@ -129,6 +129,17 @@ Status Channel::TransferAsync(TransferOp operation, const std::vector<TransferOp
 Status Channel::TransferSync(TransferOp operation,
                              const std::vector<TransferOpDesc> &op_descs,
                              int32_t timeout_in_millis) {
+  // 更新传输状态
+  IncrementTransferCount();
+  {
+    std::lock_guard<std::mutex> lock(transfer_mutex_);
+    has_transfered_ = true;
+  }
+  
+  LLM_MAKE_GUARD(transfer_guard, ([this]() {
+    DecrementTransferCount();
+  }));
+  
   const auto start = std::chrono::steady_clock::now();
   ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Transfer failed.");
 
@@ -137,6 +148,11 @@ Status Channel::TransferSync(TransferOp operation,
   const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   LLMLOGI("%s success, num = %zu, cost = %ld us.",
          operation == READ ? "HcclBatchGet" : "HcclBatchPut", op_descs.size(), cost);
+  
+  // 传输成功，减少计数（dismiss guard，避免在析构时再次减少）
+  LLM_DISMISS_GUARD(transfer_guard);
+  DecrementTransferCount();
+  
   return SUCCESS;
 }
 
@@ -156,6 +172,7 @@ Status Channel::SetSocketNonBlocking(int32_t fd) {
 void Channel::StopHeartbeat() {
   std::lock_guard<std::mutex> lock(mutex_);
   with_heartbeat_.store(false, std::memory_order_release);
+  disconnect_flag_.store(true, std::memory_order_release);
 }
 
 Status Channel::CommWithFd(const std::function<Status(int32_t)> &func) {

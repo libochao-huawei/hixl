@@ -17,6 +17,7 @@
 #include <condition_variable>
 #include <queue>
 #include <atomic>
+#include <functional>
 #include "channel.h"
 #include "common/llm_mem_pool.h"
 #include "buffer_transfer_service.h"
@@ -34,6 +35,11 @@ class ChannelManager {
   static void SetHeartbeatWaitTime(int32_t time_in_millis);
 
   Status AddSocketToEpoll(int32_t fd, ChannelPtr channel);
+
+  // 设置断链回调（由ChannelMsgHandler设置）
+  void SetDisconnectCallback(std::function<Status(const std::string&, int32_t)> callback) {
+    disconnect_callback_ = callback;
+  }
 
  private:
   int max_channel = 512;
@@ -67,6 +73,9 @@ class ChannelManager {
 
   std::thread msg_receiver_;
   rtContext_t rt_context_{nullptr};
+  
+  // 断链回调（由ChannelMsgHandler设置）
+  std::function<Status(const std::string&, int32_t)> disconnect_callback_;
 };
 }  // namespace adxl
 
