@@ -40,6 +40,11 @@ class ChannelManager {
   void SetDisconnectCallback(std::function<Status(const std::string&, int32_t)> callback) {
     disconnect_callback_ = callback;
   }
+  
+  // 设置断链响应回调（由ChannelMsgHandler设置）
+  void SetDisconnectResponseCallback(std::function<void(const RequestDisconnectResp&)> callback) {
+    disconnect_response_callback_ = callback;
+  }
 
   // 获取所有Client/Server通道（供ChannelMsgHandler使用）
   std::vector<ChannelPtr> GetAllClientChannel();
@@ -78,6 +83,9 @@ class ChannelManager {
   
   // 断链回调（由ChannelMsgHandler设置）
   std::function<Status(const std::string&, int32_t)> disconnect_callback_;
+  
+  // 断链响应回调（由ChannelMsgHandler设置）
+  std::function<void(const RequestDisconnectResp&)> disconnect_response_callback_;
 };
 }  // namespace adxl
 

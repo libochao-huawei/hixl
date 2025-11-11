@@ -187,6 +187,17 @@ Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> 
     return Disconnect(channel_id, timeout_ms);
   });
   
+  // 设置断链响应回调给ChannelManager
+  channel_manager_->SetDisconnectResponseCallback([this](const RequestDisconnectResp& resp) {
+    std::lock_guard<std::mutex> lock(pending_req_mutex_);
+    auto it = pending_disconnect_requests_.find(resp.req_id);
+    if (it != pending_disconnect_requests_.end()) {
+      it->second->resp = resp;
+      it->second->received = true;
+      it->second->cv.notify_one();
+    }
+  });
+  
   // 启动淘汰线程
   if (high_waterline_ > 0 && low_waterline_ > 0) {
     stop_eviction_ = false;
@@ -668,7 +679,6 @@ std::optional<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectOneEviction
   auto client_channels = channel_manager_->GetAllClientChannel();
   auto server_channels = channel_manager_->GetAllServerChannel();
   
-  // 每次独立判断：谁多淘汰谁，一样多优先淘汰Client
   std::vector<ChannelPtr>* target_channels = nullptr;
   ChannelType target_type;
   if (client_channels.size() >= server_channels.size()) {
@@ -782,28 +792,67 @@ bool ChannelMsgHandler::ProcessEviction(const EvictItem &item) {
   // 执行断链
   Status ret = FAILED;
   if (item.channel_type == ChannelType::kServer) {
-    // Server端：发送kRequestDisconnect消息给Client，通知Client断链
+    // Server端：发送kRequestDisconnect消息给Client，等待Client响应
     int32_t fd = channel->GetFd();
     if (fd < 0) {
       LLMLOGW("Channel %s has invalid fd, cannot send request disconnect", item.channel_id.c_str());
       return false;
     }
     
+    // 生成请求ID
+    uint64_t req_id = next_req_id_.fetch_add(1, std::memory_order_acq_rel);
+    
+    // 创建pending请求
+    auto pending_req = std::make_shared<PendingDisconnectRequest>();
+    {
+      std::lock_guard<std::mutex> lock(pending_req_mutex_);
+      pending_disconnect_requests_[req_id] = pending_req;
+    }
+    
     RequestDisconnectMsg req_msg;
     req_msg.channel_id = item.channel_id;
     req_msg.timeout = 1000000;  // 1秒，单位微秒
+    req_msg.req_id = req_id;
     
+    // 发送请求
     ret = channel->SendControlMsg([this, &req_msg](int32_t fd) {
       return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnect, req_msg, req_msg.timeout);
     });
     
-    if (ret == SUCCESS) {
-      LLMLOGI("Sent request disconnect to client for channel: %s", item.channel_id.c_str());
-      // Server端发送消息后，等待Client端执行断链，这里不直接调用Disconnect
-      // Client端收到消息后会调用Disconnect，从而也会断开Server端的连接
+    if (ret != SUCCESS) {
+      LLMLOGW("Failed to send request disconnect for channel: %s, ret=%d", item.channel_id.c_str(), ret);
+      // 清理pending请求
+      std::lock_guard<std::mutex> lock(pending_req_mutex_);
+      pending_disconnect_requests_.erase(req_id);
+      return false;
+    }
+    
+    LLMLOGI("Sent request disconnect to client for channel: %s, req_id=%lu", item.channel_id.c_str(), req_id);
+    
+    // 等待响应（最多等待2秒）
+    std::unique_lock<std::mutex> lock(pending_req_mutex_);
+    bool received = pending_req->cv.wait_for(lock, std::chrono::seconds(2), [&pending_req] {
+      return pending_req->received;
+    });
+    
+    if (!received) {
+      LLMLOGW("Timeout waiting for disconnect response, channel: %s, req_id=%lu", item.channel_id.c_str(), req_id);
+      pending_disconnect_requests_.erase(req_id);
+      return false;
+    }
+    
+    // 获取响应
+    RequestDisconnectResp resp = pending_req->resp;
+    pending_disconnect_requests_.erase(req_id);
+    lock.unlock();
+    
+    // 检查响应
+    if (resp.disconnected) {
+      LLMLOGI("Successfully disconnected channel %s by server request", item.channel_id.c_str());
       return true;
     } else {
-      LLMLOGW("Failed to send request disconnect for channel: %s, ret=%d", item.channel_id.c_str(), ret);
+      LLMLOGW("Client refused or failed to disconnect channel %s, error_code=%u, error_message=%s", 
+              item.channel_id.c_str(), resp.error_code, resp.error_message.c_str());
       return false;
     }
   } else {

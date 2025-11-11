@@ -133,9 +133,9 @@ Status Channel::TransferSync(TransferOp operation,
   IncrementTransferCount();
   has_transfered_.store(true, std::memory_order_release);
   
-  LLM_MAKE_GUARD(transfer_guard, ([this]() {
+  LLM_DISMISSABLE_GUARD(transfer_guard, (([this]() {
     DecrementTransferCount();
-  }));
+  })));
   
   const auto start = std::chrono::steady_clock::now();
   ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Transfer failed.");

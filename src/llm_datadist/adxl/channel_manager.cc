@@ -193,38 +193,85 @@ Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) {
     // Client端处理Server的断链请求
     RequestDisconnectMsg req_msg{};
     ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), req_msg), "Failed to deserialize RequestDisconnectMsg");
-    LLMLOGI("Recv request disconnect for channel:%s, target:%s", channel->GetChannelId().c_str(), req_msg.channel_id.c_str());
+    LLMLOGI("Recv request disconnect for channel:%s, target:%s, req_id=%lu", 
+            channel->GetChannelId().c_str(), req_msg.channel_id.c_str(), req_msg.req_id);
     
     // 验证channel_id是否匹配
     if (channel->GetChannelId() != req_msg.channel_id) {
       LLMLOGW("Channel id mismatch: local=%s, request=%s", channel->GetChannelId().c_str(), req_msg.channel_id.c_str());
+      // 发送错误响应
+      RequestDisconnectResp resp;
+      resp.channel_id = req_msg.channel_id;
+      resp.req_id = req_msg.req_id;
+      resp.can_disconnect = false;
+      resp.disconnected = false;
+      resp.error_code = static_cast<uint32_t>(PARAM_INVALID);
+      resp.error_message = "Channel id mismatch";
+      (void)channel->SendControlMsg([&resp](int32_t fd) {
+        return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnectResp, resp, kSendMsgTimeout);
+      });
       return PARAM_INVALID;
     }
     
     // 检查是否可以断链
-    if (channel->GetTransferCount() > 0 || channel->IsDisconnecting()) {
-      LLMLOGW("Channel %s is busy, cannot disconnect. transfer_count=%d, disconnecting=%d", 
-              req_msg.channel_id.c_str(), channel->GetTransferCount(), channel->IsDisconnecting());
-      return FAILED;
-    }
+    bool can_disconnect = (channel->GetTransferCount() == 0 && !channel->IsDisconnecting());
+    RequestDisconnectResp resp;
+    resp.channel_id = req_msg.channel_id;
+    resp.req_id = req_msg.req_id;
+    resp.can_disconnect = can_disconnect;
+    resp.disconnected = false;
+    resp.error_code = 0;
+    resp.error_message = "";
     
-    // 可以断链，调用回调执行断链
-    if (disconnect_callback_) {
+    // 如果可以断链，执行断链
+    if (can_disconnect && disconnect_callback_) {
       int32_t timeout_ms = static_cast<int32_t>(req_msg.timeout / 1000);  // 转换为毫秒
       if (timeout_ms <= 0) {
         timeout_ms = 1000;  // 默认1秒
       }
       Status ret = disconnect_callback_(req_msg.channel_id, timeout_ms);
       if (ret == SUCCESS) {
+        resp.disconnected = true;
         LLMLOGI("Successfully disconnected channel %s by request", req_msg.channel_id.c_str());
       } else {
+        resp.error_code = static_cast<uint32_t>(ret);
+        resp.error_message = "Disconnect failed";
         LLMLOGW("Failed to disconnect channel %s by request, ret=%d", req_msg.channel_id.c_str(), ret);
       }
-      return ret;
+    } else if (!can_disconnect) {
+      resp.error_code = static_cast<uint32_t>(FAILED);
+      resp.error_message = "Channel is busy";
+      LLMLOGW("Channel %s is busy, cannot disconnect. transfer_count=%d, disconnecting=%d", 
+              req_msg.channel_id.c_str(), channel->GetTransferCount(), channel->IsDisconnecting());
     } else {
+      resp.error_code = static_cast<uint32_t>(FAILED);
+      resp.error_message = "Disconnect callback not set";
       LLMLOGW("Disconnect callback not set, cannot disconnect channel %s", req_msg.channel_id.c_str());
-      return FAILED;
     }
+    
+    // 发送响应
+    Status send_ret = channel->SendControlMsg([&resp](int32_t fd) {
+      return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnectResp, resp, kSendMsgTimeout);
+    });
+    
+    if (send_ret != SUCCESS) {
+      LLMLOGW("Failed to send disconnect response for channel %s", req_msg.channel_id.c_str());
+    }
+    
+    return (resp.disconnected ? SUCCESS : FAILED);
+  } else if (*msg_type == ControlMsgType::kRequestDisconnectResp) {
+    // Server端处理Client的断链响应
+    RequestDisconnectResp resp{};
+    ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), resp), "Failed to deserialize RequestDisconnectResp");
+    LLMLOGI("Recv disconnect response for channel:%s, req_id=%lu, disconnected=%d", 
+            channel->GetChannelId().c_str(), resp.req_id, resp.disconnected);
+    
+    // 通知等待的断链请求（通过回调）
+    if (disconnect_response_callback_) {
+      disconnect_response_callback_(resp);
+    }
+    
+    return SUCCESS;
   } else {
     LLMLOGW("Unsupported msg type: %d", *msg_type);
   }

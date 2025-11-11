@@ -18,6 +18,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <optional>
+#include <chrono>
 #include "channel_manager.h"
 #include "common/msg_handler_plugin.h"
 #include "segment_table.h"
@@ -96,6 +97,16 @@ class ChannelMsgHandler {
   int pending_evictions_{0};
   bool stop_eviction_{false};
   std::thread eviction_thread_;
+  
+  // Server等待Client断链响应的机制
+  struct PendingDisconnectRequest {
+    std::condition_variable cv;
+    bool received{false};
+    RequestDisconnectResp resp;
+  };
+  std::mutex pending_req_mutex_;
+  std::map<uint64_t, std::shared_ptr<PendingDisconnectRequest>> pending_disconnect_requests_;
+  std::atomic<uint64_t> next_req_id_{1};
   
   // 水位线配置解析
   Status ParseWaterlineConfig(const std::map<AscendString, AscendString> &options);
