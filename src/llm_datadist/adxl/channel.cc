@@ -131,10 +131,7 @@ Status Channel::TransferSync(TransferOp operation,
                              int32_t timeout_in_millis) {
   // 更新传输状态
   IncrementTransferCount();
-  {
-    std::lock_guard<std::mutex> lock(transfer_mutex_);
-    has_transfered_ = true;
-  }
+  has_transfered_.store(true, std::memory_order_release);
   
   LLM_MAKE_GUARD(transfer_guard, ([this]() {
     DecrementTransferCount();

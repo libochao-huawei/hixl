@@ -87,12 +87,10 @@ class Channel {
   int GetTransferCount() const { return transfer_count_.load(std::memory_order_acquire); }
   bool IsDisconnecting() const { return disconnect_flag_.load(std::memory_order_acquire); }
   bool GetHasTransferred() const {
-    std::lock_guard<std::mutex> lock(transfer_mutex_);
-    return has_transfered_;
+    return has_transfered_.load(std::memory_order_acquire);
   }
   void SetHasTransferred(bool value) {
-    std::lock_guard<std::mutex> lock(transfer_mutex_);
-    has_transfered_ = value;
+    has_transfered_.store(value, std::memory_order_release);
   }
   void IncrementTransferCount() { transfer_count_.fetch_add(1, std::memory_order_acq_rel); }
   void DecrementTransferCount() { transfer_count_.fetch_sub(1, std::memory_order_acq_rel); }
@@ -111,7 +109,7 @@ class Channel {
   // 状态字段（用于淘汰机制）
   std::atomic<int> transfer_count_{0};
   std::atomic<bool> disconnect_flag_{false};
-  bool has_transfered_{false};  // 保护在transfer_mutex_下
+  std::atomic<bool> has_transfered_{false};  // 使用原子变量，无需锁保护
 
   int32_t fd_ = -1;
   RecvState recv_state_ = RecvState::WAITING_FOR_HEADER;

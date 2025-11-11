@@ -41,10 +41,12 @@ class ChannelManager {
     disconnect_callback_ = callback;
   }
 
- private:
-  int max_channel = 512;
+  // 获取所有Client/Server通道（供ChannelMsgHandler使用）
   std::vector<ChannelPtr> GetAllClientChannel();
   std::vector<ChannelPtr> GetAllServerChannel();
+
+ private:
+  int max_channel = 512;
 
   void SendHeartbeats();
   void CheckHeartbeatTimeouts();

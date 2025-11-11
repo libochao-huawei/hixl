@@ -643,32 +643,32 @@ void ChannelMsgHandler::MaybeScheduleEviction() {
     return;  // 已经在低水位以下，不需要淘汰
   }
   
-  // 选择淘汰候选
-  std::vector<EvictItem> candidates = SelectEvictionCandidates(need_expire);
+  // 每次只选择一个候选
+  std::optional<EvictItem> candidate = SelectOneEvictionCandidate();
   
-  if (candidates.empty()) {
-    LLMLOGW("No candidates for eviction, current channels=%d", current_count);
+  if (!candidate.has_value()) {
+    LLMLOGW("No candidate for eviction, current channels=%d", current_count);
     return;
   }
   
   // 入队
   {
     std::lock_guard<std::mutex> lock(evict_mutex_);
-    for (const auto& item : candidates) {
-      evict_queue_.push(item);
-      pending_evictions_++;
-    }
-    LLMLOGI("Scheduled %zu evictions, pending=%d", candidates.size(), pending_evictions_);
+    evict_queue_.push(candidate.value());
+    pending_evictions_++;
+    LLMLOGI("Scheduled 1 eviction, pending=%d", pending_evictions_);
   }
   
   // 通知淘汰线程
   evict_cv_.notify_one();
 }
 
-std::vector<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectEvictionCandidates(int need_count) {
+std::optional<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectOneEvictionCandidate() {
+  // 获取所有通道（按建链顺序）
   auto client_channels = channel_manager_->GetAllClientChannel();
   auto server_channels = channel_manager_->GetAllServerChannel();
   
+  // 每次独立判断：谁多淘汰谁，一样多优先淘汰Client
   std::vector<ChannelPtr>* target_channels = nullptr;
   ChannelType target_type;
   if (client_channels.size() >= server_channels.size()) {
@@ -679,6 +679,7 @@ std::vector<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectEvictionCandi
     target_type = ChannelType::kServer;
   }
   
+  // 构建状态列表（按建链顺序）
   struct ChannelState {
     ChannelPtr channel;
     std::string channel_id;
@@ -711,7 +712,7 @@ std::vector<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectEvictionCandi
               return false;
             });
   
-  std::vector<EvictItem> candidates;
+  // 选择第一个可用的候选
   for (const auto& state : states) {
     // 跳过正在使用或正在断链的通道
     if (state.transfer_count > 0 || state.disconnect_flag) {
@@ -721,14 +722,10 @@ std::vector<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectEvictionCandi
     EvictItem item;
     item.channel_id = state.channel_id;
     item.channel_type = target_type;
-    candidates.push_back(item);
-    
-    if (candidates.size() >= static_cast<size_t>(need_count)) {
-      break;
-    }
+    return item;  // 只返回一个
   }
   
-  return candidates;
+  return std::nullopt;  // 没有可用候选
 }
 
 void ChannelMsgHandler::EvictionLoop() {

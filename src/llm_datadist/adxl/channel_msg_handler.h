@@ -17,6 +17,7 @@
 #include <thread>
 #include <atomic>
 #include <condition_variable>
+#include <optional>
 #include "channel_manager.h"
 #include "common/msg_handler_plugin.h"
 #include "segment_table.h"
@@ -102,9 +103,9 @@ class ChannelMsgHandler {
   // 淘汰相关方法
   int GetTotalChannelCount() const;
   bool ShouldTriggerEviction() const;
-  void MaybeScheduleEviction();
+  void MaybeScheduleEviction();  // 每次只选择一个候选入队
   void EvictionLoop();
-  std::vector<EvictItem> SelectEvictionCandidates(int need_count);
+  std::optional<EvictItem> SelectOneEvictionCandidate();  // 每次只选择一个候选
   bool ProcessEviction(const EvictItem &item);  // 返回是否成功淘汰
   void ResetAllTransferFlags();
 

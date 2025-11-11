@@ -205,7 +205,7 @@ Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) {
     if (channel->GetTransferCount() > 0 || channel->IsDisconnecting()) {
       LLMLOGW("Channel %s is busy, cannot disconnect. transfer_count=%d, disconnecting=%d", 
               req_msg.channel_id.c_str(), channel->GetTransferCount(), channel->IsDisconnecting());
-      return BUSY;
+      return FAILED;
     }
     
     // 可以断链，调用回调执行断链
