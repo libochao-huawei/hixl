@@ -146,10 +146,9 @@ Status Channel::TransferSync(TransferOp operation,
   LLMLOGI("%s success, num = %zu, cost = %ld us.",
          operation == READ ? "HcclBatchGet" : "HcclBatchPut", op_descs.size(), cost);
   
-  // 传输成功，减少计数（dismiss guard，避免在析构时再次减少）
+  // 传输成功，减少计数
   LLM_DISMISS_GUARD(transfer_guard);
-  DecrementTransferCount();
-  
+  // DecrementTransferCount();
   return SUCCESS;
 }
 

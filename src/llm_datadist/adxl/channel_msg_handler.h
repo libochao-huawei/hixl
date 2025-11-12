@@ -75,19 +75,15 @@ class ChannelMsgHandler {
   Status Disconnect(const std::string &remote_engine, int32_t timeout_in_millis);
 
  private:
-  // 淘汰相关结构
   struct EvictItem {
     std::string channel_id;
     ChannelType channel_type;
   };
   
-  // 水位线配置（通过Option配置，初始化后不变）
-  // 使用adxl_utils.h中定义的常量
-  
   int max_channel_{kDefaultMaxChannel};
   double high_waterline_ratio_{kDefaultHighWaterline};
   double low_waterline_ratio_{kDefaultLowWaterline};
-  int high_waterline_{0};  // 计算后的阈值
+  int high_waterline_{0};
   int low_waterline_{0};
   
   // 淘汰队列和线程
@@ -98,7 +94,7 @@ class ChannelMsgHandler {
   bool stop_eviction_{false};
   std::thread eviction_thread_;
   
-  // Server等待Client断链响应的机制
+  // Server等待Client断链响应
   struct PendingDisconnectRequest {
     std::condition_variable cv;
     bool received{false};

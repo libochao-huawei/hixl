@@ -109,7 +109,7 @@ class Channel {
   // 状态字段（用于淘汰机制）
   std::atomic<int> transfer_count_{0};
   std::atomic<bool> disconnect_flag_{false};
-  std::atomic<bool> has_transfered_{false};  // 使用原子变量，无需锁保护
+  std::atomic<bool> has_transfered_{false};
 
   int32_t fd_ = -1;
   RecvState recv_state_ = RecvState::WAITING_FOR_HEADER;

@@ -198,7 +198,6 @@ Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> 
     }
   });
   
-  // 启动淘汰线程
   if (high_waterline_ > 0 && low_waterline_ > 0) {
     stop_eviction_ = false;
     eviction_thread_ = std::thread([this]() { EvictionLoop(); });
@@ -210,7 +209,6 @@ Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> 
 }
 
 void ChannelMsgHandler::Finalize() {
-  // 停止淘汰线程
   if (eviction_thread_.joinable()) {
     {
       std::lock_guard<std::mutex> lock(evict_mutex_);
@@ -551,7 +549,6 @@ Status ChannelMsgHandler::Disconnect(const std::string &remote_engine, int32_t t
 }
 
 Status ChannelMsgHandler::ParseWaterlineConfig(const std::map<AscendString, AscendString> &options) {
-  // 解析 max_channel
   auto max_it = options.find(OPTION_MAX_CHANNEL);
   if (max_it != options.end()) {
     std::string max_str = max_it->second.GetString();
@@ -563,7 +560,6 @@ Status ChannelMsgHandler::ParseWaterlineConfig(const std::map<AscendString, Asce
                              "max_channel must be positive");
   }
   
-  // 解析 high_waterline（只支持0~1的小数）
   auto high_it = options.find(OPTION_HIGH_WATERLINE);
   if (high_it != options.end()) {
     std::string high_str = high_it->second.GetString();
@@ -585,7 +581,6 @@ Status ChannelMsgHandler::ParseWaterlineConfig(const std::map<AscendString, Asce
     high_waterline_ratio_ = kDefaultHighWaterline;
   }
   
-  // 解析 low_waterline（只支持0~1的小数）
   auto low_it = options.find(OPTION_LOW_WATERLINE);
   if (low_it != options.end()) {
     std::string low_str = low_it->second.GetString();
@@ -607,12 +602,10 @@ Status ChannelMsgHandler::ParseWaterlineConfig(const std::map<AscendString, Asce
     low_waterline_ratio_ = kDefaultLowWaterline;
   }
   
-  // 校验：low_waterline < high_waterline
   ADXL_CHK_BOOL_RET_STATUS(low_waterline_ratio_ < high_waterline_ratio_, PARAM_INVALID,
                            "low_waterline (%.2f) must be less than high_waterline (%.2f)",
                            low_waterline_ratio_, high_waterline_ratio_);
   
-  // 计算阈值（通道数）
   high_waterline_ = static_cast<int>(max_channel_ * high_waterline_ratio_);
   low_waterline_ = static_cast<int>(max_channel_ * low_waterline_ratio_);
   
@@ -620,7 +613,6 @@ Status ChannelMsgHandler::ParseWaterlineConfig(const std::map<AscendString, Asce
   high_waterline_ = std::max(1, high_waterline_);
   low_waterline_ = std::max(1, low_waterline_);
   
-  // 最终校验：low_waterline < high_waterline <= max_channel
   ADXL_CHK_BOOL_RET_STATUS(low_waterline_ < high_waterline_, PARAM_INVALID,
                            "low_waterline (%d) must be less than high_waterline (%d)",
                            low_waterline_, high_waterline_);
@@ -648,13 +640,11 @@ bool ChannelMsgHandler::ShouldTriggerEviction() const {
 void ChannelMsgHandler::MaybeScheduleEviction() {
   int current_count = GetTotalChannelCount();
   
-  // 计算需要淘汰的数量
   int need_expire = current_count - low_waterline_;
   if (need_expire <= 0) {
-    return;  // 已经在低水位以下，不需要淘汰
+    return;
   }
   
-  // 每次只选择一个候选
   std::optional<EvictItem> candidate = SelectOneEvictionCandidate();
   
   if (!candidate.has_value()) {
@@ -662,7 +652,6 @@ void ChannelMsgHandler::MaybeScheduleEviction() {
     return;
   }
   
-  // 入队
   {
     std::lock_guard<std::mutex> lock(evict_mutex_);
     evict_queue_.push(candidate.value());
@@ -670,12 +659,10 @@ void ChannelMsgHandler::MaybeScheduleEviction() {
     LLMLOGI("Scheduled 1 eviction, pending=%d", pending_evictions_);
   }
   
-  // 通知淘汰线程
   evict_cv_.notify_one();
 }
 
 std::optional<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectOneEvictionCandidate() {
-  // 获取所有通道（按建链顺序）
   auto client_channels = channel_manager_->GetAllClientChannel();
   auto server_channels = channel_manager_->GetAllServerChannel();
   
@@ -689,7 +676,6 @@ std::optional<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectOneEviction
     target_type = ChannelType::kServer;
   }
   
-  // 构建状态列表（按建链顺序）
   struct ChannelState {
     ChannelPtr channel;
     std::string channel_id;
@@ -724,7 +710,6 @@ std::optional<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectOneEviction
   
   // 选择第一个可用的候选
   for (const auto& state : states) {
-    // 跳过正在使用或正在断链的通道
     if (state.transfer_count > 0 || state.disconnect_flag) {
       continue;
     }
@@ -732,7 +717,7 @@ std::optional<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectOneEviction
     EvictItem item;
     item.channel_id = state.channel_id;
     item.channel_type = target_type;
-    return item;  // 只返回一个
+    return item;
   }
   
   return std::nullopt;  // 没有可用候选
@@ -742,7 +727,6 @@ void ChannelMsgHandler::EvictionLoop() {
   while (true) {
     std::unique_lock<std::mutex> lock(evict_mutex_);
     
-    // 等待队列有数据或停止信号
     evict_cv_.wait(lock, [this] { 
       return !evict_queue_.empty() || stop_eviction_; 
     });
@@ -751,7 +735,6 @@ void ChannelMsgHandler::EvictionLoop() {
       break;
     }
     
-    // 每次只处理一条
     if (evict_queue_.empty()) {
       continue;
     }
@@ -760,9 +743,8 @@ void ChannelMsgHandler::EvictionLoop() {
     evict_queue_.pop();
     pending_evictions_--;
     
-    lock.unlock();  // 尽快释放锁
+    lock.unlock();
     
-    // 处理单条任务
     bool has_evicted = ProcessEviction(item);
     
     // 如果成功淘汰，重置所有通道的has_transferred标志
@@ -778,15 +760,13 @@ void ChannelMsgHandler::EvictionLoop() {
 }
 
 bool ChannelMsgHandler::ProcessEviction(const EvictItem &item) {
-  // 获取通道
   auto channel = channel_manager_->GetChannel(item.channel_type, item.channel_id);
   if (channel == nullptr) {
-    return false;  // 通道已不存在，跳过
+    return false;
   }
   
-  // 再次检查通道状态（可能已被其他线程使用）
   if (channel->GetTransferCount() > 0 || channel->IsDisconnecting()) {
-    return false;  // 正在使用，跳过
+    return false;
   }
   
   // 执行断链
@@ -811,7 +791,7 @@ bool ChannelMsgHandler::ProcessEviction(const EvictItem &item) {
     
     RequestDisconnectMsg req_msg;
     req_msg.channel_id = item.channel_id;
-    req_msg.timeout = 1000000;  // 1秒，单位微秒
+    req_msg.timeout = 10000;  // 10毫秒，单位微秒
     req_msg.req_id = req_id;
     
     // 发送请求
@@ -829,9 +809,9 @@ bool ChannelMsgHandler::ProcessEviction(const EvictItem &item) {
     
     LLMLOGI("Sent request disconnect to client for channel: %s, req_id=%lu", item.channel_id.c_str(), req_id);
     
-    // 等待响应（最多等待2秒）
+    // 等待响应（最多等待20毫秒）
     std::unique_lock<std::mutex> lock(pending_req_mutex_);
-    bool received = pending_req->cv.wait_for(lock, std::chrono::seconds(2), [&pending_req] {
+    bool received = pending_req->cv.wait_for(lock, std::chrono::milliseconds(20), [&pending_req] {
       return pending_req->received;
     });
     
@@ -872,7 +852,6 @@ void ChannelMsgHandler::ResetAllTransferFlags() {
   auto client_channels = channel_manager_->GetAllClientChannel();
   auto server_channels = channel_manager_->GetAllServerChannel();
   
-  // 重置所有通道的has_transferred
   for (auto& channel : client_channels) {
     channel->SetHasTransferred(false);
   }
