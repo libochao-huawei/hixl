@@ -747,7 +747,7 @@ void ChannelMsgHandler::EvictionLoop() {
     
     bool has_evicted = ProcessEviction(item);
     
-    // 如果成功淘汰，重置所有通道的has_transferred标志
+    // 如果成功淘汰，重置所有Channel的has_transferred标志
     if (has_evicted) {
       ResetAllTransferFlags();
     }
