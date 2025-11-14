@@ -266,4 +266,128 @@ TEST_F(HixlUTest, TestHixlRD2HWithBuffer) {
   engine1.Finalize();
   engine2.Finalize();
 }
+
+
+TEST_F(HixlUTest, TestHixlTransferAsync) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  std::map<AscendString, AscendString> options1;
+  options1[OPTION_RDMA_TRAFFIC_CLASS] = "1";
+  options1[OPTION_RDMA_SERVICE_LEVEL] = "1";
+  EXPECT_EQ(engine1.Initialize("127.0.0.1", options1), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl engine2;
+  std::map<AscendString, AscendString> options2;
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
+
+  int32_t src = 1;
+  hixl::MemDesc src_mem{};
+  src_mem.addr = reinterpret_cast<uintptr_t>(&src);
+  src_mem.len = sizeof(int32_t);
+  MemHandle handle1 = nullptr;
+  EXPECT_EQ(engine1.RegisterMem(src_mem, MEM_DEVICE, handle1), SUCCESS);
+
+  int32_t dst = 2;
+  hixl::MemDesc dst_mem{};
+  dst_mem.addr = reinterpret_cast<uintptr_t>(&dst);
+  dst_mem.len = sizeof(int32_t);
+  MemHandle handle2 = nullptr;
+  EXPECT_EQ(engine2.RegisterMem(dst_mem, MEM_DEVICE, handle2), SUCCESS);
+
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  TransferReq req = nullptr;
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", READ, {desc}, {}, req), SUCCESS);
+
+  TransferStatus status = TransferStatus::WAITING;
+  for (int i = 0; i < 100 && TransferStatus::WAITING; i++) {
+    engine1.GetTransferStatus(req, status);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_EQ(status, TransferStatus::COMPLETED);
+  EXPECT_EQ(src, 2);
+
+  src = 1;
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26002", WRITE, {desc}, {}, req), SUCCESS);
+  status = TransferStatus::WAITING;
+  for (int i = 0; i < 100 && status == TransferStatus::WAITING; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    EXPECT_EQ(engine1.GetTransferStatus(req, status), SUCCESS);
+  }
+  EXPECT_EQ(status, TransferStatus::COMPLETED);
+  EXPECT_EQ(dst, 1); 
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26002"), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+TEST_F(HixlUTest, TestHixlTransferAsyncWithMultiThread){
+  llm:AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  std::map<AscendString, AscendString> options1;
+  options1[OPTION_RDMA_TRAFFIC_CLASS] = "1";
+  options1[OPTION_RDMA_SERVICE_LEVEL] = "1";
+  EXPECT_EQ(engine1.Initialize("127.0.0.1", options1), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl engine2;
+  std::map<AscendString, AscendString> options2;
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
+
+  int32_t src = 0;
+  hixl::MemDesc src_mem{};
+  src_mem.addr = reinterpret_cast<uintptr_t>(&src);
+  src_mem.len = sizeof(int32_t);
+  MemHandle handle1 = nullptr;
+  EXPECT_EQ(engine1.RegisterMem(src_mem, MEM_DEVICE, handle1), SUCCESS);
+
+  int32_t dst = 0;
+  hixl::MemDesc dst_mem{};
+  dst_mem.addr = reinterpret_cast<uintptr_t>(&dst);
+  dst_mem.len = sizeof(int32_t);
+  MemHandle handle2 = nullptr;
+  EXPECT_EQ(engine2.RegisterMem(dst_mem, MEM_DEVICE, handle2), SUCCESS); 
+
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  //创建二十个线程，每个线程写入不同值
+  constexpr int kThreadCount = 20;
+  TransferReq req_list[kThreadCount];
+  std::vector<std::thread> async_threads;
+  for(int i = 0; i< kThreadCount; i++) {
+    async_threads.emplace_back([&, i](){
+      src = i;
+      EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req_list[i]), SUCCESS);
+    });
+  }
+  for (auto& t : async_threads) {
+    t.join();
+  } 
+  //多线程查询 req 状态
+  std::vector<std::thread> poll_threads;
+  std::atomic<int> completed{0};
+  for(int i = 0; i <kThreadCount; i++) {
+    poll_threads.emplace_back([&, i]() {
+      TransferStatus status = TransferStatus::WAITING;
+      for(;;) {
+        EXPECT_EQ(engine1.GetTransferStatus(req_list[i], status));
+        if (status == TransferStatus::COMPLETED) {
+          completed++;
+          break;
+        } else if (status == TransferStatus::FAILED) {
+          break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+      }
+    });
+  }
+  for (auto &t : poll_threads){
+    t.join();
+  }
+  EXPECT_EQ(completed.load(), kThreadCount);
+}
 }  // namespace llm_datadist

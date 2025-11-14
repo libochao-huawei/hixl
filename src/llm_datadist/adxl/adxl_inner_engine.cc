@@ -243,4 +243,51 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
                       "Failed to transfer sync, remote_engine:%s", remote_engine.GetString());
   return SUCCESS;
 }
+
+Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
+                                      TransferOp operation,
+                                      const std::vector<TransferOpDesc> &op_descs,
+                                      const TransferArgs &optional_args,
+                                      TransferReq &req) {
+  auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
+  ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
+                           "Failed to get channel, remote_engine:%s", remote_engine.GetString());
+  uint64_t id = next_req_id_.fetch_add(1);
+  auto req_ptr = std::make_shared<uint64_t>(id);
+  req = reinterpret_cast<void*>(req_ptr.get());
+  std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
+  if (buffer_transfer_service_ != nullptr) {
+    bool need_buffer = false;
+    TransferType type;
+    ADXL_CHK_STATUS_RET(GetTransferType(channel, operation, op_descs, need_buffer, type),
+                        "Failed to get transfer type.");
+    if (need_buffer) {
+     //中转传输
+     LLMLOGI("Buffer transfer is not currently supported.")
+     return SUCCESS;
+    }
+  }
+  std::function<hixl::TransferStatus()> closure;
+  ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, req, closure),
+                      "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
+  transfer_reqs[req_ptr] = std::move(closure);
+  return SUCCESS;
+}
+
+Status GetTransferStatus(const TransferReq &req, TransferStatus &status) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = transfer_reqs_.find(req);
+  if (it == transfer_reqs_.end()) {
+    LLMLOGI("Request %p not found", req);
+    status = TransferStatus::FAILED;
+    return SUCCESS;
+  }
+  status = it->second();
+  if (status == TransferStatus::COMPLETED || status == TransferStatus::FAILED) {
+    LLMLOGI("Transfer %p finished with status %d", req, static_cast<int>(status));
+    transfer_reqs_.erase(it);
+  }
+  return SUCCESS;
+}
+
 }  // namespace adxl

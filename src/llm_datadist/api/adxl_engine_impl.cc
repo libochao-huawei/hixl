@@ -50,6 +50,13 @@ class AdxlEngine::AdxlEngineImpl {
                       const std::vector<TransferOpDesc> &op_descs,
                       int32_t timeout_in_millis = 1000);
 
+  Status AdxlEngine::AdxlEngineImpl::TransferAsync(const AscendString &remote_engine,
+                                                TransferOp operation,
+                                                const std::vector<TransferOpDesc> &op_descs,
+                                                const TransferArgs &optional_args,
+                                                TransferReq &req);
+                      
+  Status AdxlEngine::AdxlEngineImpl::GetTransferStatus(const TransferReq &req, TransferStatus &status)
  private:
   std::mutex mutex_;
   AdxlInnerEngine adxl_engine_;
@@ -101,6 +108,23 @@ Status AdxlEngine::AdxlEngineImpl::TransferSync(const AscendString &remote_engin
   ADXL_CHK_STATUS_RET(CheckTransferOpDescs(op_descs), "Failed to check transfer op descs");
   ADXL_CHK_STATUS_RET(adxl_engine_.TransferSync(remote_engine, operation, op_descs, timeout_in_millis),
                       "Failed to transfer sync.");
+  return SUCCESS;
+}
+
+Status AdxlEngine::AdxlEngineImpl::TransferAsync(const AscendString &remote_engine,
+                                                TransferOp operation,
+                                                const std::vector<TransferOpDesc> &op_descs,
+                                                const TransferArgs &optional_args,
+                                                TransferReq &req) {
+  ADXL_CHK_BOOL_RET_STATUS(adxl_engine_.IsInitialized(), FAILED, "AdxlEngine is not initialized");
+  ADXL_CHK_STATUS_RET(CheckTransferOpDescs(op_descs), "Failed to check transfer op descs");
+  ADXL_CHK_STATUS_RET(adxl_engine_.TransferAsync(remote_engine, operation, op_descs, optional_args, req),
+                      "Failed to transfer async.");
+  return SUCCESS;
+}
+
+Status AdxlEngine::AdxlEngineImpl::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
+  ADXL_CHK_STATUS_RET(adxl_engine_.GetTransferStatus(req, status), "Failed to get transfer status.");
   return SUCCESS;
 }
 

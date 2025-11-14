@@ -102,6 +102,45 @@ Status Channel::Finalize() {
   return ret;
 }
 
+Status Channel::TransferAsync(const AscendString &remote_engine,
+                              TransferOp operation,
+                              const std::vector<TransferOpDesc> &op_descs,
+                              const TransferArgs &optional_args,
+                              std::function<hixl::TransferStatus()>> &closure) {
+  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Transfer failed.");
+  rtEvent_t event = nullptr;
+  LLM_CHK_ACL_RET(rtEventCreate(&event));
+  LLM_CHK_ACL_RET(rtEventRecord(event, stream_));
+  auto event_ptr = std::make_shared<rt_Event>(event);
+  auto destroyed = std::make_shared<std::atomic<bool>>(false);
+  closure = [event_ptr, destroyed]() -> TransferStatus {
+    auto event = *event_ptr;
+    if (*destroyed) {
+      LLMLOGI("Transfer has been completed or does not exist");
+      return TransferStatus::FAILED;
+    }
+    rtEventStatus_t event_status{};
+    auto ret = rtEventQueryStatus(event, &event_status);
+    if (ret != RT_ERROR_NONE) {
+        LLMLOGI("rtEventQueryStatus failed, ret = %d", ret);
+        if (event) {
+          rtEventDestroy(event);
+          *destroyed = true;
+          return TransferStatus::FAILED;
+        }
+    }
+    if (event_status != RT_EVENT_RECORDED) {
+      LLMLOGI("Transfer not yet completed")
+      return TransferStatus::WAITING;
+    }
+    LLMLOGI("Transfer successful");
+    rtEventDestroy(event);
+    *destroyed = true;
+    return TransferStatus::COMPLETED;
+  };
+  return SUCCESS;
+}
+
 Status Channel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                               rtStream_t stream) {
   auto trans_func = [this, operation, &stream](HcclOneSideOpDesc *descs, uint32_t desc_num) -> Status {
