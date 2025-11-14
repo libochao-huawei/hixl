@@ -44,10 +44,20 @@ unset(_cmake_targets_defined)
 unset(_cmake_targets_not_defined)
 unset(_cmake_expected_targets)
 
-find_path(_INCLUDE_DIR
-    NAMES experiment/hccl/external/hccl/hccl.h
-    NO_CMAKE_SYSTEM_PATH
-    NO_CMAKE_FIND_ROOT_PATH)
+find_path(_EX_HCCL_PATH "experiment/hccl/base.h"
+          NO_CMAKE_SYSTEM_PATH
+          NO_CMAKE_FIND_ROOT_PATH)
+find_path(_HCCL_PATH "../pkg_inc/hccl/base.h"
+          NO_CMAKE_SYSTEM_PATH
+          NO_CMAKE_FIND_ROOT_PATH)
+
+if(_EX_HCCL_PATH)
+    set(_INCLUDE_DIR "${_EX_HCCL_PATH}/experiment")
+elseif(_HCCL_PATH)
+    set(_INCLUDE_DIR "${_HCCL_PATH}/../pkg_inc")
+else()
+    unset(_INCLUDE_DIR)
+endif()
 
 find_library(hccl_SHARED_LIBRARY
     NAMES libhccl.so
@@ -65,7 +75,7 @@ find_package_handle_standard_args(hccl
 )
 
 if(hccl_FOUND)
-    set(hccl_INCLUDE_DIR "${_INCLUDE_DIR}/experiment")
+    set(hccl_INCLUDE_DIR "${_INCLUDE_DIR}")
     include(CMakePrintHelpers)
     message(STATUS "Variables in hccl module:")
     cmake_print_variables(hccl_INCLUDE_DIR)
@@ -80,7 +90,7 @@ if(hccl_FOUND)
 
     add_library(hccl_headers INTERFACE IMPORTED)
     set_target_properties(hccl_headers PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${hccl_INCLUDE_DIR};${hccl_INCLUDE_DIR}/hccl;${hccl_INCLUDE_DIR}/hccl/external;${hccl_INCLUDE_DIR}/hccl/external/hccl"
+        INTERFACE_INCLUDE_DIRECTORIES "${hccl_INCLUDE_DIR};${hccl_INCLUDE_DIR}/hccl"
     )
 
     include(CMakePrintHelpers)
