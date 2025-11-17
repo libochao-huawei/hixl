@@ -50,13 +50,13 @@ class AdxlEngine::AdxlEngineImpl {
                       const std::vector<TransferOpDesc> &op_descs,
                       int32_t timeout_in_millis = 1000);
 
-  Status AdxlEngine::AdxlEngineImpl::TransferAsync(const AscendString &remote_engine,
-                                                TransferOp operation,
-                                                const std::vector<TransferOpDesc> &op_descs,
-                                                const TransferArgs &optional_args,
-                                                TransferReq &req);
+  Status TransferAsync(const AscendString &remote_engine,
+                      TransferOp operation,
+                      const std::vector<TransferOpDesc> &op_descs,
+                      const TransferArgs &optional_args,
+                      TransferReq &req);
                       
-  Status AdxlEngine::AdxlEngineImpl::GetTransferStatus(const TransferReq &req, TransferStatus &status)
+  Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
  private:
   std::mutex mutex_;
   AdxlInnerEngine adxl_engine_;
@@ -124,7 +124,8 @@ Status AdxlEngine::AdxlEngineImpl::TransferAsync(const AscendString &remote_engi
 }
 
 Status AdxlEngine::AdxlEngineImpl::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
-  ADXL_CHK_STATUS_RET(adxl_engine_.GetTransferStatus(req, status), "Failed to get transfer status.");
+  ADXL_CHK_BOOL_RET_STATUS(req != nullptr, FAILED, "Req cannot be null.");
+  ADXL_CHK_STATUS_RET(adxl_engine_.GetTransferStatus(req, status), "Failed to get transfer request status.");
   return SUCCESS;
 }
 
@@ -216,6 +217,28 @@ Status AdxlEngine::TransferSync(const AscendString &remote_engine,
   LLMLOGI("TransferSync success, remote_engine:%s, operation:%d, op_descs size:%zu, cost time: %ld us.",
           remote_engine.GetString(), static_cast<int32_t>(operation), op_descs.size(),
           std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
+  return SUCCESS;
+}
+Status Hixl::TransferAsync(const AscendString &remote_engine,
+                           TransferOp operation,
+                           const std::vector<TransferOpDesc> &op_descs,
+                           const TransferArgs &optional_args,
+                           TransferReq &req) {
+  const auto ret = impl_->TransferAsync(remote_engine, operation, op_descs, optional_args, req);
+  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
+                           "Failed to TransferAsync, remote_engine:%s, operation:%d, op_descs size:%zu.",
+                           remote_engine.GetString(), static_cast<int32_t>(operation));
+  LLMLOGI("TransferAsync success, remote_engine:%s, operation:%d, op_descs size:%zu.",
+          remote_engine.GetString(), static_cast<int32_t>(operation), op_descs.size());
+  return SUCCESS;
+}
+
+Status Hixl::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
+  ADXL_CHK_BOOL_RET_STATUS(req != nullptr, FAILED, "Req is nullptr, check req.");
+  const auto ret = impl_->GetTransferStatus(req, status);
+  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
+                         "Failed to GetTransferStatus, req:%llu.", 
+                         static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(req)));
   return SUCCESS;
 }
 }  // namespace adxl

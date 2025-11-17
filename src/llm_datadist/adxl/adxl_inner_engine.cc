@@ -252,39 +252,41 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
+  LLMLOGI("TransferArgs: %p", optional_args)
   uint64_t id = next_req_id_.fetch_add(1);
-  auto req_ptr = std::make_shared<uint64_t>(id);
-  req = reinterpret_cast<void*>(req_ptr.get());
+  req = reinterpret_cast<void*>(id);
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   if (buffer_transfer_service_ != nullptr) {
     bool need_buffer = false;
-    TransferType type;
+    TransferType type = TransferType::kEnd;
     ADXL_CHK_STATUS_RET(GetTransferType(channel, operation, op_descs, need_buffer, type),
                         "Failed to get transfer type.");
     if (need_buffer) {
      //中转传输
-     LLMLOGI("Buffer transfer is not currently supported.")
-     return SUCCESS;
+     LLMLOGE("Buffer transfer is not currently supported, please set options[OPTION_BUFFER_POOL] = '0:0' 
+              enbale direct transfer.");
+     return FAILED;
     }
   }
-  std::function<hixl::TransferStatus()> closure;
-  ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, req, closure),
+  std::function<TransferStatus()> closure;
+  ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, closure),
                       "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
-  transfer_reqs[req_ptr] = std::move(closure);
+  transfer_reqs_[id] = std::move(closure);
   return SUCCESS;
 }
 
-Status GetTransferStatus(const TransferReq &req, TransferStatus &status) {
+Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
   std::lock_guard<std::mutex> lock(mutex_);
-  auto it = transfer_reqs_.find(static_cast<uint64_t>(req));
+  auto id = reinterpret_cast<uint64_t>(req);
+  auto it = transfer_reqs_.find(id);
   if (it == transfer_reqs_.end()) {
-    LLMLOGI("Request %d not found", static_cast<uint64_t>(req));
+    LLMLOGE("Request %llu not found", id);
     status = TransferStatus::FAILED;
-    return SUCCESS;
+    return FAILED;
   }
   status = it->second();
   if (status == TransferStatus::COMPLETED || status == TransferStatus::FAILED) {
-    LLMLOGI("Transfer request %d finished with status %d", static_cast<uint64_t>(req), static_cast<int>(status));
+    LLMLOGI("Transfer request %llu finished with status %d", id, static_cast<int>(status));
     transfer_reqs_.erase(it);
   }
   return SUCCESS;

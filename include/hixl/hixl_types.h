@@ -63,6 +63,16 @@ struct TransferOpDesc {
   uintptr_t remote_addr;
   size_t len;
 };
+enum class TransferStatus {
+  WAITING,
+  COMPLETED,
+  TIMEOUT,
+  FAILED
+};
+
+struct TransferArgs{
+  uint8_t reserved[128] = {};
+};
 }  // namespace hixl
 
 #endif  // CANN_HIXL_INC_EXTERNAL_HIXL_HIXL_TYPES_H_
