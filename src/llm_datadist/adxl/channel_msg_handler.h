@@ -117,6 +117,7 @@ class ChannelMsgHandler {
   // 淘汰相关方法
   int GetTotalChannelCount() const;
   bool ShouldTriggerEviction() const;
+  bool ShouldStopEviction() const;
   void MaybeScheduleEviction();  // 每次只选择一个候选入队
   void EvictionLoop();
   std::optional<EvictItem> SelectOneEvictionCandidate();  // 每次只选择一个候选

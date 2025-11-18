@@ -39,6 +39,7 @@ TEST_F(EvictionTest, ClientDisconnectHandling) {
   llm::AutoCommResRuntimeMock::SetDevice(2);
   AdxlEngine server1_;
   server1_.Initialize("127.0.0.1:20002", options_);
+  llm::AutoCommResRuntimeMock::SetDevice(3);
   AdxlEngine server2_;
   server2_.Initialize("127.0.0.1:20003", options_);
   EXPECT_EQ(client_.Connect("127.0.0.1:20001"), SUCCESS);
@@ -48,7 +49,7 @@ TEST_F(EvictionTest, ClientDisconnectHandling) {
 
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
-  EXPECT_EQ(client_.Connect("127.0.0.1:20000", SUCCESS));
+  EXPECT_EQ(client_.Connect("127.0.0.1:20001"), SUCCESS);
 
   client_.Finalize();
   server_.Finalize();
@@ -68,6 +69,7 @@ TEST_F(EvictionTest, ServerDisconnectHandling) {
   AdxlEngine client1_;
   client1_.Initialize("127.0.0.1:26002", options_);
   llm::AutoCommResRuntimeMock::SetDevice(3);
+  AdxlEngine client2_;
   client2_.Initialize("127.0.0.1:26003", options_);
 
   EXPECT_EQ(client_.Connect("127.0.0.1:26000"), SUCCESS);

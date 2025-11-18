@@ -579,7 +579,7 @@ Status ChannelMsgHandler::ParseWaterlineConfig(const std::map<AscendString, Asce
   auto max_it = options.find(OPTION_MAX_CHANNEL);
   if (max_it != options.end()) {
     std::string max_str = max_it->second.GetString();
-    if (!llm::LLMUtils::ToNumber(max_str, max_channel_)) {
+    if (llm::LLMUtils::ToNumber(max_str, max_channel_)) {
       LLMLOGW("Invalid max_channel: %s, use default: %d", max_str.c_str(), kDefaultMaxChannel);
       max_channel_ = kDefaultMaxChannel;
     }
@@ -591,7 +591,7 @@ Status ChannelMsgHandler::ParseWaterlineConfig(const std::map<AscendString, Asce
   if (high_it != options.end()) {
     std::string high_str = high_it->second.GetString();
     double high_value = 0.0;
-    if (!llm::LLMUtils::ToNumber(high_str, high_value)) {
+    if (llm::LLMUtils::ToNumber(high_str, high_value)) {
       LLMLOGW("Invalid high_waterline: %s, use default: %.2f", 
               high_str.c_str(), kDefaultHighWaterline);
       high_waterline_ratio_ = kDefaultHighWaterline;
@@ -612,7 +612,7 @@ Status ChannelMsgHandler::ParseWaterlineConfig(const std::map<AscendString, Asce
   if (low_it != options.end()) {
     std::string low_str = low_it->second.GetString();
     double low_value = 0.0;
-    if (!llm::LLMUtils::ToNumber(low_str, low_value)) {
+    if (llm::LLMUtils::ToNumber(low_str, low_value)) {
       LLMLOGW("Invalid low_waterline: %s, use default: %.2f", 
               low_str.c_str(), kDefaultLowWaterline);
       low_waterline_ratio_ = kDefaultLowWaterline;
@@ -661,6 +661,10 @@ int ChannelMsgHandler::GetTotalChannelCount() const {
 
 bool ChannelMsgHandler::ShouldTriggerEviction() const {
   return GetTotalChannelCount() >= high_waterline_;
+}
+
+bool ChannelMsgHandler::ShouldStopEviction() const {
+  return GetTotalChannelCount() <= low_waterline_;
 }
 
 void ChannelMsgHandler::MaybeScheduleEviction() {
@@ -779,7 +783,7 @@ void ChannelMsgHandler::EvictionLoop() {
       }
       
       // 重新检查水位线，如果还需要淘汰，继续选择候选
-      if (ShouldTriggerEviction()) {
+      if (!ShouldStopEviction()) {
         MaybeScheduleEviction();  // 重新选择候选并入队
       }
     } else if (item.task_type == EvictTaskType::DISCONNECT_CHANNEL) {
@@ -834,7 +838,7 @@ bool ChannelMsgHandler::ProcessEviction(const EvictItem &item) {
     }
     
     RequestDisconnectMsg req_msg;
-    req_msg.channel_id = item.channel_id;
+    req_msg.channel_id = listen_info_;
     req_msg.timeout = 1000000;  // 单位微秒
     req_msg.req_id = req_id;
     
