@@ -21,12 +21,12 @@ class Config:
         self.distributed = False
         self.world_size = 1
         self.rank = 0
-        self.master_addr = "127.0.0.1"
+        self.master_addr = ""
         self.master_port = "29500"
-        self.mooncake_store_ip = "127.0.0.1"
-        self.mooncake_store_port_start = 12345
+        self.mooncake_store_ip = ""
+        self.mooncake_store_port_start = ""
         self.metadata_url = "http://localhost:8080/metadata"
-        self.grpc_url = "localhost:50051"
+        self.grpc_url = ""
         self.device_id = 0
         
         if config_file and os.path.exists(config_file):

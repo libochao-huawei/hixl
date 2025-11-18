@@ -80,7 +80,7 @@ def batch_get_into_multi_buffers(self, keys: List[str], all_buffer_ptrs: List[Li
 
    1. 下载Mooncake代码
 
-   2. 安装Mooncake依赖（需要稳定网络环境）
+   2. 安装Mooncake依赖（需要稳定网络环境），否则需要手动安装Mooncake的第三方依赖
       ```
       bash dependencies.sh
       ```
@@ -106,15 +106,33 @@ mooncake_master \
 
 * 运行测试：
 
+参考`config_example.yaml`文件，配置运行时分布式集群配置以及Mooncake Store相关参数
+
 在`run.sh`中，通过`export HCCL_INTRA_ROCE_ENABLE=1 `选择传输方式为RDMA（如果设置为0，则走hccs）
 
-以单机环境使用两张卡进行d2d测试为例，在两个终端分别执行，其中`device_id` 绑定device，`schema` 为传输场景（h2h，h2d，d2h，d2d 不区分大小写）
+执行时通过在终端执行：
+
+``````bash 
+bash run.sh **.py 
+``````
+
+> 其中`**.py`  为需要测试的接口对应的样例，例如测试`batch_put_get`接口时，就使用`batch_put_get_sample.py`
+
+并通过命令传入执行参数，具体的参数列表如下：
+
+* device_id ，必填，类型为int，当前进程所在npu设备
+* schema，选填，类型为str，默认为“d2d”，当前测试的传输类型，（必须为h2h，h2d，d2h，d2d ，不区分大小写）
+* config，选填， 类型为str，为yaml配置文件的路径，由于当前代码中删除了硬编码的初始值，可以选择修改代码或者传入config参数的方式，执行用例
+* rank，选填，类型为int，当前进程的rank，如果不传入，默认为 **device_id // 2**
+* world_size，选填，类型为int，分布式集群配置的设备数
+* distributed，选填，是否启用分布式集群
+
+> 注意，某些参数也可以通过配置文件的方式配置，但是命令行传入优先级更高
+
+以单机环境单卡执行batch_put_get接口对应用例，进行d2d数据传输时，在启动完Mooncake master并完成配置或在代码中硬编码对应的参数之后；执行以下命令：
 
 ```bash
 bash run.sh batch_put_get_sample.py --device_id=0 --shcema="d2d"
 ```
 
-```bash
-bash run.sh batch_put_get_sample.py --device_id=3 --schema="d2d"
-```
-
+> 单机多卡环境以及分布式集群下进行测试，只需要参考config_example.yaml创建配置文件，并在运行时传入 config参数指定配置文件路径即可。
