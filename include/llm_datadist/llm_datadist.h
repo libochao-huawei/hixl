@@ -222,14 +222,14 @@ class ASCEND_FUNC_VISIBILITY LlmDataDist {
    *  @param [out] cache 分配出的cache
    *  @return 成功:LLM_SUCCESS, 失败:其它
    */
-  Status AllocateCache(const CacheDesc &cache_desc, Cache &cache);
+  Status AllocateCache(const CacheDesc &cache_desc, Cache &cache) const;
 
   /**
    *  @brief 释放Cache
    *  @param [in] cache_id cache的id
    *  @return 成功:LLM_SUCCESS, 失败:其它. Cache不存在或已释放也会返回LLM_SUCCESS
    */
-  Status DeallocateCache(int64_t cache_id);
+  Status DeallocateCache(int64_t cache_id) const;
 
   /**
    * @brief 从远端拉取连续KV Cache
@@ -276,7 +276,7 @@ class ASCEND_FUNC_VISIBILITY LlmDataDist {
                      uint32_t src_batch_index = 0U,
                      uint32_t dst_batch_index = 0U,
                      uint64_t offset = 0U,
-                     int64_t size = -1);
+                     int64_t size = -1) const;
 
   /**
    * @brief 拷贝KV block
@@ -289,7 +289,7 @@ class ASCEND_FUNC_VISIBILITY LlmDataDist {
   Status CopyKvBlocks(const Cache &src_cache,
                       const Cache &dst_cache,
                       const std::vector<uint64_t> &src_blocks,
-                      const std::vector<std::vector<uint64_t>> &dst_blocks_list);
+                      const std::vector<std::vector<uint64_t>> &dst_blocks_list) const;
 
   /**
    * @brief 向远端push连续KV Cache

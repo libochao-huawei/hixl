@@ -481,7 +481,7 @@ Status LlmDataDist::LlmDataDistImpl::RegisterKvCache(const CacheDesc &cache_desc
   llm::Cache internal_cache{};
   std::vector<uintptr_t> per_device_tensor_addrs;
   for (auto addr : addrs) {
-    per_device_tensor_addrs.emplace_back(reinterpret_cast<uintptr_t>(addr));
+    per_device_tensor_addrs.emplace_back(static_cast<uintptr_t>(addr));
   }
   internal_cache.per_device_tensor_addrs = {per_device_tensor_addrs};
   LLM_CHK_STATUS_RET(llm_data_dist_.RegisterCache(internal_cache_desc, internal_cache), "Failed to register cache");
@@ -555,14 +555,14 @@ Status LlmDataDist::UnlinkLlmClusters(const std::vector<ClusterInfo> &clusters,
   return ret;
 }
 
-Status LlmDataDist::AllocateCache(const CacheDesc &cache_desc, Cache &cache) {
+Status LlmDataDist::AllocateCache(const CacheDesc &cache_desc, Cache &cache) const {
   (void) cache_desc;
   (void) cache;
   LLMLOGE(LLM_FEATURE_NOT_ENABLED, "The feature is not supported.");
   return LLM_FEATURE_NOT_ENABLED;
 }
 
-Status LlmDataDist::DeallocateCache(int64_t cache_id) {
+Status LlmDataDist::DeallocateCache(int64_t cache_id) const {
   (void) cache_id;
   LLMLOGE(LLM_FEATURE_NOT_ENABLED, "The feature is not supported.");
   return LLM_FEATURE_NOT_ENABLED;
@@ -616,7 +616,7 @@ Status LlmDataDist::CopyKvCache(const Cache &src_cache,
                                 uint32_t src_batch_index,
                                 uint32_t dst_batch_index,
                                 uint64_t offset,
-                                int64_t size) {
+                                int64_t size) const {
   (void) src_cache;
   (void) dst_cache;
   (void) src_batch_index;
@@ -630,7 +630,7 @@ Status LlmDataDist::CopyKvCache(const Cache &src_cache,
 Status LlmDataDist::CopyKvBlocks(const Cache &src_cache,
                                  const Cache &dst_cache,
                                  const std::vector<uint64_t> &src_blocks,
-                                 const std::vector<std::vector<uint64_t>> &dst_blocks_list) {
+                                 const std::vector<std::vector<uint64_t>> &dst_blocks_list) const {
   (void) src_cache;
   (void) dst_cache;
   (void) src_blocks;
