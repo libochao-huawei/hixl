@@ -115,13 +115,13 @@ Status Channel::TransferAsync(TransferOp operation,
   closure = [event_ptr, destroyed]() -> TransferStatus {
     auto event = *event_ptr;
     if (*destroyed) {
-      LLMLOGE("Transfer request has been completed or does not exist.");
+      LLMLOGE(FAILED, "Transfer request has been completed or does not exist.");
       return TransferStatus::FAILED;
     }
     rtEventStatus_t event_status{};
     auto ret = rtEventQueryStatus(event, &event_status);
     if (ret != RT_ERROR_NONE) {
-        LLMLOGE("rtEventQueryStatus failed, ret = %d.", ret);
+        LLMLOGE(FAILED, "rtEventQueryStatus failed, ret = %d.", ret);
         if (event) {
           rtEventDestroy(event);
           *destroyed = true;

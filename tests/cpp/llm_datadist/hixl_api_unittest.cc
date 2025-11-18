@@ -309,7 +309,7 @@ TEST_F(HixlUTest, TestHixlTransferAsync) {
   EXPECT_EQ(status, TransferStatus::COMPLETED);
   EXPECT_EQ(src, 2);
   //测试多次查找
-  engine1.GetTransferStatus(req, status);
+  EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
   EXPECT_EQ(status, TransferStatus::FAILED);
   
   src = 1;
@@ -456,10 +456,10 @@ TEST_F(HixlUTest, TestHixlGetTransferStatusFalied) {
 
   EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
   TransferReq req = nullptr;
-  Status status;
+  TransferStatus status;
   EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
   //给 req 随机赋值一个地址
-  req = &status;
+  req = malloc(64);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
 }
 }  // namespace llm_datadist

@@ -150,8 +150,11 @@ Status Hixl::HixlImpl::TransferAsync(const AscendString &remote_engine,
 
 Status Hixl::HixlImpl::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
   adxl::TransferStatus transfer_status = adxl::TransferStatus::WAITING;
-  ADXL_CHK_STATUS_RET(hixl_engine_.GetTransferStatus(req, transfer_status), 
-                      "Failed to get transfer status.");
+  auto ret = hixl_engine_.GetTransferStatus(req, transfer_status);
+  if (ret == FAILED) {
+      status = TransferStatus::FAILED;
+      LLMLOGE(FAILED, "Failed to get transfer status.");
+  }          
   status = static_cast<TransferStatus>(static_cast<int>(transfer_status));
   return SUCCESS;
 }

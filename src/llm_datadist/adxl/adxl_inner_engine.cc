@@ -252,7 +252,7 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
-  LLMLOGI("TransferArgs: %p", optional_args)
+  LLMLOGI("TransferArgs: %p", optional_args);
   uint64_t id = next_req_id_.fetch_add(1);
   req = reinterpret_cast<void*>(id);
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
@@ -263,8 +263,8 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
                         "Failed to get transfer type.");
     if (need_buffer) {
      //中转传输
-     LLMLOGE("Buffer transfer is not currently supported, please set options[OPTION_BUFFER_POOL] = '0:0' 
-              enbale direct transfer.");
+     LLMLOGE(FAILED, "Buffer transfer is not currently supported, please set options[OPTION_BUFFER_POOL] = '0:0' \
+              enable direct transfer.");
      return FAILED;
     }
   }
@@ -280,8 +280,8 @@ Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus
   auto id = reinterpret_cast<uint64_t>(req);
   auto it = transfer_reqs_.find(id);
   if (it == transfer_reqs_.end()) {
-    LLMLOGE("Request %llu not found", id);
     status = TransferStatus::FAILED;
+    LLMLOGE(ge::LLM_PARAM_INVALID, "Request %llu not found", id);
     return FAILED;
   }
   status = it->second();
