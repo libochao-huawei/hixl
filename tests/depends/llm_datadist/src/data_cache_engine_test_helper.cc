@@ -9,6 +9,7 @@
  */
 
 #include "data_cache_engine_test_helper.h"
+#include "llm_datadist/llm_engine_types.h"
 
 namespace llm {
 HcclMem hccl_mems[16];
@@ -251,4 +252,5 @@ void *MockMmpaForHcclApi::DlSym(void *handle, const char *func_name) {
 int32_t MockMmpaForHcclApi::DlClose(void *handle) {
   return 0;
 }
+
 }  // namespace llm
