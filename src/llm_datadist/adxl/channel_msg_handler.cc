@@ -184,10 +184,33 @@ Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> 
   
   // 设置断链回调给ChannelManager
   channel_manager_->SetDisconnectCallback([this](const std::string& channel_id, int32_t timeout_ms) {
-    return Disconnect(channel_id, timeout_ms);
+    EvictItem item;
+    item.channel_id = channel_id;
+
+    auto client_channel = channel_manager_->GetChannel(ChannelType::kClient, channel_id);
+    auto server_channel = channel_manager_->GetChannel(ChannelType::kServer, channel_id);
+    if (client_channel != nullptr) {
+      item.channel_type = ChannelType::kClient;
+    } else if (server_channel != nullptr) {
+      item.channel_type = ChannelType::kServer;
+    } else {
+      LLMLOGW("Channel %s not found for disconnect", channel_id.c_str());
+      return NOT_CONNECTED;
+    }
+
+    item.task_type = EvictTaskType::DISCONNECT_CHANNEL;
+    item.timeout_ms = timeout_ms;
+
+    {
+      std::lock_guard<std::mutex> lock(evict_mutex_);
+      evict_queue_.push(item);
+      pending_evictions_++;
+    }
+
+    evict_cv_.notify_one();
+    return SUCCESS;
   });
   
-  // 设置断链响应回调给ChannelManager
   channel_manager_->SetDisconnectResponseCallback([this](const RequestDisconnectResp& resp) {
     std::lock_guard<std::mutex> lock(pending_req_mutex_);
     auto it = pending_disconnect_requests_.find(resp.req_id);
@@ -315,6 +338,11 @@ Status ChannelMsgHandler::CreateChannel(const ChannelInfo &channel_info, bool is
 
 Status ChannelMsgHandler::ConnectInfoProcess(const ChannelConnectInfo &peer_channel_info,
                                              int32_t timeout, bool is_client) {
+  if(ShouldTriggerEviction()) {
+    LLMLOGI("Trigger eviction: current channels=%d, high_waterline=%d",
+            GetTotalChannelCount(), high_waterline_);
+    MaybeScheduleEviction();
+  }
   auto rank_table_generator = llm::RankTableGeneratorFactory::Create(local_comm_res_, peer_channel_info.comm_res);
   ADXL_CHK_BOOL_RET_STATUS(rank_table_generator != nullptr, PARAM_INVALID,
                            "Failed to create rank table generator.");
@@ -445,11 +473,10 @@ Status ChannelMsgHandler::Connect(const std::string &remote_engine, int32_t time
   ADXL_CHK_BOOL_RET_STATUS(channel == nullptr, ALREADY_CONNECTED,
                            "remote_engine:%s is already connected.", remote_engine.c_str());
   
-  // 检查水位线，如果达到高水位则触发淘汰（非阻塞）
   if (ShouldTriggerEviction()) {
     LLMLOGI("Trigger eviction: current channels=%d, high_waterline=%d", 
             GetTotalChannelCount(), high_waterline_);
-    MaybeScheduleEviction();  // 只入队，不等待
+    MaybeScheduleEviction();
   }
   
   std::string remote_ip;
@@ -609,7 +636,6 @@ Status ChannelMsgHandler::ParseWaterlineConfig(const std::map<AscendString, Asce
   high_waterline_ = static_cast<int>(max_channel_ * high_waterline_ratio_);
   low_waterline_ = static_cast<int>(max_channel_ * low_waterline_ratio_);
   
-  // 确保至少为1
   high_waterline_ = std::max(1, high_waterline_);
   low_waterline_ = std::max(1, low_waterline_);
   
@@ -700,15 +726,12 @@ std::optional<ChannelMsgHandler::EvictItem> ChannelMsgHandler::SelectOneEviction
   // 排序：1. has_transferred==false优先，2. 按建链顺序（已按顺序）
   std::sort(states.begin(), states.end(), 
             [](const ChannelState& a, const ChannelState& b) {
-              // 第一优先级：has_transferred==false优先
               if (a.has_transferred != b.has_transferred) {
                 return !a.has_transferred;  // false排在前面
               }
-              // 第二优先级：保持原有顺序（建链顺序）
               return false;
             });
   
-  // 选择第一个可用的候选
   for (const auto& state : states) {
     if (state.transfer_count > 0 || state.disconnect_flag) {
       continue;
@@ -744,17 +767,38 @@ void ChannelMsgHandler::EvictionLoop() {
     pending_evictions_--;
     
     lock.unlock();
-    
-    bool has_evicted = ProcessEviction(item);
-    
-    // 如果成功淘汰，重置所有Channel的has_transferred标志
-    if (has_evicted) {
-      ResetAllTransferFlags();
-    }
-    
-    // 重新检查水位线，如果还需要淘汰，继续选择候选
-    if (ShouldTriggerEviction()) {
-      MaybeScheduleEviction();  // 重新选择候选并入队
+    bool has_evicted = false;
+
+    // 根据任务类型执行不同操作
+    if (item.task_type == EvictTaskType::EVICT_CHANNEL) {
+      has_evicted = ProcessEviction(item);
+      
+      // 如果成功淘汰，重置所有Channel的has_transferred标志
+      if (has_evicted) {
+        ResetAllTransferFlags();
+      }
+      
+      // 重新检查水位线，如果还需要淘汰，继续选择候选
+      if (ShouldTriggerEviction()) {
+        MaybeScheduleEviction();  // 重新选择候选并入队
+      }
+    } else if (item.task_type == EvictTaskType::DISCONNECT_CHANNEL) {
+      auto channel = channel_manager_->GetChannel(item.channel_type, item.channel_id);
+      if (channel == nullptr) {
+        LLMLOGW("Channel %s not found for disconnect", item.channel_id.c_str());
+        has_evicted = false;
+      } else if (channel->IsDisconnecting()) {
+        LLMLOGW("Channel %s is already disconnecting", item.channel_id.c_str());
+        has_evicted = false;
+      } else {
+        Status ret = Disconnect(item.channel_id, item.timeout_ms);
+        has_evicted = (ret == SUCCESS);
+        if (has_evicted) {
+          LLMLOGI("Successfully disconnected channel %s by request", item.channel_id.c_str());
+        } else {
+          LLMLOGW("Failed to disconnect channel %s by request", item.channel_id.c_str());
+        }
+      }
     }
   }
 }
@@ -791,27 +835,24 @@ bool ChannelMsgHandler::ProcessEviction(const EvictItem &item) {
     
     RequestDisconnectMsg req_msg;
     req_msg.channel_id = item.channel_id;
-    req_msg.timeout = 10000;  // 10毫秒，单位微秒
+    req_msg.timeout = 1000000;  // 单位微秒
     req_msg.req_id = req_id;
     
-    // 发送请求
     ret = channel->SendControlMsg([this, &req_msg](int32_t fd) {
       return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnect, req_msg, req_msg.timeout);
     });
     
     if (ret != SUCCESS) {
       LLMLOGW("Failed to send request disconnect for channel: %s, ret=%d", item.channel_id.c_str(), ret);
-      // 清理pending请求
       std::lock_guard<std::mutex> lock(pending_req_mutex_);
       pending_disconnect_requests_.erase(req_id);
       return false;
     }
     
     LLMLOGI("Sent request disconnect to client for channel: %s, req_id=%lu", item.channel_id.c_str(), req_id);
-    
-    // 等待响应（最多等待20毫秒）
+
     std::unique_lock<std::mutex> lock(pending_req_mutex_);
-    bool received = pending_req->cv.wait_for(lock, std::chrono::milliseconds(20), [&pending_req] {
+    bool received = pending_req->cv.wait_for(lock, std::chrono::milliseconds(2000), [&pending_req] {
       return pending_req->received;
     });
     
@@ -836,7 +877,6 @@ bool ChannelMsgHandler::ProcessEviction(const EvictItem &item) {
       return false;
     }
   } else {
-    // Client端：直接调用Disconnect
     ret = Disconnect(item.channel_id, 1000);  // 使用1秒超时
     if (ret == SUCCESS) {
       LLMLOGI("Evicted client channel: %s", item.channel_id.c_str());

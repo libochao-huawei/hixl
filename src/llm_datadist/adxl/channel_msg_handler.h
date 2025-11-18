@@ -75,9 +75,16 @@ class ChannelMsgHandler {
   Status Disconnect(const std::string &remote_engine, int32_t timeout_in_millis);
 
  private:
+  enum class EvictTaskType {
+    EVICT_CHANNEL,
+    DISCONNECT_CHANNEL
+  };
+
   struct EvictItem {
     std::string channel_id;
     ChannelType channel_type;
+    EvictTaskType task_type{EvictTaskType::EVICT_CHANNEL};
+    int32_t timeout_ms{1000};
   };
   
   int max_channel_{kDefaultMaxChannel};

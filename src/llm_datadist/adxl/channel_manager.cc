@@ -232,9 +232,15 @@ Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) const {
       if (timeout_ms <= 0) {
         timeout_ms = 1000;  // 默认1秒
       }
+      resp.disconnected = true;
+      Status send_ret = channel->SendControlMsg([&resp](int32_t fd) {
+        return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnectResp, resp, kSendMsgTimeout);
+      });
+      if(send_ret == SUCCESS)
+      LLMLOGI("Successfully send disconnect response.");
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
       Status ret = disconnect_callback_(req_msg.channel_id, timeout_ms);
       if (ret == SUCCESS) {
-        resp.disconnected = true;
         LLMLOGI("Successfully disconnected channel %s by request", req_msg.channel_id.c_str());
       } else {
         resp.error_code = static_cast<uint32_t>(ret);
@@ -252,7 +258,6 @@ Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) const {
       LLMLOGW("Disconnect callback not set, cannot disconnect channel %s", req_msg.channel_id.c_str());
     }
     
-    // 发送响应
     Status send_ret = channel->SendControlMsg([&resp](int32_t fd) {
       return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnectResp, resp, kSendMsgTimeout);
     });
@@ -263,17 +268,13 @@ Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) const {
     
     return (resp.disconnected ? SUCCESS : FAILED);
   } else if (*msg_type == ControlMsgType::kRequestDisconnectResp) {
-    // Server端处理Client的断链响应
     RequestDisconnectResp resp{};
     ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), resp), "Failed to deserialize RequestDisconnectResp");
     LLMLOGI("Recv disconnect response for channel:%s, req_id=%lu, disconnected=%d", 
             channel->GetChannelId().c_str(), resp.req_id, resp.disconnected);
-    
-    // 通知等待的断链请求（通过回调）
     if (disconnect_response_callback_) {
       disconnect_response_callback_(resp);
     }
-    
     return SUCCESS;
   } else {
     LLMLOGW("Unsupported msg type: %d", *msg_type);
