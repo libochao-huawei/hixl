@@ -74,7 +74,7 @@ class AdxlInnerEngine {
   std::unique_ptr<SegmentTable> segment_table_ = nullptr;
   bool user_config_buffer_pool_{false};
   std::atomic<uint64_t> next_req_id_{1};
-  std::map<uint64_t, std::function<TransferStatus>> transfer_reqs_;
+  std::map<uint64_t, std::function<TransferStatus()>> transfer_reqs_;
 };
 }  // namespace adxl
 
