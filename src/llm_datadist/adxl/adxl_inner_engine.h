@@ -66,6 +66,7 @@ class AdxlInnerEngine {
   std::unique_ptr<BufferTransferService> buffer_transfer_service_ = nullptr;
   std::unique_ptr<SegmentTable> segment_table_ = nullptr;
   bool user_config_buffer_pool_{false};
+  rtContext_t rt_context_{nullptr};
 };
 }  // namespace adxl
 
