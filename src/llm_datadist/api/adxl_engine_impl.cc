@@ -245,7 +245,7 @@ Status AdxlEngine::TransferAsync(const AscendString &remote_engine,
   const auto ret = impl_->TransferAsync(remote_engine, operation, op_descs, optional_args, req);
   ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
                            "Failed to TransferAsync, remote_engine:%s, operation:%d, op_descs size:%zu.",
-                           remote_engine.GetString(), static_cast<int32_t>(operation));
+                           remote_engine.GetString(), static_cast<int32_t>(operation), op_descs.size());
   LLMLOGI("TransferAsync success, remote_engine:%s, operation:%d, op_descs size:%zu.",
           remote_engine.GetString(), static_cast<int32_t>(operation), op_descs.size());
   return SUCCESS;

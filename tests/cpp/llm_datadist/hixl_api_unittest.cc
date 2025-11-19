@@ -57,7 +57,7 @@ class HixlUTest : public ::testing::Test {
     EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
   }
   //注册 int32 类型的内存
-  void RegisterInt32Mem(Hixl &engine, int32_t* ptr, MemHandle &handle) {
+  void RegisterInt32Mem(Hixl &engine, int32_t *ptr, MemHandle &handle) {
     MemDesc mem_desc{};
     mem_desc.addr = reinterpret_cast<uintptr_t>(ptr);
     mem_desc.len = sizeof(int32_t);

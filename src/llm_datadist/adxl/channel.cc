@@ -106,6 +106,7 @@ Status Channel::TransferAsync(TransferOp operation,
                               const std::vector<TransferOpDesc> &op_descs,
                               const TransferArgs &optional_args,
                               std::function<TransferStatus()> &closure) {
+  (void)optional_args;
   ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Channel transfer failed.");
   rtEvent_t event = nullptr;
   LLM_CHK_ACL_RET(rtEventCreate(&event));
