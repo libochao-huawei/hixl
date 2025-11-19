@@ -141,10 +141,10 @@ Status Hixl::HixlImpl::TransferAsync(const AscendString &remote_engine,
     descs.emplace_back(op_desc);
   }
   adxl::TransferArgs args;
-  std::memcpy(&args, &optional_args, sizeof(args));
+  memcpy_s(&args, sizeof(args), &optional_args, sizeof(optional_args));
   ADXL_CHK_STATUS_RET(hixl_engine_.TransferAsync(remote_engine, static_cast<adxl::TransferOp>(operation), 
                                                  descs, args, req),
-                      "Failed to transfer async.");
+                      "Failed to transfer request async.");
   return SUCCESS;
 }
 
@@ -269,8 +269,8 @@ Status Hixl::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
   ADXL_CHK_BOOL_RET_STATUS(req != nullptr, FAILED, "Req is nullptr, check req.");
   const auto ret = impl_->GetTransferStatus(req, status);
   ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
-                         "Failed to GetTransferStatus, req:%llu.", 
-                         static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(req)));
+                          "Failed to GetTransferStatus, req:%llu.", 
+                          static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(req)));
   return SUCCESS;
 }
 }  // namespace hixl

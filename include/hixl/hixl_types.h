@@ -23,7 +23,7 @@
 namespace hixl {
 using Status = uint32_t;
 using AscendString = ge::AscendString;
-using TransferReq = void*;
+using TransferReq = void *;
 
 // options
 constexpr const char OPTION_RDMA_TRAFFIC_CLASS[] = "RdmaTrafficClass";
