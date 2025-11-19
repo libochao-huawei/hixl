@@ -106,35 +106,28 @@ Status Channel::TransferAsync(TransferOp operation,
                               const std::vector<TransferOpDesc> &op_descs,
                               const TransferArgs &optional_args,
                               std::function<TransferStatus()> &closure) {
-  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Transfer failed.");
+  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Channel transfer failed.");
   rtEvent_t event = nullptr;
   LLM_CHK_ACL_RET(rtEventCreate(&event));
   LLM_CHK_ACL_RET(rtEventRecord(event, stream_));
-  auto event_ptr = std::make_shared<rtEvent_t>(event);
-  auto destroyed = std::make_shared<std::atomic<bool>>(false);
-  closure = [event_ptr, destroyed]() -> TransferStatus {
-    auto event = *event_ptr;
-    if (*destroyed) {
-      LLMLOGE(FAILED, "Transfer request has been completed or does not exist.");
-      return TransferStatus::FAILED;
+  std::shared_ptr<void> event_guard(end, [](rtEvent_t e) { 
+    if (e) {
+      rtEventDestroy(event); 
     }
+  });
+  closure = [event_guard, destroyed]() -> TransferStatus {
     rtEventStatus_t event_status{};
     auto ret = rtEventQueryStatus(event, &event_status);
     if (ret != RT_ERROR_NONE) {
-        LLMLOGE(FAILED, "rtEventQueryStatus failed, ret = %d.", ret);
-        if (event) {
-          rtEventDestroy(event);
-          *destroyed = true;
-          return TransferStatus::FAILED;
-        }
+      LLMLOGE(FAILED, "rtEventQueryStatus failed, ret = %d.", ret);
+      return TransferStatus::FAILED;
     }
     if (event_status != RT_EVENT_RECORDED) {
-      LLMLOGI("Transfer request not yet completed.");
+      LLMLOGI("Transfer async request not yet completed.");
       return TransferStatus::WAITING;
     }
-    LLMLOGI("Transfer request successful.");
+    LLMLOGI("Transfer async request successful.");
     rtEventDestroy(event);
-    *destroyed = true;
     return TransferStatus::COMPLETED;
   };
   return SUCCESS;

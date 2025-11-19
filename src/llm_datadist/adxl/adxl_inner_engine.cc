@@ -226,19 +226,6 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
-  if (buffer_transfer_service_ != nullptr) {
-    const auto start = std::chrono::steady_clock::now();
-    bool need_buffer = false;
-    TransferType type = TransferType::kEnd;
-    ADXL_CHK_STATUS_RET(GetTransferType(channel, operation, op_descs, need_buffer, type),
-                        "Failed to get transfer type.");
-    LLMLOGI("Transfer type is:%d, cost:%lu us.", type,
-           std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
-    if (need_buffer) {
-      ADXL_CHK_BOOL_RET_STATUS(type != TransferType::kEnd, PARAM_INVALID, "Transfer type is invalid.");
-      return buffer_transfer_service_->Transfer(channel, type, op_descs, timeout_in_millis);
-    }
-  }
   ADXL_CHK_STATUS_RET(channel->TransferSync(operation, op_descs, timeout_in_millis),
                       "Failed to transfer sync, remote_engine:%s", remote_engine.GetString());
   return SUCCESS;
@@ -252,22 +239,10 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
-  LLMLOGI("TransferArgs: %p", optional_args);
+  optional_args;
   uint64_t id = next_req_id_.fetch_add(1);
   req = reinterpret_cast<void*>(id);
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
-  if (buffer_transfer_service_ != nullptr) {
-    bool need_buffer = false;
-    TransferType type = TransferType::kEnd;
-    ADXL_CHK_STATUS_RET(GetTransferType(channel, operation, op_descs, need_buffer, type),
-                        "Failed to get transfer type.");
-    if (need_buffer) {
-     //中转传输
-     LLMLOGE(FAILED, "Buffer transfer is not currently supported, please set options[OPTION_BUFFER_POOL] = '0:0' \
-              enable direct transfer.");
-     return FAILED;
-    }
-  }
   std::function<TransferStatus()> closure;
   ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, closure),
                       "Failed to transfer async, remote_engine:%s", remote_engine.GetString());

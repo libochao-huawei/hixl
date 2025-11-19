@@ -104,10 +104,10 @@ class ASCEND_FUNC_VISIBILITY AdxlEngine {
    * @return 成功:SUCCESS, 失败:其它.
    */
   Status TransferAsync(const AscendString &remote_engine,
-                      TransferOp operation,
-                      const std::vector<TransferOpDesc> &op_descs,
-                      const TransferArgs &optional_args,
-                      TransferReq &req);
+                       TransferOp operation,
+                       const std::vector<TransferOpDesc> &op_descs,
+                       const TransferArgs &optional_args,
+                       TransferReq &req);
   
   /**
    * @brief 获取请求状态

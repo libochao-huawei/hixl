@@ -128,7 +128,7 @@ Status AdxlEngine::AdxlEngineImpl::TransferAsync(const AscendString &remote_engi
     descs.emplace_back(op_desc);
   }
   adxl::TransferArgs args;
-  std::memcpy(&args, &optional_args, sizeof(args));
+  memcpy_s(&args, sizeof(args), optional_args, sizeof(optional_args));
   ADXL_CHK_STATUS_RET(adxl_engine_.TransferAsync(remote_engine, static_cast<adxl::TransferOp>(operation), 
                                                  descs, args, req),
                       "Failed to transfer async.");
@@ -140,7 +140,7 @@ Status AdxlEngine::AdxlEngineImpl::GetTransferStatus(const TransferReq &req, Tra
   auto ret = adxl_engine_.GetTransferStatus(req, transfer_status);
   if (ret == FAILED) {
       status = TransferStatus::FAILED;
-      LLMLOGE(FAILED, "Failed to get transfer status.");
+      LLMLOGE(FAILED, "Failed to get transfer request status.");
       return FAILED;
   }          
   status = static_cast<TransferStatus>(static_cast<int>(transfer_status));
@@ -255,8 +255,8 @@ Status AdxlEngine::GetTransferStatus(const TransferReq &req, TransferStatus &sta
   ADXL_CHK_BOOL_RET_STATUS(req != nullptr, FAILED, "Req is nullptr, check req.");
   const auto ret = impl_->GetTransferStatus(req, status);
   ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
-                         "Failed to GetTransferStatus, req:%llu.", 
-                         static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(req)));
+                          "Failed to GetTransferStatus, req:%llu.", 
+                          static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(req)));
   return SUCCESS;
 }
 }  // namespace adxl
