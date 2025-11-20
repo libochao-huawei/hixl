@@ -492,9 +492,7 @@ TEST_F(HixlUTest, TestHixlTransferAsyncWithMultiThread) {
       EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req_list[i]), SUCCESS);
     });
   }
-  for (auto& t : async_threads) {
-    t.join();
-  } 
+  for (auto& t : async_threads) { t.join();} 
   std::vector<std::thread> poll_threads;
   std::atomic<int> completed{0};
   std::atomic<bool> stop{false};

@@ -107,7 +107,7 @@ Status Channel::TransferAsync(TransferOp operation,
                               const TransferArgs &optional_args,
                               std::function<TransferStatus()> &closure) {
   (void)optional_args;
-  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Channel transfer failed.");
+  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Channel transfer async failed.");
   rtEvent_t event = nullptr;
   LLM_CHK_ACL_RET(rtEventCreate(&event));
   LLM_CHK_ACL_RET(rtEventRecord(event, stream_));
@@ -115,14 +115,14 @@ Status Channel::TransferAsync(TransferOp operation,
     rtEventStatus_t event_status{};
     auto ret = rtEventQueryStatus(event, &event_status);
     if (ret != RT_ERROR_NONE) {
-      LLMLOGE(FAILED, "rtEventQueryStatus failed, ret = %d.", ret);
+      LLMLOGE(FAILED, "rtEvent query status failed, ret = %d.", ret);
       return TransferStatus::FAILED;
     }
     if (event_status != RT_EVENT_RECORDED) {
       LLMLOGI("Transfer async request not yet completed.");
       return TransferStatus::WAITING;
     }
-    LLMLOGI("Transfer async request successful.");
+    LLMLOGI("Channel transfer async request successful.");
     rtEventDestroy(event);
     return TransferStatus::COMPLETED;
   };

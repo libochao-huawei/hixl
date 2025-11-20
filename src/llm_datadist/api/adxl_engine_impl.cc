@@ -51,10 +51,10 @@ class AdxlEngine::AdxlEngineImpl {
                       int32_t timeout_in_millis = 1000);
 
   Status TransferAsync(const AscendString &remote_engine,
-                      TransferOp operation,
-                      const std::vector<TransferOpDesc> &op_descs,
-                      const TransferArgs &optional_args,
-                      TransferReq &req);
+                       TransferOp operation,
+                       const std::vector<TransferOpDesc> &op_descs,
+                       const TransferArgs &optional_args,
+                       TransferReq &req);
                       
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
 
@@ -113,10 +113,10 @@ Status AdxlEngine::AdxlEngineImpl::TransferSync(const AscendString &remote_engin
 }
 
 Status AdxlEngine::AdxlEngineImpl::TransferAsync(const AscendString &remote_engine,
-                                                TransferOp operation,
-                                                const std::vector<TransferOpDesc> &op_descs,
-                                                const TransferArgs &optional_args,
-                                                TransferReq &req) {
+                                                 TransferOp operation,
+                                                 const std::vector<TransferOpDesc> &op_descs,
+                                                 const TransferArgs &optional_args,
+                                                 TransferReq &req) {
   ADXL_CHK_BOOL_RET_STATUS(adxl_engine_.IsInitialized(), FAILED, "Hixl is not initialized.");
   ADXL_CHK_STATUS_RET(CheckTransferOpDescs(op_descs), "Failed to check transfer op descs.");
   std::vector<adxl::TransferOpDesc> descs;
@@ -139,9 +139,9 @@ Status AdxlEngine::AdxlEngineImpl::GetTransferStatus(const TransferReq &req, Tra
   adxl::TransferStatus transfer_status = adxl::TransferStatus::WAITING;
   auto ret = adxl_engine_.GetTransferStatus(req, transfer_status);
   if (ret == FAILED) {
-      status = TransferStatus::FAILED;
-      LLMLOGE(FAILED, "Failed to get transfer request status.");
-      return FAILED;
+    status = TransferStatus::FAILED;
+    LLMLOGE(FAILED, "Failed to get transfer request status.");
+    return FAILED;
   }          
   status = static_cast<TransferStatus>(static_cast<int>(transfer_status));
   return SUCCESS;
@@ -238,13 +238,15 @@ Status AdxlEngine::TransferSync(const AscendString &remote_engine,
   return SUCCESS;
 }
 Status AdxlEngine::TransferAsync(const AscendString &remote_engine,
-                           TransferOp operation,
-                           const std::vector<TransferOpDesc> &op_descs,
-                           const TransferArgs &optional_args,
-                           TransferReq &req) {
+                                 TransferOp operation,
+                                 const std::vector<TransferOpDesc> &op_descs,
+                                 const TransferArgs &optional_args,
+                                 TransferReq &req) {
+  ADXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "Impl is nullptr, check Hixl init.");
+  ADXL_CHK_BOOL_RET_STATUS(req != nullptr, FAILED, "Req is nullptr, check req.");
   const auto ret = impl_->TransferAsync(remote_engine, operation, op_descs, optional_args, req);
   ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
-                           "Failed to TransferAsync, remote_engine:%s, operation:%d, op_descs size:%zu.",
+                           "Failed to transfer async, remote_engine:%s, operation:%d, op_descs size:%zu.",
                            remote_engine.GetString(), static_cast<int32_t>(operation), op_descs.size());
   LLMLOGI("TransferAsync success, remote_engine:%s, operation:%d, op_descs size:%zu.",
           remote_engine.GetString(), static_cast<int32_t>(operation), op_descs.size());
@@ -255,7 +257,7 @@ Status AdxlEngine::GetTransferStatus(const TransferReq &req, TransferStatus &sta
   ADXL_CHK_BOOL_RET_STATUS(req != nullptr, FAILED, "Req is nullptr, check req.");
   const auto ret = impl_->GetTransferStatus(req, status);
   ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
-                          "Failed to GetTransferStatus, req:%llu.", 
+                          "Failed to get transfer status, req:%llu.", 
                           static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(req)));
   return SUCCESS;
 }
