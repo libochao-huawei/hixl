@@ -125,58 +125,6 @@ class HccnGetOutputTest : public ::testing::Test {
   }
 };
 
-class HccnToolTest : public ::testing::Test {
-  protected:
-  void SetUp() override {
-    SetMockRtGetDeviceWay(1);
-    llm::MockMmpaForHcclApi::Install();
-    llm::AutoCommResRuntimeMock::InstallWithoutHccnConfFile();
-    llm::AutoCommResRuntimeMock::DeleteHccnConfIfExist();
-    llm::HcclAdapter::GetInstance().Initialize();
-  }
-
-  void TearDown() override {
-    llm::HcclAdapter::GetInstance().Finalize();
-    llm::MockMmpaForHcclApi::Reset();
-    llm::AutoCommResRuntimeMock::Reset();
-    SetMockRtGetDeviceWay(0);
-  }
-};
-
-class HccnGetIpTest : public ::testing::Test {
-  protected:
-  void SetUp() override {
-    SetMockRtGetDeviceWay(1);
-    llm::MockHccnTool::Install();
-    llm::AutoCommResRuntimeMock::Install();
-    llm::HcclAdapter::GetInstance().Initialize();
-  }
-
-  void TearDown() override {
-    llm::HcclAdapter::GetInstance().Finalize();
-    llm::MockHccnTool::Reset();
-    llm::AutoCommResRuntimeMock::Reset();
-    SetMockRtGetDeviceWay(0);
-  }
-};
-
-class HccnGetOutputTest : public ::testing::Test {
-  protected:
-  void SetUp() override {
-    SetMockRtGetDeviceWay(1);
-    llm::MockGetHccnResult::Install();
-    llm::AutoCommResRuntimeMock::Install();
-    llm::HcclAdapter::GetInstance().Initialize();
-  }
-
-  void TearDown() override {
-    llm::HcclAdapter::GetInstance().Finalize();
-    llm::MockGetHccnResult::Reset();
-    llm::AutoCommResRuntimeMock::Reset();
-    SetMockRtGetDeviceWay(0);
-  }
-};
-
 TEST_F(HixlUTest, TestHixl) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
