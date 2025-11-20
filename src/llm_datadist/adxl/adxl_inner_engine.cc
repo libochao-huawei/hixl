@@ -225,8 +225,13 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
                                      const std::vector<TransferOpDesc> &op_descs,
                                      int32_t timeout_in_millis) {
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
-  ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
-                           "Failed to get channel, remote_engine:%s", remote_engine.GetString());
+  // 如果没有连接，触发建链动作
+  if (channel == nullptr) {
+    LLMLOGI("Not connected, start to connect: %s", remote_engine.GetString());
+    Connect(remote_engine, timeout_in_millis);
+    LLMLOGI("Connect Success: %s", remote_engine.GetString());
+  }
+  channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   if (buffer_transfer_service_ != nullptr) {
     const auto start = std::chrono::steady_clock::now();

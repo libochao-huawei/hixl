@@ -23,6 +23,7 @@
 #include "common/msg_handler_plugin.h"
 #include "segment_table.h"
 #include "adxl_utils.h"
+#include "channel_evictor.h"
 
 namespace adxl {
 enum class ChannelMsgType : int32_t {
@@ -74,56 +75,8 @@ class ChannelMsgHandler {
   Status Connect(const std::string &remote_engine, int32_t timeout_in_millis);
   Status Disconnect(const std::string &remote_engine, int32_t timeout_in_millis);
 
- private:
-  enum class EvictTaskType {
-    EVICT_CHANNEL,
-    DISCONNECT_CHANNEL
-  };
-
-  struct EvictItem {
-    std::string channel_id;
-    ChannelType channel_type;
-    EvictTaskType task_type{EvictTaskType::EVICT_CHANNEL};
-    int32_t timeout_ms{1000};
-  };
+  const std::string& GetListenInfo() const { return listen_info_; }
   
-  int max_channel_{kDefaultMaxChannel};
-  double high_waterline_ratio_{kDefaultHighWaterline};
-  double low_waterline_ratio_{kDefaultLowWaterline};
-  int high_waterline_{0};
-  int low_waterline_{0};
-  
-  // 淘汰队列和线程
-  std::mutex evict_mutex_;
-  std::condition_variable evict_cv_;
-  std::queue<EvictItem> evict_queue_;
-  int pending_evictions_{0};
-  bool stop_eviction_{false};
-  std::thread eviction_thread_;
-  
-  // Server等待Client断链响应
-  struct PendingDisconnectRequest {
-    std::condition_variable cv;
-    bool received{false};
-    RequestDisconnectResp resp;
-  };
-  std::mutex pending_req_mutex_;
-  std::map<uint64_t, std::shared_ptr<PendingDisconnectRequest>> pending_disconnect_requests_;
-  std::atomic<uint64_t> next_req_id_{1};
-  
-  // 水位线配置解析
-  Status ParseWaterlineConfig(const std::map<AscendString, AscendString> &options);
-  
-  // 淘汰相关方法
-  int GetTotalChannelCount() const;
-  bool ShouldTriggerEviction() const;
-  bool ShouldStopEviction() const;
-  void MaybeScheduleEviction();  // 每次只选择一个候选入队
-  void EvictionLoop();
-  std::optional<EvictItem> SelectOneEvictionCandidate();  // 每次只选择一个候选
-  bool ProcessEviction(const EvictItem &item);  // 返回是否成功淘汰
-  void ResetAllTransferFlags();
-
  private:
   static Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);
   Status StartDaemon(uint32_t listen_port);
@@ -164,6 +117,7 @@ class ChannelMsgHandler {
   HcclCommConfig comm_config_;
 
   SegmentTable *segment_table_ = nullptr;
+  std::unique_ptr<ChannelEvictor> channel_evictor_ = nullptr;  // 新添加的ChannelEvictor
 };
 }  // namespace adxl
 
