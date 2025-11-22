@@ -89,7 +89,7 @@ Status ChannelEvictor::Initialize(const std::map<AscendString, AscendString>& op
   high_waterline_ = std::max(1, high_waterline_);
   low_waterline_ = std::max(1, low_waterline_);
   
-  ADXL_CHK_BOOL_RET_STATUS(low_waterline_ < high_waterline_, PARAM_INVALID,
+  ADXL_CHK_BOOL_RET_STATUS(low_waterline_ <= high_waterline_, PARAM_INVALID,
                "low_waterline (%d) must be less than high_waterline (%d)",
                low_waterline_, high_waterline_);
   ADXL_CHK_BOOL_RET_STATUS(high_waterline_ <= max_channel_, PARAM_INVALID,
@@ -285,14 +285,11 @@ void ChannelEvictor::EvictionLoop() {
     if (item.task_type == EvictTaskType::EVICT_CHANNEL) {
       has_evicted = ProcessEviction(item);
       
-      // 如果成功淘汰，重置所有Channel的has_transferred标志
-      if (has_evicted) {
-        ResetAllTransferFlags();
-      }
-      
       // 重新检查水位线，如果还需要淘汰，继续选择候选
       if (!ShouldStopEviction()) {
         MaybeScheduleEviction();  // 重新选择候选并入队
+      } else {
+        ResetAllTransferFlags();
       }
     } else if (item.task_type == EvictTaskType::DISCONNECT_CHANNEL) {
         auto channel = channel_manager_->GetChannel(item.channel_type, item.channel_id);

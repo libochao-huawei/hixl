@@ -189,6 +189,8 @@ Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) const {
     ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), buffer_resp), "Failed to deserialize msg");
     LLMLOGI("Recv buffer resp for channel:%s", channel->GetChannelId().c_str());
     if (buffer_transfer_service_ != nullptr) {
+      channel->IncrementTransferCount();
+      channel->SetHasTransferred(true);
       buffer_transfer_service_->PushBufferResp(channel, buffer_resp);
     }
     LLMLOGI("Recv buffer resp for channel:%s", channel->GetChannelId().c_str());
