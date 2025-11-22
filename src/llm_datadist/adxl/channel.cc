@@ -107,6 +107,13 @@ Status Channel::Finalize() {
 
 Status Channel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                               rtStream_t stream) {
+  IncrementTransferCount();
+  has_transfered_.store(true, std::memory_order_release);
+  
+  LLM_DISMISSABLE_GUARD(transfer_guard, (([this]() {
+    DecrementTransferCount();
+  })));
+
   auto trans_func = [this, operation, &stream](HcclOneSideOpDesc *descs, uint32_t desc_num) -> Status {
     HcclResult ret = HCCL_SUCCESS;
     if (operation == READ) {
@@ -124,6 +131,7 @@ Status Channel::TransferAsync(TransferOp operation, const std::vector<TransferOp
   };
   BufferedTransfer transfer(trans_func);
   ADXL_CHK_STATUS_RET(transfer.Put(op_descs), "Failed to batch transfer");
+  LLM_DISMISS_GUARD(transfer_guard);
   return SUCCESS;
 }
 
