@@ -22,6 +22,7 @@ set(LLM_DATADIST_TEST_FILES
         adxl_engine_api_unittest.cc
         segment_table_unittest.cc
         adxl_eviction_test.cc
+        evictor_white_test.cc
 )
 set(LLM_DATADIST_STUB_SRC_FILES
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/data_cache_engine_test_helper.cc"
