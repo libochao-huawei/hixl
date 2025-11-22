@@ -89,7 +89,7 @@ TEST_F(EvictionTest, ServerEvictionTest) {
   EXPECT_EQ(client1_.Connect("127.0.0.1:26000"), SUCCESS);
   EXPECT_EQ(client2_.Connect("127.0.0.1:26000"), SUCCESS);
   EXPECT_EQ(client3_.Connect("127.0.0.1:26000"), SUCCESS);
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  std::this_thread::sleep_for(std::chrono::milliseconds(2000));
   EXPECT_EQ(client_.Disconnect("127.0.0.1:26000"), NOT_CONNECTED);
   EXPECT_EQ(client1_.Disconnect("127.0.0.1:26000"), NOT_CONNECTED);
   EXPECT_EQ(client_.Connect("127.0.0.1:26000"), SUCCESS);
@@ -136,47 +136,96 @@ TEST_F(EvictionTest, TestAtomicCounters) {
   }
   ASSERT_EQ(channel->GetTransferCount(), 0);
   ASSERT_TRUE(channel->GetHasTransferred());
+  channel->Finalize();
 }
 
 // 测试用例4: 引入链路池后，调用TransferSync，没有连接时，是否会按照预期重新触发建链过程
 TEST_F(EvictionTest, ClientDisconnectHandling) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
-  std::map<AscendString, AscendString> options1;
-  options1[OPTION_RDMA_TRAFFIC_CLASS] = "1";
-  options1[OPTION_RDMA_SERVICE_LEVEL] = "1";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1", options1), SUCCESS);
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
 
   llm::AutoCommResRuntimeMock::SetDevice(1);
   Hixl engine2;
-  std::map<AscendString, AscendString> options2;
-  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options_), SUCCESS);
+
+  hixl::MemDesc mem{};
+  mem.addr = 1234;
+  mem.len = 10;
+  MemHandle handle1 = nullptr;
+  EXPECT_EQ(engine1.RegisterMem(mem, MEM_DEVICE, handle1), SUCCESS);
+
+  MemHandle handle2 = nullptr;
+  EXPECT_EQ(engine2.RegisterMem(mem, MEM_DEVICE, handle2), SUCCESS);
 
   int32_t src = 1;
-  hixl::MemDesc src_mem{};
-  src_mem.addr = reinterpret_cast<uintptr_t>(&src);
-  src_mem.len = sizeof(int32_t);
-  MemHandle handle1 = nullptr;
-  EXPECT_EQ(engine1.RegisterMem(src_mem, MEM_DEVICE, handle1), SUCCESS);
-
   int32_t dst = 2;
-  hixl::MemDesc dst_mem{};
-  dst_mem.addr = reinterpret_cast<uintptr_t>(&dst);
-  dst_mem.len = sizeof(int32_t);
-  MemHandle handle2 = nullptr;
-  EXPECT_EQ(engine2.RegisterMem(dst_mem, MEM_DEVICE, handle2), SUCCESS);
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
   EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", READ, {desc}), SUCCESS);
   EXPECT_EQ(src, 2);
   src = 1;
   EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", WRITE, {desc}), SUCCESS);
   EXPECT_EQ(dst, 1);
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
 
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
   EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
+}
+
+TEST_F(EvictionTest, TestEvictionWithTransfer) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl engine2;
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(2);
+  Hixl engine3;
+  EXPECT_EQ(engine3.Initialize("127.0.0.1:26002", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(3);
+  Hixl engine4;
+  EXPECT_EQ(engine4.Initialize("127.0.0.1:26003", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(4);
+  Hixl engine5;
+  EXPECT_EQ(engine5.Initialize("127.0.0.1:26004", options_), SUCCESS);
+
+  hixl::MemDesc mem{};
+  mem.addr = 1234;
+  mem.len = 10;
+  MemHandle handle1 = nullptr;
+  EXPECT_EQ(engine1.RegisterMem(mem, MEM_DEVICE, handle1), SUCCESS);
+
+  MemHandle handle2 = nullptr;
+  EXPECT_EQ(engine2.RegisterMem(mem, MEM_DEVICE, handle2), SUCCESS);
+
+  int32_t src = 1;
+  int32_t dst = 2;
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", READ, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26002"), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26003"), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26004"), SUCCESS);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26002"), NOT_CONNECTED);
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26003"), NOT_CONNECTED);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), ALREADY_CONNECTED);
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+  engine3.Finalize();
+  engine4.Finalize();
+  engine5.Finalize();
 }
 // 主函数
 int main(int argc, char **argv) {
