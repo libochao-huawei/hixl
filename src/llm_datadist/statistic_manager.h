@@ -11,6 +11,7 @@
 #define CANN_GRAPH_ENGINE_RUNTIME_LLM_ENGINE_V2_STATISTIC_MANAGER_H_
 
 #include <atomic>
+#include <mutex>
 
 namespace llm {
 struct LinkStatisticInfo {
