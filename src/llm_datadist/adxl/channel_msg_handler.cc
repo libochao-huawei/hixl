@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <algorithm>
 #include "channel_msg_handler.h"
 #include "nlohmann/json.hpp"
 #include "adxl/adxl_types.h"
@@ -20,7 +21,6 @@
 #include "common/llm_scope_guard.h"
 #include "adxl_utils.h"
 #include "control_msg_handler.h"
-#include <algorithm>
 
 namespace adxl {
 

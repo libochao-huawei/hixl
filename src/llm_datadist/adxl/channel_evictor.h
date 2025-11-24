@@ -26,7 +26,7 @@ namespace adxl {
 
 class ChannelMsgHandler;
 
-enum class EvictTaskType {
+enum class EvictTaskType : uint8_t{
     EVICT_CHANNEL,
     DISCONNECT_CHANNEL
 };
@@ -59,10 +59,20 @@ public:
     bool ProcessEviction(const EvictItem& item);  // 返回是否成功淘汰
     void ResetAllTransferFlags();
 
-    
 private:
     void EvictionLoop();
     std::optional<EvictItem> SelectOneEvictionCandidate();  // 每次只选择一个候选
+    
+    // Helper methods for Initialize
+    void ParseMaxChannel(const std::map<AscendString, AscendString>& options);
+    void ParseHighWaterline(const std::map<AscendString, AscendString>& options);
+    void ParseLowWaterline(const std::map<AscendString, AscendString>& options);
+    void StartEvictionThread();
+    void SetupChannelManagerCallbacks();
+    
+    // Helper methods for ProcessEviction
+    bool ProcessServerEviction(const std::string& channel_id, ChannelPtr channel);
+    bool ProcessClientEviction(const std::string& channel_id, int32_t timeout_ms);
 
     ChannelManager* channel_manager_;
     ChannelMsgHandler* msg_handler_;

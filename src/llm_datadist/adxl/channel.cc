@@ -157,7 +157,6 @@ Status Channel::TransferSync(TransferOp operation,
   
   // 传输成功，减少计数
   LLM_DISMISS_GUARD(transfer_guard);
-  // DecrementTransferCount();
   return SUCCESS;
 }
 
