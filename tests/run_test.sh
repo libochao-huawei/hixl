@@ -17,7 +17,7 @@ BASEPATH=$(cd "$(dirname $0)/.."; pwd)
 usage() {
   echo "Usage:"
   echo "sh run_test.sh [-c | --cov] [-j<N>] [-h | --help] [-v | --verbose]"
-  echo "               [--cann_3rd_lib_path=<PATH>]"
+  echo "               [--cann_3rd_lib_path=<PATH> | --cann-3rd-lib-path=<PATH>]"
   echo ""
   echo "Options:"
   echo "    -h, --help     Print usage"
@@ -29,7 +29,7 @@ usage() {
   echo "                   and the version matched gcc/g++."
   echo "    -v, --verbose  Display build command"
   echo "    -j<N>          Set the number of threads used for building Parser, default 8"
-  echo "        --cann_3rd_lib_path=<PATH>"
+  echo "        --cann_3rd_lib_path=<PATH> | --cann-3rd-lib-path=<PATH>"
   echo "                   Set ascend third_party package install path, default ./third_party"
   echo ""
 }
@@ -51,7 +51,7 @@ checkopts() {
 
   CANN_3RD_LIB_PATH="$BASEPATH/third_party"
 
-  parsed_args=$(getopt -a -o t::cj:hv -l test::,cov,help,verbose,cann_3rd_lib_path: -- "$@") || {
+  parsed_args=$(getopt -a -o t::cj:hv -l test::,cov,help,verbose,cann_3rd_lib_path:,cann-3rd-lib-path: -- "$@") || {
     usage
     exit 1
   }
@@ -98,7 +98,7 @@ checkopts() {
         VERBOSE="-v"
         shift
         ;;
-      --cann_3rd_lib_path)
+      --cann_3rd_lib_path | --cann-3rd-lib-path)
         CANN_3RD_LIB_PATH="$(realpath $2)"
         shift 2
         ;;
