@@ -256,7 +256,7 @@ Status ChannelManager::HandleRequestDisconnectMessage(const ChannelPtr &channel,
   
   // 如果可以断链，执行断链
   if (can_disconnect && disconnect_callback_) {
-    int32_t timeout_ms = req_msg.timeout;  // 转换为毫秒
+    int32_t timeout_ms = static_cast<int32_t>(req_msg.timeout);
     resp.disconnected = true;
     Status send_ret = channel->SendControlMsg([&resp](int32_t fd) {
       return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnectResp, resp, kSendMsgTimeout);
@@ -264,7 +264,7 @@ Status ChannelManager::HandleRequestDisconnectMessage(const ChannelPtr &channel,
     if(send_ret == SUCCESS) {
       LLMLOGI("Successfully send disconnect response.");
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(kSendMsgTimeout));
     Status ret = disconnect_callback_(req_msg.channel_id, timeout_ms);
     if (ret == SUCCESS) {
       LLMLOGI("Successfully disconnected channel %s by request", req_msg.channel_id.c_str());
