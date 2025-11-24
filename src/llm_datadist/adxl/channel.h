@@ -84,17 +84,27 @@ class Channel {
   std::mutex &GetTransferMutex();
 
   // 状态访问接口（用于淘汰机制）
-  int GetTransferCount() const { return transfer_count_.load(std::memory_order_acquire); }
-  bool IsDisconnecting() const { return disconnect_flag_.load(std::memory_order_acquire); }
+  int GetTransferCount() const { 
+    return transfer_count_.load(std::memory_order_acquire); 
+  }
+  bool IsDisconnecting() const { 
+    return disconnect_flag_.load(std::memory_order_acquire); 
+  }
   bool GetHasTransferred() const {
     return has_transfered_.load(std::memory_order_acquire);
   }
   void SetHasTransferred(bool value) {
     has_transfered_.store(value, std::memory_order_release);
   }
-  void IncrementTransferCount() { transfer_count_.fetch_add(1, std::memory_order_acq_rel); }
-  void DecrementTransferCount() { transfer_count_.fetch_sub(1, std::memory_order_acq_rel); }
-  void SetDisconnecting(bool value) { disconnect_flag_.store(value, std::memory_order_release); }
+  void IncrementTransferCount() { 
+    transfer_count_++; 
+  }
+  void DecrementTransferCount() { 
+    transfer_count_--; 
+  }
+  void SetDisconnecting(bool value) { 
+    disconnect_flag_.store(value, std::memory_order_release); 
+  }
 
  private:
   ChannelInfo channel_info_;

@@ -75,7 +75,9 @@ class ChannelMsgHandler {
   Status Connect(const std::string &remote_engine, int32_t timeout_in_millis);
   Status Disconnect(const std::string &remote_engine, int32_t timeout_in_millis);
 
-  const std::string& GetListenInfo() const { return listen_info_; }
+  const std::string& GetListenInfo() const { 
+    return listen_info_; 
+  }
   
  private:
   static Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);

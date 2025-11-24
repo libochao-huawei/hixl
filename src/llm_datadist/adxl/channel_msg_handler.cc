@@ -9,6 +9,7 @@
  */
 
 #include "channel_msg_handler.h"
+#include <algorithm>
 #include "nlohmann/json.hpp"
 #include "adxl/adxl_types.h"
 #include "common/rank_table_generator.h"
@@ -20,7 +21,6 @@
 #include "common/llm_scope_guard.h"
 #include "adxl_utils.h"
 #include "control_msg_handler.h"
-#include <algorithm>
 
 namespace adxl {
 

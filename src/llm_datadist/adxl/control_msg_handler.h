@@ -28,8 +28,8 @@ enum class ControlMsgType : int32_t {
   kHeartBeat = 1, 
   kBufferReq = 2, 
   kBufferResp = 3, 
-  kRequestDisconnect = 4,      // Server请求Client断链
-  kRequestDisconnectResp = 5,  // Client响应Server的断链请求
+  kRequestDisconnect = 4,
+  kRequestDisconnectResp = 5,
   kEnd 
 };
 
@@ -124,9 +124,9 @@ inline void from_json(const nlohmann::json &j, HeartbeatMsg &msg) {
 
 // Server请求Client断链的消息
 struct RequestDisconnectMsg {
-  std::string channel_id;     // 需要断链的channel_id
-  uint64_t timeout{0};        // 超时时间（微秒）
-  uint64_t req_id{0};          // 请求ID，用于匹配响应
+  std::string channel_id;
+  uint64_t timeout{0}; 
+  uint64_t req_id{0};
 };
 
 inline void to_json(nlohmann::json &j, const RequestDisconnectMsg &msg) {
@@ -144,11 +144,11 @@ inline void from_json(const nlohmann::json &j, RequestDisconnectMsg &msg) {
 // Client响应Server的断链请求
 struct RequestDisconnectResp {
   std::string channel_id;
-  uint64_t req_id{0};          // 对应的请求ID
-  bool can_disconnect{false};   // 是否可以断链
-  bool disconnected{false};     // 是否已成功断链
-  uint32_t error_code{0};       // 错误码
-  std::string error_message;    // 错误信息
+  uint64_t req_id{0};
+  bool can_disconnect{false};
+  bool disconnected{false};
+  uint32_t error_code{0}; 
+  std::string error_message;
 };
 
 inline void to_json(nlohmann::json &j, const RequestDisconnectResp &resp) {

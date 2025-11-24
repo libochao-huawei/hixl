@@ -36,17 +36,16 @@ class ChannelManager {
 
   Status AddSocketToEpoll(int32_t fd, ChannelPtr channel);
 
-  // 设置断链回调（由ChannelMsgHandler设置）
+  // 设置断链回调
   void SetDisconnectCallback(std::function<Status(const std::string&, int32_t)> callback) {
     disconnect_callback_ = callback;
   }
   
-  // 设置断链响应回调（由ChannelMsgHandler设置）
+  // 设置断链响应回调
   void SetDisconnectResponseCallback(std::function<void(const RequestDisconnectResp&)> callback) {
     disconnect_response_callback_ = callback;
   }
 
-  // 获取所有Client/Server通道（供ChannelMsgHandler使用）
   std::vector<ChannelPtr> GetAllClientChannel();
   std::vector<ChannelPtr> GetAllServerChannel();
 
@@ -62,6 +61,13 @@ class ChannelManager {
   Status ProcessReceivedData(const ChannelPtr &channel);
   Status HandleControlMessage(const ChannelPtr &channel) const;
   Status RemoveFd(int32_t fd);
+
+  // Handle specific control message types
+  Status HandleHeartBeatMessage(const ChannelPtr &channel) const;
+  Status HandleBufferReqMessage(const ChannelPtr &channel, const std::string &msg_str) const;
+  Status HandleBufferRespMessage(const ChannelPtr &channel, const std::string &msg_str) const;
+  Status HandleRequestDisconnectMessage(const ChannelPtr &channel, const std::string &msg_str) const;
+  Status HandleRequestDisconnectRespMessage(const ChannelPtr &channel, const std::string &msg_str) const;
 
   std::atomic<bool> stop_signal_{false};
 
@@ -81,10 +87,7 @@ class ChannelManager {
   std::thread msg_receiver_;
   rtContext_t rt_context_{nullptr};
   
-  // 断链回调（由ChannelMsgHandler设置）
   std::function<Status(const std::string&, int32_t)> disconnect_callback_;
-  
-  // 断链响应回调（由ChannelMsgHandler设置）
   std::function<void(const RequestDisconnectResp&)> disconnect_response_callback_;
 };
 }  // namespace adxl
