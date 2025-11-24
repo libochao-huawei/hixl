@@ -137,7 +137,6 @@ void ChannelEvictor::SetupChannelManagerCallbacks() {
   channel_manager_->SetDisconnectCallback([this](const std::string& channel_id, int32_t timeout_ms) {
     EvictItem item;
     item.channel_id = channel_id;
-    
     auto client_channel = channel_manager_->GetChannel(ChannelType::kClient, channel_id);
     if (client_channel != nullptr) {
       item.channel_type = ChannelType::kClient;
@@ -145,21 +144,17 @@ void ChannelEvictor::SetupChannelManagerCallbacks() {
       LLMLOGI("Channel %s not found for disconnect", channel_id.c_str());
       return NOT_CONNECTED;
     }
-
     item.task_type = EvictTaskType::DISCONNECT_CHANNEL;
     item.timeout_ms = timeout_ms;
-    
     {
         std::lock_guard<std::mutex> lock(evict_mutex_);
         evict_queue_.push(item);
         pending_evictions_++;
     }
-
     evict_cv_.notify_one();
     return SUCCESS;
   });
 
-  // 设置断链响应回调
   channel_manager_->SetDisconnectResponseCallback([this](const RequestDisconnectResp& resp) {
     std::lock_guard<std::mutex> lock(pending_req_mutex_);
     auto it = pending_disconnect_requests_.find(resp.req_id);
@@ -229,46 +224,47 @@ std::optional<EvictItem> ChannelEvictor::SelectOneEvictionCandidate() {
   auto client_channels = channel_manager_->GetAllClientChannel();
   auto server_channels = channel_manager_->GetAllServerChannel();
   
-  std::vector<ChannelPtr>* target_channels = nullptr;
-  ChannelType target_type;
-  if (client_channels.size() >= server_channels.size()) {
-    target_channels = &client_channels;
-    target_type = ChannelType::kClient;
-  } else {
-    target_channels = &server_channels;
-    target_type = ChannelType::kServer;
-  }
-  
-  struct ChannelState {
-    ChannelPtr channel;
-    std::string channel_id;
-    int transfer_count;
-    bool has_transferred;
-    bool disconnect_flag;
-  };
-  
+  std::vector<ChannelPtr>& target_channels = client_channels.size() >= server_channels.size() 
+      ? client_channels : server_channels;
+  ChannelType target_type = client_channels.size() >= server_channels.size() 
+      ? ChannelType::kClient : ChannelType::kServer;
+
+  std::vector<ChannelState> states = CreateChannelStates(target_channels);
+
+  SortChannelStates(states);
+
+  return FindFirstEligibleChannel(states, target_type);
+}
+
+std::vector<ChannelEvictor::ChannelState> ChannelEvictor::CreateChannelStates(const std::vector<ChannelPtr>& channels) {
   std::vector<ChannelState> states;
-  states.reserve(target_channels->size());
+  states.reserve(channels.size());
   
-  for (const auto& channel : *target_channels) {
-    ChannelState state;
-    state.channel = channel;
-    state.channel_id = channel->GetChannelId();
-    state.transfer_count = channel->GetTransferCount();
-    state.has_transferred = channel->GetHasTransferred();
-    state.disconnect_flag = channel->IsDisconnecting();
-    states.push_back(state);
+  for (const auto& channel : channels) {
+    states.push_back({
+      channel,
+      channel->GetChannelId(),
+      channel->GetTransferCount(),
+      channel->GetHasTransferred(),
+      channel->IsDisconnecting()
+    });
   }
-  
-  // 排序：1. has_transferred==false优先，2. 按建链顺序（已按顺序）
+  return states;
+}
+
+void ChannelEvictor::SortChannelStates(std::vector<ChannelState>& states) {
+  // Sort: 1. has_transferred==false first, 2. maintain creation order
   std::sort(states.begin(), states.end(), 
         [](const ChannelState& a, const ChannelState& b) {
           if (a.has_transferred != b.has_transferred) {
-            return !a.has_transferred;  // false排在前面
+            return !a.has_transferred;
           }
           return false;
         });
-  
+}
+
+std::optional<EvictItem> ChannelEvictor::FindFirstEligibleChannel(
+    const std::vector<ChannelState>& states, ChannelType target_type) {
   for (const auto& state : states) {
     if (state.transfer_count > 0 || state.disconnect_flag) {
       continue;
@@ -280,7 +276,7 @@ std::optional<EvictItem> ChannelEvictor::SelectOneEvictionCandidate() {
     return item;
   }
   
-  return std::nullopt;  // 没有可用候选
+  return std::nullopt;  // no eligible candidate
 }
 
 void ChannelEvictor::EvictionLoop() {
@@ -304,49 +300,47 @@ void ChannelEvictor::EvictionLoop() {
     pending_evictions_--;
     
     lock.unlock();
+    
     bool has_evicted = false;
-
-    // 根据任务类型执行不同操作
     if (item.task_type == EvictTaskType::EVICT_CHANNEL) {
       has_evicted = ProcessEviction(item);
-      
-      // 重新检查水位线，如果还需要淘汰，继续选择候选
       if (!ShouldStopEviction()) {
-        MaybeScheduleEviction();  // 重新选择候选并入队
+        MaybeScheduleEviction();
       } else {
         ResetAllTransferFlags();
       }
     } else if (item.task_type == EvictTaskType::DISCONNECT_CHANNEL) {
-        auto channel = channel_manager_->GetChannel(item.channel_type, item.channel_id);
-        if (channel == nullptr) {
-            LLMLOGW("Channel %s not found for disconnect", item.channel_id.c_str());
-            has_evicted = false;
-        } else {
-            Status ret = msg_handler_->Disconnect(item.channel_id, item.timeout_ms);
-            has_evicted = (ret == SUCCESS);
-            if (has_evicted) {
-                LLMLOGI("Successfully disconnected channel %s by request", item.channel_id.c_str());
-            } else {
-                LLMLOGW("Fialed to disconnect channel %s by request", item.channel_id.c_str());
-            }
-        }
+      has_evicted = ProcessDisconnectChannelTask(item);
     }
   }
 }
 
+bool ChannelEvictor::ProcessDisconnectChannelTask(const EvictItem& item) {
+  auto channel = channel_manager_->GetChannel(item.channel_type, item.channel_id);
+  if (channel == nullptr) {
+    LLMLOGW("Channel %s not found for disconnect", item.channel_id.c_str());
+    return false;
+  }
+  
+  Status ret = msg_handler_->Disconnect(item.channel_id, item.timeout_ms);
+  bool has_evicted = (ret == SUCCESS);
+  if (has_evicted) {
+    LLMLOGI("Successfully disconnected channel %s by request", item.channel_id.c_str());
+  } else {
+    LLMLOGW("Failed to disconnect channel %s by request", item.channel_id.c_str());
+  }
+  return has_evicted;
+}
+
 bool ChannelEvictor::ProcessEviction(const EvictItem& item) {
   ADXL_CHECK_NOTNULL(msg_handler_);
-  
   auto channel = channel_manager_->GetChannel(item.channel_type, item.channel_id);
   if (channel == nullptr) {
     return false;
   }
-  
   if (channel->GetTransferCount() > 0) {
     return false;
   }
-  
-  // 根据通道类型执行不同的断链逻辑
   if (item.channel_type == ChannelType::kServer) {
     return ProcessServerEviction(item.channel_id, channel);
   } else {
@@ -355,58 +349,75 @@ bool ChannelEvictor::ProcessEviction(const EvictItem& item) {
 }
 
 bool ChannelEvictor::ProcessServerEviction(const std::string& channel_id, ChannelPtr channel) {
-  // Server端：发送kRequestDisconnect消息给Client，等待Client响应
   int32_t fd = channel->GetFd();
   if (fd < 0) {
     LLMLOGW("Channel %s has invalid fd, cannot send request disconnect", channel_id.c_str());
     return false;
   }
-  
-  // 生成请求ID
   uint64_t req_id = next_req_id_.fetch_add(1ULL, std::memory_order_acq_rel);
-  
-  // 创建pending请求
-  auto pending_req = std::make_shared<PendingDisconnectRequest>();
-  {
-    std::lock_guard<std::mutex> lock(pending_req_mutex_);
-    pending_disconnect_requests_[req_id] = pending_req;
+  auto pending_req = CreatePendingDisconnectRequest(req_id);
+  if (!pending_req) {
+    return false;
   }
-  
+  if (!SendDisconnectRequest(channel, req_id)) {
+    RemovePendingDisconnectRequest(req_id);
+    return false;
+  }
+  RequestDisconnectResp resp;
+  bool received = WaitForDisconnectResponse(req_id, resp);
+  RemovePendingDisconnectRequest(req_id);
+  return ProcessDisconnectResponse(channel_id, resp, received);
+}
+
+std::shared_ptr<ChannelEvictor::PendingDisconnectRequest> ChannelEvictor::CreatePendingDisconnectRequest(uint64_t req_id) {
+  auto pending_req = std::make_shared<PendingDisconnectRequest>();
+  std::lock_guard<std::mutex> lock(pending_req_mutex_);
+  pending_disconnect_requests_[req_id] = pending_req;
+  return pending_req;
+}
+
+bool ChannelEvictor::SendDisconnectRequest(ChannelPtr channel, uint64_t req_id) {
   RequestDisconnectMsg req_msg;
   req_msg.channel_id = msg_handler_->GetListenInfo();
   req_msg.timeout = 1000ULL;
   req_msg.req_id = req_id;
-  
   Status ret = channel->SendControlMsg([&req_msg](int32_t fd) {
     return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnect, req_msg, req_msg.timeout);
   });
-  
   if (ret != SUCCESS) {
-    LLMLOGW("Failed to send request disconnect for channel: %s, ret=%d", channel_id.c_str(), ret);
-    std::lock_guard<std::mutex> lock(pending_req_mutex_);
-    pending_disconnect_requests_.erase(req_id);
     return false;
   }
-  
-  LLMLOGI("Sent request disconnect to client for channel: %s, req_id=%lu", channel_id.c_str(), req_id);
+  return true;
+}
 
-  // 等待响应
+void ChannelEvictor::RemovePendingDisconnectRequest(uint64_t req_id) {
+  std::lock_guard<std::mutex> lock(pending_req_mutex_);
+  pending_disconnect_requests_.erase(req_id);
+}
+
+bool ChannelEvictor::WaitForDisconnectResponse(uint64_t req_id, RequestDisconnectResp& resp) {
+  auto it = pending_disconnect_requests_.find(req_id);
+  if (it == pending_disconnect_requests_.end()) {
+    return false;
+  }
+
   std::unique_lock<std::mutex> lock(pending_req_mutex_);
-  bool received = pending_req->cv.wait_for(lock, std::chrono::milliseconds(2000), [&pending_req] {
-    return pending_req->received;
+  bool received = it->second->cv.wait_for(lock, std::chrono::milliseconds(2000), [&]() {
+    return it->second->received;
   });
+
+  if (received) {
+    resp = it->second->resp;
+  }
+  return received;
+}
+
+bool ChannelEvictor::ProcessDisconnectResponse(const std::string& channel_id, const RequestDisconnectResp& resp, bool received) {
   if (!received) {
-    LLMLOGW("Timeout waiting for disconnect response, channel: %s, req_id=%lu", channel_id.c_str(), req_id);
-    pending_disconnect_requests_.erase(req_id);
+    LLMLOGW("Timeout waiting for disconnect response, channel: %s", channel_id.c_str());
     return false;
   }
   
-  // 获取响应
-  RequestDisconnectResp resp = pending_req->resp;
-  pending_disconnect_requests_.erase(req_id);
-  lock.unlock();
-  
-  // 检查响应
   if (resp.disconnected) {
     LLMLOGI("Successfully disconnected channel %s by server request", channel_id.c_str());
     return true;

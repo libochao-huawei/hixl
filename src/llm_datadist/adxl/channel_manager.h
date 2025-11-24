@@ -69,6 +69,14 @@ class ChannelManager {
   Status HandleRequestDisconnectMessage(const ChannelPtr &channel, const std::string &msg_str) const;
   Status HandleRequestDisconnectRespMessage(const ChannelPtr &channel, const std::string &msg_str) const;
 
+ private:
+  // Helper functions for HandleRequestDisconnectMessage
+  void HandleChannelIdMismatch(const ChannelPtr &channel, const RequestDisconnectMsg &req_msg) const;
+  void InitDisconnectResponse(RequestDisconnectResp &resp, const RequestDisconnectMsg &req_msg) const;
+  void HandleCanDisconnectCase(const ChannelPtr &channel, const RequestDisconnectMsg &req_msg, RequestDisconnectResp &resp) const;
+  void HandleChannelBusyCase(const ChannelPtr &channel, const RequestDisconnectMsg &req_msg, RequestDisconnectResp &resp) const;
+  void HandleCallbackNotSetCase(const ChannelPtr &channel, const RequestDisconnectMsg &req_msg, RequestDisconnectResp &resp) const;
+
   std::atomic<bool> stop_signal_{false};
 
   std::thread heartbeat_sender_;

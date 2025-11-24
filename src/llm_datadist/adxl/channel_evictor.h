@@ -73,6 +73,29 @@ private:
     // Helper methods for ProcessEviction
     bool ProcessServerEviction(const std::string& channel_id, ChannelPtr channel);
     bool ProcessClientEviction(const std::string& channel_id, int32_t timeout_ms);
+    
+    bool ProcessDisconnectChannelTask(const EvictItem& item);
+    
+    // Helper methods for ProcessServerEviction
+    std::shared_ptr<PendingDisconnectRequest> CreatePendingDisconnectRequest(uint64_t req_id);
+    bool SendDisconnectRequest(ChannelPtr channel, uint64_t req_id);
+    void RemovePendingDisconnectRequest(uint64_t req_id);
+    bool WaitForDisconnectResponse(uint64_t req_id, RequestDisconnectResp& resp);
+    bool ProcessDisconnectResponse(const std::string& channel_id, const RequestDisconnectResp& resp, bool received);
+
+    // Helper struct for channel state
+    struct ChannelState {
+        ChannelPtr channel;
+        std::string channel_id;
+        int transfer_count;
+        bool has_transferred;
+        bool disconnect_flag;
+    };
+
+    // Helper methods for SelectOneEvictionCandidate
+    std::vector<ChannelState> CreateChannelStates(const std::vector<ChannelPtr>& channels);
+    void SortChannelStates(std::vector<ChannelState>& states);
+    std::optional<EvictItem> FindFirstEligibleChannel(const std::vector<ChannelState>& states, ChannelType target_type);
 
     ChannelManager* channel_manager_;
     ChannelMsgHandler* msg_handler_;
