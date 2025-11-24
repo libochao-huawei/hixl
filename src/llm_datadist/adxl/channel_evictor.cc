@@ -50,13 +50,10 @@ Status ChannelEvictor::Initialize(const std::map<AscendString, AscendString>& op
   LLMLOGI("Waterline config: max_channel=%d, high_waterline=%.2f (%d), low_waterline=%.2f (%d)",
       max_channel_, high_waterline_ratio_, high_waterline_, 
       low_waterline_ratio_, low_waterline_);
-  
   // 开始初始化
   StartEvictionThread();
-  
   // 设置断链回调给ChannelManager
   SetupChannelManagerCallbacks();
-  
   return SUCCESS;
 }
 
@@ -317,19 +314,13 @@ void ChannelEvictor::EvictionLoop() {
         ResetAllTransferFlags();
       }
     } else if (item.task_type == EvictTaskType::DISCONNECT_CHANNEL) {
-        auto channel = channel_manager_->GetChannel(item.channel_type, item.channel_id);
-        if (channel == nullptr) {
-            LLMLOGW("Channel %s not found for disconnect", item.channel_id.c_str());
-            has_evicted = false;
-        } else {
-            Status ret = msg_handler_->Disconnect(item.channel_id, item.timeout_ms);
-            has_evicted = (ret == SUCCESS);
-            if (has_evicted) {
-                LLMLOGI("Successfully disconnected channel %s by request", item.channel_id.c_str());
-            } else {
-                LLMLOGW("Fialed to disconnect channel %s by request", item.channel_id.c_str());
-            }
-        }
+      auto channel = channel_manager_->GetChannel(item.channel_type, item.channel_id);
+      if (channel == nullptr) {
+        LLMLOGW("Channel %s not found for disconnect", item.channel_id.c_str());
+      } else {
+        Status ret = msg_handler_->Disconnect(item.channel_id, item.timeout_ms);
+        has_evicted = (ret == SUCCESS);
+      }
     }
   }
 }
@@ -346,7 +337,6 @@ bool ChannelEvictor::ProcessEviction(const EvictItem& item) {
     return false;
   }
   
-  // 根据通道类型执行不同的断链逻辑
   if (item.channel_type == ChannelType::kServer) {
     return ProcessServerEviction(item.channel_id, channel);
   } else {
@@ -361,35 +351,28 @@ bool ChannelEvictor::ProcessServerEviction(const std::string& channel_id, Channe
     LLMLOGW("Channel %s has invalid fd, cannot send request disconnect", channel_id.c_str());
     return false;
   }
-  
   // 生成请求ID
   uint64_t req_id = next_req_id_.fetch_add(1ULL, std::memory_order_acq_rel);
-  
   // 创建pending请求
   auto pending_req = std::make_shared<PendingDisconnectRequest>();
   {
     std::lock_guard<std::mutex> lock(pending_req_mutex_);
     pending_disconnect_requests_[req_id] = pending_req;
   }
-  
   RequestDisconnectMsg req_msg;
   req_msg.channel_id = msg_handler_->GetListenInfo();
   req_msg.timeout = 1000ULL;
   req_msg.req_id = req_id;
-  
   Status ret = channel->SendControlMsg([&req_msg](int32_t fd) {
     return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnect, req_msg, req_msg.timeout);
   });
-  
   if (ret != SUCCESS) {
     LLMLOGW("Failed to send request disconnect for channel: %s, ret=%d", channel_id.c_str(), ret);
     std::lock_guard<std::mutex> lock(pending_req_mutex_);
     pending_disconnect_requests_.erase(req_id);
     return false;
   }
-  
   LLMLOGI("Sent request disconnect to client for channel: %s, req_id=%lu", channel_id.c_str(), req_id);
-
   // 等待响应
   std::unique_lock<std::mutex> lock(pending_req_mutex_);
   bool received = pending_req->cv.wait_for(lock, std::chrono::milliseconds(2000), [&pending_req] {
@@ -400,12 +383,10 @@ bool ChannelEvictor::ProcessServerEviction(const std::string& channel_id, Channe
     pending_disconnect_requests_.erase(req_id);
     return false;
   }
-  
   // 获取响应
   RequestDisconnectResp resp = pending_req->resp;
   pending_disconnect_requests_.erase(req_id);
   lock.unlock();
-  
   // 检查响应
   if (resp.disconnected) {
     LLMLOGI("Successfully disconnected channel %s by server request", channel_id.c_str());
@@ -431,16 +412,13 @@ bool ChannelEvictor::ProcessClientEviction(const std::string& channel_id, int32_
 void ChannelEvictor::ResetAllTransferFlags() {
   auto client_channels = channel_manager_->GetAllClientChannel();
   auto server_channels = channel_manager_->GetAllServerChannel();
-  
   for (auto& channel : client_channels) {
     channel->SetHasTransferred(false);
   }
   for (auto& channel : server_channels) {
     channel->SetHasTransferred(false);
   }
-  
   LLMLOGI("Reset all transfer flags, client=%zu, server=%zu", 
-      client_channels.size(), server_channels.size());
+    client_channels.size(), server_channels.size());
 }
-
 }  // namespace adxl
