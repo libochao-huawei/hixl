@@ -174,22 +174,21 @@ remove_last_license() {
     fi
 }
 
-WHL_SOFTLINK_INSTALL_DIR_PATH="${common_parse_dir}/hixl/python/site-packages"
 WHL_INSTALL_DIR_PATH="${common_parse_dir}/python/site-packages"
 HIXL_NAME="hixl"
 
 custom_uninstall() {
-    if [ -z "$common_parse_dir/hixl" ]; then
+    if [ -z "$common_parse_dir/share/info/hixl" ]; then
         log "ERROR" "ERR_NO:0x0001;ERR_DES:hixl directory is empty"
         exit 1
     fi
 
     if [ "$hetero_arch" != "y" ]; then
-        local arch_name="$(get_arch_name $common_parse_dir/hixl)"
+        local arch_name="$(get_arch_name $common_parse_dir/share/info/hixl)"
         local ref_dir="$common_parse_dir/hixl/lib64/stub/linux/$arch_name"
         remove_stub_softlink "$ref_dir" "$common_parse_dir/hixl/lib64/stub"
     else
-        local arch_name="$(get_arch_name $common_parse_dir/hixl)"
+        local arch_name="$(get_arch_name $common_parse_dir/share/info/hixl)"
         local ref_dir="$common_parse_dir/hixl/lib64/stub/linux/$arch_name"
         remove_stub_softlink "$ref_dir" "$common_parse_dir/hixl/lib64/stub"
     fi
@@ -204,7 +203,6 @@ custom_uninstall() {
         log "INFO" "hixl tool uninstalled successfully!"
     fi
 
-    test -d "$WHL_SOFTLINK_INSTALL_DIR_PATH" && rm -rf "$WHL_SOFTLINK_INSTALL_DIR_PATH" > /dev/null 2>&1
     remove_dir "${common_parse_dir}/hixl/python"
 
     if [ "$hetero_arch" != "y" ]; then
