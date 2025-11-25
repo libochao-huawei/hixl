@@ -180,9 +180,9 @@ get_version_dir "version_dir" "$version_info_file"
 
 get_pkg_install_path_param() {
     if [ -n "$version_dir" ] && [ "$hetero_arch" != "y" ]; then
-        realpath "$install_path_param/../.."
+        realpath "$install_path_param/../../../.."
     else
-        realpath "$install_path_param/.."
+        realpath "$install_path_param/../../.."
     fi
 }
 

@@ -19,7 +19,7 @@ version_compat_func_path="${curpath}/version_compatiable.inc"
 common_func_v2_path="${curpath}/common_func_v2.inc"
 version_cfg_path="${curpath}/version_cfg.inc"
 hixl_func_path="${curpath}/hixl_func.sh"
-pkg_version_path="${curpath}/../../version.info"
+pkg_version_path="${curpath}/../version.info"
 install_info_old="/etc/ascend_install.info"
 run_dir="$(echo "$2" | cut -d'-' -f 3-)"
  
@@ -1236,7 +1236,7 @@ else
 fi
  
 if [ "$pkg_is_multi_version" = "true" ] && [ "$hetero_arch" != "y" ]; then
-    default_dir="${pkg_install_path}/$pkg_version_dir/hixl"
+    default_dir="${pkg_install_path}/$pkg_version_dir/share/info/hixl"
 else
     default_dir="${pkg_install_path}/hixl"
 fi

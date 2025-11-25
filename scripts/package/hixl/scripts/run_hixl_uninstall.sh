@@ -53,8 +53,8 @@ else
 fi
 logfile="${log_dir}/ascend_install.log"
 
-SOURCE_INSTALL_COMMON_PARSER_FILE="${common_parse_dir}/hixl/script/install_common_parser.sh"
-SOURCE_FILELIST_FILE="${common_parse_dir}/hixl/script/filelist.csv"
+SOURCE_INSTALL_COMMON_PARSER_FILE="${common_parse_dir}/share/info/hixl/script/install_common_parser.sh"
+SOURCE_FILELIST_FILE="${common_parse_dir}/share/info/hixl/script/filelist.csv"
 
 get_install_param() {
     local _key="$1"
@@ -74,7 +74,7 @@ get_install_param() {
     echo "${_param}"
 }
 
-install_info="${common_parse_dir}/hixl/ascend_install.info"
+install_info="${common_parse_dir}/share/info/hixl/ascend_install.info"
 if [ -f "$install_info" ]; then
     hetero_arch=$(get_install_param "HIXL_Hetero_Arch_Flag" "${install_info}")
 fi
@@ -101,8 +101,8 @@ log() {
 log "INFO" "step into run_hixl_uninstall.sh ......"
 log "INFO" "uninstall target dir $common_parse_dir, type $common_parse_type."
 
-if [ ! -d "$common_parse_dir/hixl" ]; then
-    log "ERROR" "ERR_NO:0x0001;ERR_DES:path $common_parse_dir/hixl is not exist."
+if [ ! -d "$common_parse_dir/share/info/hixl" ]; then
+    log "ERROR" "ERR_NO:0x0001;ERR_DES:path $common_parse_dir/share/info/hixl is not exist."
     exit 1
 fi
 
@@ -112,7 +112,7 @@ new_uninstall() {
         bash "${common_parse_dir}/hixl/data/script/install.sh" -- -- --uninstall --install-path="${common_parse_dir}"
     fi
 
-    if [ ! -d "${common_parse_dir}/hixl" ]; then
+    if [ ! -d "${common_parse_dir}/share/info/hixl" ]; then
         log "INFO" "no need to uninstall hixl files."
         return 0
     fi
@@ -142,7 +142,7 @@ new_uninstall() {
     # 执行卸载
     custom_options="--custom-options=--common-parse-dir=$common_parse_dir,--logfile=$logfile,--stage=uninstall,--quiet=$is_quiet,--hetero-arch=$hetero_arch"
     sh "$SOURCE_INSTALL_COMMON_PARSER_FILE" --package="hixl" --uninstall --username="$username" --usergroup="$usergroup" ${recreate_softlink_option} \
-        --version=$pkg_version --version-dir=$pkg_version_dir \
+        --version=$pkg_version --version-dir=$pkg_version_dir --use-share-info \
         --docker-root="$docker_root" $custom_options "$common_parse_type" "$input_install_dir" "$SOURCE_FILELIST_FILE"
     if [ $? -ne 0 ]; then
         log "ERROR" "ERR_NO:0x0090;ERR_DES:failed to uninstall package."
