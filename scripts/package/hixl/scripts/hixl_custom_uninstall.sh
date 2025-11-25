@@ -185,12 +185,8 @@ custom_uninstall() {
 
     if [ "$hetero_arch" != "y" ]; then
         local arch_name="$(get_arch_name $common_parse_dir/share/info/hixl)"
-        local ref_dir="$common_parse_dir/hixl/lib64/stub/linux/$arch_name"
-        remove_stub_softlink "$ref_dir" "$common_parse_dir/hixl/lib64/stub"
     else
         local arch_name="$(get_arch_name $common_parse_dir/share/info/hixl)"
-        local ref_dir="$common_parse_dir/hixl/lib64/stub/linux/$arch_name"
-        remove_stub_softlink "$ref_dir" "$common_parse_dir/hixl/lib64/stub"
     fi
 
     if [ "$hetero_arch" != "y" ]; then

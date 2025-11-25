@@ -328,11 +328,9 @@ custom_install() {
     fi
 
     if [ "$hetero_arch" != "y" ]; then
-        local arch_name="$(get_arch_name $common_parse_dir/hixl)"
-        create_stub_softlink "$common_parse_dir/hixl/lib64/stub" "linux/$arch_name"
+        local arch_name="$(get_arch_name $common_parse_dir/share/info/hixl)"
     else
-        local arch_name="$(get_arch_name $common_parse_dir/hixl)"
-        create_stub_softlink "$common_parse_dir/hixl/lib64/stub" "linux/$arch_name"
+        local arch_name="$(get_arch_name $common_parse_dir/share/info/hixl)"
     fi
 
     if [ "$hetero_arch" != "y" ]; then
