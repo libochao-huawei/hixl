@@ -87,8 +87,10 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
     buffer_size = kDefaultBufferSize;
   }
   uint64_t npu_pool_size = 0UL;
-  LLM_ASSERT_TRUE(!ge::MulOverflow(buffer_size, buffer_num, npu_pool_size));
-  LLM_ASSERT_TRUE(!ge::MulOverflow(npu_pool_size, kBaseBufferSize, npu_pool_size));
+  ADXL_CHK_BOOL_RET_STATUS(!ge::MulOverflow(buffer_size, buffer_num, npu_pool_size), FAILED,
+                           "Buffer pool config is invalid.");
+  ADXL_CHK_BOOL_RET_STATUS(!ge::MulOverflow(npu_pool_size, kBaseBufferSize, npu_pool_size), FAILED,
+                           "Buffer pool config is invalid.");
   llm::ScalableConfig config{};
   config.page_idem_num = kDefaultPageShift;
   config.page_mem_size_total_threshold = npu_pool_size;

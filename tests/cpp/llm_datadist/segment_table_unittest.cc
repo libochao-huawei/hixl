@@ -22,8 +22,31 @@ class SegmentTableUTest : public ::testing::Test {
 
 TEST_F(SegmentTableUTest, TestContains) {
   SegmentTable table;
+  table.AddRange("127.0.0.1:10000", 206, 300, MemType::MEM_DEVICE);
+  table.AddRange("127.0.0.1:10000", 200, 205, MemType::MEM_DEVICE);
+  table.AddRange("127.0.0.1:10000", 100, 200, MemType::MEM_DEVICE);
+  auto channel = table.FindSegment("127.0.0.1:10000", 150, 300);
+  ASSERT_NE(channel, nullptr);
+  channel = table.FindSegment("127.0.0.1:10000", 201, 300);
+  ASSERT_NE(channel, nullptr);
+  channel = table.FindSegment("127.0.0.1:10000", 206, 300);
+  ASSERT_NE(channel, nullptr);
+}
+
+TEST_F(SegmentTableUTest, TestNotContains1) {
+  SegmentTable table;
+  table.AddRange("127.0.0.1:10000", 100, 200, MemType::MEM_DEVICE);
+  table.AddRange("127.0.0.1:10000", 205, 300, MemType::MEM_DEVICE);
+  auto channel = table.FindSegment("127.0.0.1:10000", 150, 300);
+  ASSERT_EQ(channel, nullptr);
+}
+
+TEST_F(SegmentTableUTest, TestRemoveContains) {
+  SegmentTable table;
   table.AddRange("127.0.0.1:10000", 100, 200, MemType::MEM_DEVICE);
   table.AddRange("127.0.0.1:10000", 200, 300, MemType::MEM_DEVICE);
+  table.AddRange("127.0.0.1:10000", 100, 200, MemType::MEM_DEVICE);
+  table.RemoveRange("127.0.0.1:10000", 100, 200, MemType::MEM_DEVICE);
   auto channel = table.FindSegment("127.0.0.1:10000", 150, 300);
   ASSERT_NE(channel, nullptr);
 }
