@@ -54,10 +54,17 @@ run_pair() {
 }
 
 main() {
+    # C++ examples
     cd "${BASEPATH}/../build/examples/cpp"
     run_pair "./prompt_pull_cache_and_blocks ${device_id_1} 127.0.0.1" "./decoder_pull_cache_and_blocks ${device_id_2} 127.0.0.1 127.0.0.1"
     run_pair "./prompt_push_cache_and_blocks ${device_id_1} 127.0.0.1 127.0.0.1" "./decoder_push_cache_and_blocks ${device_id_2} 127.0.0.1"
     run_pair "./prompt_switch_roles ${device_id_1} 127.0.0.1 127.0.0.1" "./decoder_switch_roles ${device_id_2} 127.0.0.1 127.0.0.1"
+    run_pair "./client_server_h2d ${device_id_1} 127.0.0.1 127.0.0.1:16000" "./client_server_h2d ${device_id_2} 127.0.0.1:16000"
+
+    # Python examples
+    # cd "${BASEPATH}/python"
+    # run_pair "GLOO_SOCKET_IFNAME=enp67s0f5 python push_blocks_sample.py --device_id ${device_id_1} --role p --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "GLOO_SOCKET_IFNAME=enp67s0f5 python push_blocks_sample.py --device_id ${device_id_2} --role d --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1"
+    
     if [ "$flag" -eq "0" ]; then
         echo "execute samples success"
     fi
