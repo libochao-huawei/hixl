@@ -100,6 +100,7 @@ class ChannelMsgHandler {
   static Status Deserialize(const std::vector<char> &msg_str, T &msg);
   Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
   Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
+  Status DoConnect(const std::string &remote_engine, int32_t timeout_in_millis);
 
   std::string listen_info_;
   ChannelManager *channel_manager_;

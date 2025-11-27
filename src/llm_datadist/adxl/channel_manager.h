@@ -36,12 +36,10 @@ class ChannelManager {
 
   Status AddSocketToEpoll(int32_t fd, ChannelPtr channel);
 
-  // 设置断链回调
   void SetDisconnectCallback(std::function<Status(const std::string&, int32_t)> callback) {
     disconnect_callback_ = callback;
   }
   
-  // 设置断链响应回调
   void SetDisconnectResponseCallback(std::function<void(const RequestDisconnectResp&)> callback) {
     disconnect_response_callback_ = callback;
   }
@@ -62,7 +60,6 @@ class ChannelManager {
   Status HandleControlMessage(const ChannelPtr &channel) const;
   Status RemoveFd(int32_t fd);
 
-  // Handle specific control message types
   Status HandleHeartBeatMessage(const ChannelPtr &channel) const;
   Status HandleBufferReqMessage(const ChannelPtr &channel, const std::string &msg_str) const;
   Status HandleBufferRespMessage(const ChannelPtr &channel, const std::string &msg_str) const;

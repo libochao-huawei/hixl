@@ -10,35 +10,35 @@
 
 #include "channel_evictor.h"
 #include <algorithm>
+#include "nlohmann/json.hpp"
+#include "common/msg_handler_plugin.h"
 #include <common/llm_utils.h>
+#include "common/llm_scope_guard.h"
 #include <adxl/adxl_types.h>
-#include "channel_msg_handler.h"
 #include "adxl_utils.h"
 
 namespace adxl {
+namespace {
+  constexpr int32_t kWaitRespTime = 20;
+} // namespace
 
-ChannelEvictor::ChannelEvictor(ChannelManager* channel_manager, ChannelMsgHandler* msg_handler)
-  : channel_manager_(channel_manager),
-    msg_handler_(msg_handler) {}
+ChannelEvictor::ChannelEvictor(ChannelManager* channel_manager)
+  : channel_manager_(channel_manager) {}
 
 Status ChannelEvictor::Initialize(const std::map<AscendString, AscendString>& options) {
   ADXL_CHECK_NOTNULL(channel_manager_);
-  ADXL_CHECK_NOTNULL(msg_handler_);
-
-  // 解析水位线配置
-  ParseMaxChannel(options);
-  ParseHighWaterline(options);
-  ParseLowWaterline(options);
-  // 验证配置并计算实际值
+  ADXL_CHK_STATUS_RET(ParseMaxChannel(options), "Failed to parse max channel configuration");
+  ADXL_CHK_STATUS_RET(ParseHighWaterline(options), "Failed to parse high waterline configuration");
+  ADXL_CHK_STATUS_RET(ParseLowWaterline(options), "Failed to parse low waterline configuration");
   ADXL_CHK_BOOL_RET_STATUS(low_waterline_ratio_ < high_waterline_ratio_, PARAM_INVALID,
                "low_waterline (%.2f) must be less than high_waterline (%.2f)",
                low_waterline_ratio_, high_waterline_ratio_);
   
-  high_waterline_ = static_cast<int>(max_channel_ * high_waterline_ratio_);
-  low_waterline_ = static_cast<int>(max_channel_ * low_waterline_ratio_);
+  high_waterline_ = static_cast<int32_t>(max_channel_ * high_waterline_ratio_);
+  low_waterline_ = static_cast<int32_t>(max_channel_ * low_waterline_ratio_);
   
-  high_waterline_ = std::max(1, high_waterline_);
-  low_waterline_ = std::max(1, low_waterline_);
+  high_waterline_ = std::max(static_cast<int32_t>(1), high_waterline_);
+  low_waterline_ = std::max(static_cast<int32_t>(1), low_waterline_);
   
   ADXL_CHK_BOOL_RET_STATUS(low_waterline_ <= high_waterline_, PARAM_INVALID,
                "low_waterline (%d) must be less than high_waterline (%d)",
@@ -50,75 +50,68 @@ Status ChannelEvictor::Initialize(const std::map<AscendString, AscendString>& op
   LLMLOGI("Waterline config: max_channel=%d, high_waterline=%.2f (%d), low_waterline=%.2f (%d)",
       max_channel_, high_waterline_ratio_, high_waterline_, 
       low_waterline_ratio_, low_waterline_);
-  // 开始初始化
-  StartEvictionThread();
-  // 设置断链回调给ChannelManager
-  SetupChannelManagerCallbacks();
+  ADXL_CHK_STATUS_RET(StartEvictionThread(), "Failed to start eviction thread");
+  ADXL_CHK_STATUS_RET(SetupChannelManagerCallbacks(), "Failed to setup channel manager callbacks");
   return SUCCESS;
 }
 
-void ChannelEvictor::ParseMaxChannel(const std::map<AscendString, AscendString>& options) {
+Status ChannelEvictor::ParseMaxChannel(const std::map<AscendString, AscendString>& options) {
   auto max_it = options.find(OPTION_MAX_CHANNEL);
   if (max_it != options.end()) {
     std::string max_str = max_it->second.GetString();
     if (llm::LLMUtils::ToNumber(max_str, max_channel_)) {
-      LLMLOGW("Invalid max_channel: %s, use default: %d", max_str.c_str(), kDefaultMaxChannel);
-      max_channel_ = kDefaultMaxChannel;
+      LLMLOGE(PARAM_INVALID, "Invalid max_channel: %s", max_str.c_str());
+      return PARAM_INVALID;
     }
     if (max_channel_ <= 0) {
-      LLMLOGW("Invalid max_channel: %d, use default: %d", max_channel_, kDefaultMaxChannel);
-      max_channel_ = kDefaultMaxChannel;
+      LLMLOGE(PARAM_INVALID, "Invalid max_channel: %d (must be > 0)", max_channel_);
+      return PARAM_INVALID;
     }
   }
+  return SUCCESS;
 }
 
-void ChannelEvictor::ParseHighWaterline(const std::map<AscendString, AscendString>& options) {
+Status ChannelEvictor::ParseHighWaterline(const std::map<AscendString, AscendString>& options) {
   auto high_it = options.find(OPTION_HIGH_WATERLINE);
   if (high_it != options.end()) {
     std::string high_str = high_it->second.GetString();
     double high_value = 0.0;
     if (llm::LLMUtils::ToNumber(high_str, high_value)) {
-      LLMLOGW("Invalid high_waterline: %s, use default: %.2f", 
-          high_str.c_str(), kDefaultHighWaterline);
-      high_waterline_ratio_ = kDefaultHighWaterline;
-    } else {
-      if (high_value > 0.0 && high_value <= 1.0) {
-        high_waterline_ratio_ = high_value;
-      } else {
-        LLMLOGW("Invalid high_waterline: %.2f (must be 0~1), use default: %.2f", 
-            high_value, kDefaultHighWaterline);
-        high_waterline_ratio_ = kDefaultHighWaterline;
-      }
+      LLMLOGE(PARAM_INVALID, "Invalid high_waterline: %s", high_str.c_str());
+      return PARAM_INVALID;
     }
+    if (high_value <= 0.0 || high_value > 1.0) {
+      LLMLOGE(PARAM_INVALID, "Invalid high_waterline: %.2f (must be 0~1)", high_value);
+      return PARAM_INVALID;
+    }
+    high_waterline_ratio_ = high_value;
   } else {
     high_waterline_ratio_ = kDefaultHighWaterline;
   }
+  return SUCCESS;
 }
 
-void ChannelEvictor::ParseLowWaterline(const std::map<AscendString, AscendString>& options) {
+Status ChannelEvictor::ParseLowWaterline(const std::map<AscendString, AscendString>& options) {
   auto low_it = options.find(OPTION_LOW_WATERLINE);
   if (low_it != options.end()) {
     std::string low_str = low_it->second.GetString();
     double low_value = 0.0;
     if (llm::LLMUtils::ToNumber(low_str, low_value)) {
-      LLMLOGW("Invalid low_waterline: %s, use default: %.2f", 
-          low_str.c_str(), kDefaultLowWaterline);
-      low_waterline_ratio_ = kDefaultLowWaterline;
-    } else {
-      if (low_value > 0.0 && low_value <= 1.0) {
-        low_waterline_ratio_ = low_value;
-      } else {
-        LLMLOGW("Invalid low_waterline: %.2f (must be 0~1), use default: %.2f", 
-            low_value, kDefaultLowWaterline);
-        low_waterline_ratio_ = kDefaultLowWaterline;
-      }
+      LLMLOGE(PARAM_INVALID, "Invalid low_waterline: %s", low_str.c_str());
+      return PARAM_INVALID;
     }
+    if (low_value <= 0.0 || low_value > 1.0) {
+      LLMLOGE(PARAM_INVALID, "Invalid low_waterline: %.2f (must be 0~1)", low_value);
+      return PARAM_INVALID;
+    }
+    low_waterline_ratio_ = low_value;
   } else {
     low_waterline_ratio_ = kDefaultLowWaterline;
   }
+  return SUCCESS;
 }
 
-void ChannelEvictor::StartEvictionThread() {
+Status ChannelEvictor::StartEvictionThread() {
   if (high_waterline_ > 0 && low_waterline_ > 0) {
     stop_eviction_ = false;
     eviction_thread_ = std::thread([this]() { 
@@ -127,14 +120,13 @@ void ChannelEvictor::StartEvictionThread() {
     LLMLOGI("Eviction thread started with waterline: max=%d, high=%d, low=%d", 
         max_channel_, high_waterline_, low_waterline_);
   }
+  return SUCCESS;
 }
 
-void ChannelEvictor::SetupChannelManagerCallbacks() {
-  // 设置断链回调
+Status ChannelEvictor::SetupChannelManagerCallbacks() {
   channel_manager_->SetDisconnectCallback([this](const std::string& channel_id, int32_t timeout_ms) {
     EvictItem item;
     item.channel_id = channel_id;
-    
     auto client_channel = channel_manager_->GetChannel(ChannelType::kClient, channel_id);
     if (client_channel != nullptr) {
       item.channel_type = ChannelType::kClient;
@@ -142,33 +134,33 @@ void ChannelEvictor::SetupChannelManagerCallbacks() {
       LLMLOGI("Channel %s not found for disconnect", channel_id.c_str());
       return NOT_CONNECTED;
     }
-
-    item.task_type = EvictTaskType::DISCONNECT_CHANNEL;
     item.timeout_ms = timeout_ms;
-    
     {
-        std::lock_guard<std::mutex> lock(evict_mutex_);
+      std::lock_guard<std::mutex> lock(evict_mutex_);
         evict_queue_.push(item);
-        pending_evictions_++;
     }
-
     evict_cv_.notify_one();
     return SUCCESS;
   });
 
-  // 设置断链响应回调
   channel_manager_->SetDisconnectResponseCallback([this](const RequestDisconnectResp& resp) {
     std::lock_guard<std::mutex> lock(pending_req_mutex_);
     auto it = pending_disconnect_requests_.find(resp.req_id);
     if (it != pending_disconnect_requests_.end()) {
-        it->second->resp = resp;
-        it->second->received = true;
-        it->second->cv.notify_one();
+      it->second->resp = resp;
+      it->second->received = true;
+      it->second->cv.notify_one();
     }
   });
+  return SUCCESS;
 }
 
-void ChannelEvictor::Finalize() {
+Status ChannelEvictor::SetListenInfo(const std::string listen_info) {
+  listen_info_ = listen_info;
+  return SUCCESS;
+}
+
+Status ChannelEvictor::Finalize() {
   if (eviction_thread_.joinable()) {
     {
       std::lock_guard<std::mutex> lock(evict_mutex_);
@@ -177,163 +169,136 @@ void ChannelEvictor::Finalize() {
     evict_cv_.notify_all();
     eviction_thread_.join();
   }
+  return SUCCESS;
 }
 
-int ChannelEvictor::GetTotalChannelCount() const {
+int32_t ChannelEvictor::GetTotalChannelCount() const {
   auto client_channels = channel_manager_->GetAllClientChannel();
   auto server_channels = channel_manager_->GetAllServerChannel();
-  return static_cast<int>(client_channels.size() + server_channels.size());
+  return static_cast<int32_t>(client_channels.size() + server_channels.size());
 }
 
 bool ChannelEvictor::ShouldTriggerEviction() const {
-  return GetTotalChannelCount() >= high_waterline_;
+  bool should_evict = GetTotalChannelCount() >= high_waterline_;
+  if (should_evict) {
+    LLMLOGI("Eviction triggered: current_channel_count=%d >= high_waterline=%d", 
+            GetTotalChannelCount(), high_waterline_);
+  }
+  return should_evict;
 }
 
-bool ChannelEvictor::ShouldStopEviction() const {
-  return GetTotalChannelCount() <= low_waterline_;
-}
+Status ChannelEvictor::NotifyEviction() {
+  if (!ShouldTriggerEviction()) {
+    return SUCCESS;
+  }
 
-void ChannelEvictor::MaybeScheduleEviction() {
-  int current_count = GetTotalChannelCount();
-  
-  int need_expire = current_count - low_waterline_;
+  int32_t current_count = GetTotalChannelCount();
+  int32_t need_expire = current_count - low_waterline_;
   if (need_expire <= 0) {
-    return;
+    LLMLOGI("No need to evict channels: current_channel_count=%d - low_waterline=%d <= 0", 
+            current_count, low_waterline_);
+    return SUCCESS;
   }
-  
-  std::optional<EvictItem> candidate = SelectOneEvictionCandidate();
-  
-  if (!candidate.has_value()) {
-    LLMLOGW("No candidate for eviction, current channels=%d", current_count);
-    return;
+
+  std::vector<EvictItem> candidates = SelectEvictionCandidates(need_expire);
+  LLMLOGI("Select %zu eviction candidates from %d total channels", 
+          candidates.size(), current_count);
+  std::lock_guard<std::mutex> lock(evict_mutex_);
+  for (const auto& item : candidates) {
+    evict_queue_.push(item);
   }
-  
-  {
-    std::lock_guard<std::mutex> lock(evict_mutex_);
-    evict_queue_.push(candidate.value());
-    auto channel = channel_manager_->GetChannel(candidate->channel_type, candidate->channel_id);
-    if (channel != nullptr) {
-        channel->SetDisconnecting(true);
-    }
-    pending_evictions_++;
-    LLMLOGI("Scheduled 1 eviction, pending=%d", pending_evictions_);
-  }
-  
   evict_cv_.notify_one();
+  return SUCCESS;
 }
 
-std::optional<EvictItem> ChannelEvictor::SelectOneEvictionCandidate() {
+std::vector<EvictItem> ChannelEvictor::SelectEvictionCandidates(int32_t need_expire) {
   auto client_channels = channel_manager_->GetAllClientChannel();
   auto server_channels = channel_manager_->GetAllServerChannel();
   
-  std::vector<ChannelPtr>* target_channels = nullptr;
-  ChannelType target_type;
-  if (client_channels.size() >= server_channels.size()) {
-    target_channels = &client_channels;
-    target_type = ChannelType::kClient;
-  } else {
-    target_channels = &server_channels;
-    target_type = ChannelType::kServer;
-  }
+  LLMLOGI("SelectEvictionCandidates: need_expire=%d, client_channels=%zu, server_channels=%zu", 
+          need_expire, client_channels.size(), server_channels.size());
   
-  struct ChannelState {
-    ChannelPtr channel;
-    std::string channel_id;
-    int transfer_count;
-    bool has_transferred;
-    bool disconnect_flag;
-  };
-  
-  std::vector<ChannelState> states;
-  states.reserve(target_channels->size());
-  
-  for (const auto& channel : *target_channels) {
-    ChannelState state;
-    state.channel = channel;
-    state.channel_id = channel->GetChannelId();
-    state.transfer_count = channel->GetTransferCount();
-    state.has_transferred = channel->GetHasTransferred();
-    state.disconnect_flag = channel->IsDisconnecting();
-    states.push_back(state);
-  }
-  
-  // 排序：1. has_transferred==false优先，2. 按建链顺序（已按顺序）
-  std::sort(states.begin(), states.end(), 
-        [](const ChannelState& a, const ChannelState& b) {
-          if (a.has_transferred != b.has_transferred) {
-            return !a.has_transferred;  // false排在前面
-          }
-          return false;
-        });
-  
-  for (const auto& state : states) {
-    if (state.transfer_count > 0 || state.disconnect_flag) {
-      continue;
+  std::sort(client_channels.begin(), client_channels.end(), 
+      [](const ChannelPtr& a, const ChannelPtr& b) {
+        if (a->GetHasTransferred() != b->GetHasTransferred()) {
+          return !a->GetHasTransferred(); 
+        }
+        return false;
+      });
+  std::vector<EvictItem> target_items;
+  target_items.reserve(need_expire);
+  auto client_it = client_channels.begin();
+  auto server_it = server_channels.begin();
+  auto client_end = client_channels.end();
+  auto server_end = server_channels.end();
+  int32_t diff = std::abs(static_cast<int32_t>(client_channels.size() - server_channels.size()));
+  int32_t pick_extra = std::min(diff, need_expire);
+  bool pick_client_first = (client_channels.size() > server_channels.size());
+
+  for(int32_t i = 0; i < pick_extra && need_expire > 0; i++) {
+    if (pick_client_first && client_it != client_end) {
+      target_items.push_back(EvictItem{(*client_it)->GetChannelId(), ChannelType::kClient});
+      (*client_it)->SetDisconnecting(true);
+      ++client_it;
+    } else if (server_it != server_end) {
+      target_items.push_back(EvictItem{(*server_it)->GetChannelId(), ChannelType::kServer});
+      (*server_it)->SetDisconnecting(true);
+      ++server_it;
     }
-    
-    EvictItem item;
-    item.channel_id = state.channel_id;
-    item.channel_type = target_type;
-    return item;
+    need_expire--;
+  }
+  bool pick_client = true;
+  while(need_expire > 0 && (client_it != client_end || server_it != server_end)) {
+    if (pick_client && client_it != client_end) {
+      target_items.push_back(EvictItem{(*client_it)->GetChannelId(), ChannelType::kClient});
+      (*client_it)->SetDisconnecting(true);
+      ++client_it;
+    } else if (!pick_client && server_it != server_end) {
+      target_items.push_back(EvictItem{(*server_it)->GetChannelId(), ChannelType::kServer});
+      (*server_it)->SetDisconnecting(true);
+      ++server_it;
+    }
+    need_expire--;
+    pick_client = !pick_client;
   }
   
-  return std::nullopt;  // 没有可用候选
+  return target_items;
 }
 
 void ChannelEvictor::EvictionLoop() {
   while (true) {
     std::unique_lock<std::mutex> lock(evict_mutex_);
-    
     evict_cv_.wait(lock, [this] { 
-      return !evict_queue_.empty() || stop_eviction_; 
+      return stop_eviction_ || !evict_queue_.empty(); 
     });
-    
     if (stop_eviction_) {
       break;
     }
     
-    if (evict_queue_.empty()) {
-      continue;
-    }
-    
-    EvictItem item = evict_queue_.front();
-    evict_queue_.pop();
-    pending_evictions_--;
-    
-    lock.unlock();
-
-    // 根据任务类型执行不同操作
-    if (item.task_type == EvictTaskType::EVICT_CHANNEL) {
+    while (!evict_queue_.empty()) {
+      EvictItem item = evict_queue_.front();
+      evict_queue_.pop();
+      lock.unlock();
       ProcessEviction(item);
-      // 重新检查水位线，如果还需要淘汰，继续选择候选
-      if (!ShouldStopEviction()) {
-        MaybeScheduleEviction();  // 重新选择候选并入队
-      } else {
-        ResetAllTransferFlags();
-      }
-    } else if (item.task_type == EvictTaskType::DISCONNECT_CHANNEL) {
-      auto channel = channel_manager_->GetChannel(item.channel_type, item.channel_id);
-      if (channel == nullptr) {
-        LLMLOGW("Channel %s not found for disconnect", item.channel_id.c_str());
-      } else {
-        msg_handler_->Disconnect(item.channel_id, item.timeout_ms);
-      }
+      lock.lock();
     }
+    ResetAllTransferFlags();
   }
 }
 
-bool ChannelEvictor::ProcessEviction(const EvictItem& item) {
-  ADXL_CHECK_NOTNULL(msg_handler_);
-  
+Status ChannelEvictor::ProcessEviction(const EvictItem& item) {
   auto channel = channel_manager_->GetChannel(item.channel_type, item.channel_id);
   if (channel == nullptr) {
-    return false;
+    LLMLOGI("Skip eviction: channel %s (type:%d) not found", 
+            item.channel_id.c_str(), static_cast<int>(item.channel_type));
+    return SUCCESS;
   }
   
   if (channel->GetTransferCount() > 0) {
-    return false;
+    LLMLOGI("Skip eviction: channel %s has unfinished transfers (count:%d)", 
+            item.channel_id.c_str(), channel->GetTransferCount());
+    return SUCCESS;
   }
-  
   if (item.channel_type == ChannelType::kServer) {
     return ProcessServerEviction(item.channel_id, channel);
   } else {
@@ -341,23 +306,20 @@ bool ChannelEvictor::ProcessEviction(const EvictItem& item) {
   }
 }
 
-bool ChannelEvictor::ProcessServerEviction(const std::string& channel_id, ChannelPtr channel) {
-  // Server端：发送kRequestDisconnect消息给Client，等待Client响应
+Status ChannelEvictor::ProcessServerEviction(const std::string& channel_id, ChannelPtr channel) {
   int32_t fd = channel->GetFd();
   if (fd < 0) {
     LLMLOGW("Channel %s has invalid fd, cannot send request disconnect", channel_id.c_str());
-    return false;
+    return SUCCESS;
   }
-  // 生成请求ID
   uint64_t req_id = next_req_id_.fetch_add(1ULL, std::memory_order_acq_rel);
-  // 创建pending请求
   auto pending_req = std::make_shared<PendingDisconnectRequest>();
   {
     std::lock_guard<std::mutex> lock(pending_req_mutex_);
     pending_disconnect_requests_[req_id] = pending_req;
   }
   RequestDisconnectMsg req_msg;
-  req_msg.channel_id = msg_handler_->GetListenInfo();
+  req_msg.channel_id = listen_info_;
   req_msg.timeout = 1000ULL;
   req_msg.req_id = req_id;
   Status ret = channel->SendControlMsg([&req_msg](int32_t fd) {
@@ -367,46 +329,37 @@ bool ChannelEvictor::ProcessServerEviction(const std::string& channel_id, Channe
     LLMLOGW("Failed to send request disconnect for channel: %s, ret=%d", channel_id.c_str(), ret);
     std::lock_guard<std::mutex> lock(pending_req_mutex_);
     pending_disconnect_requests_.erase(req_id);
-    return false;
+    return ret;
   }
   LLMLOGI("Sent request disconnect to client for channel: %s, req_id=%lu", channel_id.c_str(), req_id);
-  // 等待响应
   std::unique_lock<std::mutex> lock(pending_req_mutex_);
-  bool received = pending_req->cv.wait_for(lock, std::chrono::milliseconds(2000), [&pending_req] {
+  bool received = pending_req->cv.wait_for(lock, std::chrono::milliseconds(kWaitRespTime), [&pending_req] {
     return pending_req->received;
   });
   if (!received) {
-    LLMLOGW("Timeout waiting for disconnect response, channel: %s, req_id=%lu", channel_id.c_str(), req_id);
     pending_disconnect_requests_.erase(req_id);
-    return false;
-  }
-  // 获取响应
-  RequestDisconnectResp resp = pending_req->resp;
-  pending_disconnect_requests_.erase(req_id);
-  lock.unlock();
-  // 检查响应
-  if (resp.disconnected) {
-    LLMLOGI("Successfully disconnected channel %s by server request", channel_id.c_str());
-    return true;
+    return SUCCESS;
   } else {
-    LLMLOGW("Client refused or failed to disconnect channel %s, error_code=%u, error_message=%s", 
-        channel_id.c_str(), resp.error_code, resp.error_message.c_str());
-    return false;
+    RequestDisconnectResp resp = pending_req->resp;
+    pending_disconnect_requests_.erase(req_id);
+    lock.unlock();
+    LLMLOGI("Client refused or failed to disconnect channel %s, error_code=%u, error_message=%s", 
+      channel_id.c_str(), resp.error_code, resp.error_message.c_str());
+    return SUCCESS;
   }
 }
 
-bool ChannelEvictor::ProcessClientEviction(const std::string& channel_id, int32_t timeout_ms) {
-  Status ret = msg_handler_->Disconnect(channel_id, timeout_ms);
+Status ChannelEvictor::ProcessClientEviction(const std::string& channel_id, int32_t timeout_ms) {
+  Status ret = Disconnect(channel_id, timeout_ms);
   if (ret == SUCCESS) {
     LLMLOGI("Evicted client channel: %s", channel_id.c_str());
-    return true;
   } else {
-    LLMLOGW("Failed to evict client channel: %s, ret=%d", channel_id.c_str(), ret);
-    return false;
+    LLMLOGI("Failed to evict client channel: %s, ret=%d", channel_id.c_str(), ret);
   }
+  return ret;
 }
 
-void ChannelEvictor::ResetAllTransferFlags() {
+Status ChannelEvictor::ResetAllTransferFlags() {
   auto client_channels = channel_manager_->GetAllClientChannel();
   auto server_channels = channel_manager_->GetAllServerChannel();
   for (auto& channel : client_channels) {
@@ -417,5 +370,130 @@ void ChannelEvictor::ResetAllTransferFlags() {
   }
   LLMLOGI("Reset all transfer flags, client=%zu, server=%zu", 
     client_channels.size(), server_channels.size());
+  return SUCCESS;
+}
+
+Status ChannelEvictor::Disconnect(const std::string &remote_engine, int32_t timeout_in_millis) {
+  std::string remote_ip;
+  int32_t remote_port = -1;
+  ADXL_CHK_STATUS_RET(ParseListenInfo(remote_engine, remote_ip, remote_port), "Failed to parse listen info");
+  LLMEVENT("Start to disconnect, local engine:%s, remote engine:%s, timeout:%d ms.",
+          listen_info_.c_str(), remote_engine.c_str(), timeout_in_millis);
+
+  int32_t conn_fd = -1;
+  LLM_MAKE_GUARD(close_fd, ([&conn_fd]() {
+    if (conn_fd != -1) {
+      llm::MsgHandlerPlugin::Disconnect(conn_fd);
+    }
+  }));
+
+  auto channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine);
+  ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
+                           "Failed to get channel, channel_id:%s", remote_engine.c_str());
+  std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
+  channel->StopHeartbeat();
+  // if connect failed, then release client and server auto release channel
+  ADXL_CHK_LLM_RET(llm::MsgHandlerPlugin::Connect(remote_ip, static_cast<uint32_t>(remote_port),
+                                                  conn_fd, timeout_in_millis, SUCCESS),
+                   "Failed to connect remote addr %s:%d, timeout=%d ms.",
+                   remote_ip.c_str(), remote_port, timeout_in_millis);
+  Status send_status = FAILED;
+  if (conn_fd > 0) {
+    EvictChannelDisconnectInfo disconnect_info = {};
+    disconnect_info.channel_id = listen_info_;
+    send_status = SendMsg(conn_fd, EvictChannelMsgType::kDisconnect, disconnect_info);
+  }
+
+  EvictChannelDisconnectInfo local_disconnect_info = {};
+  local_disconnect_info.channel_id = remote_engine;
+  auto ret = DisconnectInfoProcess(ChannelType::kClient, local_disconnect_info);
+  if (send_status == SUCCESS) {
+    EvictChannelStatus status{};
+    ADXL_CHK_STATUS_RET(RecvMsg(conn_fd, EvictChannelMsgType::kStatus, status),
+                        "Failed to recv status msg");
+    ADXL_CHK_STATUS_RET(status.error_code, "Failed to check peer process ret status, error code[%u], err msg[%s]",
+                        status.error_code, status.error_message.c_str());
+  }
+  ADXL_CHK_STATUS_RET(ret, "Failed to disconnect, local engine:%s, remote engine:%s, timeout:%d ms.",
+                      listen_info_.c_str(), remote_engine.c_str(), timeout_in_millis);
+  LLMEVENT("Success to disconnect, local engine:%s, remote engine:%s, timeout:%d ms.",
+          listen_info_.c_str(), remote_engine.c_str(), timeout_in_millis);
+  return SUCCESS;
+}
+
+Status ChannelEvictor::DisconnectInfoProcess(ChannelType channel_type,
+                                                const EvictChannelDisconnectInfo &peer_disconnect_info) {
+  LLMLOGI("Destroy channel in disconnect process.");
+  return channel_manager_->DestroyChannel(channel_type, peer_disconnect_info.channel_id);
+}
+
+Status ChannelEvictor::ParseListenInfo(const std::string &listen_info,
+                                          std::string &listen_ip, int32_t &listen_port) {
+  const auto listen_infos = llm::LLMUtils::Split(listen_info, ':');
+  ADXL_CHK_BOOL_RET_STATUS(listen_infos.size() >= 1U, PARAM_INVALID,
+                           "listen info is invalid: %s, expect ${ip}:${port} or ${ip}", listen_info.c_str());
+  listen_ip = listen_infos[0];
+  ADXL_CHK_LLM_RET(llm::LLMUtils::CheckIp(listen_ip), "IP is invalid: %s, listen info = %s",
+                   listen_ip.c_str(), listen_info.c_str());
+  if (listen_infos.size() > 1U) {
+    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(listen_infos[1], listen_port), "Port:%s is invalid.",
+                     listen_infos[1].c_str());
+  }
+  return SUCCESS;
+}
+template<typename T>
+Status ChannelEvictor::Serialize(const T &msg, std::string &msg_str) {
+   try {
+    nlohmann::json j = msg;
+    msg_str = j.dump();
+  } catch (const nlohmann::json::exception &e) {
+    LLMLOGE(PARAM_INVALID, "Failed to dump msg to str, exception:%s", e.what());
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
+
+template<typename T>
+Status ChannelEvictor::SendMsg(int32_t fd, EvictChannelMsgType msg_type, const T &msg) {
+  std::string msg_str;
+  ADXL_CHK_STATUS_RET(ChannelEvictor::Serialize(msg, msg_str), "Failed to serialize msg");
+  ADXL_CHK_LLM_RET(llm::MsgHandlerPlugin::SendMsg(fd, static_cast<int32_t>(msg_type), msg_str),
+                   "Failed to send msg");
+  return SUCCESS;
+}
+
+template<typename T>
+Status ChannelEvictor::Deserialize(const std::vector<char> &msg_str, T &msg) {
+   try {
+    auto j = nlohmann::json::parse(&msg_str[0]);
+    msg = j.get<T>();
+  } catch (const nlohmann::json::exception &e) {
+    LLMLOGE(PARAM_INVALID, "Failed to load msg, exception:%s", e.what());
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
+
+template<typename T>
+Status ChannelEvictor::RecvMsg(int32_t fd, EvictChannelMsgType msg_type, T &msg) {
+  std::vector<char> msg_str;
+  int32_t type = 0;
+  ADXL_CHK_LLM_RET(llm::MsgHandlerPlugin::RecvMsg(fd, type, msg_str),
+                   "Failed to recv msg");
+  ADXL_CHK_BOOL_RET_STATUS(msg_type == static_cast<EvictChannelMsgType>(type),
+                           FAILED, "Failed to check recv msg type:%d, expect type:%d",
+                           type, static_cast<int32_t>(msg_type));
+  ADXL_CHK_STATUS_RET(ChannelEvictor::Deserialize(msg_str, msg), "Failed to deserialize msg");
+  return SUCCESS;
+}
+
+static void from_json(const nlohmann::json &j, EvictChannelStatus &c) {
+  j.at("error_code").get_to(c.error_code);
+  j.at("error_message").get_to(c.error_message);
+}
+
+static void to_json(nlohmann::json &j, const EvictChannelDisconnectInfo &c) {
+  j = nlohmann::json{};
+  j["channel_id"] = c.channel_id;
 }
 }  // namespace adxl

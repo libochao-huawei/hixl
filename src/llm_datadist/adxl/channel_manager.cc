@@ -212,8 +212,6 @@ Status ChannelManager::HandleBufferRespMessage(const ChannelPtr &channel, const 
   ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), buffer_resp), "Failed to deserialize msg");
   LLMLOGI("Recv buffer resp for channel:%s", channel->GetChannelId().c_str());
   if (buffer_transfer_service_ != nullptr) {
-    channel->IncrementTransferCount();
-    channel->SetHasTransferred(true);
     buffer_transfer_service_->PushBufferResp(channel, buffer_resp);
   }
   LLMLOGI("Recv buffer resp for channel:%s", channel->GetChannelId().c_str());
@@ -221,31 +219,11 @@ Status ChannelManager::HandleBufferRespMessage(const ChannelPtr &channel, const 
 }
 
 Status ChannelManager::HandleRequestDisconnectMessage(const ChannelPtr &channel, const std::string &msg_str) const {
-  // Client端处理Server的断链请求
   RequestDisconnectMsg req_msg{};
   ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), req_msg), "Failed to deserialize RequestDisconnectMsg");
   LLMLOGI("Recv request disconnect for channel:%s, target:%s, req_id=%lu", 
           channel->GetChannelId().c_str(), req_msg.channel_id.c_str(), req_msg.req_id);
-  
-  // 验证channel_id是否匹配
-  if (channel->GetChannelId() != req_msg.channel_id) {
-    LLMLOGW("Channel id mismatch: local=%s, request=%s", channel->GetChannelId().c_str(), req_msg.channel_id.c_str());
-    // 发送错误响应
-    RequestDisconnectResp resp;
-    resp.channel_id = req_msg.channel_id;
-    resp.req_id = req_msg.req_id;
-    resp.can_disconnect = false;
-    resp.disconnected = false;
-    resp.error_code = static_cast<uint32_t>(PARAM_INVALID);
-    resp.error_message = "Channel id mismatch";
-    (void)channel->SendControlMsg([&resp](int32_t fd) {
-      return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnectResp, resp, kSendMsgTimeout);
-    });
-    return PARAM_INVALID;
-  }
-  
-  // 检查是否可以断链
-  bool can_disconnect = (channel->GetTransferCount() == 0 && !channel->IsDisconnecting());
+  bool can_disconnect = (channel->GetTransferCount() == 0);
   RequestDisconnectResp resp;
   resp.channel_id = req_msg.channel_id;
   resp.req_id = req_msg.req_id;
@@ -253,35 +231,25 @@ Status ChannelManager::HandleRequestDisconnectMessage(const ChannelPtr &channel,
   resp.disconnected = false;
   resp.error_code = 0U;
   resp.error_message = "";
-  
-  // 如果可以断链，执行断链
   if (can_disconnect && disconnect_callback_) {
     int32_t timeout_ms = static_cast<int32_t>(req_msg.timeout);
-    resp.disconnected = true;
-    Status send_ret = channel->SendControlMsg([&resp](int32_t fd) {
-      return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnectResp, resp, kSendMsgTimeout);
-    });
-    if(send_ret == SUCCESS) {
-      LLMLOGI("Successfully send disconnect response.");
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(kSendMsgTimeout / 1000ULL));
     Status ret = disconnect_callback_(req_msg.channel_id, timeout_ms);
     if (ret == SUCCESS) {
       LLMLOGI("Successfully disconnected channel %s by request", req_msg.channel_id.c_str());
     } else {
       resp.error_code = static_cast<uint32_t>(ret);
       resp.error_message = "Disconnect failed";
-      LLMLOGW("Failed to disconnect channel %s by request, ret=%d", req_msg.channel_id.c_str(), ret);
+      LLMLOGI("Failed to disconnect channel %s by request, ret=%d", req_msg.channel_id.c_str(), ret);
     }
   } else if (!can_disconnect) {
     resp.error_code = static_cast<uint32_t>(FAILED);
     resp.error_message = "Channel is busy";
-    LLMLOGW("Channel %s is busy, cannot disconnect. transfer_count=%d, disconnecting=%d", 
+    LLMLOGI("Channel %s is busy, cannot disconnect. transfer_count=%d, disconnecting=%d", 
             req_msg.channel_id.c_str(), channel->GetTransferCount(), channel->IsDisconnecting());
   } else {
     resp.error_code = static_cast<uint32_t>(FAILED);
     resp.error_message = "Disconnect callback not set";
-    LLMLOGW("Disconnect callback not set, cannot disconnect channel %s", req_msg.channel_id.c_str());
+    LLMLOGI("Disconnect callback not set, cannot disconnect channel %s", req_msg.channel_id.c_str());
   }
   
   Status send_ret = channel->SendControlMsg([&resp](int32_t fd) {
@@ -290,7 +258,7 @@ Status ChannelManager::HandleRequestDisconnectMessage(const ChannelPtr &channel,
   if (send_ret != SUCCESS) {
     LLMLOGW("Failed to send disconnect response for channel %s", req_msg.channel_id.c_str());
   }
-  return (resp.disconnected ? SUCCESS : FAILED);
+  return SUCCESS;
 }
 
 Status ChannelManager::HandleRequestDisconnectRespMessage(const ChannelPtr &channel, const std::string &msg_str) const {

@@ -580,8 +580,6 @@ Status BufferTransferService::HandleBufferResp(const ChannelPtr &channel, Buffer
     ReleaseBuffer(ptr);
     req_id_buffers_[buffer_resp.req_id].erase(ptr);
   }
-  // 处理完中转传输任务后，transfer count --
-  channel->DecrementTransferCount();
   LLMLOGI("Recv resp, req id:%lu.", buffer_resp.req_id);
   return SUCCESS;
 }

@@ -20,21 +20,30 @@
 #include <optional>
 #include <chrono>
 #include "adxl_utils.h"
+#include "common/msg_handler_plugin.h"
 #include "channel_manager.h"
 
 namespace adxl {
 
-class ChannelMsgHandler;
+enum class EvictChannelMsgType : int32_t {
+  kConnect = 1,
+  kDisconnect = 2,
+  kStatus = 3,
+  kEnd
+};
 
-enum class EvictTaskType : uint8_t{
-    EVICT_CHANNEL,
-    DISCONNECT_CHANNEL
+struct EvictChannelStatus {
+  uint32_t error_code;
+  std::string error_message;
+};
+
+struct EvictChannelDisconnectInfo {
+  std::string channel_id;
 };
 
 struct EvictItem {
     std::string channel_id;
     ChannelType channel_type;
-    EvictTaskType task_type{EvictTaskType::EVICT_CHANNEL};
     int32_t timeout_ms{1000};
 };
 
@@ -44,54 +53,67 @@ struct PendingDisconnectRequest {
     RequestDisconnectResp resp;
 };
 
+struct ChannelState {
+    ChannelPtr channel;
+    std::string channel_id;
+    int transfer_count;
+    bool has_transferred;
+    bool disconnect_flag;
+};
+
 class ChannelEvictor {
 public:
-    explicit ChannelEvictor(ChannelManager* channel_manager, ChannelMsgHandler* msg_handler);
+    explicit ChannelEvictor(ChannelManager* channel_manager);
     ~ChannelEvictor() = default;
 
     Status Initialize(const std::map<AscendString, AscendString>& options);
-    void Finalize();
+    Status Finalize();
 
-    int GetTotalChannelCount() const;
+    int32_t GetTotalChannelCount() const;
     bool ShouldTriggerEviction() const;
-    bool ShouldStopEviction() const;
-    void MaybeScheduleEviction();  // 每次只选择一个候选入队
-    bool ProcessEviction(const EvictItem& item);  // 返回是否成功淘汰
-    void ResetAllTransferFlags();
+    Status NotifyEviction();
+    Status ProcessEviction(const EvictItem& item);
+    Status ResetAllTransferFlags();
+    Status Disconnect(const std::string &remote_engine, int32_t timeout_in_millis);
 
 private:
     void EvictionLoop();
-    std::optional<EvictItem> SelectOneEvictionCandidate();  // 每次只选择一个候选
+    std::vector<EvictItem> SelectEvictionCandidates(int32_t need_expire);
+    Status ParseMaxChannel(const std::map<AscendString, AscendString>& options);
+    Status ParseHighWaterline(const std::map<AscendString, AscendString>& options);
+    Status ParseLowWaterline(const std::map<AscendString, AscendString>& options);
+    Status StartEvictionThread();
+    Status SetupChannelManagerCallbacks();
+    Status SetListenInfo(const std::string listen_info);
     
-    // Helper methods for Initialize
-    void ParseMaxChannel(const std::map<AscendString, AscendString>& options);
-    void ParseHighWaterline(const std::map<AscendString, AscendString>& options);
-    void ParseLowWaterline(const std::map<AscendString, AscendString>& options);
-    void StartEvictionThread();
-    void SetupChannelManagerCallbacks();
-    
-    // Helper methods for ProcessEviction
-    bool ProcessServerEviction(const std::string& channel_id, ChannelPtr channel);
-    bool ProcessClientEviction(const std::string& channel_id, int32_t timeout_ms);
+    Status ProcessServerEviction(const std::string& channel_id, ChannelPtr channel);
+    Status ProcessClientEviction(const std::string& channel_id, int32_t timeout_ms);
+
+    Status DisconnectInfoProcess(ChannelType channel_type, const EvictChannelDisconnectInfo &peer_disconnect_info);
+    template<typename T>
+    static Status SendMsg(int32_t fd, EvictChannelMsgType msg_type, const T &msg);
+    template<typename T>
+    static Status RecvMsg(int32_t fd, EvictChannelMsgType msg_type, T &msg);
+    template<typename T>
+    static Status Serialize(const T &msg, std::string &msg_str);
+    template<typename T>
+    static Status Deserialize(const std::vector<char> &msg_str, T &msg);
+    static Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);
 
     ChannelManager* channel_manager_;
-    ChannelMsgHandler* msg_handler_;
-
-    int max_channel_{kDefaultMaxChannel};
+    int32_t max_channel_{kDefaultMaxChannel};
     double high_waterline_ratio_{kDefaultHighWaterline};
     double low_waterline_ratio_{kDefaultLowWaterline};
-    int high_waterline_{0};
-    int low_waterline_{0};
+    int32_t high_waterline_{0};
+    int32_t low_waterline_{0};
+    std::string listen_info_;
 
-    // 淘汰队列和线程
     std::mutex evict_mutex_;
     std::condition_variable evict_cv_;
     std::queue<EvictItem> evict_queue_;
-    int pending_evictions_{0};
+    std::atomic<bool> start_eviction_{false};
     std::atomic<bool> stop_eviction_{false};
     std::thread eviction_thread_;
-
-    // Server等待Client断链响应
     std::mutex pending_req_mutex_;
     std::map<uint64_t, std::shared_ptr<PendingDisconnectRequest>> pending_disconnect_requests_;
     std::atomic<uint64_t> next_req_id_{1};

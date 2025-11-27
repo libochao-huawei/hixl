@@ -87,7 +87,7 @@ class Channel {
   std::mutex &GetTransferMutex();
 
   // 状态访问接口（用于淘汰机制）
-  int GetTransferCount() const { 
+  int32_t GetTransferCount() const { 
     return transfer_count_.load(std::memory_order_acquire); 
   }
   bool IsDisconnecting() const { 
@@ -120,7 +120,7 @@ class Channel {
   std::mutex transfer_mutex_;
   
   // 状态字段（用于淘汰机制）
-  std::atomic<int> transfer_count_{0};
+  std::atomic<int32_t> transfer_count_{0};
   std::atomic<bool> disconnect_flag_{false};
   std::atomic<bool> has_transfered_{false};
 
