@@ -22,6 +22,7 @@ constexpr Status LLM_FEATURE_NOT_ENABLED = 0x5010B019U;
 constexpr Status LLM_TIMEOUT = 0x5010B01AU;
 constexpr Status LLM_LINK_BUSY = 0x5010B01BU;
 constexpr Status LLM_OUT_OF_MEMORY = 0x5010B01CU;
+constexpr Status RESOURCE_EXHAUSTED = 203900U;
 }  // namespace llm_datadist
 ```
 
@@ -199,6 +200,13 @@ constexpr Status LLM_OUT_OF_MEMORY = 0x5010B01CU;
 <td class="cellrowborder" valign="top" width="14.151415141514152%" headers="mcps1.1.5.1.3 "><p id="p7364346165817"><a name="p7364346165817"></a><a name="p7364346165817"></a>是</p>
 </td>
 <td class="cellrowborder" valign="top" width="33.16331633163316%" headers="mcps1.1.5.1.4 "><p id="p1936411464582"><a name="p1936411464582"></a><a name="p1936411464582"></a>检查内存池或系统内存是否充足。</p>
+<tr id="row277474265812"><td class="cellrowborder" valign="top" width="34.26342634263426%" headers="mcps1.1.5.1.1 "><p id="p93645462582"><a name="p93645462582"></a><a name="p93645462582"></a>RESOURCE_EXHAUSTED</p>
+</td>
+<td class="cellrowborder" valign="top" width="18.421842184218423%" headers="mcps1.1.5.1.2 "><p id="p103642046155817"><a name="p103642046155817"></a><a name="p103642046155817"></a>资源耗尽，当前仅包括stream资源</p>
+</td>
+<td class="cellrowborder" valign="top" width="14.151415141514152%" headers="mcps1.1.5.1.3 "><p id="p7364346165817"><a name="p7364346165817"></a><a name="p7364346165817"></a>是</p>
+</td>
+<td class="cellrowborder" valign="top" width="33.16331633163316%" headers="mcps1.1.5.1.4 "><p id="p1936411464582"><a name="p1936411464582"></a><a name="p1936411464582"></a>等待资源耗尽后再进行尝试。</p>
 </td>
 </tr>
 </tbody>
