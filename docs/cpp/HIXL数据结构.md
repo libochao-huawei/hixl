@@ -45,3 +45,21 @@ struct TransferOpDesc {
   size_t len;
 }
 ```
+
+## TransferArgs
+
+传输操作的可选参数，暂未启用。
+
+```
+struct TransferArgs{
+  uint8_t reserved[128] = {};
+}
+```
+
+## TransferReq
+
+请求传输的Handle。
+
+```
+using TransferReq = void *;
+```
