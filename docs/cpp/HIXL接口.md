@@ -23,21 +23,6 @@
 <td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p578615025316"><a name="p578615025316"></a><a name="p578615025316"></a>x</p>
 </td>
 </tr>
-<tr id="row103361763242"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p1983180181813"><a name="p1983180181813"></a><a name="p1983180181813"></a><span id="ph783112021813"><a name="ph783112021813"></a><a name="ph783112021813"></a><term id="zh-cn_topic_0000001312391781_term354143892110"><a name="zh-cn_topic_0000001312391781_term354143892110"></a><a name="zh-cn_topic_0000001312391781_term354143892110"></a>Atlas 200I/500 A2 推理产品</term></span></p>
-</td>
-<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p1695483941817"><a name="p1695483941817"></a><a name="p1695483941817"></a>x</p>
-</td>
-</tr>
-<tr id="row18403312418"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p78319051815"><a name="p78319051815"></a><a name="p78319051815"></a><span id="ph1383116081815"><a name="ph1383116081815"></a><a name="ph1383116081815"></a><term id="zh-cn_topic_0000001312391781_term4363218112215"><a name="zh-cn_topic_0000001312391781_term4363218112215"></a><a name="zh-cn_topic_0000001312391781_term4363218112215"></a>Atlas 推理系列产品</term></span></p>
-</td>
-<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p1695443971810"><a name="p1695443971810"></a><a name="p1695443971810"></a>x</p>
-</td>
-</tr>
-<tr id="row17253142120252"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p38313021813"><a name="p38313021813"></a><a name="p38313021813"></a><span id="ph58317041819"><a name="ph58317041819"></a><a name="ph58317041819"></a><term id="zh-cn_topic_0000001312391781_term71949488213"><a name="zh-cn_topic_0000001312391781_term71949488213"></a><a name="zh-cn_topic_0000001312391781_term71949488213"></a>Atlas 训练系列产品</term></span></p>
-</td>
-<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p395243920186"><a name="p395243920186"></a><a name="p395243920186"></a>x</p>
-</td>
-</tr>
 </tbody>
 </table>
 
@@ -546,5 +531,155 @@ Status TransferSync(const AscendString &remote_engine,
 -   系统默认开启中转内存池，如果op\_desc内包含<256K的，则默认使用中转传输模式来提升性能，否则会通过判断是否有未注册的内存来决定走中转还是直传。
 -   在开启中转内存池情况下，op\_desc中本地内存和远端内存有一个未注册就会判断为需要走中转传输模式，且没有注册过的内存判断为Host内存，用户需保证地址合法。
 -   在中转传输模式下，所有op\_desc的传输类型需要相同，举例：所有的op\_desc都是本地Host内存往远端Host内存写。
+## TransferASync
+**函数功能**
+
+与远端HIXL进行批量异步内存传输。
+
+**函数原型**
+
+```
+  Status TransferAsync(const AscendString &remote_engine,
+                       TransferOp operation,
+                       const std::vector<TransferOpDesc> &op_descs,
+                       const TransferArgs &optional_args,
+                       TransferReq &req)
+```
+
+**参数说明**
+
+<a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_table2051894852017"></a>
+<table><thead align="left"><tr id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_row4558174815206"><th class="cellrowborder" valign="top" width="22.220000000000002%" id="mcps1.1.4.1.1"><p id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"></a><strong id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"></a>参数名称</strong></p>
+</th>
+<th class="cellrowborder" valign="top" width="35.89%" id="mcps1.1.4.1.2"><p id="p1973194312342"><a name="p1973194312342"></a><a name="p1973194312342"></a>输入/输出</p>
+</th>
+<th class="cellrowborder" valign="top" width="41.89%" id="mcps1.1.4.1.3"><p id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"></a><strong id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"></a>取值说明</strong></p>
+</th>
+</tr>
+</thead>
+<tbody><tr id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_row35581048202018"><td class="cellrowborder" valign="top" width="22.220000000000002%" headers="mcps1.1.4.1.1 "><p id="p172169417217"><a name="p172169417217"></a><a name="p172169417217"></a>remote_engine</p>
+</td>
+<td class="cellrowborder" valign="top" width="35.89%" headers="mcps1.1.4.1.2 "><p id="p18215541182113"><a name="p18215541182113"></a><a name="p18215541182113"></a>输入</p>
+</td>
+<td class="cellrowborder" valign="top" width="41.89%" headers="mcps1.1.4.1.3 "><p id="p11215124113212"><a name="p11215124113212"></a><a name="p11215124113212"></a>远端HIXL的唯一标识。</p>
+</td>
+</tr>
+<tr id="row4531052105216"><td class="cellrowborder" valign="top" width="22.220000000000002%" headers="mcps1.1.4.1.1 "><p id="p19214141152111"><a name="p19214141152111"></a><a name="p19214141152111"></a>operation</p>
+</td>
+<td class="cellrowborder" valign="top" width="35.89%" headers="mcps1.1.4.1.2 "><p id="p156821517152217"><a name="p156821517152217"></a><a name="p156821517152217"></a>输入</p>
+</td>
+<td class="cellrowborder" valign="top" width="41.89%" headers="mcps1.1.4.1.3 "><p id="p1621384113213"><a name="p1621384113213"></a><a name="p1621384113213"></a>将远端内存读到本地或者将本地内存写到远端。</p>
+</td>
+</tr>
+<tr id="row343165825214"><td class="cellrowborder" valign="top" width="22.220000000000002%" headers="mcps1.1.4.1.1 "><p id="p821384192116"><a name="p821384192116"></a><a name="p821384192116"></a>op_descs</p>
+</td>
+<td class="cellrowborder" valign="top" width="35.89%" headers="mcps1.1.4.1.2 "><p id="p268420176224"><a name="p268420176224"></a><a name="p268420176224"></a>输入</p>
+</td>
+<td class="cellrowborder" valign="top" width="41.89%" headers="mcps1.1.4.1.3 "><p id="p152125419216"><a name="p152125419216"></a><a name="p152125419216"></a>批量操作的本地以及远端地址。</p>
+</td>
+</tr>
+<tr id="row343165825214"><td class="cellrowborder" valign="top" width="22.220000000000002%" headers="mcps1.1.4.1.1 "><p id="p821384192116"><a name="p821384192116"></a><a name="p821384192116"></a>optional_args</p>
+</td>
+<td class="cellrowborder" valign="top" width="35.89%" headers="mcps1.1.4.1.2 "><p id="p268420176224"><a name="p268420176224"></a><a name="p268420176224"></a>输入</p>
+</td>
+<td class="cellrowborder" valign="top" width="41.89%" headers="mcps1.1.4.1.3 "><p id="p152125419216"><a name="p152125419216"></a><a name="p152125419216"></a>可选参数（预留）。</p>
+</td>
+</tr>
+<tr id="row031215135318"><td class="cellrowborder" valign="top" width="22.220000000000002%" headers="mcps1.1.4.1.1 "><p id="p72121241182115"><a name="p72121241182115"></a><a name="p72121241182115"></a>req</p>
+</td>
+<td class="cellrowborder" valign="top" width="35.89%" headers="mcps1.1.4.1.2 "><p id="p668661720228"><a name="p668661720228"></a><a name="p668661720228"></a>输出</p>
+</td>
+<td class="cellrowborder" valign="top" width="41.89%" headers="mcps1.1.4.1.3 "><p id="p18479114414175"><a name="p18479114414175"></a><a name="p18479114414175"></a>请求的句柄，用户查询传输的请求状态。</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+**调用示例**
+
+```
+  //初始化客户端和服务端engine，并完成链接
+  client_engine.TransferAsync(remote_engine, operation, op_descs, optional_args, req);
+```
+
+**返回值**
+
+-   SUCCESS：成功
+-   PARAM\_INVALID：参数错误
+-   NOT\_CONNECTED：没有与对端创建链接
+-   其他：失败
+
+**约束说明**
+
+-   调用该接口之前，需要先调用Connect接口完成与对端的建链。
+-   该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
+-   当前异步传输仅支持直传，暂不支持中专传输，默认直传。
+
+## GetTransferStatus
+**函数功能**
+
+获取异步内存传输的状态。
+
+**函数原型**
+
+```
+  Status GetTransferStatus(const TransferReq &req, TransferStatus &status)
+```
+
+**参数说明**
+
+<a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_table2051894852017"></a>
+<table><thead align="left"><tr id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_row4558174815206"><th class="cellrowborder" valign="top" width="22.220000000000002%" id="mcps1.1.4.1.1"><p id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"></a><strong id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"></a>参数名称</strong></p>
+</th>
+<th class="cellrowborder" valign="top" width="35.89%" id="mcps1.1.4.1.2"><p id="p1973194312342"><a name="p1973194312342"></a><a name="p1973194312342"></a>输入/输出</p>
+</th>
+<th class="cellrowborder" valign="top" width="41.89%" id="mcps1.1.4.1.3"><p id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"></a><strong id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"></a>取值说明</strong></p>
+</th>
+</tr>
+</thead>
+<tbody><tr id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_row35581048202018"><td class="cellrowborder" valign="top" width="22.220000000000002%" headers="mcps1.1.4.1.1 "><p id="p172169417217"><a name="p172169417217"></a><a name="p172169417217"></a>req</p>
+</td>
+<td class="cellrowborder" valign="top" width="35.89%" headers="mcps1.1.4.1.2 "><p id="p18215541182113"><a name="p18215541182113"></a><a name="p18215541182113"></a>输入</p>
+</td>
+<td class="cellrowborder" valign="top" width="41.89%" headers="mcps1.1.4.1.3 "><p id="p11215124113212"><a name="p11215124113212"></a><a name="p11215124113212"></a>请求的句柄，通过调用TransferAsync产生。</p>
+</td>
+</tr>
+<tr id="row4531052105216"><td class="cellrowborder" valign="top" width="22.220000000000002%" headers="mcps1.1.4.1.1 "><p id="p19214141152111"><a name="p19214141152111"></a><a name="p19214141152111"></a>status</p>
+</td>
+<td class="cellrowborder" valign="top" width="35.89%" headers="mcps1.1.4.1.2 "><p id="p156821517152217"><a name="p156821517152217"></a><a name="p156821517152217"></a>输出</p>
+</td>
+<td class="cellrowborder" valign="top" width="41.89%" headers="mcps1.1.4.1.3 "><p id="p1621384113213"><a name="p1621384113213"></a><a name="p1621384113213"></a>传输状态，枚举值如下。
+
+-   WAITING
+-   COMPLETED
+-   TIMEOUT（暂不支持）
+-   FAILED
+</p>
+
+
+</td>
+</tr>
+</tbody>
+</table>
+
+**调用示例**
+
+```
+  //初始化客户端和服务端engine，并完成链接
+  client_engine.TransferAsync(remote_engine, operation, op_descs, optional_args, req);
+```
+
+**返回值**
+
+-   SUCCESS：成功
+-   PARAM\_INVALID：参数错误
+-   NOT\_CONNECTED：没有与对端创建链接
+-   其他：失败
+
+**约束说明**
+
+-   调用该接口之前，需要先调用Connect接口完成与对端的建链。
+-   该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
+-   当前异步传输仅支持直传，暂不支持中转传输，默认直传。
 
 

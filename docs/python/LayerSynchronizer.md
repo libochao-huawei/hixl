@@ -26,21 +26,6 @@
 <td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="zh-cn_topic_0000002374411996_p578615025316"><a name="zh-cn_topic_0000002374411996_p578615025316"></a><a name="zh-cn_topic_0000002374411996_p578615025316"></a>x</p>
 </td>
 </tr>
-<tr id="zh-cn_topic_0000002374411996_row103361763242"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="zh-cn_topic_0000002374411996_p1983180181813"><a name="zh-cn_topic_0000002374411996_p1983180181813"></a><a name="zh-cn_topic_0000002374411996_p1983180181813"></a><span id="zh-cn_topic_0000002374411996_ph783112021813"><a name="zh-cn_topic_0000002374411996_ph783112021813"></a><a name="zh-cn_topic_0000002374411996_ph783112021813"></a><term id="zh-cn_topic_0000002374411996_zh-cn_topic_0000001312391781_term354143892110"><a name="zh-cn_topic_0000002374411996_zh-cn_topic_0000001312391781_term354143892110"></a><a name="zh-cn_topic_0000002374411996_zh-cn_topic_0000001312391781_term354143892110"></a>Atlas 200I/500 A2 推理产品</term></span></p>
-</td>
-<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="zh-cn_topic_0000002374411996_p1695483941817"><a name="zh-cn_topic_0000002374411996_p1695483941817"></a><a name="zh-cn_topic_0000002374411996_p1695483941817"></a>x</p>
-</td>
-</tr>
-<tr id="zh-cn_topic_0000002374411996_row18403312418"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="zh-cn_topic_0000002374411996_p78319051815"><a name="zh-cn_topic_0000002374411996_p78319051815"></a><a name="zh-cn_topic_0000002374411996_p78319051815"></a><span id="zh-cn_topic_0000002374411996_ph1383116081815"><a name="zh-cn_topic_0000002374411996_ph1383116081815"></a><a name="zh-cn_topic_0000002374411996_ph1383116081815"></a><term id="zh-cn_topic_0000002374411996_zh-cn_topic_0000001312391781_term4363218112215"><a name="zh-cn_topic_0000002374411996_zh-cn_topic_0000001312391781_term4363218112215"></a><a name="zh-cn_topic_0000002374411996_zh-cn_topic_0000001312391781_term4363218112215"></a>Atlas 推理系列产品</term></span></p>
-</td>
-<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="zh-cn_topic_0000002374411996_p1695443971810"><a name="zh-cn_topic_0000002374411996_p1695443971810"></a><a name="zh-cn_topic_0000002374411996_p1695443971810"></a>x</p>
-</td>
-</tr>
-<tr id="zh-cn_topic_0000002374411996_row17253142120252"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="zh-cn_topic_0000002374411996_p38313021813"><a name="zh-cn_topic_0000002374411996_p38313021813"></a><a name="zh-cn_topic_0000002374411996_p38313021813"></a><span id="zh-cn_topic_0000002374411996_ph58317041819"><a name="zh-cn_topic_0000002374411996_ph58317041819"></a><a name="zh-cn_topic_0000002374411996_ph58317041819"></a><term id="zh-cn_topic_0000002374411996_zh-cn_topic_0000001312391781_term71949488213"><a name="zh-cn_topic_0000002374411996_zh-cn_topic_0000001312391781_term71949488213"></a><a name="zh-cn_topic_0000002374411996_zh-cn_topic_0000001312391781_term71949488213"></a>Atlas 训练系列产品</term></span></p>
-</td>
-<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="zh-cn_topic_0000002374411996_p395243920186"><a name="zh-cn_topic_0000002374411996_p395243920186"></a><a name="zh-cn_topic_0000002374411996_p395243920186"></a>x</p>
-</td>
-</tr>
 </tbody>
 </table>
 
