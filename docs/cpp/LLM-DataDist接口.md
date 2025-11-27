@@ -170,7 +170,10 @@ Status Initialize(const std::map<AscendString, AscendString> &options)
 <td class="cellrowborder" valign="top" width="13.100000000000001%" headers="mcps1.2.4.1.2 "><p id="p1078042453719"><a name="p1078042453719"></a><a name="p1078042453719"></a>可选</p>
 </td>
 <td class="cellrowborder" valign="top" width="59.36%" headers="mcps1.2.4.1.3 "><p id="p197801724143716"><a name="p197801724143716"></a><a name="p197801724143716"></a>配置本地通信资源信息，格式是json格式的字符串。仅需配置ranktable中当前llm datadist所使用Device信息，无需配置ranktable中的server_count和rank_id字段。</p>
+<<<<<<< HEAD
 <div class="note" id="note45401946203"><a name="note45401946203"></a><a name="note45401946203"></a><span class="notetitle"> 说明： </span><div class="notebody"><p id="p1753920416207"><a name="p1753920416207"></a><a name="p1753920416207"></a>该option可以不配置或配置为空串，为空将自动生成相关信息。</p>
+=======
+>>>>>>> 6bbee6b... 20251127
 </div></div>
 </td>
 </tr>
