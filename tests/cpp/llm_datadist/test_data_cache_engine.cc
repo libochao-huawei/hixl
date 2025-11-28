@@ -40,15 +40,6 @@ using namespace ::testing;
 using ::testing::Invoke;
 using ::testing::Mock;
 
-RTS_API rtError_t rtEventQueryStatus(rtEvent_t evt, rtEventStatus_t *status) {
-  (void) evt;
-  static int32_t i = 0;
-  bool success = (++i % 2) == 0;
-  *status = success ? RT_EVENT_RECORDED : RT_EVENT_INIT;
-  LLMLOGI("Wait event ret = %d", success);
-  return RT_ERROR_NONE;
-}
-
 namespace llm {
 namespace {
 class DataCacheEngineRunner {
