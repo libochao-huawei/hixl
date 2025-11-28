@@ -39,6 +39,11 @@ struct ChannelInfo {
   int32_t timeout_sec;
 };
 
+struct TransferRequest { 
+  std::string remote_engine;
+  rtEvent_t event;
+};
+
 class BufferedTransfer {
  public:
   explicit BufferedTransfer(std::function<Status(HcclOneSideOpDesc *descs, uint32_t desc_num)> trans_func);
@@ -71,7 +76,8 @@ class Channel {
   Status TransferAsync(TransferOp operation,
                        const std::vector<TransferOpDesc> &op_descs,
                        const TransferArgs &optional_args,
-                       std::function<TransferStatus()> &closure);
+                       TransferReq &req);
+  Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
   Status SetSocketNonBlocking(int32_t fd);
   void StopHeartbeat();
   Status SendControlMsg(const std::function<Status(int32_t fd)> &func);
@@ -101,6 +107,7 @@ class Channel {
   size_t expected_body_size_ = 0;
   size_t bytes_received_ = 0;
   friend class ChannelManager;
+  std::map<void*, std::unique_ptr<TransferRequest>> transfer_reqs_;
 };
 using ChannelPtr = std::shared_ptr<Channel>;
 }  // namespace adxl
