@@ -13,16 +13,8 @@ set CURFILE=`readlink -f ${1}`
 set CURPATH=`dirname ${CURFILE}`
 
 set install_info="$CURPATH/../ascend_install.info"
-set hetero_arch=`grep -i "HIXL_Hetero_Arch_Flag=" "$install_info" | cut --only-delimited -d"=" -f2`
-if ( "$2" == "multi_version" ) then
-    if ( "$hetero_arch" == "y" ) then
-        set INSTALL_DIR="`realpath ${CURPATH}/../../../../../cann`"
-    else
-        set INSTALL_DIR="`realpath ${CURPATH}/../../../cann`"
-    endif
-else
-    set INSTALL_DIR="`realpath ${CURPATH}/..`"
-endif
+set install_path=`grep -i "HIXL_Install_Path_Param=" "$install_info" | cut --only-delimited -d"=" -f2`
+set INSTALL_DIR="`realpath ${install_path}/cann`"
 
 set lib_path="${INSTALL_DIR}/python/site-packages/"
 if ( -d "${lib_path}" ) then
@@ -56,8 +48,8 @@ if ( -d "${library_path}" ) then
     endif
 endif
 
-set custom_path_file="$INSTALL_DIR/../conf/path.cfg"
-set common_interface="$INSTALL_DIR/script/common_interface.csh"
+set custom_path_file="$INSTALL_DIR/conf/path.cfg"
+set common_interface="$INSTALL_DIR/share/info/hixl/script/common_interface.csh"
 set owner="`stat -c %U $CURFILE`"
 if ( "`id -u`" != 0 && "`id -un`" != "$owner" && -f "$custom_path_file" && -f "$common_interface" ) then
     csh -f "$common_interface" mk_custom_path "$custom_path_file"

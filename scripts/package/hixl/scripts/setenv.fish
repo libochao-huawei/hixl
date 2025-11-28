@@ -29,20 +29,11 @@ function get_install_param
 end
 
 function get_install_dir
-    set -l install_info "$curpath/../ascend_install.info"
-    set -l hetero_arch (get_install_param "HIXL_Hetero_Arch_Flag" "$install_info")
-    if test "$param_mult_ver" = "multi_version"
-        if test "$hetero_arch" = "y"
-            echo (realpath $curpath/../../../../../cann)
-        else
-            echo (realpath $curpath/../../../cann)
-        end
-    else
-        echo (realpath $curpath/..)
-    end
+    local install_info="$curpath/../ascend_install.info"
+    get_install_param "HIXL_Install_Path_Param" "${install_info}"
 end
 
-set -l INSTALL_DIR (get_install_dir)
+set -l INSTALL_DIR (get_install_dir)/cann
 set -l lib_path "$INSTALL_DIR/python/site-packages/"
 if test -d "$lib_path"
     set -l python_path "$PYTHONPATH"
@@ -69,8 +60,8 @@ if test -d "$library_path"
     end
 end
 
-set -l custom_path_file "$INSTALL_DIR/../conf/path.cfg"
-set -l common_interface "$INSTALL_DIR/script/common_interface.fish"
+set -l custom_path_file "$INSTALL_DIR/conf/path.cfg"
+set -l common_interface "$INSTALL_DIR/share/info/hixl/script/common_interface.fish"
 set -l owner (stat -c \%U "$curfile")
 if test (id -u) -ne 0 -a (id -un) != "$owner" -a -f "$custom_path_file" -a -f "$common_interface"
     . "$common_interface"
