@@ -16,9 +16,9 @@ set install_info="$CURPATH/../ascend_install.info"
 set hetero_arch=`grep -i "HIXL_Hetero_Arch_Flag=" "$install_info" | cut --only-delimited -d"=" -f2`
 if ( "$2" == "multi_version" ) then
     if ( "$hetero_arch" == "y" ) then
-        set INSTALL_DIR="`realpath ${CURPATH}/../../../../../latest`/hixl"
+        set INSTALL_DIR="`realpath ${CURPATH}/../../../../../cann`"
     else
-        set INSTALL_DIR="`realpath ${CURPATH}/../../../latest`/hixl"
+        set INSTALL_DIR="`realpath ${CURPATH}/../../../cann`"
     endif
 else
     set INSTALL_DIR="`realpath ${CURPATH}/..`"
