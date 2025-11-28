@@ -36,9 +36,9 @@ get_install_dir() {
     local hetero_arch=$(get_install_param "HIXL_Hetero_Arch_Flag" "${install_info}")
     if [ "$param_mult_ver" = "multi_version" ]; then
         if [ "$hetero_arch" = "y" ]; then
-            echo "$(realpath $curpath/../../../../../latest)/hixl"
+            echo "$(realpath $curpath/../../../../../cann)"
         else
-            echo "$(realpath $curpath/../../../latest)/hixl"
+            echo "$(realpath $curpath/../../../cann)"
         fi
     else
         echo "$(realpath $curpath/..)"

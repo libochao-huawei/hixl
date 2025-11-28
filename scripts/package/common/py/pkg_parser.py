@@ -357,6 +357,7 @@ def get_env_items_by_version(version: Optional[str]) -> Iterator[Tuple[str, str]
     """根据version获取环境字典条目。"""
     if version:
         yield 'ASCEND_VER', version
+        yield 'VERSION', version
 
         version_parts = version.split('.')
         for idx in range(1, len(version_parts) + 1):

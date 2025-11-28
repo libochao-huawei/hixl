@@ -33,9 +33,9 @@ function get_install_dir
     set -l hetero_arch (get_install_param "HIXL_Hetero_Arch_Flag" "$install_info")
     if test "$param_mult_ver" = "multi_version"
         if test "$hetero_arch" = "y"
-            echo (realpath $curpath/../../../../../latest)/hixl
+            echo (realpath $curpath/../../../../../cann)
         else
-            echo (realpath $curpath/../../../latest)/hixl
+            echo (realpath $curpath/../../../cann)
         end
     else
         echo (realpath $curpath/..)
