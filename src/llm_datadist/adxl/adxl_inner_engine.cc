@@ -29,11 +29,20 @@ constexpr size_t kMemPoolNum = 2U;
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   std::lock_guard<std::mutex> lk(mutex_);
   ADXL_CHK_LLM_RET(llm::HcclAdapter::GetInstance().Initialize(), "HcclSoManager initialize failed.");
+  int32_t device_id = -1;
+  ADXL_CHK_ACL_RET(rtGetDevice(&device_id));
+  llm::TemporaryRtContext with_context(nullptr);
+  ADXL_CHK_ACL_RET(rtCtxCreateEx(&rt_context_, 0U, device_id));
+  LLMEVENT("Switch new rts ctx:%p", rt_context_);
+  LLM_DISMISSABLE_GUARD(fail_guard, ([this]() {
+    (void) rtCtxDestroyEx(rt_context_);
+  }));
   segment_table_ = llm::MakeUnique<SegmentTable>();
   ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get()), "Failed to init msg handler.");
   ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
   ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
   is_initialized_ = true;
+  LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
 }
 
@@ -104,7 +113,8 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
   for (size_t i = 0; i < kMemPoolNum; ++i) {
     npu_mem_pools_[i] = llm::MakeUnique<llm::LlmMemPool>(config);
     ADXL_CHECK_NOTNULL(npu_mem_pools_[i], "Failed to create memory pool");
-    ADXL_CHK_BOOL_RET_STATUS(rtMalloc(&npu_pool_memorys_[i], npu_pool_size, RT_MEMORY_HBM | RT_MEM_MALLOC_HUGE_FIRST,
+    ADXL_CHK_BOOL_RET_STATUS(rtMalloc(&npu_pool_memorys_[i], npu_pool_size,
+                                      RT_MEMORY_HBM | static_cast<uint32_t>(RT_MEM_MALLOC_HUGE_FIRST),
                                       LLM_MODULE_NAME_U16) == RT_ERROR_NONE,
                              FAILED, "Failed to allocate memory for memory_pool, pool size = %lu.", npu_pool_size);
     ADXL_CHK_LLM_RET(npu_mem_pools_[i]->Initialize(npu_pool_memorys_[i], npu_pool_size),
@@ -128,6 +138,7 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
 }
 
 void AdxlInnerEngine::Finalize() {
+  llm::TemporaryRtContext with_context(rt_context_);
   channel_manager_.Finalize();
   msg_handler_.Finalize();
   for (auto &mem : npu_pool_memorys_) {
@@ -139,6 +150,10 @@ void AdxlInnerEngine::Finalize() {
   if (buffer_transfer_service_ != nullptr) {
     buffer_transfer_service_->Finalize();
   }
+  if (rt_context_ != nullptr) {
+    (void) rtCtxDestroyEx(rt_context_);
+  }
+  rt_context_ = nullptr;
 }
 
 bool AdxlInnerEngine::IsInitialized() const {
@@ -146,11 +161,13 @@ bool AdxlInnerEngine::IsInitialized() const {
 }
 
 Status AdxlInnerEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
+  llm::TemporaryRtContext with_context(rt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.RegisterMem(mem, type, mem_handle), "Failed to register mem");
   return SUCCESS;
 }
 
 Status AdxlInnerEngine::DeregisterMem(MemHandle mem_handle) {
+  llm::TemporaryRtContext with_context(rt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.DeregisterMem(mem_handle), "Failed to deregister mem");
   return SUCCESS;
 }
@@ -158,6 +175,7 @@ Status AdxlInnerEngine::DeregisterMem(MemHandle mem_handle) {
 Status AdxlInnerEngine::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
   LLMEVENT("Start to connect, local engine:%s, remote engine:%s, timeout:%d ms.",
           local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+  llm::TemporaryRtContext with_context(rt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.Connect(remote_engine.GetString(), timeout_in_millis),
                       "Failed to connect, remote engine:%s, timeout:%d ms",
                       remote_engine.GetString(), timeout_in_millis);
@@ -165,6 +183,7 @@ Status AdxlInnerEngine::Connect(const AscendString &remote_engine, int32_t timeo
 }
 
 Status AdxlInnerEngine::Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  llm::TemporaryRtContext with_context(rt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.Disconnect(remote_engine.GetString(), timeout_in_millis),
                       "Failed to disconnect, remote engine:%s, timeout:%d ms",
                       remote_engine.GetString(), timeout_in_millis);
@@ -222,6 +241,7 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
                                      TransferOp operation,
                                      const std::vector<TransferOpDesc> &op_descs,
                                      int32_t timeout_in_millis) {
+  llm::TemporaryRtContext with_context(rt_context_);
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
@@ -249,35 +269,38 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
                                       const std::vector<TransferOpDesc> &op_descs,
                                       const TransferArgs &optional_args,
                                       TransferReq &req) {
+  llm::TemporaryRtContext with_context(rt_context_);
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
-                           "Failed to get channel, remote_engine:%s", remote_engine.GetString());
+                           "Failed to get channel, remote_engine:%s.", remote_engine.GetString());
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   auto id = next_req_id_.fetch_add(1);
   req = reinterpret_cast<void*>(id);
   ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, req),
-                      "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
+                      "Failed to transfer async, remote_engine:%s.", remote_engine.GetString());
   req2channel_[id] = remote_engine;
   return SUCCESS;
 }
 
 Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
+  llm::TemporaryRtContext with_context(rt_context_);
+  std::lock_guard<std::mutex> lock(mutex_);
   auto id = reinterpret_cast<uint64_t>(req);
   auto it = req2channel_.find(id);
   if (it == req2channel_.end()) {
-    LLMLOGE(FAILED, "Request id:%llu not found, request has been completed or does not exist", id);
+    LLMLOGE(FAILED, "Request not found, request has been completed or does not exist, request:%llu.", id);
     return FAILED;
   }
   auto remote_engine = it->second;
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
-                           "Failed to get channel, remote_engine:%s", remote_engine.GetString());
+                           "Failed to get channel, remote_engine:%s.", remote_engine.GetString());
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   auto ret = channel->GetTransferStatus(req, status);
   if (status == TransferStatus::COMPLETED || status == TransferStatus::FAILED) {
     req2channel_.erase(id);
   }
-  ADXL_CHK_STATUS_RET(ret, "Failed to get transfer status, req: %llu, remote_engine:%s",
+  ADXL_CHK_STATUS_RET(ret, "Failed to get transfer status, req:%llu, remote_engine:%s.",
                       id, remote_engine.GetString());
   return ret;
 }

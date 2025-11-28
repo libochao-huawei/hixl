@@ -137,7 +137,7 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
   auto it = transfer_reqs_.find(id);
   if (it == transfer_reqs_.end()) {
     status = TransferStatus::FAILED;
-    LLMLOGE(FAILED, "Request %llu not found.", id);
+    LLMLOGE(FAILED, "Request not found, req:%llu.", id);
     return FAILED;
   }
 
@@ -145,18 +145,18 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
   rtEventStatus_t event_status{};
   auto ret = rtEventQueryStatus(event, &event_status);
   if (ret != RT_ERROR_NONE) {
-    LLMLOGE(FAILED, "rtEventQueryStatus failed for req %llu, ret = %d.", id, ret);
+    LLMLOGE(FAILED, "rtEventQueryStatus failed for req:%llu, ret:%d.", id, ret);
     rtEventDestroy(event);
     transfer_reqs_.erase(id);
     status = TransferStatus::FAILED;
     return FAILED;
   }
   if (event_status != RT_EVENT_RECORDED) {
-    LLMLOGI("Transfer async req %llu not yet completed.", id);
+    LLMLOGI("Transfer async request not yet completed, req:%llu.", id);
     status = TransferStatus::WAITING;
     return SUCCESS;
   }
-  LLMLOGI("Transfer async req %llu completed.", id);
+  LLMLOGI("Transfer async request completed, req:%llu.", id);
   status = TransferStatus::COMPLETED;
   rtEventDestroy(event);
   transfer_reqs_.erase(id);
