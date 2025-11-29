@@ -543,3 +543,53 @@ class LlmCacheManagerDecoderSt(unittest.TestCase):
 
         cache_mgr.deallocate_blocks_cache(dst_blocks_cache)
         cache_mgr.deallocate_cache(src_cache)
+
+
+class LlmCacheManagerSt2(unittest.TestCase):
+
+    def test_check_flow_graph_mem_max_size_ok(self):
+        cluster_id = 0
+        llm_engine = LLMDataDist(LLMRole.PROMPT, cluster_id)
+        llm_config = LLMConfig()
+        llm_config.device_id = 0
+        llm_config.listen_ip_info = "0.0.0.0:26000"
+        llm_config.ge_options = {"ge.flowGraphMemMaxSize": "1.23"}
+        init_options = llm_config.generate_options()
+
+        has_err = False
+        try:
+            llm_engine.init(init_options)
+        except LLMException:
+            has_err = True
+        self.assertEqual(has_err, True)
+
+    def test_check_flow_graph_mem_max_size(self):
+        cluster_id = 0
+        llm_engine = LLMDataDist(LLMRole.PROMPT, cluster_id)
+        llm_config = LLMConfig()
+        llm_config.device_id = 0
+        llm_config.listen_ip_info = "0.0.0.0:26000"
+        llm_config.ge_options = {"ge.flowGraphMemMaxSize": "-1"}
+        init_options = llm_config.generate_options()
+
+        has_err = False
+        try:
+            llm_engine.init(init_options)
+        except LLMException:
+            has_err = True
+        self.assertEqual(has_err, True)
+                
+    def test_check_flow_graph_mem_max_size2(self):
+        cluster_id = 0
+        llm_engine = LLMDataDist(LLMRole.PROMPT, cluster_id)
+        llm_config = LLMConfig()
+        llm_config.device_id = 0
+        llm_config.listen_ip_info = "0.0.0.0:26000"
+        llm_config.ge_options = {"llm.EnableCacheManager": "0"}
+        init_options = llm_config.generate_options()
+        has_err = False
+        try:
+            llm_engine.init(init_options)
+        except LLMException:
+            has_err = True
+        self.assertEqual(has_err, True)
