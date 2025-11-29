@@ -52,6 +52,15 @@ class LLMDataDist(object):
         self._enable_free_comm = False
         self._enable_local_comm_res = False
 
+    def _check_flow_graph_max_size(self, options: Dict[str, str]) -> None:
+        mem_utilization = float(options.get("llm.MemoryUtilization", "0.95"))
+        value = options.get("ge.flowGraphMemMaxSize", None)
+        if value is None:
+            return
+        check_isinstance('ge.flowGraphMemMaxSize', value, str)
+        raise_if_false(len(value.split(",")) == 1, "ge.flowGraphMemMaxSize only support one mem pool in llm datadist")
+        raise_if_false(value.isdigit(), "ge.flowGraphMemMaxSize must be digit")
+
     def init(self, options: Dict[str, str]) -> None:
         """
         初始化LLM DataDist
@@ -64,6 +73,7 @@ class LLMDataDist(object):
         raise_if_false(LLMDataDist.llm_engine_instance is None, 'Cannot init multiple LLMDataDists',
                        status_code=LLMStatusCode.LLM_FAILED)
         check_isinstance("options", options, dict)
+        self._check_flow_graph_max_size(options)
         self._engine_options = options
         self._engine_options['llm.Role'] = self._role_to_str(self._role)
         self._enable_local_comm_res = "llm.LocalCommRes" in options
