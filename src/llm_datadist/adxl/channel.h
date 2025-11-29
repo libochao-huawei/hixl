@@ -39,6 +39,10 @@ struct ChannelInfo {
   int32_t timeout_sec;
 };
 
+struct TransferRequest { 
+  std::string remote_engine;
+};
+
 class BufferedTransfer {
  public:
   explicit BufferedTransfer(std::function<Status(HcclOneSideOpDesc *descs, uint32_t desc_num)> trans_func);
@@ -102,7 +106,7 @@ class Channel {
   size_t expected_body_size_ = 0;
   size_t bytes_received_ = 0;
   friend class ChannelManager;
-  std::map<uint64_t, rtEvent_t> transfer_reqs_;
+  std::map<TransferRequest*, rtEvent_t> transfer_reqs_;
 };
 using ChannelPtr = std::shared_ptr<Channel>;
 }  // namespace adxl
