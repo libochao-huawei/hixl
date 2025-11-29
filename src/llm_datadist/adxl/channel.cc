@@ -98,7 +98,7 @@ Status Channel::Finalize() {
   }
 
   for (const auto &transfer_req : transfer_reqs_) {
-    rtEvent_t event = transfer_req.second; 
+    rtEvent_t event = transfer_req.second->event;
     if (event != nullptr) {
       auto rt_ret = rtEventDestroy(event);
       if (rt_ret != RT_ERROR_NONE) {
@@ -124,42 +124,44 @@ Status Channel::TransferAsync(TransferOp operation,
   (void)optional_args;
   ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Channel transfer async failed.");
   rtEvent_t event = nullptr;
-  auto id = reinterpret_cast<uint64_t>(req);
   LLM_CHK_ACL_RET(rtEventCreate(&event));
   LLM_CHK_ACL_RET(rtEventRecord(event, stream_));
-  transfer_reqs_[id] = std::move(event);
+  std::unique_ptr<TransferRequest> req_handle = std::unique_ptr<TransferRequest>(new TransferRequest());
+  req_handle->event = event;
+  req_handle->remote_engine = channel_info_.channel_id;
+  transfer_reqs_[req_handle] = std::move(event);
+  req = req_handle.get();
   return SUCCESS;
 }
 
 Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
   std::lock_guard<std::mutex> lock(mutex_);
-  auto id = reinterpret_cast<uint64_t>(req);
-  auto it = transfer_reqs_.find(id);
+  auto it = transfer_reqs_.find(req);
   if (it == transfer_reqs_.end()) {
     status = TransferStatus::FAILED;
-    LLMLOGE(FAILED, "Request not found, req:%llu.", id);
+    LLMLOGE(FAILED, "Request not found, req:%p.", req);
     return FAILED;
   }
 
-  auto event = it->second;
+  auto event = it->second->event;
   rtEventStatus_t event_status{};
   auto ret = rtEventQueryStatus(event, &event_status);
   if (ret != RT_ERROR_NONE) {
-    LLMLOGE(FAILED, "rtEventQueryStatus failed for req:%llu, ret:%d.", id, ret);
+    LLMLOGE(FAILED, "rtEventQueryStatus failed for req:%p, ret:%d.", req, ret);
     rtEventDestroy(event);
-    transfer_reqs_.erase(id);
+    transfer_reqs_.erase(req);
     status = TransferStatus::FAILED;
     return FAILED;
   }
   if (event_status != RT_EVENT_RECORDED) {
-    LLMLOGI("Transfer async request not yet completed, req:%llu.", id);
+    LLMLOGI("Transfer async request not yet completed, req:%p.", req);
     status = TransferStatus::WAITING;
     return SUCCESS;
   }
-  LLMLOGI("Transfer async request completed, req:%llu.", id);
+  LLMLOGI("Transfer async request completed, req:%p.", req);
   status = TransferStatus::COMPLETED;
   rtEventDestroy(event);
-  transfer_reqs_.erase(id);
+  transfer_reqs_.erase(req);
   return SUCCESS;
 }
 
