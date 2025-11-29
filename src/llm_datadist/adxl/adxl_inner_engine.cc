@@ -283,31 +283,20 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
-  auto id = next_req_id_.fetch_add(1);
-  req = reinterpret_cast<void*>(id);
   ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, req),
                       "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
-  req2channel_[id] = remote_engine;
   return SUCCESS;
 }
 
 Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
   std::lock_guard<std::mutex> lock(mutex_);
-  auto id = reinterpret_cast<uint64_t>(req);
-  auto it = req2channel_.find(id);
-  if (it == req2channel_.end()) {
-    LLMLOGE(FAILED, "Request not found, request has been completed or does not exist, req:%llu", id);
-    return FAILED;
-  }
-  auto remote_engine = it->second;
+  auto req_handle = reinterpret_cast<TransferRequest*>(req);
+  auto remote_engine = req_handle->remote_engine;
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   auto ret = channel->GetTransferStatus(req, status);
-  if (status == TransferStatus::COMPLETED || status == TransferStatus::FAILED) {
-    req2channel_.erase(id);
-  }
   ADXL_CHK_STATUS_RET(ret, "Failed to get transfer status, req: %llu, remote_engine:%s",
                       id, remote_engine.GetString());
   return ret;
