@@ -11,7 +11,7 @@
 
    - GCC >= 7.3.0
 
-   - Python3 3.9或3.11(当前仅支持这两个版本)
+   - Python3 3.9/3.11/3.12(当前仅支持这三个版本)
 
    - CMake >= 3.16.0  (建议使用3.20.0版本)
      ```shell
@@ -43,7 +43,7 @@
 
 3. **安装社区版CANN toolkit包**
 
-    根据实际环境，下载对应`Ascend-cann-toolkit_${cann_version}_linux-${arch}.run`包，下载链接为[toolkit x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/hixl/Ascend-cann-toolkit_8.5.0.alpha001_linux-x86_64.run)、[toolkit aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/hixl/Ascend-cann-toolkit_8.5.0.alpha001_linux-aarch64.run)。
+    根据实际环境，下载对应`Ascend-cann-toolkit_${cann_version}_linux-${arch}.run`包，下载链接为[CANN包社区版资源下载](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.5.0.alpha001)。
     
     ```bash
     # 确保安装包具有可执行权限
@@ -55,41 +55,29 @@
     - \$\{arch\}：表示CPU架构，如aarch64、x86_64。
     - \$\{cann\_install\_path\}：表示指定安装路径，可选，默认安装在`/usr/local/Ascend`目录，指定路径安装时，指定的路径权限需设置为755。
 
-4. **安装社区版CANN legacy包（可选）**
+4. **安装社区版CANN kernels包（可选）**
 
    运行python样例时需安装本包，若仅编译源码或运行C++样例，则跳过本操作。
 
-    根据产品型号和环境架构，下载对应`cann-${soc_name}-ops-legacy_${cann_version}_linux-${arch}.run`包，下载链接如下：
+    根据产品型号和环境架构，下载对应CANN kernels包，下载链接为[CANN包社区版资源下载](https://www.hiascend.com/developer/download/community/result?module=cann&cann=8.5.0.alpha001)：
 
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：[legacy x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/8.5.0.alpha001/cann-910b-ops-legacy_8.5.0.alpha001_linux-86_64.run)、[legacy aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/8.5.0.alpha001/cann-910b-ops-legacy_8.5.0.alpha001_linux-aarch64.run)。
-    - Atlas A3 训练系列产品/Atlas A3 推理系列产品：[legacy x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/8.5.0.alpha001/cann-910_93-ops-legacy_8.5.0.alpha001_linux-x86_64.run)、[legacy aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/8.5.0.alpha001/cann-910_93-ops-legacy_8.5.0.alpha001_linux-aarch64.run)。
-
-    ```bash
-    # 确保安装包具有可执行权限
-    chmod +x cann-${soc_name}-ops-legacy_${cann_version}_linux-${arch}.run
-    # 安装命令
-    ./cann-${soc_name}-ops-legacy_${cann_version}_linux-${arch}.run --full --install-path=${cann_install_path}
-    ```
-    - \$\{soc\_name\}：表示NPU型号名称。
-    - \$\{cann\_install\_path\}：表示指定安装路径，需要与toolkit包安装在相同路径，默认安装在`/usr/local/Ascend`目录。
-
-5. **安装社区版CANN ops-math包（可选）**
-
-   运行python样例时需安装本包，若仅编译源码或运行C++样例，则跳过本操作。
-
-   根据产品型号和环境架构，下载对应`cann-${soc_name}-ops-math_${cann_version}_linux-${arch}.run`包，下载链接如下：
-
-    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：[ops-math x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/cann-910b-ops-math_8.5.0.alpha001_linux-x86_64.run)、[ops-math aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/cann-910b-ops-math_8.5.0.alpha001_linux-aarch64.run)。
-    - Atlas A3 训练系列产品/Atlas A3 推理系列产品：[ops-math x86_64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/cann-910_93-ops-math_8.5.0.alpha001_linux-x86_64.run)、[ops-math aarch64包](https://ascend-cann.obs.cn-north-4.myhuaweicloud.com/CANN/community/cann-910_93-ops-math_8.5.0.alpha001_linux-aarch64.run)。
+    - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：`Ascend-cann-kernels-910b_${cann_version}_linux-${arch}.run`
+    - Atlas A3 训练系列产品/Atlas A3 推理系列产品：`Atlas-A3-cann-kernels_${cann_version}_linux-${arch}.run`
 
     ```bash
     # 确保安装包具有可执行权限
-    chmod +x cann-${soc_name}-ops-math_${cann_version}_linux-${arch}.run
+    # Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件
+    chmod +x Ascend-cann-kernels-910b_${cann_version}_linux-${arch}.run
+    # Atlas A3 训练系列产品/Atlas A3 推理系列产品
+    chmod +x Atlas-A3-cann-kernels_${cann_version}_linux-${arch}.run
+
     # 安装命令
-    ./cann-${soc_name}-ops-math_${cann_version}_linux-${arch}.run --full --install-path=${cann_install_path}
+    # Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件
+    ./Ascend-cann-kernels-910b_${cann_version}_linux-${arch}.run --full --install-path=${cann_install_path}
+    # Atlas A3 训练系列产品/Atlas A3 推理系列产品
+    ./Atlas-A3-cann-kernels_${cann_version}_linux-${arch}.run --full --install-path=${cann_install_path}
     ```
 
-    - \$\{soc\_name\}：表示NPU型号名称。
     - \$\{cann\_install\_path\}：表示指定安装路径，需要与toolkit包安装在相同路径，默认安装在`/usr/local/Ascend`目录。
    
 
@@ -107,7 +95,7 @@ git clone https://gitcode.com/cann/hixl.git
 
  ```bash
 # 默认路径安装，以root用户为例（非root用户，将/usr/local替换为${HOME}）
-source /usr/local/Ascend/set_env.sh
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
 # 指定路径安装
 # source ${cann_install_path}/set_env.sh
  ```

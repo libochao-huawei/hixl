@@ -30,11 +30,20 @@ constexpr size_t kMemPoolNum = 2U;
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   std::lock_guard<std::mutex> lk(mutex_);
   ADXL_CHK_LLM_RET(llm::HcclAdapter::GetInstance().Initialize(), "HcclSoManager initialize failed.");
+  int32_t device_id = -1;
+  ADXL_CHK_ACL_RET(rtGetDevice(&device_id));
+  llm::TemporaryRtContext with_context(nullptr);
+  ADXL_CHK_ACL_RET(rtCtxCreateEx(&rt_context_, 0U, device_id));
+  LLMEVENT("Switch new rts ctx:%p", rt_context_);
+  LLM_DISMISSABLE_GUARD(fail_guard, ([this]() {
+    (void) rtCtxDestroyEx(rt_context_);
+  }));
   segment_table_ = llm::MakeUnique<SegmentTable>();
   ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get()), "Failed to init msg handler.");
   ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
   ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
-  is_initialized_.store(true);
+  is_initialized_ = true;
+  LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
 }
 
@@ -51,11 +60,11 @@ void AdxlInnerEngine::ParseBufferPool(const std::map<AscendString, AscendString>
   }
 }
 
-Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendString, ge::AscendString> &options) {
+Status AdxlInnerEngine::ParseBufferPoolParams(const std::map<AscendString, AscendString> &options,
+                                              uint64_t &buffer_size, uint64_t &npu_pool_size) {
   std::string pool_config;
   ParseBufferPool(options, pool_config);
   uint64_t buffer_num;
-  uint64_t buffer_size;
   if (!pool_config.empty()) {
     if (pool_config == kDisabledPoolConfig) {
       LLMEVENT("Buffer pool is disabled.");
@@ -68,19 +77,29 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
                              pool_config.c_str());
     ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(buffer_configs[0], buffer_num), "Buffer num is invalid, value = %s.",
                      buffer_configs[0].c_str());
-    ADXL_CHK_BOOL_RET_STATUS(buffer_num > 0, PARAM_INVALID, "Buffer num should be bigger than 0.");
+    ADXL_CHK_BOOL_RET_STATUS(buffer_num > 0U, PARAM_INVALID, "Buffer num should be bigger than 0.");
     auto &buffer_size_str = buffer_configs[1];
     ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(buffer_size_str, buffer_size), "Buffer size is invalid, value = %s",
                      buffer_size_str.c_str());
-    ADXL_CHK_BOOL_RET_STATUS(buffer_size > 0, PARAM_INVALID, "Buffer size should be bigger than 0.");
+    ADXL_CHK_BOOL_RET_STATUS(buffer_size > 0U, PARAM_INVALID, "Buffer size should be bigger than 0.");
     user_config_buffer_pool_ = true;
   } else {
     buffer_num = kDefaultBufferNum;
     buffer_size = kDefaultBufferSize;
   }
-  uint64_t npu_pool_size = 0UL;
-  LLM_ASSERT_TRUE(!ge::MulOverflow(buffer_size, buffer_num, npu_pool_size));
-  LLM_ASSERT_TRUE(!ge::MulOverflow(npu_pool_size, kBaseBufferSize, npu_pool_size));
+  ADXL_CHK_BOOL_RET_STATUS(!ge::MulOverflow(buffer_size, buffer_num, npu_pool_size), PARAM_INVALID,
+                           "Buffer pool config is invalid.");
+  ADXL_CHK_BOOL_RET_STATUS(!ge::MulOverflow(npu_pool_size, kBaseBufferSize, npu_pool_size), PARAM_INVALID,
+                           "Buffer pool config is invalid.");
+  return SUCCESS;
+}
+
+Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendString, ge::AscendString> &options) {
+  uint64_t buffer_size = 0U;
+  uint64_t npu_pool_size = 0U;
+  ADXL_CHK_STATUS_RET(ParseBufferPoolParams(options, buffer_size, npu_pool_size),
+                      "Failed to parse buffer pool params.");
+  ADXL_CHK_BOOL_RET_SPECIAL_STATUS(npu_pool_size == 0U, SUCCESS, "Buffer pool is disabled.");
   llm::ScalableConfig config{};
   config.page_idem_num = kDefaultPageShift;
   config.page_mem_size_total_threshold = npu_pool_size;
@@ -105,7 +124,8 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
   for (size_t i = 0; i < kMemPoolNum; ++i) {
     npu_mem_pools_[i] = llm::MakeUnique<llm::LlmMemPool>(config);
     ADXL_CHECK_NOTNULL(npu_mem_pools_[i], "Failed to create memory pool");
-    ADXL_CHK_BOOL_RET_STATUS(rtMalloc(&npu_pool_memorys_[i], npu_pool_size, RT_MEMORY_HBM | RT_MEM_MALLOC_HUGE_FIRST,
+    ADXL_CHK_BOOL_RET_STATUS(rtMalloc(&npu_pool_memorys_[i], npu_pool_size,
+                                      RT_MEMORY_HBM | static_cast<uint32_t>(RT_MEM_MALLOC_HUGE_FIRST),
                                       LLM_MODULE_NAME_U16) == RT_ERROR_NONE,
                              FAILED, "Failed to allocate memory for memory_pool, pool size = %lu.", npu_pool_size);
     ADXL_CHK_LLM_RET(npu_mem_pools_[i]->Initialize(npu_pool_memorys_[i], npu_pool_size),
@@ -117,7 +137,6 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
                         "Failed to register mem");
   }
   std::vector<llm::LlmMemPool *> mem_pools;
-  mem_pools.reserve(kMemPoolNum);
   for (auto &mem_pool : npu_mem_pools_) {
     mem_pools.emplace_back(mem_pool.get());
   }
@@ -129,7 +148,7 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
 }
 
 void AdxlInnerEngine::Finalize() {
-  is_initialized_.store(false);
+  llm::TemporaryRtContext with_context(rt_context_);
   channel_manager_.Finalize();
   msg_handler_.Finalize();
   for (auto &mem : npu_pool_memorys_) {
@@ -141,6 +160,10 @@ void AdxlInnerEngine::Finalize() {
   if (buffer_transfer_service_ != nullptr) {
     buffer_transfer_service_->Finalize();
   }
+  if (rt_context_ != nullptr) {
+    (void) rtCtxDestroyEx(rt_context_);
+  }
+  rt_context_ = nullptr;
 }
 
 bool AdxlInnerEngine::IsInitialized() const {
@@ -148,11 +171,13 @@ bool AdxlInnerEngine::IsInitialized() const {
 }
 
 Status AdxlInnerEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
+  llm::TemporaryRtContext with_context(rt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.RegisterMem(mem, type, mem_handle), "Failed to register mem");
   return SUCCESS;
 }
 
 Status AdxlInnerEngine::DeregisterMem(MemHandle mem_handle) {
+  llm::TemporaryRtContext with_context(rt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.DeregisterMem(mem_handle), "Failed to deregister mem");
   return SUCCESS;
 }
@@ -160,6 +185,7 @@ Status AdxlInnerEngine::DeregisterMem(MemHandle mem_handle) {
 Status AdxlInnerEngine::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
   LLMEVENT("Start to connect, local engine:%s, remote engine:%s, timeout:%d ms.",
           local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+  llm::TemporaryRtContext with_context(rt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.Connect(remote_engine.GetString(), timeout_in_millis),
                       "Failed to connect, remote engine:%s, timeout:%d ms",
                       remote_engine.GetString(), timeout_in_millis);
@@ -167,6 +193,7 @@ Status AdxlInnerEngine::Connect(const AscendString &remote_engine, int32_t timeo
 }
 
 Status AdxlInnerEngine::Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  llm::TemporaryRtContext with_context(rt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.Disconnect(remote_engine.GetString(), timeout_in_millis),
                       "Failed to disconnect, remote engine:%s, timeout:%d ms",
                       remote_engine.GetString(), timeout_in_millis);
@@ -224,6 +251,7 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
                                      TransferOp operation,
                                      const std::vector<TransferOpDesc> &op_descs,
                                      int32_t timeout_in_millis) {
+  llm::TemporaryRtContext with_context(rt_context_);
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   // 如果没有连接，触发建链动作
   if (channel == nullptr) {
@@ -240,7 +268,7 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
     ADXL_CHK_STATUS_RET(GetTransferType(channel, operation, op_descs, need_buffer, type),
                         "Failed to get transfer type.");
     LLMLOGI("Transfer type is:%d, cost:%lu us.", type,
-           std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
+            std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
     if (need_buffer) {
       ADXL_CHK_BOOL_RET_STATUS(type != TransferType::kEnd, PARAM_INVALID, "Transfer type is invalid.");
       return buffer_transfer_service_->Transfer(channel, type, op_descs, timeout_in_millis);
@@ -250,4 +278,42 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
                       "Failed to transfer sync, remote_engine:%s", remote_engine.GetString());
   return SUCCESS;
 }
+
+Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
+                                      TransferOp operation,
+                                      const std::vector<TransferOpDesc> &op_descs,
+                                      const TransferArgs &optional_args,
+                                      TransferReq &req) {
+  llm::TemporaryRtContext with_context(rt_context_);
+  auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
+  ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
+                           "Failed to get channel, remote_engine:%s", remote_engine.GetString());
+  uint64_t id = next_req_id_.fetch_add(1);
+  req = reinterpret_cast<void*>(id);
+  std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
+  std::function<TransferStatus()> closure;
+  ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, closure),
+                      "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
+  transfer_reqs_[id] = std::move(closure);
+  return SUCCESS;
+}
+
+Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
+  llm::TemporaryRtContext with_context(rt_context_);
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto id = reinterpret_cast<uint64_t>(req);
+  auto it = transfer_reqs_.find(id);
+  if (it == transfer_reqs_.end()) {
+    status = TransferStatus::FAILED;
+    LLMLOGE(ge::LLM_PARAM_INVALID, "Request %llu not found", id);
+    return FAILED;
+  }
+  status = it->second();
+  if (status == TransferStatus::COMPLETED || status == TransferStatus::FAILED) {
+    LLMLOGI("Transfer request %llu finished with status %d", id, static_cast<int>(status));
+    transfer_reqs_.erase(it);
+  }
+  return SUCCESS;
+}
+
 }  // namespace adxl

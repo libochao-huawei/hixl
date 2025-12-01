@@ -35,7 +35,7 @@ pip3 install -r requirements.txt
 ## 样例运行
 以下所有用例运行均需正确设置Ascend环境变量，所有双机示例需尽量保证同步执行。
 ```
-source ${HOME}/Ascend/set_env.sh
+source ${HOME}/Ascend/ascend-toolkit/set_env.sh
 ```
 “${HOME}/Ascend”请替换相关软件包的实际安装路径。
 
@@ -58,6 +58,14 @@ source ${HOME}/Ascend/set_env.sh
     hccn_tool -i 0 -ping -g address x.x.x.x
     ```
     **注: 其中-i后面为指定的设备ID；address后面为目的设备的ip地址。**
+- 执行样例前检查设备之间TLS设置是否一致（可选）：
+    ```shell
+    # 检查设备的TLS状态
+    for i in {0..7}; do hccn_tool -i $i -tls -g; done | grep switch
+
+    # TLS使能的设备和TLS不使能的设备无法建链，建议统一保持TLS关闭
+    for i in {0..7}; do hccn_tool -i $i -tls -s enable 0; done
+    ```
 
 ### 执行
 - 执行pull cache样例程序，此样例程序展示了配置内存池场景下，使用allocate_cache，双向建链，并从远端pull_cache
