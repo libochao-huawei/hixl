@@ -109,12 +109,13 @@ recreate_common_stub_softlink() {
 whl_uninstall_package() {
     local _module="$1"
     local _module_apth="$2"
-    if [ ! -d "${WHL_INSTALL_DIR_PATH}/${_module}" ]; then
-        pip3 show "${_module}" > /dev/null 2>&1
+    local _hixl_whl="llm_datadist"
+    if [ ! -d "${WHL_INSTALL_DIR_PATH}/${_hixl_whl}" ]; then
+        pip3 show "${_hixl_whl}" > /dev/null 2>&1
         if [ $? -ne 0 ]; then
             log "WARNING" "${_module} is not exist."
         else
-            pip3 uninstall -y "${_module}" 1> /dev/null
+            pip3 uninstall -y "${_hixl_whl}" 1> /dev/null
             local ret=$?
             if [ $ret -ne 0 ]; then
                 log "WARNING" "uninstall ${_module} failed, error code: $ret."
@@ -125,7 +126,7 @@ whl_uninstall_package() {
         fi
     else
         export PYTHONPATH="${_module_apth}"
-        pip3 uninstall -y "${_module}" > /dev/null 2>&1
+        pip3 uninstall -y "${_hixl_whl}" > /dev/null 2>&1
         local ret=$?
         if [ $ret -ne 0 ]; then
             log "WARNING" "uninstall ${_module} failed, error code: $ret."

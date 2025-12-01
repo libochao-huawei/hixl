@@ -56,9 +56,9 @@ if [ -d "${library_path}" ]; then
     num=$(echo ":${ld_library_path}:" | grep ":${library_path}:" | wc -l)
     if [ "${num}" -eq 0 ]; then
         if [ "-${ld_library_path}" = "-" ]; then
-            export LD_LIBRARY_PATH="${library_path}:${library_path}/plugin/opskernel:${library_path}/plugin/nnengine:${library_path}/stub"
+            export LD_LIBRARY_PATH="${library_path}"
         else
-            export LD_LIBRARY_PATH="${library_path}:${library_path}/plugin/opskernel:${library_path}/plugin/nnengine:${ld_library_path}:${library_path}/stub"
+            export LD_LIBRARY_PATH="${ld_library_path}:${library_path}"
         fi
     fi
 fi
