@@ -53,9 +53,9 @@ if test -d "$library_path"
     set -l num (echo ":$ld_library_path:" | grep ":$library_path:" | wc -l)
     if test "$num" -eq 0
         if test "-$ld_library_path" = "-"
-            set -gx LD_LIBRARY_PATH "$library_path:$library_path/plugin/opskernel:$library_path/plugin/nnengine:$library_path/stub"
+            set -gx LD_LIBRARY_PATH "$library_path"
         else
-            set -gx LD_LIBRARY_PATH "$library_path:$library_path/plugin/opskernel:$library_path/plugin/nnengine:$ld_library_path:$library_path/stub"
+            set -gx LD_LIBRARY_PATH "$ld_library_path:$library_path"
         end
     end
 end

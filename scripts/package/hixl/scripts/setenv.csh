@@ -41,9 +41,9 @@ if ( -d "${library_path}" ) then
     set num=`echo ":${ld_library_path}:" | grep ":${library_path}:" | wc -l`
     if ( "$num" == 0 ) then
         if ( "-${ld_library_path}" == "-" ) then
-            setenv LD_LIBRARY_PATH "${library_path}:${library_path}/plugin/opskernel:${library_path}/plugin/nnengine:${library_path}/stub"
+            setenv LD_LIBRARY_PATH "${library_path}"
         else
-            setenv LD_LIBRARY_PATH "${library_path}:${library_path}/plugin/opskernel:${library_path}/plugin/nnengine:${ld_library_path}:${library_path}/stub"
+            setenv LD_LIBRARY_PATH "${ld_library_path}:${library_path}"
         endif
     endif
 endif
