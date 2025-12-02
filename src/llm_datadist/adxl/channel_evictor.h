@@ -75,6 +75,7 @@ public:
     Status ProcessEviction(const EvictItem& item);
     Status ResetAllTransferFlags();
     Status Disconnect(const std::string &remote_engine, int32_t timeout_in_millis);
+    Status SetListenInfo(const std::string listen_info);
 
 private:
     void EvictionLoop();
@@ -84,7 +85,6 @@ private:
     Status ParseLowWaterline(const std::map<AscendString, AscendString>& options);
     Status StartEvictionThread();
     Status SetupChannelManagerCallbacks();
-    Status SetListenInfo(const std::string listen_info);
     
     Status ProcessServerEviction(const std::string& channel_id, ChannelPtr channel);
     Status ProcessClientEviction(const std::string& channel_id, int32_t timeout_ms);
