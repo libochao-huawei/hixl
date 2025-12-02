@@ -17,11 +17,15 @@
 #include <condition_variable>
 #include <queue>
 #include <atomic>
+#include <functional>
 #include "channel.h"
 #include "common/llm_mem_pool.h"
 #include "buffer_transfer_service.h"
 
 namespace adxl {
+
+using NotifyAckCallback = std::function<void(uint64_t req_id, Status status)>;
+
 class ChannelManager {
  public:
   ChannelManager() = default;
@@ -32,13 +36,17 @@ class ChannelManager {
   ChannelPtr GetChannel(ChannelType channel_type, const std::string &channel_id);
   Status DestroyChannel(ChannelType channel_type, const std::string &channel_id);
   static void SetHeartbeatWaitTime(int32_t time_in_millis);
+  
+  void RegisterNotifyAckCallback(NotifyAckCallback callback) {
+    notify_ack_callback_ = std::move(callback);
+  }
 
   Status AddSocketToEpoll(int32_t fd, ChannelPtr channel);
-
- private:
+  
   std::vector<ChannelPtr> GetAllClientChannel();
   std::vector<ChannelPtr> GetAllServerChannel();
 
+ private:
   void SendHeartbeats();
   void CheckHeartbeatTimeouts();
 
@@ -48,6 +56,8 @@ class ChannelManager {
   Status ProcessReceivedData(const ChannelPtr &channel);
   Status HandleControlMessage(const ChannelPtr &channel) const;
   Status RemoveFd(int32_t fd);
+  
+  NotifyAckCallback notify_ack_callback_;
 
   std::atomic<bool> stop_signal_{false};
 

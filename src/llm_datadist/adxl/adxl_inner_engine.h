@@ -55,6 +55,11 @@ class AdxlInnerEngine {
                                       TransferReq &req);
 
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
+
+  Status SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis = 1000);
+
+  Status GetNotifies(std::vector<NotifyDesc> &notifies);
+  
  private:
   Status GetTransferType(const ChannelPtr &channel, TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                          bool &need_buffer, TransferType &type);
@@ -78,6 +83,10 @@ class AdxlInnerEngine {
   std::atomic<uint64_t> next_req_id_{1};
   std::map<uint64_t, std::function<TransferStatus()>> transfer_reqs_;
   rtContext_t rt_context_{nullptr};
+
+  std::mutex notify_mutex_;
+  std::unordered_map<uint64_t, std::promise<Status>> notify_promises_;
+  std::atomic<uint64_t> next_notify_id_{1};
 };
 }  // namespace adxl
 

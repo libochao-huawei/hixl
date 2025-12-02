@@ -336,4 +336,40 @@ TEST_F(HixlSTest, TestHeartbeat) {
   std::this_thread::sleep_for(std::chrono::milliseconds(60));  // wait server:engine2 clear client:engine3
   engine2.Finalize();
 }
+
+TEST_F(HixlSTest, TestHixlSendMultipleNotifies) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  std::map<AscendString, AscendString> options1;
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options1), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl engine2;
+  std::map<AscendString, AscendString> options2;
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
+
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
+  
+  for (int i = 0; i < 5; ++i) {
+    NotifyDesc notify;
+    notify.name = AscendString(("test_notify" + std::to_string(i)).c_str());
+    notify.notify_msg = AscendString(("message " + std::to_string(i)).c_str());
+    EXPECT_EQ(engine1.SendNotify("127.0.0.1:26001", notify), SUCCESS);
+  }
+  
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  
+  std::vector<NotifyDesc> notifies;
+  EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+  EXPECT_EQ(notifies.size(), 5);
+  
+  for (int i = 0; i < 5; ++i) {
+    EXPECT_EQ(std::string(notifies[i].name.GetString()), "test_notify" + std::to_string(i));
+    EXPECT_EQ(std::string(notifies[i].notify_msg.GetString()), "message " + std::to_string(i));
+  }
+  
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
 }  // namespace hixl

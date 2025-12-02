@@ -41,6 +41,18 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get()), "Failed to init msg handler.");
   ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
   ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
+  
+  // Register the notify ack callback
+  channel_manager_.RegisterNotifyAckCallback([this](uint64_t req_id, Status status) {
+    std::lock_guard<std::mutex> lock(notify_mutex_);
+    auto it = notify_promises_.find(req_id);
+    if (it != notify_promises_.end()) {
+      // Notify the waiting thread with the status
+      it->second.set_value(status);
+      notify_promises_.erase(it);
+    }
+  });
+  
   is_initialized_ = true;
   LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
@@ -310,4 +322,59 @@ Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus
   return SUCCESS;
 }
 
+Status AdxlInnerEngine::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis) {
+  llm::TemporaryRtContext with_context(rt_context_);
+
+  auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
+  ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
+                           "Failed to get channel, remote_engine:%s", remote_engine.GetString());
+  NotifyMsg notify_msg;
+  notify_msg.req_id = next_notify_id_++; 
+  notify_msg.name = notify.name.GetString();
+  notify_msg.notify_msg = notify.notify_msg.GetString();
+  
+  std::promise<Status> ack_promise;
+  std::future<Status> ack_future = ack_promise.get_future();
+  {
+    std::lock_guard<std::mutex> lock(notify_mutex_);
+    notify_promises_[notify_msg.req_id] = std::move(ack_promise);
+  }
+  
+  auto send_callback = [this, notify_msg, timeout_in_millis](int32_t fd) -> Status {
+    return ControlMsgHandler::SendMsg(fd, ControlMsgType::kNotify, notify_msg, timeout_in_millis);
+  };
+  
+  Status send_status = channel->SendControlMsg(send_callback);
+  if (send_status != SUCCESS) {
+    std::lock_guard<std::mutex> lock(notify_mutex_);
+    notify_promises_.erase(notify_msg.req_id);
+    return send_status;
+  }
+  
+  auto wait_status = ack_future.wait_for(std::chrono::milliseconds(timeout_in_millis));
+  if (wait_status == std::future_status::timeout) {
+    std::lock_guard<std::mutex> lock(notify_mutex_);
+    notify_promises_.erase(notify_msg.req_id);
+    return TIMEOUT;
+  }
+  return ack_future.get();
+}
+
+Status AdxlInnerEngine::GetNotifies(std::vector<NotifyDesc> &notifies) {
+  llm::TemporaryRtContext with_context(rt_context_);
+  auto server_channels = channel_manager_.GetAllServerChannel();
+  for (const auto &channel : server_channels) {
+    std::vector<NotifyMsg> channel_notifies;
+    if (channel->GetNotifyMessages(channel_notifies) != SUCCESS) {
+      continue;
+    }
+    for (const auto &notify_msg : channel_notifies) {
+      NotifyDesc notify;
+      notify.name = AscendString(notify_msg.name.c_str());
+      notify.notify_msg = AscendString(notify_msg.notify_msg.c_str());
+      notifies.push_back(std::move(notify));
+    }
+  }
+  return SUCCESS;
+}
 }  // namespace adxl
