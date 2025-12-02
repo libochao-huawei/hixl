@@ -205,10 +205,8 @@ TEST_F(EvictionTest, ClientDisconnectHandlingAsync) {
   TransferReq req = nullptr;
   ASSERT_EQ(engine1.TransferAsync("127.0.0.1:26001", READ, {desc}, {}, req), SUCCESS);
   EXPECT_EQ(src, 2);
-  // src = 1;
-  // EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}), SUCCESS);
-  // EXPECT_EQ(dst, 1);
-
+  TransferStatus status = TransferStatus::WAITING;
+  EXPECT_EQ(engine1.GetTransferStatus(req, status), SUCCESS);
   EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
   EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
