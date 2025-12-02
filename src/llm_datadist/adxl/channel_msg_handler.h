@@ -117,7 +117,7 @@ class ChannelMsgHandler {
   HcclCommConfig comm_config_;
 
   SegmentTable *segment_table_ = nullptr;
-  std::unique_ptr<ChannelEvictor> channel_evictor_ = nullptr;  // 新添加的ChannelEvictor
+  std::unique_ptr<ChannelEvictor> channel_evictor_ = nullptr;
 };
 }  // namespace adxl
 

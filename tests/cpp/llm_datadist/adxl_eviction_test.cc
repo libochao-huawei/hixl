@@ -43,7 +43,6 @@ class EvictionTest : public ::testing::Test {
   std::map<AscendString, AscendString> options_;
 };
 
-// 测试用例1：Client端断链逻辑测试 - 第一个engine作为Client与其他engine建链触发淘汰
 TEST_F(EvictionTest, ClientEvictionTest) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl client_;
@@ -78,7 +77,6 @@ TEST_F(EvictionTest, ClientEvictionTest) {
   server3_.Finalize();
 }
 
-// 测试用例2：Server端断链逻辑测试 - 其他engine作为Client与第一个engine建链触发淘汰
 TEST_F(EvictionTest, ServerEvictionTest) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl server_;
@@ -112,7 +110,6 @@ TEST_F(EvictionTest, ServerEvictionTest) {
   client3_.Finalize();
 }
 
-// 测试用例3：原子变量计数测试
 TEST_F(EvictionTest, TestAtomicCounters) {
   adxl::ChannelInfo channel_info{};
   channel_info.channel_type = adxl::ChannelType::kClient;
@@ -150,7 +147,6 @@ TEST_F(EvictionTest, TestAtomicCounters) {
   channel->Finalize();
 }
 
-// 测试用例4: 引入链路池后，调用TransferSync，没有连接时，是否会按照预期重新触发建链过程
 TEST_F(EvictionTest, ClientDisconnectHandling) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
@@ -176,6 +172,40 @@ TEST_F(EvictionTest, ClientDisconnectHandling) {
   EXPECT_EQ(src, 2);
   src = 1;
   EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", WRITE, {desc}), SUCCESS);
+  EXPECT_EQ(dst, 1);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+TEST_F(EvictionTest, ClientDisconnectHandling) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl engine2;
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options_), SUCCESS);
+
+  hixl::MemDesc mem{};
+  mem.addr = 1234;
+  mem.len = 10;
+  MemHandle handle1 = nullptr;
+  EXPECT_EQ(engine1.RegisterMem(mem, MEM_DEVICE, handle1), SUCCESS);
+
+  MemHandle handle2 = nullptr;
+  EXPECT_EQ(engine2.RegisterMem(mem, MEM_DEVICE, handle2), SUCCESS);
+
+  int32_t src = 1;
+  int32_t dst = 2;
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.TransferASync("127.0.0.1:26001", READ, {desc}), SUCCESS);
+  EXPECT_EQ(src, 2);
+  src = 1;
+  EXPECT_EQ(engine1.TransferASync("127.0.0.1:26001", WRITE, {desc}), SUCCESS);
   EXPECT_EQ(dst, 1);
 
   EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
@@ -238,7 +268,7 @@ TEST_F(EvictionTest, TestEvictionWithTransfer) {
   engine4.Finalize();
   engine5.Finalize();
 }
-// 主函数
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

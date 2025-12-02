@@ -53,8 +53,8 @@ class BufferedTransfer {
 };
 
 enum class RecvState {
-  WAITING_FOR_HEADER,  // 等待接收协议头
-  WAITING_FOR_BODY     // 已收到头，等待接收完整数据体
+  WAITING_FOR_HEADER,
+  WAITING_FOR_BODY
 };
 
 class Channel {
@@ -86,7 +86,6 @@ class Channel {
   rtStream_t &GetStream();
   std::mutex &GetTransferMutex();
 
-  // 状态访问接口（用于淘汰机制）
   int32_t GetTransferCount() const { 
     return transfer_count_.load(std::memory_order_acquire); 
   }
@@ -121,7 +120,6 @@ class Channel {
 
   std::mutex transfer_mutex_;
   
-  // 状态字段（用于淘汰机制）
   std::atomic<int32_t> transfer_count_{0};
   std::atomic<bool> disconnect_flag_{false};
   std::atomic<bool> has_transfered_{false};

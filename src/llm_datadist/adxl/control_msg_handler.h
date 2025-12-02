@@ -122,10 +122,9 @@ inline void from_json(const nlohmann::json &j, HeartbeatMsg &msg) {
   j.at("msg").get_to(msg.msg);
 }
 
-// Server请求Client断链的消息
 struct RequestDisconnectMsg {
   std::string channel_id;
-  uint64_t timeout{0}; 
+  uint64_t timeout{1000}; 
   uint64_t req_id{0};
 };
 
@@ -141,7 +140,6 @@ inline void from_json(const nlohmann::json &j, RequestDisconnectMsg &msg) {
   }
 }
 
-// Client响应Server的断链请求
 struct RequestDisconnectResp {
   std::string channel_id;
   uint64_t req_id{0};

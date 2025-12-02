@@ -134,13 +134,6 @@ Status Channel::TransferAsync(TransferOp operation,
 
 Status Channel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                               rtStream_t stream) {
-  // IncrementTransferCount();
-  // has_transfered_.store(true, std::memory_order_release);
-  
-  // LLM_DISMISSABLE_GUARD(transfer_guard, (([this]() {
-  //   DecrementTransferCount();
-  // })));
-
   auto trans_func = [this, operation, &stream](HcclOneSideOpDesc *descs, uint32_t desc_num) -> Status {
     HcclResult ret = HCCL_SUCCESS;
     if (operation == READ) {
@@ -158,7 +151,6 @@ Status Channel::TransferAsync(TransferOp operation, const std::vector<TransferOp
   };
   BufferedTransfer transfer(trans_func);
   ADXL_CHK_STATUS_RET(transfer.Put(op_descs), "Failed to batch transfer");
-  // LLM_DISMISS_GUARD(transfer_guard);
   return SUCCESS;
 }
 
@@ -198,14 +190,6 @@ Status Channel::TransferAsyncWithTimeout(TransferOp operation, const std::vector
 Status Channel::TransferSync(TransferOp operation,
                              const std::vector<TransferOpDesc> &op_descs,
                              int32_t timeout_in_millis) {
-  // 更新传输状态
-  // IncrementTransferCount();
-  // has_transfered_.store(true, std::memory_order_release);
-  
-  // LLM_DISMISSABLE_GUARD(transfer_guard, (([this]() {
-  //   DecrementTransferCount();
-  // })));
-  
   const auto start = std::chrono::steady_clock::now();
   ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Transfer failed.");
 
@@ -214,9 +198,6 @@ Status Channel::TransferSync(TransferOp operation,
   const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   LLMLOGI("%s success, num = %zu, cost = %ld us.",
          operation == READ ? "HcclBatchGet" : "HcclBatchPut", op_descs.size(), cost);
-  
-  // 传输成功，减少计数
-  //LLM_DISMISS_GUARD(transfer_guard);
   return SUCCESS;
 }
 

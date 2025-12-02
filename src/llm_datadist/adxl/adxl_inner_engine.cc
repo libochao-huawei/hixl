@@ -25,6 +25,7 @@ constexpr uint64_t kDefaultBufferSize = 8U;
 constexpr const char *kDisabledPoolConfig = "0:0";
 constexpr uint64_t kNeedUseBufferThresh = 256 * 1024U;
 constexpr size_t kMemPoolNum = 2U;
+constexpr uint32_t kCheckDisconnetPeriod = 10;
 }
 
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
@@ -252,15 +253,34 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
                                      const std::vector<TransferOpDesc> &op_descs,
                                      int32_t timeout_in_millis) {
   llm::TemporaryRtContext with_context(rt_context_);
-  auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
+  auto start_time = std::chrono::steady_clock::now();
+  ChannelPtr channel;
+  while (true) {
+    channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine.GetString());
+    if (channel == nullptr || !channel->IsDisconnecting()) {
+      break;
+    }
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start_time).count();
+    if(elapsed >= timeout_in_millis) {
+      LLMEVENT("Channel is still disconneting after timeout, remote_engine: %s, timeout: %d", 
+                remote_engine.GetString(), timeout_in_millis);
+      return FAILED;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(kCheckDisconnetPeriod));
+  }
   if (channel == nullptr) {
     LLMLOGI("Not connected, start to connect: %s", remote_engine.GetString());
-    Connect(remote_engine, timeout_in_millis);
-    LLMLOGI("Connect Success: %s", remote_engine.GetString());
+    ADXL_CHK_STATUS_RET(Connect(remote_engine, timeout_in_millis),
+                        "Failed to connect remote engine.");
     channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   }
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   channel->SetHasTransferred(true);
+  channel->IncrementTransferCount();
+  LLM_MAKE_GUARD(transfer_count_guard, [&channel]() {
+    channel->DecrementTransferCount();
+  });
   if (buffer_transfer_service_ != nullptr) {
     const auto start = std::chrono::steady_clock::now();
     bool need_buffer = false;
@@ -285,16 +305,49 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
                                       const TransferArgs &optional_args,
                                       TransferReq &req) {
   llm::TemporaryRtContext with_context(rt_context_);
-  auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
-  ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
-                           "Failed to get channel, remote_engine:%s", remote_engine.GetString());
+  auto start_time = std::chrono::steady_clock::now();
+  ChannelPtr channel;
+  while (true) {
+    channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine.GetString());
+    if (channel == nullptr || !channel->IsDisconnecting()) {
+      break;
+    }
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start_time).count();
+    if(elapsed >= timeout_in_millis) {
+      LLMEVENT("Channel is still disconneting after timeout, remote_engine: %s, timeout: %d", 
+                remote_engine.GetString(), timeout_in_millis);
+      return FAILED;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(kCheckDisconnetPeriod));
+  }
+  if (channel == nullptr) {
+    LLMLOGI("Not connected, start to connect: %s", remote_engine.GetString());
+    ADXL_CHK_STATUS_RET(Connect(remote_engine, timeout_in_millis),
+                        "Failed to connect remote engine.");
+    channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
+  }
   uint64_t id = next_req_id_.fetch_add(1);
   req = reinterpret_cast<void*>(id);
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
+  channel->SetHasTransferred(true);
+  channel->IncrementTransferCount();
+  LLM_DISMISSABLE_GUARD(transfer_count_guard, [&channel]() {
+    channel->DecrementTransferCount();
+  });
   std::function<TransferStatus()> closure;
   ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, closure),
                       "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
-  transfer_reqs_[id] = std::move(closure);
+  LLM_DISMISS_GUARD(transfer_count_guard);
+  auto channel_ptr = channel;
+  auto complete_closure = [channel_ptr, closure]() -> TransferStatus {
+    auto status = closure();
+    if (status == TransferStatus::COMPLETED || status == TransferStatus::FAILED) {
+      channel_ptr->DecremnetTransferCount();
+    }
+    return status;
+  }
+  transfer_reqs_[id] = std::move(complete_closure);
   return SUCCESS;
 }
 
