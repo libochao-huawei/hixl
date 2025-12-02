@@ -82,7 +82,7 @@ Status ChannelManager::HandleEpoolEvents() {
     return SUCCESS;
   }
   for (int i = 0; i < nfds; ++i) {
-    ADXL_CHK_STATUS_RET(HandleSocketEvent(events[i].data.fd), "Failed to handle socket event.");
+    (void)HandleSocketEvent(events[i].data.fd);
   }
   return SUCCESS;
 }
@@ -125,7 +125,7 @@ Status ChannelManager::HandleReadEvent(const ChannelPtr &channel) {
   return ProcessReceivedData(channel);
 }
 
-Status ChannelManager::ProcessReceivedData(const ChannelPtr &channel) {
+Status ChannelManager::ProcessReceivedData(const ChannelPtr &channel) const {
   while (true) {
     if (channel->recv_state_ == RecvState::WAITING_FOR_HEADER) {
       if (channel->bytes_received_ < sizeof(ProtocolHeader)) {
@@ -187,14 +187,14 @@ Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) const {
     ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), buffer_req), "Failed to deserialize msg");
     LLMLOGI("Recv buffer req for channel:%s", channel->GetChannelId().c_str());
     if (buffer_transfer_service_ != nullptr) {
-      buffer_transfer_service_->PushBufferReq(channel, buffer_req);
+      (void)buffer_transfer_service_->PushBufferReq(channel, buffer_req);
     }
   } else if (*msg_type == ControlMsgType::kBufferResp) {
     BufferResp buffer_resp{};
     ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), buffer_resp), "Failed to deserialize msg");
     LLMLOGI("Recv buffer resp for channel:%s", channel->GetChannelId().c_str());
     if (buffer_transfer_service_ != nullptr) {
-      buffer_transfer_service_->PushBufferResp(channel, buffer_resp);
+      (void)buffer_transfer_service_->PushBufferResp(channel, buffer_resp);
     }
     LLMLOGI("Recv buffer resp for channel:%s", channel->GetChannelId().c_str());
   } else {

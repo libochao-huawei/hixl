@@ -38,9 +38,9 @@ class BufferTransferService {
   Status Transfer(const ChannelPtr &channel, TransferType type, const std::vector<TransferOpDesc> &op_descs,
                   int32_t timeout_in_millis);
 
-  void PushBufferReq(const ChannelPtr &channel, BufferReq &buffer_req);
+  Status PushBufferReq(const ChannelPtr &channel, BufferReq &buffer_req);
 
-  void PushBufferResp(const ChannelPtr &channel, const BufferResp &buffer_resp);
+  Status PushBufferResp(const ChannelPtr &channel, BufferResp &buffer_resp);
 
  private:
   Status TryGetBuffer(void *&buffer_addr, uint64_t timeout, size_t pool_index = 0U);
@@ -73,7 +73,7 @@ class BufferTransferService {
                                                   uintptr_t dev_buffer_addr, uint64_t count);
   Status CheckReqFinishStatus(uint64_t timeout, uint64_t req_id);
 
-  void PushSecondStepReq(const ChannelPtr &channel, BufferReq &buffer_req);
+  Status PushSecondStepReq(const ChannelPtr &channel, BufferReq &buffer_req);
 
   void PushCtrlMsg(const ChannelPtr &channel, BufferReq &buffer_req);
 

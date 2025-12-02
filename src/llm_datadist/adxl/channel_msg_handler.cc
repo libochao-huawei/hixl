@@ -209,8 +209,8 @@ Status ChannelMsgHandler::RegisterMem(const MemDesc &mem, MemType type, MemHandl
   hccl_mem.size = mem.len;
   ADXL_CHK_HCCL_RET(llm::HcclAdapter::GetInstance().HcclRegisterGlobalMem(&hccl_mem, &mem_handle));
   LLMLOGI("Add local mem range start:%lu, end:%lu, type:%d.", mem.addr, mem.addr + mem.len, type);
-  segment_table_->AddRange(listen_info_, mem.addr, mem.addr + mem.len, type);
   std::lock_guard<std::mutex> lock(mutex_);
+  segment_table_->AddRange(listen_info_, mem.addr, mem.addr + mem.len, type);
   handle_to_addr_[mem_handle] = AddrInfo{mem.addr, mem.addr + mem.len, type};
   return SUCCESS;
 }
@@ -258,11 +258,14 @@ Status ChannelMsgHandler::CreateChannel(const ChannelInfo &channel_info, bool is
   ChannelPtr channel = nullptr;
   ADXL_CHK_STATUS_RET(channel_manager_->CreateChannel(channel_info, channel));
   // add remote addr to segment table
-  for (const auto &remote_addr : remote_addrs) {
-    LLMLOGI("Add remote mem range start:%lu, end:%lu, type:%d.", remote_addr.start_addr, remote_addr.end_addr,
-           remote_addr.mem_type);
-    segment_table_->AddRange(channel->GetChannelId(), remote_addr.start_addr, remote_addr.end_addr,
-                             remote_addr.mem_type);
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto &remote_addr : remote_addrs) {
+      LLMLOGI("Add remote mem range start:%lu, end:%lu, type:%d.", remote_addr.start_addr, remote_addr.end_addr,
+             remote_addr.mem_type);
+      segment_table_->AddRange(channel->GetChannelId(), remote_addr.start_addr, remote_addr.end_addr,
+                               remote_addr.mem_type);
+    }
   }
   LLMLOGI("Success to create channel, channel_id:%s, local_rank:%u, peer_rank:%u, is_client:%d",
          channel_info.channel_id.c_str(), channel_info.local_rank_id,
