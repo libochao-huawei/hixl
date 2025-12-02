@@ -13,7 +13,6 @@ find_package_if_target_not_exists(securec MODULE REQUIRED)
 
 if (NOT ENABLE_TEST)
     find_package_if_target_not_exists(slog MODULE REQUIRED)
-    find_package_if_target_not_exists(runtime MODULE REQUIRED)
     find_package_if_target_not_exists(mmpa MODULE REQUIRED)
     find_package_if_target_not_exists(msprof MODULE REQUIRED)
     find_package_if_target_not_exists(hccl MODULE REQUIRED)
@@ -79,23 +78,6 @@ else ()
         ${CANN_INSTALL_PATH}/include
         ${CANN_INSTALL_PATH}/include/external
     )
-
-    add_library(runtime_headers INTERFACE)
-    if (NOT EXISTS "${CANN_INSTALL_PATH}/pkg_inc/runtime")
-        target_include_directories(runtime_headers INTERFACE
-            ${CANN_INSTALL_PATH}/include/experiment
-            ${CANN_INSTALL_PATH}/include/experiment/runtime
-            ${CANN_INSTALL_PATH}/include/experiment/runtime/external
-            ${CANN_INSTALL_PATH}/include/experiment/runtime/external/runtime
-        )
-    else ()
-        target_include_directories(runtime_headers INTERFACE
-            ${CANN_INSTALL_PATH}/pkg_inc
-            ${CANN_INSTALL_PATH}/pkg_inc/runtime
-            ${CANN_INSTALL_PATH}/pkg_inc/runtime/runtime
-            ${CANN_INSTALL_PATH}/include/acl/error_codes
-        )
-    endif ()
 
     add_library(slog_headers INTERFACE)
     if (NOT EXISTS "${CANN_INSTALL_PATH}/include/experiment/slog/toolchain")
