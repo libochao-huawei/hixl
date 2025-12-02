@@ -13,9 +13,17 @@
 
 #include <map>
 #include <mutex>
+#include <queue>
+#include <thread>
+#include <atomic>
+#include <condition_variable>
+#include <optional>
+#include <chrono>
 #include "channel_manager.h"
 #include "common/msg_handler_plugin.h"
 #include "segment_table.h"
+#include "adxl_utils.h"
+#include "channel_evictor.h"
 
 namespace adxl {
 enum class ChannelMsgType : int32_t {
@@ -67,6 +75,10 @@ class ChannelMsgHandler {
   Status Connect(const std::string &remote_engine, int32_t timeout_in_millis);
   Status Disconnect(const std::string &remote_engine, int32_t timeout_in_millis);
 
+  const std::string& GetListenInfo() const { 
+    return listen_info_; 
+  }
+  
  private:
   static Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);
   Status StartDaemon(uint32_t listen_port);
@@ -88,6 +100,7 @@ class ChannelMsgHandler {
   static Status Deserialize(const std::vector<char> &msg_str, T &msg);
   Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
   Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
+  Status DoConnect(const std::string &remote_engine, int32_t timeout_in_millis);
 
   std::string listen_info_;
   ChannelManager *channel_manager_;
@@ -104,6 +117,7 @@ class ChannelMsgHandler {
   HcclCommConfig comm_config_;
 
   SegmentTable *segment_table_ = nullptr;
+  std::unique_ptr<ChannelEvictor> channel_evictor_ = nullptr;  // 新添加的ChannelEvictor
 };
 }  // namespace adxl
 

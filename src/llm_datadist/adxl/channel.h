@@ -12,6 +12,7 @@
 #define CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_CHANNEL_H_
 
 #include <mutex>
+#include <atomic>
 #include <utility>
 #include "nlohmann/json.hpp"
 #include "runtime/rt.h"
@@ -85,6 +86,28 @@ class Channel {
   rtStream_t &GetStream();
   std::mutex &GetTransferMutex();
 
+  // 状态访问接口（用于淘汰机制）
+  int32_t GetTransferCount() const { 
+    return transfer_count_.load(std::memory_order_acquire); 
+  }
+  bool IsDisconnecting() const { 
+    return disconnect_flag_.load(std::memory_order_acquire); 
+  }
+  bool GetHasTransferred() const {
+    return has_transfered_.load(std::memory_order_acquire);
+  }
+  void SetHasTransferred(bool value) {
+    has_transfered_.store(value, std::memory_order_release);
+  }
+  void IncrementTransferCount() { 
+    transfer_count_++; 
+  }
+  void DecrementTransferCount() { 
+    transfer_count_--; 
+  }
+  void SetDisconnecting(bool value) { 
+    disconnect_flag_.store(value, std::memory_order_release); 
+  }
   Status TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                                   rtStream_t stream, uint64_t timeout);
 
@@ -97,6 +120,11 @@ class Channel {
   static int64_t timeout_in_millis_;
 
   std::mutex transfer_mutex_;
+  
+  // 状态字段（用于淘汰机制）
+  std::atomic<int32_t> transfer_count_{0};
+  std::atomic<bool> disconnect_flag_{false};
+  std::atomic<bool> has_transfered_{false};
 
   int32_t fd_ = -1;
   RecvState recv_state_ = RecvState::WAITING_FOR_HEADER;

@@ -17,6 +17,7 @@
 #include <condition_variable>
 #include <queue>
 #include <atomic>
+#include <functional>
 #include "channel.h"
 #include "common/llm_mem_pool.h"
 #include "buffer_transfer_service.h"
@@ -35,9 +36,19 @@ class ChannelManager {
 
   Status AddSocketToEpoll(int32_t fd, ChannelPtr channel);
 
- private:
+  void SetDisconnectCallback(std::function<Status(const std::string&, int32_t)> callback) {
+    disconnect_callback_ = callback;
+  }
+  
+  void SetDisconnectResponseCallback(std::function<void(const RequestDisconnectResp&)> callback) {
+    disconnect_response_callback_ = callback;
+  }
+
   std::vector<ChannelPtr> GetAllClientChannel();
   std::vector<ChannelPtr> GetAllServerChannel();
+
+ private:
+  int max_channel = 512;
 
   void SendHeartbeats();
   void CheckHeartbeatTimeouts();
@@ -48,6 +59,12 @@ class ChannelManager {
   Status ProcessReceivedData(const ChannelPtr &channel);
   Status HandleControlMessage(const ChannelPtr &channel) const;
   Status RemoveFd(int32_t fd);
+
+  Status HandleHeartBeatMessage(const ChannelPtr &channel) const;
+  Status HandleBufferReqMessage(const ChannelPtr &channel, const std::string &msg_str) const;
+  Status HandleBufferRespMessage(const ChannelPtr &channel, const std::string &msg_str) const;
+  Status HandleRequestDisconnectMessage(const ChannelPtr &channel, const std::string &msg_str) const;
+  Status HandleRequestDisconnectRespMessage(const ChannelPtr &channel, const std::string &msg_str) const;
 
   std::atomic<bool> stop_signal_{false};
 
@@ -66,6 +83,9 @@ class ChannelManager {
 
   std::thread msg_receiver_;
   rtContext_t rt_context_{nullptr};
+  
+  std::function<Status(const std::string&, int32_t)> disconnect_callback_;
+  std::function<void(const RequestDisconnectResp&)> disconnect_response_callback_;
 };
 }  // namespace adxl
 

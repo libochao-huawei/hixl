@@ -20,5 +20,13 @@ namespace adxl {
 Status HcclError2AdxlStatus(HcclResult ret);
 Status AclError2AdxlStatus(rtError_t ret);
 Status LLMError2AdxlStatus(ge::Status ret);
+
+constexpr const char* OPTION_MAX_CHANNEL = "adxl.max_channel";
+constexpr const char* OPTION_HIGH_WATERLINE = "adxl.high_waterline";
+constexpr const char* OPTION_LOW_WATERLINE = "adxl.low_waterline";
+
+constexpr int kDefaultMaxChannel = 512;
+constexpr double kDefaultHighWaterline = 0.9;  // 90%
+constexpr double kDefaultLowWaterline = 0.8;   // 80%
 }  // namespace adxl
 #endif  // CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_ADXL_UTILS_H

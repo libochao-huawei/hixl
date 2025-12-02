@@ -24,7 +24,14 @@ struct ProtocolHeader {
   uint64_t body_size;
 };
 
-enum class ControlMsgType : int32_t { kHeartBeat = 1, kBufferReq = 2, kBufferResp = 3, kEnd };
+enum class ControlMsgType : int32_t { 
+  kHeartBeat = 1, 
+  kBufferReq = 2, 
+  kBufferResp = 3, 
+  kRequestDisconnect = 4,
+  kRequestDisconnectResp = 5,
+  kEnd 
+};
 
 struct HeartbeatMsg {
   char msg;
@@ -113,6 +120,55 @@ inline void to_json(nlohmann::json &j, const HeartbeatMsg &msg) {
 
 inline void from_json(const nlohmann::json &j, HeartbeatMsg &msg) {
   j.at("msg").get_to(msg.msg);
+}
+
+// Server请求Client断链的消息
+struct RequestDisconnectMsg {
+  std::string channel_id;
+  uint64_t timeout{0}; 
+  uint64_t req_id{0};
+};
+
+inline void to_json(nlohmann::json &j, const RequestDisconnectMsg &msg) {
+  j = nlohmann::json{{"channel_id", msg.channel_id}, {"timeout", msg.timeout}, {"req_id", msg.req_id}};
+}
+
+inline void from_json(const nlohmann::json &j, RequestDisconnectMsg &msg) {
+  j.at("channel_id").get_to(msg.channel_id);
+  j.at("timeout").get_to(msg.timeout);
+  if (j.contains("req_id")) {
+    j.at("req_id").get_to(msg.req_id);
+  }
+}
+
+// Client响应Server的断链请求
+struct RequestDisconnectResp {
+  std::string channel_id;
+  uint64_t req_id{0};
+  bool can_disconnect{false};
+  bool disconnected{false};
+  uint32_t error_code{0}; 
+  std::string error_message;
+};
+
+inline void to_json(nlohmann::json &j, const RequestDisconnectResp &resp) {
+  j = nlohmann::json{{"channel_id", resp.channel_id},
+                     {"req_id", resp.req_id},
+                     {"can_disconnect", resp.can_disconnect},
+                     {"disconnected", resp.disconnected},
+                     {"error_code", resp.error_code},
+                     {"error_message", resp.error_message}};
+}
+
+inline void from_json(const nlohmann::json &j, RequestDisconnectResp &resp) {
+  j.at("channel_id").get_to(resp.channel_id);
+  if (j.contains("req_id")) {
+    j.at("req_id").get_to(resp.req_id);
+  }
+  j.at("can_disconnect").get_to(resp.can_disconnect);
+  j.at("disconnected").get_to(resp.disconnected);
+  j.at("error_code").get_to(resp.error_code);
+  j.at("error_message").get_to(resp.error_message);
 }
 
 class ControlMsgHandler {

@@ -26,6 +26,7 @@ constexpr const char *kDisabledPoolConfig = "0:0";
 constexpr uint64_t kNeedUseBufferThresh = 256 * 1024U;
 constexpr size_t kMemPoolNum = 2U;
 }
+
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   std::lock_guard<std::mutex> lk(mutex_);
   ADXL_CHK_LLM_RET(llm::HcclAdapter::GetInstance().Initialize(), "HcclSoManager initialize failed.");
@@ -252,9 +253,14 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
                                      int32_t timeout_in_millis) {
   llm::TemporaryRtContext with_context(rt_context_);
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
-  ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
-                           "Failed to get channel, remote_engine:%s", remote_engine.GetString());
+  if (channel == nullptr) {
+    LLMLOGI("Not connected, start to connect: %s", remote_engine.GetString());
+    Connect(remote_engine, timeout_in_millis);
+    LLMLOGI("Connect Success: %s", remote_engine.GetString());
+    channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
+  }
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
+  channel->SetHasTransferred(true);
   if (buffer_transfer_service_ != nullptr) {
     const auto start = std::chrono::steady_clock::now();
     bool need_buffer = false;
