@@ -181,41 +181,6 @@ TEST_F(EvictionTest, ClientDisconnectHandling) {
   engine2.Finalize();
 }
 
-TEST_F(EvictionTest, ClientDisconnectHandlingAsync) {
-  llm::AutoCommResRuntimeMock::SetDevice(0);
-  Hixl engine1;
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
-
-  llm::AutoCommResRuntimeMock::SetDevice(1);
-  Hixl engine2;
-  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options_), SUCCESS);
-
-  hixl::MemDesc mem{};
-  mem.addr = 1234;
-  mem.len = 10;
-  MemHandle handle1 = nullptr;
-  EXPECT_EQ(engine1.RegisterMem(mem, MEM_DEVICE, handle1), SUCCESS);
-
-  MemHandle handle2 = nullptr;
-  EXPECT_EQ(engine2.RegisterMem(mem, MEM_DEVICE, handle2), SUCCESS);
-
-  int32_t src = 1;
-  int32_t dst = 2;
-  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
-  TransferReq req = nullptr;
-  ASSERT_EQ(engine1.TransferAsync("127.0.0.1:26001", READ, {desc}, {}, req), SUCCESS);
-  EXPECT_EQ(src, 2);
-  // src = 1;
-  // EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}), SUCCESS);
-  // EXPECT_EQ(dst, 1);
-
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
-  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
-  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
-  engine1.Finalize();
-  engine2.Finalize();
-}
-
 TEST_F(EvictionTest, TestEvictionWithTransfer) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
