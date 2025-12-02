@@ -27,7 +27,6 @@ if (NOT ENABLE_TEST)
             $<BUILD_INTERFACE:mmpa_headers>
             $<BUILD_INTERFACE:hccl_headers>
             $<BUILD_INTERFACE:metadef_headers>
-            $<BUILD_INTERFACE:msprof_headers>
             alog
             llm_datadist
     )
