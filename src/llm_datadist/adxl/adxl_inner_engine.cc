@@ -256,7 +256,7 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
   auto start_time = std::chrono::steady_clock::now();
   ChannelPtr channel;
   while (true) {
-    channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine.GetString());
+    channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
     if (channel == nullptr || !channel->IsDisconnecting()) {
       break;
     }
@@ -307,8 +307,9 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   llm::TemporaryRtContext with_context(rt_context_);
   auto start_time = std::chrono::steady_clock::now();
   ChannelPtr channel;
+  uint32_t timeout_in_millis = 1000;
   while (true) {
-    channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine.GetString());
+    channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
     if (channel == nullptr || !channel->IsDisconnecting()) {
       break;
     }
@@ -343,10 +344,10 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   auto complete_closure = [channel_ptr, closure]() -> TransferStatus {
     auto status = closure();
     if (status == TransferStatus::COMPLETED || status == TransferStatus::FAILED) {
-      channel_ptr->DecremnetTransferCount();
+      channel_ptr->DecrementTransferCount();
     }
     return status;
-  }
+  };
   transfer_reqs_[id] = std::move(complete_closure);
   return SUCCESS;
 }
