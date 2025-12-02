@@ -40,15 +40,6 @@ using namespace ::testing;
 using ::testing::Invoke;
 using ::testing::Mock;
 
-RTS_API rtError_t rtEventQueryStatus(rtEvent_t evt, rtEventStatus_t *status) {
-  (void) evt;
-  static int32_t i = 0;
-  bool success = (++i % 2) == 0;
-  *status = success ? RT_EVENT_RECORDED : RT_EVENT_INIT;
-  LLMLOGI("Wait event ret = %d", success);
-  return RT_ERROR_NONE;
-}
-
 namespace llm {
 namespace {
 class DataCacheEngineRunner {
@@ -199,7 +190,7 @@ HcclResult HcclExchangeMemDesc1(HcclComm comm, uint32_t remoteRank, HcclMemDescs
 class MockMmpaLongTimeRegister : public MmpaStubApiGe {
  public:
   void *DlOpen(const char *file_name, int32_t mode) override {
-    return (void *) 0x10000000;
+    return reinterpret_cast<void*>(0x10000000);
   }
 
   void *DlSym(void *handle, const char *func_name) override {
@@ -270,7 +261,7 @@ TEST_F(DataCacheEngineSTest, UnlinkWhenPrepareNotFinished) {
 }
 
 TEST_F(DataCacheEngineSTest, TestMemPool) {
-  void *base_address_ = (void *) 0x1000000000UL;
+  void *base_address_ = reinterpret_cast<void*>(0x1000000000);
   size_t pool_size = 10UL * 64 * 1024;
   llm::ScalableConfig config{};
   config.page_idem_num = 16;
@@ -300,7 +291,7 @@ TEST_F(DataCacheEngineSTest, TestMemPool) {
 }
 
 TEST_F(DataCacheEngineSTest, TestMemPool_Shared) {
-  void *base_address_ = (void *) 0x1000000000UL;
+  void *base_address_ = reinterpret_cast<void*>(0x1000000000UL);
   size_t pool_size = 10UL * 64 * 1024;
   llm::ScalableConfig config{};
   config.page_idem_num = 16;
