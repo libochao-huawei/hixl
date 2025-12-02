@@ -49,11 +49,25 @@ find_path(_INCLUDE_DIR
     NO_CMAKE_SYSTEM_PATH
     NO_CMAKE_FIND_ROOT_PATH)
 
-find_library(ascendcl_SHARED_LIBRARY
-    NAMES libascendcl.so libacl_rt.so
+find_library(old_ascendcl_SHARED_LIBRARY
+    NAMES libascendcl.so
     PATH_SUFFIXES lib64
     NO_CMAKE_SYSTEM_PATH
     NO_CMAKE_FIND_ROOT_PATH)
+
+find_library(new_ascendcl_SHARED_LIBRARY
+    NAMES libacl_rt.so
+    PATH_SUFFIXES lib64
+    NO_CMAKE_SYSTEM_PATH
+    NO_CMAKE_FIND_ROOT_PATH)
+
+if(new_ascendcl_SHARED_LIBRARY)
+    set(ascendcl_SHARED_LIBRARY "${new_ascendcl_SHARED_LIBRARY}")
+elseif(old_ascendcl_SHARED_LIBRARY)
+    set(ascendcl_SHARED_LIBRARY "${old_ascendcl_SHARED_LIBRARY}")
+else()
+    unset(_INCLUDE_DIR)
+endif()
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(ascendcl
