@@ -14,6 +14,8 @@
 #include "common/llm_utils.h"
 #include "common/llm_scope_guard.h"
 #include "common/llm_checker.h"
+#include "statistic_manager.h"
+#include "llm_datadist_timer.h"
 
 namespace adxl {
 namespace {
@@ -41,6 +43,12 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get()), "Failed to init msg handler.");
   ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
   ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
+  llm::LlmDatadistTimer::Instance().Init();
+  statistic_timer_handle_ = llm::LlmDatadistTimer::Instance().CreateTimer([this]() {
+    StatisticManager::GetInstance().Dump();
+  });
+  constexpr uint32_t kStatisticTimerPeriod = 80U * 1000U;
+  (void)llm::LlmDatadistTimer::Instance().StartTimer(statistic_timer_handle_, kStatisticTimerPeriod, false);
   is_initialized_ = true;
   LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
@@ -163,6 +171,13 @@ void AdxlInnerEngine::Finalize() {
     (void) rtCtxDestroyEx(rt_context_);
   }
   rt_context_ = nullptr;
+  if (statistic_timer_handle_ != nullptr) {
+    (void)llm::LlmDatadistTimer::Instance().StopTimer(statistic_timer_handle_);
+    (void)llm::LlmDatadistTimer::Instance().DeleteTimer(statistic_timer_handle_);
+    statistic_timer_handle_ = nullptr;
+  }
+  llm::LlmDatadistTimer::Instance().Finalize();
+  StatisticManager::GetInstance().Reset();
 }
 
 bool AdxlInnerEngine::IsInitialized() const {

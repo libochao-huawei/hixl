@@ -40,7 +40,7 @@ class BufferTransferService {
 
   void PushBufferReq(const ChannelPtr &channel, BufferReq &buffer_req);
 
-  void PushBufferResp(const ChannelPtr &channel, const BufferResp &buffer_resp);
+  void PushBufferResp(const ChannelPtr &channel, BufferResp &buffer_resp);
 
  private:
   Status TryGetBuffer(void *&buffer_addr, uint64_t timeout, size_t pool_index = 0U);

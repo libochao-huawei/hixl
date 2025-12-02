@@ -45,7 +45,7 @@ class ChannelManager {
   Status HandleEpoolEvents();
   Status HandleSocketEvent(int32_t fd);
   Status HandleReadEvent(const ChannelPtr &channel);
-  Status ProcessReceivedData(const ChannelPtr &channel);
+  Status ProcessReceivedData(const ChannelPtr &channel) const;
   Status HandleControlMessage(const ChannelPtr &channel) const;
   Status RemoveFd(int32_t fd);
 

@@ -82,7 +82,7 @@ Status ChannelManager::HandleEpoolEvents() {
     return SUCCESS;
   }
   for (int i = 0; i < nfds; ++i) {
-    ADXL_CHK_STATUS_RET(HandleSocketEvent(events[i].data.fd), "Failed to handle socket event.");
+    (void)HandleSocketEvent(events[i].data.fd);
   }
   return SUCCESS;
 }
@@ -125,7 +125,7 @@ Status ChannelManager::HandleReadEvent(const ChannelPtr &channel) {
   return ProcessReceivedData(channel);
 }
 
-Status ChannelManager::ProcessReceivedData(const ChannelPtr &channel) {
+Status ChannelManager::ProcessReceivedData(const ChannelPtr &channel) const {
   while (true) {
     if (channel->recv_state_ == RecvState::WAITING_FOR_HEADER) {
       if (channel->bytes_received_ < sizeof(ProtocolHeader)) {
