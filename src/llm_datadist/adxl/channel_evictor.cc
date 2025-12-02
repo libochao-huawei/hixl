@@ -320,7 +320,6 @@ Status ChannelEvictor::ProcessServerEviction(const std::string& channel_id, Chan
   }
   RequestDisconnectMsg req_msg;
   req_msg.channel_id = listen_info_;
-  req_msg.timeout = 1000ULL;
   req_msg.req_id = req_id;
   Status ret = channel->SendControlMsg([&req_msg](int32_t fd) {
     return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnect, req_msg, req_msg.timeout);
