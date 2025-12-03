@@ -36,7 +36,7 @@ run_pair() {
     cat "$tmp1"
     cat "$tmp2"
 
-    if grep -qi "ERROR" "$tmp1" || grep -qi "ERROR" "$tmp2"; then
+    if grep -qi -e "ERROR" -e "No such file" "$tmp1" || grep -qi -e "ERROR" -e "No such file" "$tmp2"; then
         has_error=1
     fi
 
