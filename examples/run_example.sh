@@ -72,6 +72,19 @@ main() {
     run_pair "./client_server_h2d ${device_id_1} 127.0.0.1 127.0.0.1:16000" "./client_server_h2d ${device_id_2} 127.0.0.1:16000"
     run_pair "./server_server_d2d ${device_id_1} 127.0.0.1:16000 127.0.0.1:16001" "./server_server_d2d ${device_id_2} 127.0.0.1:16001 127.0.0.1:16000"
 
+    # Python samples
+    cd "${BASEPATH}/python"
+
+    # get device id on the current machine to run RDMA
+    readarray -t nums <<< "$(ls /dev | grep -oP 'dasvinci\K\d+' | head -n 2)"
+
+    id1="${nums[0]}"
+    id2="${nums[1]}"
+
+    run_pair "GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1 python push_blocks_sample.py --device_id ${id_1} --role p"\
+             " --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1"\
+             " python push_blocks_sample.py --device_id ${id2} --role d --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1"
+
     
     if [ "$flag" -eq "0" ]; then
         echo "execute samples success"
