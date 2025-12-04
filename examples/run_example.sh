@@ -17,18 +17,21 @@ device_id_2="$2"
 flag=0
 
 run_pair() {
+    local para_num=$#
     local cmd1="$1"
     local cmd2="$2"
     local has_error=0
 
-    local binary_name1=$(echo "${cmd1#./}" | cut -d' ' -f1)
-    local binary_name2=$(echo "${cmd2#./}" | cut -d' ' -f1)
+    if [ "$para_num" -eq "2" ]; then
+        local binary_name1=$(echo "${cmd1#./}" | cut -d' ' -f1)
+        local binary_name2=$(echo "${cmd2#./}" | cut -d' ' -f1)
 
-    if [ ! -f "$binary_name1" ] || [ ! -f "$binary_name1" ]; then
-        echo "Binary does not exist!"
-        has_error=1
-        flag=1
-        exit 1
+        if [ ! -f "$binary_name1" ] || [ ! -f "$binary_name1" ]; then
+            echo "Binary does not exist!"
+            has_error=1
+            flag=1
+            exit 1
+        fi
     fi
 
     tmp1=$(mktemp)
@@ -71,6 +74,17 @@ main() {
     run_pair "./prompt_switch_roles ${device_id_1} 127.0.0.1 127.0.0.1" "./decoder_switch_roles ${device_id_2} 127.0.0.1 127.0.0.1"
     run_pair "./client_server_h2d ${device_id_1} 127.0.0.1 127.0.0.1:16000" "./client_server_h2d ${device_id_2} 127.0.0.1:16000"
     run_pair "./server_server_d2d ${device_id_1} 127.0.0.1:16000 127.0.0.1:16001" "./server_server_d2d ${device_id_2} 127.0.0.1:16001 127.0.0.1:16000"
+
+    # Python samples
+    cd "${BASEPATH}/python"
+
+    # get device id on the current machine to run RDMA
+    readarray -t nums <<< "$(ls /dev | grep -oP 'dasvinci\K\d+' | head -n 2)"
+
+    id1="${nums[0]}"
+    id2="${nums[1]}"
+
+    run_pair "GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1 python3 push_blocks_sample.py --device_id ${id_1} --role p --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1 python3 push_blocks_sample.py --device_id ${id2} --role d --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "no_check"
 
     
     if [ "$flag" -eq "0" ]; then
