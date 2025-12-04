@@ -243,13 +243,10 @@ Status ChannelManager::HandleNotifyMessage(const ChannelPtr &channel, const std:
   ack_msg.channel = channel;
   ack_msg.req_id = notify_msg.req_id;
   
-  // Cast away constness to access the queue (this is safe because we're only modifying the queue, not the channel)
-  auto non_const_this = const_cast<ChannelManager*>(this);
-  
   {
-    std::lock_guard<std::mutex> lock(non_const_this->ack_queue_mutex_);
-    non_const_this->ack_queue_.push(std::move(ack_msg));
-    non_const_this->ack_queue_cv_.notify_one();
+    std::lock_guard<std::mutex> lock(ack_queue_mutex_);
+    ack_queue_.push(std::move(ack_msg));
+    ack_queue_cv_.notify_one();
   }
   
   return SUCCESS;
@@ -426,14 +423,11 @@ void ChannelManager::ProcessAckMessages() {
       ack_msg = std::move(ack_queue_.front());
       ack_queue_.pop();
     }
-    
     NotifyAck notify_ack;
     notify_ack.req_id = ack_msg.req_id;
-    
     auto ret = ack_msg.channel->SendControlMsg([&notify_ack](int32_t fd) {
       return ControlMsgHandler::SendMsg(fd, ControlMsgType::kNotifyAck, notify_ack, kSendMsgTimeout);
     });
-    
     if (ret != SUCCESS) {
       LLMLOGW("Failed to send notify ack, req_id: %lu", notify_ack.req_id);
     }

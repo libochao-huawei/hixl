@@ -57,9 +57,9 @@ private:
   };
   
   void ProcessAckMessages();
-  std::queue<AckMsg> ack_queue_;
-  std::mutex ack_queue_mutex_;
-  std::condition_variable ack_queue_cv_;
+  mutable std::queue<AckMsg> ack_queue_;
+  mutable std::mutex ack_queue_mutex_;
+  mutable std::condition_variable ack_queue_cv_;
   std::thread ack_processor_;
 
   Status HandleEpoolEvents();
