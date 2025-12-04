@@ -686,4 +686,54 @@ TEST_F(HixlUTest, TestHixlSendNotifyTimeout) {
   engine1.Finalize();
   engine2.Finalize();
 }
+
+TEST_F(HixlUTest, TestHixlSendNotifyNameTooLong) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  std::map<AscendString, AscendString> options1;
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options1), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl engine2;
+  std::map<AscendString, AscendString> options2;
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
+
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
+
+  NotifyDesc notify;
+  std::string long_name(2000, 'a');
+  notify.name = AscendString(long_name.c_str());
+  notify.notify_msg = AscendString("short message");
+  
+  EXPECT_EQ(engine1.SendNotify("127.0.0.1:26001", notify), PARAM_INVALID);
+  
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+TEST_F(HixlUTest, TestHixlSendNotifyMsgTooLong) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  std::map<AscendString, AscendString> options1;
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options1), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl engine2;
+  std::map<AscendString, AscendString> options2;
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
+
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
+  
+  NotifyDesc notify;
+  notify.name = AscendString("short name");
+  std::string long_msg(2000, 'b');
+  notify.notify_msg = AscendString(long_msg.c_str());
+
+  EXPECT_EQ(engine1.SendNotify("127.0.0.1:26001", notify), PARAM_INVALID);
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
 }  // namespace llm_datadist

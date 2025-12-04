@@ -83,7 +83,9 @@ class AdxlInnerEngine {
   rtContext_t rt_context_{nullptr};
 
   std::mutex notify_mutex_;
-  std::unordered_map<uint64_t, std::promise<Status>> notify_promises_;
+  std::unordered_map<uint64_t, Status> notify_ack_status_;  // Map to store ack status for each req_id
+  std::unordered_map<uint64_t, bool> notify_ack_ready_;     // Map to indicate if ack status is ready
+  std::condition_variable notify_cv_;                       // Condition variable for waiting ack
   std::atomic<uint64_t> next_notify_id_{1};
   std::map<uint64_t, AscendString> req2channel_;
   std::atomic<uint64_t> next_req_id_{1};
