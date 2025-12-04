@@ -24,7 +24,14 @@ struct ProtocolHeader {
   uint64_t body_size;
 };
 
-enum class ControlMsgType : int32_t { kHeartBeat = 1, kBufferReq = 2, kBufferResp = 3, kNotify = 4, kNotifyAck = 5, kEnd };
+enum class ControlMsgType : int32_t { 
+  kHeartBeat = 1, 
+  kBufferReq = 2, 
+  kBufferResp = 3, 
+  kNotify = 4, 
+  kNotifyAck = 5, 
+  kEnd 
+};
 
 struct HeartbeatMsg {
   char msg;
@@ -161,7 +168,7 @@ class ControlMsgHandler {
   static Status SendMsg(int32_t fd, ControlMsgType msg_type, const T &msg, uint64_t timeout) {
     std::string msg_str;
     ADXL_CHK_STATUS_RET(Serialize(msg, msg_str), "Failed to serialize msg");
-    ADXL_CHK_LLM_RET(SendMsgByProtocol(fd, msg_type, msg_str, timeout), "Failed to send msg");
+    ADXL_CHK_STATUS_RET(SendMsgByProtocol(fd, msg_type, msg_str, timeout), "Failed to send msg");
     return SUCCESS;
   }
 

@@ -55,6 +55,11 @@ class ChannelManager {
   Status HandleReadEvent(const ChannelPtr &channel);
   Status ProcessReceivedData(const ChannelPtr &channel) const;
   Status HandleControlMessage(const ChannelPtr &channel) const;
+  Status HandleHeartBeatMessage(const ChannelPtr &channel) const;
+  Status HandleBufferReqMessage(const ChannelPtr &channel, const std::string &msg_str) const;
+  Status HandleBufferRespMessage(const ChannelPtr &channel, const std::string &msg_str) const;
+  Status HandleNotifyMessage(const ChannelPtr &channel, const std::string &msg_str) const;
+  Status HandleNotifyAckMessage(const ChannelPtr &channel, const std::string &msg_str) const;
   Status RemoveFd(int32_t fd);
   
   NotifyAckCallback notify_ack_callback_;
