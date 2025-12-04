@@ -346,7 +346,7 @@ Status AdxlInnerEngine::SendNotify(const AscendString &remote_engine, const Noti
   notify_msg.name = notify.name.GetString();
   notify_msg.notify_msg = notify.notify_msg.GetString();
   
-  auto send_callback = [this, notify_msg, timeout_in_millis](int32_t fd) -> Status {
+  auto send_callback = [this, &notify_msg, timeout_in_millis](int32_t fd) -> Status {
     return ControlMsgHandler::SendMsg(fd, ControlMsgType::kNotify, notify_msg, timeout_in_millis);
   };
   
