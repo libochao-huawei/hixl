@@ -86,11 +86,6 @@ class Channel {
   rtStream_t &GetStream();
   std::mutex &GetTransferMutex();
   
-  /**
-   * @brief Get all notify messages stored in the channel and clear them
-   * @param [out] notifies - The vector to store the notify messages
-   * @return Status - Success or failure
-   */
   Status GetNotifyMessages(std::vector<NotifyMsg> &notifies);
 
   Status TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
@@ -112,7 +107,8 @@ class Channel {
   size_t expected_body_size_ = 0;
   size_t bytes_received_ = 0;
   
-  // Notify messages storage
+  // lock for push/fetch items from notify_messages_
+  std::mutex notify_message_mutex_;
   std::vector<NotifyMsg> notify_messages_;
   
   friend class ChannelManager;

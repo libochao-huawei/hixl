@@ -154,6 +154,13 @@ Status AdxlEngine::AdxlEngineImpl::GetTransferStatus(const TransferReq &req, Tra
 Status AdxlEngine::AdxlEngineImpl::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis) {
   ADXL_CHK_BOOL_RET_STATUS(adxl_engine_.IsInitialized(), FAILED, "AdxlEngine is not initialized");
   
+  // Validate the length of name and message (1000 characters limit)
+  constexpr uint32_t kMaxNotifyLength = 1000U;
+  ADXL_CHK_BOOL_RET_STATUS(notify.name.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
+                           "notify.name length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.name.GetLength());
+  ADXL_CHK_BOOL_RET_STATUS(notify.notify_msg.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
+                           "notify.notify_msg length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.notify_msg.GetLength());
+  
   ADXL_CHK_STATUS_RET(adxl_engine_.SendNotify(remote_engine, notify, timeout_in_millis), 
                       "Failed to send notify to remote engine:%s", remote_engine.GetString());
   return SUCCESS;

@@ -167,6 +167,13 @@ Status Hixl::HixlImpl::GetTransferStatus(const TransferReq &req, TransferStatus 
 Status Hixl::HixlImpl::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, uint32_t timeout_in_millis) {
   ADXL_CHK_BOOL_RET_STATUS(hixl_engine_.IsInitialized(), FAILED, "Hixl is not initialized");
   
+  // Validate the length of name and message (1000 characters limit)
+  constexpr uint32_t kMaxNotifyLength = 1000U;
+  ADXL_CHK_BOOL_RET_STATUS(notify.name.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
+                           "notify.name length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.name.GetLength());
+  ADXL_CHK_BOOL_RET_STATUS(notify.notify_msg.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
+                           "notify.notify_msg length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.notify_msg.GetLength());
+  
   // Convert hixl::NotifyDesc to adxl::NotifyDesc
   adxl::NotifyDesc adxl_notify{};
   adxl_notify.name = notify.name;

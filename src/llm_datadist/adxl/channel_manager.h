@@ -46,9 +46,21 @@ class ChannelManager {
   std::vector<ChannelPtr> GetAllClientChannel();
   std::vector<ChannelPtr> GetAllServerChannel();
 
- private:
+private:
   void SendHeartbeats();
   void CheckHeartbeatTimeouts();
+  
+  // this struct used for send notify message acks
+  struct AckMsg {
+    ChannelPtr channel;
+    uint64_t req_id;
+  };
+  
+  void ProcessAckMessages();
+  std::queue<AckMsg> ack_queue_;
+  std::mutex ack_queue_mutex_;
+  std::condition_variable ack_queue_cv_;
+  std::thread ack_processor_;
 
   Status HandleEpoolEvents();
   Status HandleSocketEvent(int32_t fd);

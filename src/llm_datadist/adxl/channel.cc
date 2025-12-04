@@ -305,7 +305,7 @@ std::mutex &Channel::GetTransferMutex() {
 }
 
 Status Channel::GetNotifyMessages(std::vector<NotifyMsg> &notifies) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(notify_message_mutex_);
   for (auto &notify_msg : notify_messages_) {
     notifies.push_back(std::move(notify_msg));
   }

@@ -13,6 +13,9 @@
 #include <netinet/tcp.h>
 #include <cstring>
 #include <utility>
+#include <thread>
+#include <queue>
+#include <functional>
 #include "common/mem_utils.h"
 #include "common/llm_scope_guard.h"
 #include "common/def_types.h"
@@ -52,6 +55,10 @@ Status ChannelManager::Initialize(BufferTransferService *buffer_transfer_service
       HandleEpoolEvents();
       CheckHeartbeatTimeouts();
     }
+  });
+  // ack processor thread
+  ack_processor_ = std::thread([this]() {
+    ProcessAckMessages();
   });
   return SUCCESS;
 }
@@ -228,17 +235,23 @@ Status ChannelManager::HandleNotifyMessage(const ChannelPtr &channel, const std:
   LLMLOGI("Recv notify msg from channel:%s, req_id:%lu, name:%s, msg:%s", channel->GetChannelId().c_str(), 
          notify_msg.req_id, notify_msg.name.c_str(), notify_msg.notify_msg.c_str());
   {
-    std::lock_guard<std::mutex> lock(channel->mutex_);
+    std::lock_guard<std::mutex> lock(channel->notify_message_mutex_);
     channel->notify_messages_.push_back(std::move(notify_msg));
   }
-  NotifyAck ack_msg{};
-  ack_msg.req_id = notify_msg.req_id; 
-  auto ack_ret = channel->SendControlMsg([&ack_msg](int32_t fd) {
-    return ControlMsgHandler::SendMsg(fd, ControlMsgType::kNotifyAck, ack_msg, kSendMsgTimeout);
-  });
-  if (ack_ret != SUCCESS) {
-    LLMLOGW("Failed to send notify ack to channel:%s", channel->GetChannelId().c_str());
+
+  AckMsg ack_msg;
+  ack_msg.channel = channel;
+  ack_msg.req_id = notify_msg.req_id;
+  
+  // Cast away constness to access the queue (this is safe because we're only modifying the queue, not the channel)
+  auto non_const_this = const_cast<ChannelManager*>(this);
+  
+  {
+    std::lock_guard<std::mutex> lock(non_const_this->ack_queue_mutex_);
+    non_const_this->ack_queue_.push(std::move(ack_msg));
+    non_const_this->ack_queue_cv_.notify_one();
   }
+  
   return SUCCESS;
 }
 
@@ -255,11 +268,16 @@ Status ChannelManager::HandleNotifyAckMessage(const ChannelPtr &channel, const s
 Status ChannelManager::Finalize() {
   stop_signal_.store(true);
   cv_.notify_all();
+  ack_queue_cv_.notify_all();
+  
   if (heartbeat_sender_.joinable()) {
     heartbeat_sender_.join();
   }
   if (msg_receiver_.joinable()) {
     msg_receiver_.join();
+  }
+  if (ack_processor_.joinable()) {
+    ack_processor_.join();
   }
 
   for (const auto &channel : GetAllServerChannel()) {
@@ -390,6 +408,36 @@ Status ChannelManager::RemoveFd(int32_t fd) {
     }
   }
   return ret;
+}
+
+void ChannelManager::ProcessAckMessages() {
+  while (true) {
+    AckMsg ack_msg;
+    {
+      std::unique_lock<std::mutex> lock(ack_queue_mutex_);
+      ack_queue_cv_.wait(lock, [this] {
+        return !ack_queue_.empty() || stop_signal_.load();
+      });
+      
+      if (stop_signal_.load() && ack_queue_.empty()) {
+        break;
+      }
+      
+      ack_msg = std::move(ack_queue_.front());
+      ack_queue_.pop();
+    }
+    
+    NotifyAck notify_ack;
+    notify_ack.req_id = ack_msg.req_id;
+    
+    auto ret = ack_msg.channel->SendControlMsg([&notify_ack](int32_t fd) {
+      return ControlMsgHandler::SendMsg(fd, ControlMsgType::kNotifyAck, notify_ack, kSendMsgTimeout);
+    });
+    
+    if (ret != SUCCESS) {
+      LLMLOGW("Failed to send notify ack, req_id: %lu", notify_ack.req_id);
+    }
+  }
 }
 
 }  // namespace adxl

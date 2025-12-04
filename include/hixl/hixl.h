@@ -121,11 +121,12 @@ class ASCEND_FUNC_VISIBILITY Hixl {
    * @brief Client向Server发送Notify信息
    * @param [in] remote_engine 远端Hixl的唯一标识
    * @param [in] notify 要发送的Notify内容
+   * @param [in] timeout_in_millis 发送超时时间，单位ms
    * @return 成功:SUCCESS, 失败:其它.
    */
   Status SendNotify(const AscendString &remote_engine,
                     const NotifyDesc &notify,
-                    int32_t timeout_in_millis = 1000);  // 1 second timeout by default
+                    int32_t timeout_in_millis = 1000);
 
   /**
    * @brief 获取当前Hixl内所有Server收到的Notify信息
