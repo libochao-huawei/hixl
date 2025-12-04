@@ -336,5 +336,4 @@ TEST_F(HixlSTest, TestHeartbeat) {
   std::this_thread::sleep_for(std::chrono::milliseconds(60));  // wait server:engine2 clear client:engine3
   engine2.Finalize();
 }
-
 }  // namespace hixl
