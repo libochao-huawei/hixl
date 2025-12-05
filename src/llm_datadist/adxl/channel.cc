@@ -304,6 +304,15 @@ std::mutex &Channel::GetTransferMutex() {
   return transfer_mutex_;
 }
 
+Status Channel::GetNotifyMessages(std::vector<NotifyMsg> &notifies) {
+  std::lock_guard<std::mutex> lock(notify_message_mutex_);
+  for (auto &notify_msg : notify_messages_) {
+    notifies.push_back(std::move(notify_msg));
+  }
+  notify_messages_.clear();
+  return SUCCESS;
+}
+
 BufferedTransfer::BufferedTransfer(
     std::function<Status(HcclOneSideOpDesc *descs, uint32_t desc_num)> trans_func) : trans_func_(trans_func) {
   op_descs_.reserve(kMaxOpDescNum);
