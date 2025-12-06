@@ -200,7 +200,7 @@ custom_uninstall() {
         log "INFO" "hixl tool uninstalled successfully!"
     fi
 
-    remove_dir "${common_parse_dir}/hixl/python"
+    remove_empty_dir "${common_parse_dir}/hixl/python"
 
     if [ "$hetero_arch" != "y" ]; then
         if [ -d "${WHL_INSTALL_DIR_PATH}" ]; then
@@ -209,8 +209,8 @@ custom_uninstall() {
             remove_last_license
         fi
 
-        remove_dir "${WHL_INSTALL_DIR_PATH}"
-        remove_dir "${common_parse_dir}/python"
+        remove_empty_dir "${WHL_INSTALL_DIR_PATH}"
+        remove_empty_dir "${common_parse_dir}/python"
     fi
 
     return 0
