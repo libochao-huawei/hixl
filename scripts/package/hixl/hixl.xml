@@ -19,7 +19,6 @@
         <version>package/hixl/version.xml</version>
         <cleanup>share/info/hixl/script/cleanup.sh</cleanup>
         <parallel>true</parallel>
-        <check_features>true</check_features>
     </package_info>
     <generate_info value="hixl_version.h" dst_path="hixl" install_path="$(TARGET_ENV)/include/version" install_mod="440" install_type="devel" generator="version_header">
         <HIXL_VERSION>$(ASCEND_VER)</HIXL_VERSION>
@@ -66,5 +65,7 @@
         <path value="$(TARGET_ENV)/include"/>
         <path value="$(TARGET_ENV)/include/llm_datadist"/>
         <path value="$(TARGET_ENV)/include/ge"/>
+        <path value="$(TARGET_ENV)/include/adxl"/>
+        <path value="$(TARGET_ENV)/include/hixl"/>
     </dir_info>
 </config>
