@@ -70,9 +70,11 @@ class Channel {
                        rtStream_t stream);
   Status TransferAsync(TransferOp operation,
                        const std::vector<TransferOpDesc> &op_descs,
+                       const std::shared_ptr<StreamPool> &stream_pool,
                        const TransferArgs &optional_args,
                        TransferReq &req);
-  Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
+  Status GetTransferStatus(const TransferReq &req, const std::shared_ptr<StreamPool> &stream_pool,
+                           TransferStatus &status);
   Status SetSocketNonBlocking(int32_t fd);
   void StopHeartbeat();
   Status SendControlMsg(const std::function<Status(int32_t fd)> &func);
@@ -108,7 +110,7 @@ class Channel {
   size_t bytes_received_ = 0;
   friend class ChannelManager;
   std::mutex transfer_reqs_mutex_;
-  std::map<uint64_t, rtEvent_t> transfer_reqs_;
+  std::map<uint64_t, std::pair<rtEvent_t, rtStream_t> transfer_reqs_;
 };
 using ChannelPtr = std::shared_ptr<Channel>;
 }  // namespace adxl
