@@ -260,7 +260,7 @@ Status ChannelManager::HandleNotifyAckMessage(const ChannelPtr &channel, const s
   ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), ack_msg), "Failed to deserialize notify ack msg");
   LLMLOGI("Recv notify ack from channel:%s, req_id:%lu", channel->GetChannelId().c_str(), ack_msg.req_id);
   if (notify_ack_callback_) {
-    notify_ack_callback_(ack_msg.req_id, SUCCESS);
+    notify_ack_callback_(ack_msg.req_id);
   }
   return SUCCESS;
 }

@@ -108,11 +108,17 @@ Status Channel::Finalize() {
     }
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (fd_ > 0) {
-    close(fd_);
-    fd_ = -1;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (fd_ > 0) {
+      close(fd_);
+      fd_ = -1;
+    }
   }
+
+  std::lock_guard<std::mutex> notify_lock(notify_message_mutex_);
+  notify_messages_.clear();
+  
   with_heartbeat_.store(false, std::memory_order_release);
   return ret;
 }
@@ -305,13 +311,15 @@ std::mutex &Channel::GetTransferMutex() {
   return transfer_mutex_;
 }
 
-Status Channel::GetNotifyMessages(std::vector<NotifyMsg> &notifies) {
+void Channel::GetNotifyMessages(std::vector<NotifyDesc> &notifies) {
   std::lock_guard<std::mutex> lock(notify_message_mutex_);
   for (auto &notify_msg : notify_messages_) {
-    notifies.push_back(std::move(notify_msg));
+    NotifyDesc notify;
+    notify.name = AscendString(notify_msg.name.c_str());
+    notify.notify_msg = AscendString(notify_msg.notify_msg.c_str());
+    notifies.push_back(std::move(notify));
   }
   notify_messages_.clear();
-  return SUCCESS;
 }
 
 BufferedTransfer::BufferedTransfer(

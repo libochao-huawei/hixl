@@ -166,19 +166,10 @@ Status Hixl::HixlImpl::GetTransferStatus(const TransferReq &req, TransferStatus 
 
 Status Hixl::HixlImpl::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, uint32_t timeout_in_millis) {
   ADXL_CHK_BOOL_RET_STATUS(hixl_engine_.IsInitialized(), FAILED, "Hixl is not initialized");
-  
-  // Validate the length of name and message (1000 characters limit)
-  constexpr uint32_t kMaxNotifyLength = 1000U;
-  ADXL_CHK_BOOL_RET_STATUS(notify.name.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
-                           "notify.name length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.name.GetLength());
-  ADXL_CHK_BOOL_RET_STATUS(notify.notify_msg.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
-                           "notify.notify_msg length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.notify_msg.GetLength());
-  
   // Convert hixl::NotifyDesc to adxl::NotifyDesc
   adxl::NotifyDesc adxl_notify{};
   adxl_notify.name = notify.name;
   adxl_notify.notify_msg = notify.notify_msg;
-  
   ADXL_CHK_STATUS_RET(hixl_engine_.SendNotify(remote_engine, adxl_notify, timeout_in_millis), 
                       "Failed to send notify to remote engine:%s", remote_engine.GetString());
   return SUCCESS;
@@ -193,12 +184,11 @@ Status Hixl::HixlImpl::GetNotifies(std::vector<NotifyDesc> &notifies) {
                       "Failed to get notifies");
   
   // Convert adxl::NotifyDesc to hixl::NotifyDesc
-  notifies.clear();
-  for (const auto &adxl_notify : adxl_notifies) {
-    NotifyDesc notify{};
-    notify.name = adxl_notify.name;
-    notify.notify_msg = adxl_notify.notify_msg;
-    notifies.emplace_back(notify);
+  for (auto &adxl_notify : adxl_notifies) {
+    notifies.emplace_back(NotifyDesc{
+      std::move(adxl_notify.name),
+      std::move(adxl_notify.notify_msg)
+    });
   }
   return SUCCESS;
 }
@@ -321,7 +311,12 @@ Status Hixl::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
 Status Hixl::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis) {
   LLMLOGI("SendNotify start, remote engine:%s, notify name:%s", remote_engine.GetString(), notify.name.GetString());
   ADXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check Hixl init");
-  
+  constexpr uint32_t kMaxNotifyLength = 1024U;
+  ADXL_CHK_BOOL_RET_STATUS(notify.name.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
+                           "notify.name length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.name.GetLength());
+  ADXL_CHK_BOOL_RET_STATUS(notify.notify_msg.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
+                           "notify.notify_msg length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.notify_msg.GetLength());
+  ADXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, PARAM_INVALID, "timeout_in_millis:%d must > 0", timeout_in_millis);
   const auto ret = impl_->SendNotify(remote_engine, notify, timeout_in_millis);
   
   ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,

@@ -153,14 +153,6 @@ Status AdxlEngine::AdxlEngineImpl::GetTransferStatus(const TransferReq &req, Tra
 
 Status AdxlEngine::AdxlEngineImpl::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis) {
   ADXL_CHK_BOOL_RET_STATUS(adxl_engine_.IsInitialized(), FAILED, "AdxlEngine is not initialized");
-  
-  // Validate the length of name and message (1000 characters limit)
-  constexpr uint32_t kMaxNotifyLength = 1000U;
-  ADXL_CHK_BOOL_RET_STATUS(notify.name.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
-                           "notify.name length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.name.GetLength());
-  ADXL_CHK_BOOL_RET_STATUS(notify.notify_msg.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
-                           "notify.notify_msg length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.notify_msg.GetLength());
-  
   ADXL_CHK_STATUS_RET(adxl_engine_.SendNotify(remote_engine, notify, timeout_in_millis), 
                       "Failed to send notify to remote engine:%s", remote_engine.GetString());
   return SUCCESS;
@@ -292,7 +284,12 @@ Status AdxlEngine::GetTransferStatus(const TransferReq &req, TransferStatus &sta
 Status AdxlEngine::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis) {
   LLMLOGI("SendNotify start, remote engine:%s, notify name:%s", remote_engine.GetString(), notify.name.GetString());
   ADXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check AdxlEngine init");
-  
+  constexpr uint32_t kMaxNotifyLength = 1024U;
+  ADXL_CHK_BOOL_RET_STATUS(notify.name.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
+                           "notify.name length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.name.GetLength());
+  ADXL_CHK_BOOL_RET_STATUS(notify.notify_msg.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
+                           "notify.notify_msg length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.notify_msg.GetLength());
+  ADXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, PARAM_INVALID, "timeout_in_millis:%d must > 0", timeout_in_millis);
   const auto ret = impl_->SendNotify(remote_engine, notify, timeout_in_millis);
   
   ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
