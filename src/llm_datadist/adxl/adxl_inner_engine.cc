@@ -356,11 +356,14 @@ Status AdxlInnerEngine::SendNotify(const AscendString &remote_engine, const Noti
   }
   
   std::unique_lock<std::mutex> lock(notify_mutex_);
-  auto wait_result = notify_cv_.wait_for(lock, std::chrono::milliseconds(timeout_in_millis), 
-    [this, req_id = notify_msg.req_id] {
+  auto wait_result = notify_cv_.wait_for(
+    lock, 
+    std::chrono::milliseconds(timeout_in_millis), 
+    ([this, req_id = notify_msg.req_id] 
+    {
       auto it_ready = notify_ack_ready_.find(req_id);
       return (it_ready != notify_ack_ready_.end() && it_ready->second);
-    });
+    }));
   
   Status result_status = TIMEOUT;
   if (wait_result) {
