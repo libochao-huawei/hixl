@@ -111,7 +111,7 @@ Status Channel::Finalize() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (fd_ > 0) {
-      close(fd_);
+      (void) close(fd_);
       fd_ = -1;
     }
   }

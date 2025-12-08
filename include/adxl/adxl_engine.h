@@ -124,9 +124,7 @@ class ASCEND_FUNC_VISIBILITY AdxlEngine {
    * @param [in] timeout_in_millis 发送超时时间，单位ms
    * @return 成功:SUCCESS, 失败:其它.
    */
-  Status SendNotify(const AscendString &remote_engine,
-                    const NotifyDesc &notify,
-                    int32_t timeout_in_millis = 1000);
+  Status SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis = 1000);
 
   /**
    * @brief 获取当前AdxlEngine内所有Server收到的Notify信息，并清空已收到信息

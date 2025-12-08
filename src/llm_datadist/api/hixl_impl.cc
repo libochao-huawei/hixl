@@ -314,11 +314,10 @@ Status Hixl::SendNotify(const AscendString &remote_engine, const NotifyDesc &not
   constexpr uint32_t kMaxNotifyLength = 1024U;
   ADXL_CHK_BOOL_RET_STATUS(notify.name.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
                            "notify.name length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.name.GetLength());
+  ADXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, PARAM_INVALID, "timeout_in_millis:%d must > 0", timeout_in_millis);
   ADXL_CHK_BOOL_RET_STATUS(notify.notify_msg.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
                            "notify.notify_msg length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.notify_msg.GetLength());
-  ADXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, PARAM_INVALID, "timeout_in_millis:%d must > 0", timeout_in_millis);
   const auto ret = impl_->SendNotify(remote_engine, notify, timeout_in_millis);
-  
   ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
                            "Failed to send notify, remote engine:%s, notify name:%s",
                            remote_engine.GetString(), notify.name.GetString());
