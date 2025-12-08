@@ -553,6 +553,7 @@ TEST_F(HixlUTest, TestHixlSendGetNotifies) {
 
   EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
   
+  // send 5 notify messages
   for (int i = 0; i < 5; ++i) {
     NotifyDesc notify;
     notify.name = AscendString(("test_notify" + std::to_string(i)).c_str());
@@ -560,12 +561,15 @@ TEST_F(HixlUTest, TestHixlSendGetNotifies) {
     EXPECT_EQ(engine1.SendNotify("127.0.0.1:26001", notify), SUCCESS);
   }
   
+  // sleep 100 ms then get notifies
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   
   std::vector<NotifyDesc> notifies;
   EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+  // should get 5 notifies
   EXPECT_EQ(notifies.size(), 5);
   
+  // check 5 notifies
   for (int i = 0; i < 5; ++i) {
     EXPECT_EQ(std::string(notifies[i].name.GetString()), "test_notify" + std::to_string(i));
     EXPECT_EQ(std::string(notifies[i].notify_msg.GetString()), "message " + std::to_string(i));
@@ -588,20 +592,21 @@ TEST_F(HixlUTest, TestHixlMultiGetNotifies) {
   EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
 
   EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
-  
+  // send 5 notify messages
   for (int i = 0; i < 5; ++i) {
     NotifyDesc notify;
     notify.name = AscendString(("test_notify" + std::to_string(i)).c_str());
     notify.notify_msg = AscendString(("message " + std::to_string(i)).c_str());
     EXPECT_EQ(engine1.SendNotify("127.0.0.1:26001", notify), SUCCESS);
   }
-  
+  // sleep 100 ms then get notifies
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   
   std::vector<NotifyDesc> notifies;
   EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+  // should get 5 notifies
   EXPECT_EQ(notifies.size(), 5);
-  
+  // check 5 notifies
   for (int i = 0; i < 5; ++i) {
     EXPECT_EQ(std::string(notifies[i].name.GetString()), "test_notify" + std::to_string(i));
     EXPECT_EQ(std::string(notifies[i].notify_msg.GetString()), "message " + std::to_string(i));
@@ -609,6 +614,7 @@ TEST_F(HixlUTest, TestHixlMultiGetNotifies) {
   
   notifies.clear();
   EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+  // should get 0 notify
   EXPECT_EQ(notifies.size(), 0);
   EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
   engine1.Finalize();
@@ -625,7 +631,7 @@ TEST_F(HixlUTest, TestHixlMultiSendNotifies) {
   Hixl engine2;
   std::map<AscendString, AscendString> options2;
   EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
-
+  // set device 2
   llm::AutoCommResRuntimeMock::SetDevice(2);
   Hixl engine3;
   std::map<AscendString, AscendString> options3;
@@ -633,7 +639,7 @@ TEST_F(HixlUTest, TestHixlMultiSendNotifies) {
 
   EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
   EXPECT_EQ(engine3.Connect("127.0.0.1:26001"), SUCCESS);
-  
+  // each engine send 5 notifies
   for (int i = 0; i < 5; ++i) {
     NotifyDesc notify;
     notify.name = AscendString(("test_notify" + std::to_string(i)).c_str());
@@ -641,11 +647,12 @@ TEST_F(HixlUTest, TestHixlMultiSendNotifies) {
     EXPECT_EQ(engine1.SendNotify("127.0.0.1:26001", notify), SUCCESS);
     EXPECT_EQ(engine3.SendNotify("127.0.0.1:26001", notify), SUCCESS);
   }
-  
+  // sleep 100 ms then get notifies
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   
   std::vector<NotifyDesc> notifies;
   EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+  // should get 10 notifies
   EXPECT_EQ(notifies.size(), 10);
   
   notifies.clear();
@@ -668,11 +675,12 @@ TEST_F(HixlUTest, TestHixlSendNotifyTimeout) {
   EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
 
   EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
-  
+  // send 5 notifies
   for (int i = 0; i < 5; ++i) {
     NotifyDesc notify;
     notify.name = AscendString(("test_notify" + std::to_string(i)).c_str());
     notify.notify_msg = AscendString(("message " + std::to_string(i)).c_str());
+    // set timeout param to 1 ms
     EXPECT_EQ(engine1.SendNotify("127.0.0.1:26001", notify, 1), TIMEOUT);
   }
   
@@ -680,6 +688,7 @@ TEST_F(HixlUTest, TestHixlSendNotifyTimeout) {
   
   std::vector<NotifyDesc> notifies;
   EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+  // should get 0 notifies
   EXPECT_EQ(notifies.size(), 0);
   
   EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
@@ -701,6 +710,7 @@ TEST_F(HixlUTest, TestHixlSendNotifyNameTooLong) {
   EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
 
   NotifyDesc notify;
+  // send notify name consist of 2000 'a'
   std::string long_name(2000, 'a');
   notify.name = AscendString(long_name.c_str());
   notify.notify_msg = AscendString("short message");
@@ -727,6 +737,7 @@ TEST_F(HixlUTest, TestHixlSendNotifyMsgTooLong) {
   
   NotifyDesc notify;
   notify.name = AscendString("short name");
+  // send notify msg consist of 2000 'b'
   std::string long_msg(2000, 'b');
   notify.notify_msg = AscendString(long_msg.c_str());
 
