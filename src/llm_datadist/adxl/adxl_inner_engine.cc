@@ -44,9 +44,8 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
   ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
   
-  channel_manager_.RegisterNotifyAckCallback([this](uint64_t req_id, Status status) {
+  channel_manager_.RegisterNotifyAckCallback([this](uint64_t req_id) {
     std::lock_guard<std::mutex> lock(notify_mutex_);
-    notify_ack_status_[req_id] = status;
     notify_ack_ready_[req_id] = true;
     notify_cv_.notify_all();  // Notify all waiting threads, but only the one with matching req_id will continue
   });
@@ -349,12 +348,7 @@ Status AdxlInnerEngine::SendNotify(const AscendString &remote_engine, const Noti
   auto send_callback = [this, &notify_msg, timeout_in_millis](int32_t fd) -> Status {
     return ControlMsgHandler::SendMsg(fd, ControlMsgType::kNotify, notify_msg, timeout_in_millis);
   };
-  
-  Status send_status = channel->SendControlMsg(send_callback);
-  if (send_status != SUCCESS) {
-    return send_status;
-  }
-  
+  ADXL_CHK_STATUS_RET(channel->SendControlMsg(send_callback), "Failed to send notify message.");
   std::unique_lock<std::mutex> lock(notify_mutex_);
   auto wait_result = notify_cv_.wait_for(
     lock, 
@@ -365,15 +359,7 @@ Status AdxlInnerEngine::SendNotify(const AscendString &remote_engine, const Noti
       return (it_ready != notify_ack_ready_.end() && it_ready->second);
     });
   
-  Status result_status = TIMEOUT;
-  if (wait_result) {
-    auto it_status = notify_ack_status_.find(notify_msg.req_id);
-    if (it_status != notify_ack_status_.end()) {
-      result_status = it_status->second;
-    }
-  }
-
-  notify_ack_status_.erase(notify_msg.req_id);
+  Status result_status = wait_result ? SUCCESS : TIMEOUT;
   notify_ack_ready_.erase(notify_msg.req_id);
   return result_status;
 }
@@ -382,16 +368,7 @@ Status AdxlInnerEngine::GetNotifies(std::vector<NotifyDesc> &notifies) {
   // no need for RtContext
   auto server_channels = channel_manager_.GetAllServerChannel();
   for (const auto &channel : server_channels) {
-    std::vector<NotifyMsg> channel_notifies;
-    if (channel->GetNotifyMessages(channel_notifies) != SUCCESS) {
-      continue;
-    }
-    for (const auto &notify_msg : channel_notifies) {
-      NotifyDesc notify;
-      notify.name = AscendString(notify_msg.name.c_str());
-      notify.notify_msg = AscendString(notify_msg.notify_msg.c_str());
-      notifies.push_back(std::move(notify));
-    }
+    channel->GetNotifyMessages(notifies);
   }
   return SUCCESS;
 }

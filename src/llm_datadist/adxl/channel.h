@@ -86,7 +86,7 @@ class Channel {
   rtStream_t &GetStream();
   std::mutex &GetTransferMutex();
   
-  Status GetNotifyMessages(std::vector<NotifyMsg> &notifies);
+  void GetNotifyMessages(std::vector<NotifyDesc> &notifies);
 
   Status TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                                   rtStream_t stream, uint64_t timeout);

@@ -25,7 +25,7 @@
 namespace adxl {
 
 using NotifyAckCallback = 
-  std::function<void(uint64_t req_id, Status status)>;
+  std::function<void(uint64_t req_id)>;
 
 class ChannelManager {
  public:
