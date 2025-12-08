@@ -38,7 +38,6 @@ if (NOT ENABLE_TEST)
     )
 
     target_compile_options(metadef_wrapper PRIVATE
-            -O2
             -Xlinker -export-dynamic
     )
 
