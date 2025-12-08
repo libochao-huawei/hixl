@@ -129,7 +129,7 @@ class ASCEND_FUNC_VISIBILITY Hixl {
                     int32_t timeout_in_millis = 1000);
 
   /**
-   * @brief 获取当前Hixl内所有Server收到的Notify信息
+   * @brief 获取当前Hixl内所有Server收到的Notify信息，并清空已收到信息
    * @param [in] notifies 存放notify信息的vector
    * @return 成功:SUCCESS, 失败:其它.
    */
