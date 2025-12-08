@@ -41,7 +41,6 @@ if (NOT ENABLE_TEST)
     )
 
     target_compile_options(llm_datadist_wrapper PRIVATE
-            -O2
             -Xlinker -export-dynamic
     )
 

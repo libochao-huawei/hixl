@@ -46,7 +46,6 @@ target_include_directories(llm_datadist PRIVATE ${INC_DIR})
 
 target_compile_options(llm_datadist PRIVATE
         -ftrapv
-        -O2
         -fno-common
         -Wfloat-equal
         -Wall
@@ -68,7 +67,7 @@ target_link_libraries(llm_datadist PRIVATE
         runtime
         json
         -ldl
-        -O2 -fPIC -Wextra -Wfloat-equal
+        -fPIC -Wextra -Wfloat-equal
         )
 
 #set(INSTALL_LIBRARY_DIR lib)
@@ -106,7 +105,6 @@ target_include_directories(cann_hixl PRIVATE ${HIXL_INC_DIR})
 
 target_compile_options(cann_hixl PRIVATE
         -ftrapv
-        -O2
         -fno-common
         -Wfloat-equal
         -Wall
@@ -128,7 +126,7 @@ target_link_libraries(cann_hixl PRIVATE
         runtime
         json
         -ldl
-        -O2 -fPIC -Wextra -Wfloat-equal
+        -fPIC -Wextra -Wfloat-equal
         )
 
 #set(INSTALL_LIBRARY_DIR lib)
