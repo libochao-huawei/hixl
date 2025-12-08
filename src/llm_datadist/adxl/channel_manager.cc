@@ -58,7 +58,8 @@ Status ChannelManager::Initialize(BufferTransferService *buffer_transfer_service
     }
   });
   // ack processor thread
-  ack_processor_ = std::thread([this]() {
+  ack_processor_ = std::thread(
+    [this]() {
     ProcessAckMessages();
   });
   return SUCCESS;
@@ -184,7 +185,8 @@ Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) const {
   ADXL_CHK_BOOL_RET_STATUS(channel->expected_body_size_ > sizeof(ControlMsgType), FAILED,
                            "Received msg invalid, channel:%s.", channel->GetChannelId().c_str());
   auto data = channel->recv_buffer_.data();
-  ControlMsgType msg_type = *llm::PtrToPtr<char, ControlMsgType>(data);
+  ControlMsgType msg_type;
+  msg_type = *llm::PtrToPtr<char, ControlMsgType>(data);
   std::string msg_str(data + sizeof(ControlMsgType), channel->expected_body_size_ - sizeof(ControlMsgType));
 
   switch (msg_type) {
@@ -416,7 +418,9 @@ void ChannelManager::ProcessAckMessages() {
     AckMsg ack_msg;
     {
       std::unique_lock<std::mutex> lock(ack_queue_mutex_);
-      ack_queue_cv_.wait(lock, [this] {
+      ack_queue_cv_.wait(
+        lock, 
+        [this] {
         return !ack_queue_.empty() || stop_signal_.load();
       });
       
@@ -429,8 +433,10 @@ void ChannelManager::ProcessAckMessages() {
     }
     NotifyAck notify_ack;
     notify_ack.req_id = ack_msg.req_id;
-    auto ret = ack_msg.channel->SendControlMsg([&notify_ack](int32_t fd) {
-      return ControlMsgHandler::SendMsg(fd, ControlMsgType::kNotifyAck, notify_ack, kSendMsgTimeout);
+    auto ret = ack_msg.channel->SendControlMsg(
+      [&notify_ack](int32_t fd) {
+      return ControlMsgHandler::SendMsg(
+        fd, ControlMsgType::kNotifyAck, notify_ack, kSendMsgTimeout);
     });
     if (ret != SUCCESS) {
       LLMLOGW("Failed to send notify ack, req_id: %lu", notify_ack.req_id);
