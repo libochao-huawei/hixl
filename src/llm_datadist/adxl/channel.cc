@@ -61,8 +61,7 @@ Status Channel::Initialize() {
                                                                     channel_info_.timeout_sec));
   auto cost = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
   LLMLOGI("HcclCommPrepare success, cost=%ld ms.", cost);
-  ADXL_CHK_ACL_RET(rtStreamCreateWithFlags(&stream_, RT_STREAM_PRIORITY_DEFAULT,
-                   RT_STREAM_FAST_LAUNCH | RT_STREAM_FAST_SYNC));
+  ADXL_CHK_ACL_RET(stream_pool_->GetStream(stream_), "Stream pool get stream failed.");
   LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
 }
@@ -83,12 +82,9 @@ Status Channel::Finalize() {
   {
     std::lock_guard<std::mutex> lock(transfer_mutex_);
     if (stream_ != nullptr) {
-      auto rt_ret = rtStreamAbort(stream_);
-      if (rt_ret != RT_ERROR_NONE) {
-        LLMLOGE(FAILED, "Call rtStreamAbort ret:%d.", rt_ret);
-        ret = FAILED;
-      }
+      stream_pool_->ReleaseStream(stream_);
     }
+    stream_ = nullptr;
 
     for (const auto &reg_handle_it : channel_info_.registered_mems) {
       auto reg_handle = reg_handle_it.first;
@@ -98,18 +94,10 @@ Status Channel::Finalize() {
 
     auto hccl_ret = llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
     ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
-    if (stream_ != nullptr) {
-      auto rt_ret = rtStreamDestroy(stream_);
-      if (rt_ret != RT_ERROR_NONE) {
-        LLMLOGE(FAILED, "Call rtStreamDestroy ret:%d.", rt_ret);
-        ret = FAILED;
-      }
-    }
-    stream_ = nullptr;
 
     std::lock_guard<std::mutex> transfer_reqs_lock(transfer_reqs_mutex_);
     for (const auto &transfer_req : transfer_reqs_) {
-      rtEvent_t event = transfer_req.second;
+      rtEvent_t event = transfer_req.second.first;
       if (event != nullptr) {
         auto rt_ret = rtEventDestroy(event);
         if (rt_ret != RT_ERROR_NONE) {
@@ -132,24 +120,33 @@ Status Channel::Finalize() {
   return ret;
 }
 
+void SetStreamPool(const std::shared_ptr<StreamPool> stream_pool) {
+  stream_pool_ = stream_pool;
+}
+
 Status Channel::TransferAsync(TransferOp operation,
                               const std::vector<TransferOpDesc> &op_descs,
                               const TransferArgs &optional_args,
                               TransferReq &req) {
   (void)optional_args;
-  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream_), "Channel transfer async failed.");
-  rtEvent_t event = nullptr;
+  rtStream_t stream = nullptr;
+  ADXL_CHK_STATUS_RET(stream_pool_->GetStream(stream), "Stream pool get stream failed.");
   auto id = reinterpret_cast<uint64_t>(req);
-  LLM_CHK_ACL_RET(rtEventCreate(&event));
-  LLM_DISMISSABLE_GUARD(event_guard, ([event]() {
+  rtEvent_t event = nullptr;
+  LLM_DISMISSABLE_GUARD(fail_guard, ([&]() {
     if (event != nullptr) {
       rtEventDestroy(event);
     }
+    if (stream != nullptr) {
+      stream_pool_->ReleaseStream(stream);
+    }
   }));
-  LLM_CHK_ACL_RET(rtEventRecord(event, stream_));
+  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream), "Channel transfer async failed.");
+  LLM_CHK_ACL_RET(rtEventCreate(&event));
+  LLM_CHK_ACL_RET(rtEventRecord(event, stream));
   std::lock_guard<std::mutex> lock(transfer_reqs_mutex_);
-  transfer_reqs_[id] = std::move(event);
-  LLM_DISMISS_GUARD(event_guard);
+  transfer_reqs_[id] = std::make_pair(event, stream);
+  LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
 }
 
@@ -163,12 +160,14 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
     return FAILED;
   }
 
-  auto event = it->second;
+  auto event = it->second.first;
+  auto stream = it->second.second;
   rtEventStatus_t event_status{};
   auto ret = rtEventQueryStatus(event, &event_status);
   if (ret != RT_ERROR_NONE) {
     LLMLOGE(FAILED, "rtEventQueryStatus failed for req:%llu, ret:%d.", id, ret);
     rtEventDestroy(event);
+    stream_pool_->ReleaseStream(stream);
     transfer_reqs_.erase(id);
     status = TransferStatus::FAILED;
     return FAILED;
@@ -178,9 +177,20 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
     status = TransferStatus::WAITING;
     return SUCCESS;
   }
+  auto steam_status = rtStreamSynchronize(stream);
+  if (steam_status != RT_ERROR_NONE) {
+    //stream syncronize failed
+    status = TransferStatus::FAILED;
+    rtEventDestroy(event);
+    stream_pool_->DestoryStream(stream);
+    transfer_reqs_.erase(id);
+    LLMLOGE(FAILED, "rtStreamSyncronize failed for req:%llu, ret:%d.", id, steam_status);
+    return FAILED;
+  }
   LLMLOGI("Transfer async request completed, req:%llu.", id);
   status = TransferStatus::COMPLETED;
   rtEventDestroy(event);
+  stream_pool_->ReleaseStream(stream);
   transfer_reqs_.erase(id);
   return SUCCESS;
 }

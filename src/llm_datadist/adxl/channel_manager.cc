@@ -332,7 +332,8 @@ void ChannelManager::SendHeartbeats() {
   }
 }
 
-Status ChannelManager::CreateChannel(const ChannelInfo &channel_info, ChannelPtr &channel_ptr) {
+Status ChannelManager::CreateChannel(const ChannelInfo &channel_info, ChannelPtr &channel_ptr
+                                     const std::shared_ptr<StreamPool> stream_pool) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     const auto &it = channels_.find(std::make_pair(channel_info.channel_type, channel_info.channel_id));
@@ -343,6 +344,7 @@ Status ChannelManager::CreateChannel(const ChannelInfo &channel_info, ChannelPtr
   ChannelPtr channel = llm::MakeShared<Channel>(channel_info);
   ADXL_CHECK_NOTNULL(channel);
   ADXL_CHK_STATUS_RET(channel->Initialize(), "Failed to init channel");
+  channel.SetStreamPool(stream_pool);
   LLM_DISMISSABLE_GUARD(failed_guard, ([channel]() { (void) channel->Finalize(); }));
   std::lock_guard<std::mutex> lock(mutex_);
   auto key = std::make_pair(channel_info.channel_type, channel_info.channel_id);
@@ -444,4 +446,7 @@ void ChannelManager::ProcessAckMessages() {
   }
 }
 
+void ChannelManager::SetStreamPool(std::shared_ptr<StreamPool> stream_pool) {
+  stream_pool_ = stream_pool;
+}
 }  // namespace adxl
