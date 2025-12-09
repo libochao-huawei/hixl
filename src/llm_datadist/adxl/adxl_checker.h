@@ -21,8 +21,10 @@
 #define ADXL_CHK_STATUS_RET(expr, ...)        \
   do {                                        \
     const adxl::Status _chk_status = (expr);  \
-    if (_chk_status != adxl::SUCCESS) {       \
-      LLMLOGE((_chk_status), __VA_ARGS__);     \
+    if (_chk_status != adxl::SUCCESS) {       \ 
+      if (NeedErrorLog(_chk_status)) {         \
+        LLMLOGE((_chk_status), __VA_ARGS__);  \
+      }                                     \
       return _chk_status;                     \
     }                                         \
   } while (false)
