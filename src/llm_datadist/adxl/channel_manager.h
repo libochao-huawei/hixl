@@ -33,7 +33,8 @@ class ChannelManager {
   ~ChannelManager() = default;
   Status Initialize(BufferTransferService *buffer_transfer_service);
   Status Finalize();
-  Status CreateChannel(const ChannelInfo &channel_info, ChannelPtr &channel_ptr);
+  Status CreateChannel(const ChannelInfo &channel_info, ChannelPtr &channel_ptr, 
+                       const std::shared_ptr<StreamPool> stream_pool);
   ChannelPtr GetChannel(ChannelType channel_type, const std::string &channel_id);
   Status DestroyChannel(ChannelType channel_type, const std::string &channel_id);
   static void SetHeartbeatWaitTime(int32_t time_in_millis);
@@ -41,6 +42,8 @@ class ChannelManager {
   void RegisterNotifyAckCallback(NotifyAckCallback callback) {
     notify_ack_callback_ = std::move(callback);
   }
+
+  void SetStreamPool(const std::shared_ptr<StreamPool> stream_pool);
 
   Status AddSocketToEpoll(int32_t fd, ChannelPtr channel);
   
@@ -91,6 +94,7 @@ private:
   BufferTransferService *buffer_transfer_service_ = nullptr;
   std::mutex fd_mutex_;
   std::map<int32_t, ChannelPtr> fd_to_channel_map_;
+  std::shared_ptr<StreamPool> stream_pool_ = nullptr;
 
   std::thread msg_receiver_;
   rtContext_t rt_context_{nullptr};
