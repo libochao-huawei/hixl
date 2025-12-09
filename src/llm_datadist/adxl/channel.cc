@@ -71,6 +71,13 @@ std::string Channel::GetChannelId() const {
   return channel_info_.channel_id;
 }
 
+void Channel::ClearNotifyMessages() {
+  {
+    std::lock_guard<std::mutex> notify_lock(notify_message_mutex_);
+    notify_messages_.clear();
+  }
+}
+
 Status Channel::Finalize() {
   auto ret = SUCCESS;
   if (stream_ != nullptr) {
@@ -114,12 +121,9 @@ Status Channel::Finalize() {
       (void) close(fd_);
       fd_ = -1;
     }
+    with_heartbeat_.store(false, std::memory_order_release);
   }
-
-  std::lock_guard<std::mutex> notify_lock(notify_message_mutex_);
-  notify_messages_.clear();
-  
-  with_heartbeat_.store(false, std::memory_order_release);
+  ClearNotifyMessages();
   return ret;
 }
 

@@ -92,6 +92,7 @@ class Channel {
                                   rtStream_t stream, uint64_t timeout);
 
  private:
+  void ClearNotifyMessages();
   ChannelInfo channel_info_;
   rtStream_t stream_ = nullptr;
   std::mutex mutex_;
