@@ -42,6 +42,8 @@ class BufferTransferService {
 
   Status PushBufferResp(const ChannelPtr &channel, BufferResp &buffer_resp);
 
+  void SetStreamPool(const std::shared_ptr<StreamPool> stream_pool);
+
  private:
   Status TryGetBuffer(void *&buffer_addr, uint64_t timeout, size_t pool_index = 0U);
   void ReleaseBuffer(void *buffer_addr, size_t pool_index = 0U);
@@ -131,6 +133,7 @@ class BufferTransferService {
   std::vector<std::map<void *, bool>> buff_addr_idles_;
 
   std::map<TransferType, TransferType> reverse_transfer_type_;
+  std::shared_ptr<StreamPool> stream_pool_ = nullptr;
 };
 }  // namespace adxl
 
