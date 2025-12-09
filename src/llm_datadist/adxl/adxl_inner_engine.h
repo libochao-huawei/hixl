@@ -51,15 +51,21 @@ class AdxlInnerEngine {
   Status TransferAsync(const AscendString &remote_engine,
                        TransferOp operation,
                        const std::vector<TransferOpDesc> &op_descs,
+                       const std::shared_ptr<StreamPool> &stream_pool,
                        const TransferArgs &optional_args,
                        TransferReq &req);
 
+<<<<<<< Updated upstream
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
 
   Status SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis = 1000);
 
   Status GetNotifies(std::vector<NotifyDesc> &notifies);
   
+=======
+  Status GetTransferStatus(const TransferReq &req, const std::shared_ptr<StreamPool> &stream_pool,
+                           TransferStatus &status);
+>>>>>>> Stashed changes
  private:
   Status GetTransferType(const ChannelPtr &channel, TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                          bool &need_buffer, TransferType &type);
@@ -79,6 +85,7 @@ class AdxlInnerEngine {
   std::vector<MemHandle> pool_mem_handles_{};
   std::unique_ptr<BufferTransferService> buffer_transfer_service_ = nullptr;
   std::unique_ptr<SegmentTable> segment_table_ = nullptr;
+  std::shared_ptr<StreamPool> stream_pool_ = nullptr;
   bool user_config_buffer_pool_{false};
   rtContext_t rt_context_{nullptr};
 

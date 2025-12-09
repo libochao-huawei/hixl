@@ -147,14 +147,14 @@ Status Hixl::HixlImpl::TransferAsync(const AscendString &remote_engine,
   adxl::TransferArgs args;
   memcpy_s(&args, sizeof(args), &optional_args, sizeof(optional_args));
   ADXL_CHK_STATUS_RET(hixl_engine_.TransferAsync(remote_engine, static_cast<adxl::TransferOp>(operation), 
-                                                 descs, args, req),
+                                                 descs, hixl_engine_.stream_pool_, args, req),
                       "Failed to transfer request async.");
   return SUCCESS;
 }
 
 Status Hixl::HixlImpl::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
   adxl::TransferStatus transfer_status = adxl::TransferStatus::WAITING;
-  auto ret = hixl_engine_.GetTransferStatus(req, transfer_status);
+  auto ret = hixl_engine_.GetTransferStatus(req, hixl_engine_.stream_pool_, transfer_status);
   if (ret != SUCCESS) {
     status = TransferStatus::FAILED;
     LLMLOGE(ret, "Failed to get transfer request status.");

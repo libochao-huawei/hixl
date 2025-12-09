@@ -459,6 +459,7 @@ TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithQueryEventFailed) {
   engine2.Finalize();
 }
 
+<<<<<<< Updated upstream
 TEST_F(AdxlEngineUTest, TestAdxlEngineSendGetNotifies) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   AdxlEngine engine1;
@@ -634,10 +635,32 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyNameTooLong) {
   EXPECT_EQ(engine1.SendNotify("127.0.0.1:26001", notify), PARAM_INVALID);
   
   EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+=======
+TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithStreamSyncFailed) {
+  AdxlEngine engine1;
+  AdxlEngine engine2;
+  SetupEngines(engine1, engine2);
+  int32_t src = 1;
+  MemHandle handle1 = nullptr;
+  RegisterInt32Mem(engine1, &src, handle1);
+  int32_t dst = 2;
+  MemHandle handle2 = nullptr;
+  RegisterInt32Mem(engine2, &dst, handle2);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  TransferReq req = nullptr;
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req), SUCCESS);
+  TransferStatus status = TransferStatus::WAITING;
+  TransferAsyncSteamRuntimeMocak instance;;
+  llm::RuntimeStub::Install(&instance);
+  EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
+  llm::RuntimeStub::UnInstall(&instance);
+>>>>>>> Stashed changes
   engine1.Finalize();
   engine2.Finalize();
 }
 
+<<<<<<< Updated upstream
 TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyMsgTooLong) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   AdxlEngine engine1;
@@ -662,4 +685,6 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyMsgTooLong) {
   engine1.Finalize();
   engine2.Finalize();
 }
+=======
+>>>>>>> Stashed changes
 }  // namespace llm_datadist
