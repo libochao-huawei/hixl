@@ -27,6 +27,7 @@ constexpr uint64_t kDefaultBufferSize = 8U;
 constexpr const char *kDisabledPoolConfig = "0:0";
 constexpr uint64_t kNeedUseBufferThresh = 256 * 1024U;
 constexpr size_t kMemPoolNum = 2U;
+constexpr int32_t kMaxStreams = 128;
 }
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   std::lock_guard<std::mutex> lk(mutex_);
@@ -40,6 +41,7 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
     (void) rtCtxDestroyEx(rt_context_);
   }));
   segment_table_ = llm::MakeUnique<SegmentTable>();
+  stream_pool_ = llm::MakeShared<StreamPool>(kMaxStreams);
   ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get()), "Failed to init msg handler.");
   ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
   ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
@@ -183,6 +185,7 @@ void AdxlInnerEngine::Finalize() {
     (void)llm::LlmDatadistTimer::Instance().DeleteTimer(statistic_timer_handle_);
     statistic_timer_handle_ = nullptr;
   }
+  stream_pool_.Finalize();
   llm::LlmDatadistTimer::Instance().Finalize();
   StatisticManager::GetInstance().Reset();
 }
@@ -308,7 +311,7 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   auto id = next_req_id_.fetch_add(1);
   req = reinterpret_cast<void*>(static_cast<uintptr_t>(id));
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
-  ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, req),
+  ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, stream_pool_, optional_args, req),
                       "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
   std::lock_guard<std::mutex> lock(req2channel_mutex_);
   req2channel_[id] = remote_engine;
@@ -327,7 +330,7 @@ Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
-  auto ret = channel->GetTransferStatus(req, status);
+  auto ret = channel->GetTransferStatus(req, stream_pool_, status);
   if (status != TransferStatus::WAITING) {
     req2channel_.erase(id);
   }
