@@ -1352,29 +1352,12 @@ if [ "x$version_installed" != "x" -a "$version_installed" != "none" ] || [ -f "$
     if [ "$uninstall" = "y" ]; then
         unchattr_files
         uninstall_run "uninstall" "y" "y"
-        if [ -d "${default_dir}/site-packages" ]; then
-            rm -rf "${default_dir}/site-packages"
-        fi
         save_user_files_to_log "$default_dir"
         save_user_files_to_log "$(dirname $default_dir)/atc"
         save_user_files_to_log "$(dirname $default_dir)/fwkacllib"
         exit_uninstall_log 0
     # 升级场景
     elif [ "$upgrade" = "y" ]; then
-        if [ -n "$pkg_version_dir" ]; then
-            if [ "$hetero_arch" = "y" ]; then
-                get_package_upgrade_install_info_hetero "upgrade_install_info"
-            else
-                get_package_upgrade_install_info "upgrade_install_info" "$pkg_install_path" "hixl"
-            fi
-            if [ -z "$upgrade_install_info" ]; then
-                log "ERROR" "Can not find softlink for this package in latest directory, upgrade failed"
-                log_operation "Upgrade" "failed"
-                exit_install_log 1
-            elif [ "$(realpath $upgrade_install_info)" != "$(realpath $install_info)" ]; then
-                uninstall_run "uninstall" "n" "y" "$upgrade_install_info"
-            fi
-        fi
         unchattr_files
         uninstall_run "uninstall" "n" "n"
         save_user_files_to_log "$default_dir"
@@ -1433,23 +1416,9 @@ else
                 exit_install_log 1
             fi
         else
-            if [ "$hetero_arch" = "y" ]; then
-                get_package_upgrade_install_info_hetero "upgrade_install_info"
-            else
-                get_package_upgrade_install_info "upgrade_install_info" "$pkg_install_path" "hixl"
-            fi
-            if [ -f "$upgrade_install_info" ]; then
-                create_default_dir && cp "$upgrade_install_info" "$install_info"
-                migrate_user_assets_v2
-                [ "$hetero_arch" = "y" ] && update_install_info_hetero "$install_info" "$pkg_version_dir"
-                uninstall_run "uninstall" "n" "y" "$upgrade_install_info"
-                upgrade_run "upgrade"
-                exit_install_log 0
-            else
-                log "ERROR" "ERR_NO:0x0080;ERR_DES:Runfile is not installed in ${pkg_install_path}, upgrade failed"
-                log_operation "Upgrade" "failed"
-                exit_install_log 1
-            fi
+            log "ERROR" "ERR_NO:0x0080;ERR_DES:Runfile is not installed in ${pkg_install_path}, upgrade failed"
+            log_operation "Upgrade" "failed"
+            exit_install_log 1
         fi
     # 安装场景
     elif [ "$run_install" = "y" ] || [ "$full_install" = "y" ] || [ "$devel_install" = "y" ]; then
