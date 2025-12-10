@@ -206,7 +206,6 @@ custom_uninstall() {
         if [ -d "${WHL_INSTALL_DIR_PATH}" ]; then
             local python_path=$(dirname "$WHL_INSTALL_DIR_PATH")
             chmod +w "${python_path}"
-            remove_last_license
         fi
 
         remove_empty_dir "${WHL_INSTALL_DIR_PATH}"
