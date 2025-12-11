@@ -84,6 +84,7 @@ Status ChannelManager::HandleEpoolEvents() {
   struct epoll_event events[kMaxEvents];
   int nfds = epoll_wait(epoll_fd_, events, kMaxEvents, kEpollWaitTimeInMillis);
   if (nfds == -1) {
+    ADXL_CHK_BOOL_RET_SPECIAL_STATUS(errno == EINTR, SUCCESS, "Get EINTR signal.");
     LLMLOGE(FAILED, "epoll_wait error: %s", strerror(errno));
     return FAILED;
   }
