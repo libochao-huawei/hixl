@@ -1,0 +1,5 @@
+{
+    "adxl.max_channel": "10",
+    "adxl.high_waterline": "0.3",
+    "adxl.low_waterline": "0.1"
+}

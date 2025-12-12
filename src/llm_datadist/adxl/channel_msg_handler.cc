@@ -9,6 +9,7 @@
  */
 
 #include "channel_msg_handler.h"
+#include <algorithm>
 #include "nlohmann/json.hpp"
 #include "adxl/adxl_types.h"
 #include "common/rank_table_generator.h"
@@ -18,6 +19,8 @@
 #include "channel.h"
 #include "common/llm_checker.h"
 #include "common/llm_scope_guard.h"
+#include "adxl_utils.h"
+#include "control_msg_handler.h"
 
 namespace adxl {
 
@@ -175,10 +178,20 @@ Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> 
     LLMEVENT("start daemon success, listen on port:%u", listen_port_);
   }
   segment_table_ = segment_table;
+  if (user_config_channel_pool_) {
+    channel_evictor_ = std::make_unique<ChannelEvictor>(channel_manager_);
+    channel_evictor_->SetListenInfo(listen_info_);
+    ADXL_CHK_STATUS_RET(channel_evictor_->Initialize(options), "Failed to initialize channel evictor");
+  }
   return SUCCESS;
 }
 
 void ChannelMsgHandler::Finalize() {
+  if (channel_evictor_ != nullptr) {
+    channel_evictor_->Finalize();
+    channel_evictor_.reset();
+  }
+  
   StopDaemon();
   std::lock_guard<std::mutex> lock(mutex_);
   for (const auto &it : handle_to_addr_) {
@@ -277,6 +290,9 @@ Status ChannelMsgHandler::CreateChannel(const ChannelInfo &channel_info, bool is
 
 Status ChannelMsgHandler::ConnectInfoProcess(const ChannelConnectInfo &peer_channel_info,
                                              int32_t timeout, bool is_client) {
+  if (user_config_channel_pool_) {
+    channel_evictor_->NotifyEviction();
+  }
   auto rank_table_generator = llm::RankTableGeneratorFactory::Create(local_comm_res_, peer_channel_info.comm_res);
   ADXL_CHK_BOOL_RET_STATUS(rank_table_generator != nullptr, PARAM_INVALID,
                            "Failed to create rank table generator.");
@@ -410,6 +426,13 @@ Status ChannelMsgHandler::Connect(const std::string &remote_engine, int32_t time
   auto channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine);
   ADXL_CHK_BOOL_RET_STATUS(channel == nullptr, ALREADY_CONNECTED,
                            "remote_engine:%s is already connected.", remote_engine.c_str());
+  if (user_config_channel_pool_) {
+    channel_evictor_->NotifyEviction();
+  }
+  return ChannelMsgHandler::DoConnect(remote_engine, timeout_in_millis);
+}
+
+Status ChannelMsgHandler::DoConnect(const std::string &remote_engine, int32_t timeout_in_millis) {
   std::string remote_ip;
   int32_t remote_port = -1;
   ADXL_CHK_STATUS_RET(ParseListenInfo(remote_engine, remote_ip, remote_port), "Failed to parse listen info");
@@ -443,7 +466,7 @@ Status ChannelMsgHandler::Connect(const std::string &remote_engine, int32_t time
                       status.error_code, status.error_message.c_str(),
                       listen_info_.c_str(), remote_engine.c_str(), timeout_in_millis);
   ADXL_CHK_STATUS_RET(ret, "Failed to process connect info, timeout:%d", timeout_in_millis);
-  channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine);
+  auto channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine);
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, FAILED,
                            "Faield to get channel, local engine:%s, remote engine:%s, timeout:%d ms.",
                            listen_info_.c_str(), remote_engine.c_str(), timeout_in_millis);
@@ -504,4 +527,5 @@ Status ChannelMsgHandler::Disconnect(const std::string &remote_engine, int32_t t
           listen_info_.c_str(), remote_engine.c_str(), timeout_in_millis);
   return SUCCESS;
 }
+
 }  // namespace adxl
