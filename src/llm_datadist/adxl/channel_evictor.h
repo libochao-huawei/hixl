@@ -53,14 +53,6 @@ struct PendingDisconnectRequest {
     RequestDisconnectResp resp;
 };
 
-struct ChannelState {
-    ChannelPtr channel;
-    std::string channel_id;
-    int transfer_count;
-    bool has_transferred;
-    bool disconnect_flag;
-};
-
 class ChannelEvictor {
 public:
     explicit ChannelEvictor(ChannelManager* channel_manager);

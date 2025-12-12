@@ -34,77 +34,49 @@ constexpr int32_t kMaxStreams = 128;
 }
 
 Status AdxlInnerEngine::LoadGlobalResourceConfig(std::map<AscendString, AscendString>& options) {
-  // Check if GlobalResourceConfig option is specified and load JSON config
   auto config_it = options.find(hixl::OPTION_GLOBAL_RESOURCE_CONFIG);
   if (config_it != options.end()) {
     std::string config_path = config_it->second.GetString();
     if (!config_path.empty()) {
-      Status ret = LoadJsonConfig(config_path, options);
-      if (ret != SUCCESS) {
-        LLMLOGE(ret, "Failed to load JSON config from file: %s", config_path.c_str());
-        return ret;
-      }
-      LLMLOGI("Successfully loaded JSON config from file: %s", config_path.c_str());
+      ADXL_CHK_STATUS_RET(LoadJsonConfig(config_path, options), 
+                          "Failed to load JSON config from file: %s", config_path.c_str());
     }
   }
 
-  // Parse and validate max channel from options
   auto max_it = options.find(adxl::OPTION_MAX_CHANNEL);
   if (max_it != options.end()) {
     std::string max_str = max_it->second.GetString();
     int32_t max_channel = 0;
-    if (llm::LLMUtils::ToNumber(max_str, max_channel)) {
-      LLMLOGE(PARAM_INVALID, "Invalid max_channel: %s", max_str.c_str());
-      return PARAM_INVALID;
-    }
-    if (max_channel <= 0) {
-      LLMLOGE(PARAM_INVALID, "Invalid max_channel: %u (must be > 0)", max_channel);
-      return PARAM_INVALID;
-    }
+    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(max_str, max_channel), "Invalid max_channel: %s", max_str.c_str());
+    ADXL_CHK_BOOL_RET_STATUS(max_channel > 0, PARAM_INVALID, "Invalid max_channel: %d (must be > 0)", max_channel);
   }
 
-  // Parse high waterline from options
-  double high_waterline_ratio = 0.9; // Default value
+  double high_waterline_ratio = 0.9;
   auto high_it = options.find(adxl::OPTION_HIGH_WATERLINE);
   if (high_it != options.end()) {
     std::string high_str = high_it->second.GetString();
     double high_value = 0.0;
-    if (llm::LLMUtils::ToNumber(high_str, high_value)) {
-      LLMLOGE(PARAM_INVALID, "Invalid high_waterline: %s", high_str.c_str());
-      return PARAM_INVALID;
-    }
-    if (high_value <= 0.0 || high_value >= 1.0) {
-      LLMLOGE(PARAM_INVALID, "Invalid high_waterline: %.2f (must be 0~1)", high_value);
-      return PARAM_INVALID;
-    }
+    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(high_str, high_value), "Invalid high_waterline: %s", high_str.c_str());
+    ADXL_CHK_BOOL_RET_STATUS(high_value > 0.0 && high_value < 1.0, PARAM_INVALID, 
+                            "Invalid high_waterline: %.2f (must be 0~1)", high_value);
     high_waterline_ratio = high_value;
   }
 
-  // Parse low waterline from options
-  double low_waterline_ratio = 0.6; // Default value
+  double low_waterline_ratio = 0.6;
   auto low_it = options.find(adxl::OPTION_LOW_WATERLINE);
   if (low_it != options.end()) {
     std::string low_str = low_it->second.GetString();
     double low_value = 0.0;
-    if (llm::LLMUtils::ToNumber(low_str, low_value)) {
-      LLMLOGE(PARAM_INVALID, "Invalid low_waterline: %s", low_str.c_str());
-      return PARAM_INVALID;
-    }
-    if (low_value <= 0.0 || low_value >= 1.0) {
-      LLMLOGE(PARAM_INVALID, "Invalid low_waterline: %.2f (must be 0~1)", low_value);
-      return PARAM_INVALID;
-    }
+    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(low_str, low_value), "Invalid low_waterline: %s", low_str.c_str());
+    ADXL_CHK_BOOL_RET_STATUS(low_value > 0.0 && low_value < 1.0, PARAM_INVALID, 
+                            "Invalid low_waterline: %.2f (must be 0~1)", low_value);
     low_waterline_ratio = low_value;
   }
 
-  // Validate that low waterline is less than high waterline
-  if (low_waterline_ratio >= high_waterline_ratio) {
-    LLMLOGE(PARAM_INVALID, "low_waterline (%.2f) must be less than high_waterline (%.2f)",
-            low_waterline_ratio, high_waterline_ratio);
-    return PARAM_INVALID;
-  }
+  ADXL_CHK_BOOL_RET_STATUS(low_waterline_ratio < high_waterline_ratio, PARAM_INVALID, 
+                          "low_waterline (%.2f) must be less than high_waterline (%.2f)", 
+                          low_waterline_ratio, high_waterline_ratio);
 
-  // Check if both high and low waterline configurations are present
   if (high_it != options.end() && low_it != options.end()) {
     user_config_channel_pool_ = true;
     msg_handler_.SetUserChannelPoolConfig();
