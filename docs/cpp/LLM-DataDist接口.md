@@ -8,23 +8,20 @@
 </th>
 </tr>
 </thead>
-<tbody><tr id="row220181016240"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p48327011813"><a name="p48327011813"></a><a name="p48327011813"></a><span id="ph583230201815"><a name="ph583230201815"></a><a name="ph583230201815"></a><term id="zh-cn_topic_0000001312391781_term1253731311225"><a name="zh-cn_topic_0000001312391781_term1253731311225"></a><a name="zh-cn_topic_0000001312391781_term1253731311225"></a>Atlas A3 训练系列产品</term>/<term id="zh-cn_topic_0000001312391781_term12835255145414"><a name="zh-cn_topic_0000001312391781_term12835255145414"></a><a name="zh-cn_topic_0000001312391781_term12835255145414"></a>Atlas A3 推理系列产品</term></span></p>
+<tbody><tr id="row220181016240"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p48327011813"><a name="p48327011813"></a><a name="p48327011813"></a><span id="ph583230201815"><a name="ph583230201815"></a><a name="ph583230201815"></a><term id="zh-cn_topic_0000001312391781_term1253731311225"><a name="zh-cn_topic_0000001312391781_term1253731311225"></a><a name="zh-cn_topic_0000001312391781_term1253731311225"></a>Ascend 910C</term></span></p>
 </td>
 <td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p7948163910184"><a name="p7948163910184"></a><a name="p7948163910184"></a>√</p>
 </td>
 </tr>
-<tr id="row173226882415"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p14832120181815"><a name="p14832120181815"></a><a name="p14832120181815"></a><span id="ph980713477118"><a name="ph980713477118"></a><a name="ph980713477118"></a><term id="zh-cn_topic_0000001312391781_term454024162214"><a name="zh-cn_topic_0000001312391781_term454024162214"></a><a name="zh-cn_topic_0000001312391781_term454024162214"></a>Atlas 800I A2 推理产品</term>/A200I A2 Box 异构组件</span></p>
+<tr id="row173226882415"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p14832120181815"><a name="p14832120181815"></a><a name="p14832120181815"></a><span id="ph980713477118"><a name="ph980713477118"></a><a name="ph980713477118"></a><term id="zh-cn_topic_0000001312391781_term454024162214"><a name="zh-cn_topic_0000001312391781_term454024162214"></a><a name="zh-cn_topic_0000001312391781_term454024162214"></a>Ascend 910B</p>
 </td>
-<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p19948143911820"><a name="p19948143911820"></a><a name="p19948143911820"></a>√</p>
-</td>
-</tr>
-<tr id="row15882185517522"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p1682479135314"><a name="p1682479135314"></a><a name="p1682479135314"></a><span id="ph14880920154918"><a name="ph14880920154918"></a><a name="ph14880920154918"></a><term id="zh-cn_topic_0000001312391781_term16184138172215"><a name="zh-cn_topic_0000001312391781_term16184138172215"></a><a name="zh-cn_topic_0000001312391781_term16184138172215"></a>Atlas A2 训练系列产品</term></span></p>
-</td>
-<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p578615025316"><a name="p578615025316"></a><a name="p578615025316"></a>x</p>
+<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p578615025316"><a name="p578615025316"></a><a name="p578615025316"></a>√</p>
 </td>
 </tr>
 </tbody>
 </table>
+说明：针对Ascend 910B，仅支持Atlas 800I A2 推理服务器、Atlas 300I A2 推理卡、A200I A2 Box 异构组件。
+
 
 ## LlmDataDist构造函数<a name="ZH-CN_TOPIC_0000002374409960"></a>
 **函数功能**
@@ -172,13 +169,14 @@ Status Initialize(const std::map<AscendString, AscendString> &options)
 </td>
 <td class="cellrowborder" valign="top" width="13.100000000000001%" headers="mcps1.2.4.1.2 "><p id="p1078042453719"><a name="p1078042453719"></a><a name="p1078042453719"></a>可选</p>
 </td>
-<td class="cellrowborder" valign="top" width="59.36%" headers="mcps1.2.4.1.3 "><p id="p197801724143716"><a name="p197801724143716"></a><a name="p197801724143716"></a>配置本地通信资源信息，格式是json格式的字符串。仅需配置ranktable中当前llm datadist所使用Device信息，无需配置ranktable中的server_count和rank_id字段，ranktable具体信息请参见<span id="ph658815109205"><a name="ph658815109205"></a><a name="ph658815109205"></a>《HCCL集合通信库用户指南》</span>中的“<span id="ph9144125311343"><a name="ph9144125311343"></a><a name="ph9144125311343"></a>通信功能开发 &gt; 集群信息配置 &gt; rank table文件配置资源信息</span>“章节。</p>
-<div class="note" id="note45401946203"><a name="note45401946203"></a><a name="note45401946203"></a><span class="notetitle"> 说明： </span><div class="notebody"><p id="p1753920416207"><a name="p1753920416207"></a><a name="p1753920416207"></a>该option可以不配置或配置为空串，为空将自动生成相关信息。</p>
+<td class="cellrowborder" valign="top" width="59.36%" headers="mcps1.2.4.1.3 "><p id="p197801724143716"><a name="p197801724143716"></a><a name="p197801724143716"></a>配置本地通信资源信息，格式是json格式的字符串。仅需配置ranktable中当前llm datadist所使用Device信息，无需配置ranktable中的server_count和rank_id字段。</p>
 </div></div>
 </td>
 </tr>
 </tbody>
 </table>
+
+如上表格中ranktable具体信息请参见[《HCCL集合通信库用户指南》](https://www.hiascend.com/document/redirect/CannCommunityHcclUg)。
 
 **调用示例**
 

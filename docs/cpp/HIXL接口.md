@@ -8,23 +8,19 @@
 </th>
 </tr>
 </thead>
-<tbody><tr id="row220181016240"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p48327011813"><a name="p48327011813"></a><a name="p48327011813"></a><span id="ph583230201815"><a name="ph583230201815"></a><a name="ph583230201815"></a><term id="zh-cn_topic_0000001312391781_term1253731311225"><a name="zh-cn_topic_0000001312391781_term1253731311225"></a><a name="zh-cn_topic_0000001312391781_term1253731311225"></a>Atlas A3 训练系列产品</term>/<term id="zh-cn_topic_0000001312391781_term12835255145414"><a name="zh-cn_topic_0000001312391781_term12835255145414"></a><a name="zh-cn_topic_0000001312391781_term12835255145414"></a>Atlas A3 推理系列产品</term></span></p>
+<tbody><tr id="row220181016240"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p48327011813"><a name="p48327011813"></a><a name="p48327011813"></a><span id="ph583230201815"><a name="ph583230201815"></a><a name="ph583230201815"></a><term id="zh-cn_topic_0000001312391781_term1253731311225"><a name="zh-cn_topic_0000001312391781_term1253731311225"></a><a name="zh-cn_topic_0000001312391781_term1253731311225"></a>Ascend 910C</term></span></p>
 </td>
 <td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p7948163910184"><a name="p7948163910184"></a><a name="p7948163910184"></a>√</p>
 </td>
 </tr>
-<tr id="row173226882415"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p14832120181815"><a name="p14832120181815"></a><a name="p14832120181815"></a><span id="ph980713477118"><a name="ph980713477118"></a><a name="ph980713477118"></a><term id="zh-cn_topic_0000001312391781_term454024162214"><a name="zh-cn_topic_0000001312391781_term454024162214"></a><a name="zh-cn_topic_0000001312391781_term454024162214"></a>Atlas 800I A2 推理产品</term>/A200I A2 Box 异构组件</span></p>
+<tr id="row173226882415"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p14832120181815"><a name="p14832120181815"></a><a name="p14832120181815"></a><span id="ph980713477118"><a name="ph980713477118"></a><a name="ph980713477118"></a><term id="zh-cn_topic_0000001312391781_term454024162214"><a name="zh-cn_topic_0000001312391781_term454024162214"></a><a name="zh-cn_topic_0000001312391781_term454024162214"></a>Ascend 910B</p>
 </td>
-<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p19948143911820"><a name="p19948143911820"></a><a name="p19948143911820"></a>√</p>
-</td>
-</tr>
-<tr id="row15882185517522"><td class="cellrowborder" valign="top" width="57.99999999999999%" headers="mcps1.1.3.1.1 "><p id="p1682479135314"><a name="p1682479135314"></a><a name="p1682479135314"></a><span id="ph14880920154918"><a name="ph14880920154918"></a><a name="ph14880920154918"></a><term id="zh-cn_topic_0000001312391781_term16184138172215"><a name="zh-cn_topic_0000001312391781_term16184138172215"></a><a name="zh-cn_topic_0000001312391781_term16184138172215"></a>Atlas A2 训练系列产品</term></span></p>
-</td>
-<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p578615025316"><a name="p578615025316"></a><a name="p578615025316"></a>x</p>
+<td class="cellrowborder" align="center" valign="top" width="42%" headers="mcps1.1.3.1.2 "><p id="p578615025316"><a name="p578615025316"></a><a name="p578615025316"></a>√</p>
 </td>
 </tr>
 </tbody>
 </table>
+说明：针对Ascend 910B，仅支持Atlas 800I A2 推理服务器、Atlas 300I A2 推理卡、A200I A2 Box 异构组件。
 
 ## HIXL构造函数<a name="ZH-CN_TOPIC_0000002446623653"></a>
 
@@ -145,7 +141,6 @@ Status Initialize(const AscendString &local_engine, const std::map<AscendString,
 <td class="cellrowborder" valign="top" width="59.36%" headers="mcps1.2.4.1.3 "><p id="p613920141278"><a name="p613920141278"></a><a name="p613920141278"></a>字符串取值"RdmaTrafficClass"。</p>
 <p id="p1284073872"><a name="p1284073872"></a><a name="p1284073872"></a>用于配置RDMA网卡的traffic class。和环境变量HCCL_RDMA_TC功能，如同时配置，当前option优先级更高；未同时配置，以配置的一方为准。</p>
 <p id="p544743519334"><a name="p544743519334"></a><a name="p544743519334"></a>取值范围为[0,255]，且需要配置为4的整数倍，默认值为132。</p>
-<p id="p1079191815168"><a name="p1079191815168"></a><a name="p1079191815168"></a>更多信息请参考<span id="ph786881910545"><a name="ph786881910545"></a><a name="ph786881910545"></a>《环境变量参考》</span>。</p>
 </td>
 </tr>
 <tr id="row92022108110"><td class="cellrowborder" valign="top" width="27.500000000000004%" headers="mcps1.2.4.1.1 "><p id="p8840153616235"><a name="p8840153616235"></a><a name="p8840153616235"></a>OPTION_RDMA_SERVICE_LEVEL</p>
@@ -155,11 +150,14 @@ Status Initialize(const AscendString &local_engine, const std::map<AscendString,
 <td class="cellrowborder" valign="top" width="59.36%" headers="mcps1.2.4.1.3 "><p id="p1321144310716"><a name="p1321144310716"></a><a name="p1321144310716"></a>字符串取值"RdmaServiceLevel"。</p>
 <p id="p141217396266"><a name="p141217396266"></a><a name="p141217396266"></a>用于配置RDMA网卡的service level。和环境变量HCCL_RDMA_SL功能相同，如同时配置，当前option优先级更高；未同时配置，以配置的一方为准。</p>
 <p id="p66533506502"><a name="p66533506502"></a><a name="p66533506502"></a>取值范围为[0, 7]，默认值为4。</p>
-<p id="p4325741162614"><a name="p4325741162614"></a><a name="p4325741162614"></a>更多信息请参考<span id="ph10325104192610"><a name="ph10325104192610"></a><a name="ph10325104192610"></a>《环境变量参考》</span>。</p>
+
+
 </td>
 </tr>
 </tbody>
 </table>
+
+如上表格中的环境变量请参考[《环境变量参考》](https://www.hiascend.com/document/redirect/CannCommunityEnvRef)。
 
 **调用示例**
 
@@ -522,6 +520,7 @@ Status TransferSync(const AscendString &remote_engine,
 -   PARAM\_INVALID：参数错误
 -   NOT\_CONNECTED：没有与对端创建链接
 -   TIMEOUT：传输超时
+-   RESOURCE_EXHAUSTED：资源耗尽
 -   其他：失败
 
 **约束说明**
@@ -605,15 +604,15 @@ Status TransferSync(const AscendString &remote_engine,
 **返回值**
 
 -   SUCCESS：成功
--   PARAM\_INVALID：参数错误
 -   NOT\_CONNECTED：没有与对端创建链接
+-   RESOURCE_EXHAUSTED：资源耗尽
 -   其他：失败
 
 **约束说明**
 
 -   调用该接口之前，需要先调用Connect接口完成与对端的建链。
 -   该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
--   当前异步传输仅支持直传，暂不支持中专传输，默认直传。
+-   当前异步传输仅支持直传，暂不支持中转传输，默认直传。
 
 ## GetTransferStatus
 **函数功能**
@@ -680,6 +679,120 @@ Status TransferSync(const AscendString &remote_engine,
 
 -   调用该接口之前，需要先调用Connect接口完成与对端的建链。
 -   该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
--   当前异步传输仅支持直传，暂不支持中转传输，默认直传。
+-   在调用TransferAsync接口进行异步传输后，需要使用该接口查询对应请求状态，如果查询状态是COMPLETED或FAILED，将释放相关资源。该场景下不支持再次查询。
+-   异步传输时，用户自行判断是否超时，如果用户判断任务超时，建议调用Disconnect接口销毁链路，清理相关资源。
+-   异步传输任务失败后，调用该接口查询的状态和接口返回状态都是FAILED。
+
+
+## SendNotify
+**函数功能**
+
+Client向Server发送Notify信息。
+
+**函数原型**
+
+```
+  Status SendNotify(const AscendString &remote_engine,
+                    const NotifyDesc &notify,
+                    int32_t timeout_in_millis = 1000)
+```
+
+**参数说明**
+
+<a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_table2051894852017"></a>
+<table><thead align="left"><tr id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_row4558174815206"><th class="cellrowborder" valign="top" width="22.220000000000002%" id="mcps1.1.4.1.1"><p id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"></a><strong id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"></a>参数名称</strong></p>
+</th>
+<th class="cellrowborder" valign="top" width="35.89%" id="mcps1.1.4.1.2"><p id="p1973194312342"><a name="p1973194312342"></a><a name="p1973194312342"></a>输入/输出</p>
+</th>
+<th class="cellrowborder" valign="top" width="41.89%" id="mcps1.1.4.1.3"><p id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"></a><strong id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"></a>取值说明</strong></p>
+</th>
+</tr>
+</thead>
+<tbody><tr id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_row35581048202018"><td class="cellrowborder" valign="top" width="22.220000000000002%" headers="mcps1.1.4.1.1 "><p id="p172169417217"><a name="p172169417217"></a><a name="p172169417217"></a>remote_engine</p>
+</td>
+<td class="cellrowborder" valign="top" width="35.89%" headers="mcps1.1.4.1.2 "><p id="p18215541182113"><a name="p18215541182113"></a><a name="p18215541182113"></a>输入</p>
+</td>
+<td class="cellrowborder" valign="top" width="41.89%" headers="mcps1.1.4.1.3 "><p id="p11215124113212"><a name="p11215124113212"></a><a name="p11215124113212"></a>远端Hixl的唯一标识</p>
+</td>
+</tr>
+<tr id="row4531052105216"><td class="cellrowborder" valign="top" width="22.220000000000002%" headers="mcps1.1.4.1.1 "><p id="p19214141152111"><a name="p19214141152111"></a><a name="p19214141152111"></a>timeout_in_millis</p>
+</td>
+<td class="cellrowborder" valign="top" width="35.89%" headers="mcps1.1.4.1.2 "><p id="p156821517152217"><a name="p156821517152217"></a><a name="p156821517152217"></a>输入</p>
+</td>
+<td class="cellrowborder" valign="top" width="41.89%" headers="mcps1.1.4.1.3 "><p id="p1621384113213"><a name="p1621384113213"></a><a name="p1621384113213"></a>发送超时时间，单位ms。
+</p>
+<tr id="row4531052105216"><td class="cellrowborder" valign="top" width="22.220000000000002%" headers="mcps1.1.4.1.1 "><p id="p19214141152111"><a name="p19214141152111"></a><a name="p19214141152111"></a>notify</p>
+</td>
+<td class="cellrowborder" valign="top" width="35.89%" headers="mcps1.1.4.1.2 "><p id="p156821517152217"><a name="p156821517152217"></a><a name="p156821517152217"></a>输入</p>
+</td>
+<td class="cellrowborder" valign="top" width="41.89%" headers="mcps1.1.4.1.3 "><p id="p1621384113213"><a name="p1621384113213"></a><a name="p1621384113213"></a>要发送的Notify内容。
+</p>
+
+</td>
+</tr>
+</tbody>
+</table>
+
+**调用示例**
+
+无
+
+**返回值**
+
+-   SUCCESS：成功
+-   其他：失败
+
+**约束说明**
+
+-   调用该接口之前，需要先调用Connect接口完成与对端的建链。
+-   该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
+## GetNotifies
+**函数功能**
+
+获取当前Hixl内所有Server收到的Notify信息，并清空已收到信息。
+
+**函数原型**
+
+```
+  Status GetNotifies(std::vector<NotifyDesc> &notifies)
+```
+
+**参数说明**
+
+<a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_table2051894852017"></a>
+<table><thead align="left"><tr id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_row4558174815206"><th class="cellrowborder" valign="top" width="22.220000000000002%" id="mcps1.1.4.1.1"><p id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p255884814201"></a><strong id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b145581148152018"></a>参数名称</strong></p>
+</th>
+<th class="cellrowborder" valign="top" width="35.89%" id="mcps1.1.4.1.2"><p id="p1973194312342"><a name="p1973194312342"></a><a name="p1973194312342"></a>输入/输出</p>
+</th>
+<th class="cellrowborder" valign="top" width="41.89%" id="mcps1.1.4.1.3"><p id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_p14558184812200"></a><strong id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"></a><a name="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_b19165651193118"></a>取值说明</strong></p>
+</th>
+</tr>
+</thead>
+<tbody><tr id="zh-cn_topic_0000001417673572_zh-cn_topic_0000001359609816_row35581048202018"><td class="cellrowborder" valign="top" width="22.220000000000002%" headers="mcps1.1.4.1.1 "><p id="p172169417217"><a name="p172169417217"></a><a name="p172169417217"></a>notifies</p>
+</td>
+<td class="cellrowborder" valign="top" width="35.89%" headers="mcps1.1.4.1.2 "><p id="p18215541182113"><a name="p18215541182113"></a><a name="p18215541182113"></a>输入</p>
+</td>
+<td class="cellrowborder" valign="top" width="41.89%" headers="mcps1.1.4.1.3 "><p id="p11215124113212"><a name="p11215124113212"></a><a name="p11215124113212"></a>存放notify信息的vector。</p>
+</td>
+</tr>
+
+</td>
+</tr>
+</tbody>
+</table>
+
+**调用示例**
+
+无
+
+**返回值**
+
+-   SUCCESS：成功
+-   其他：失败
+
+**约束说明**
+
+-   调用该接口之前，需要先调用Connect接口完成与对端的建链。
+-   该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 
 
