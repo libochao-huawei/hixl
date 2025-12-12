@@ -11,11 +11,11 @@
 #ifndef CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_ADXL_UTILS_H
 #define CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_ADXL_UTILS_H
 
+#include <map>
+#include <string>
 #include "hccl/hccl_types.h"
 #include "runtime/rt.h"
 #include "adxl/adxl_types.h"
-#include <map>
-#include <string>
 #include "ge_common/ge_api_error_codes.h"
 #include "nlohmann/json.hpp"
 

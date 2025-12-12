@@ -112,7 +112,8 @@ class ChannelManager {
   rtContext_t rt_context_{nullptr};
   
   std::function<Status(const std::string&, int32_t)> disconnect_callback_;
-  std::function<void(const RequestDisconnectResp&)> disconnect_response_callback_;
+  std::function<void(const RequestDisconnectResp&)> 
+                disconnect_response_callback_;
 };
 }  // namespace adxl
 

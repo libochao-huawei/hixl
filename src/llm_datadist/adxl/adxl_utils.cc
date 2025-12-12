@@ -9,10 +9,10 @@
  */
 
 #include "adxl_utils.h"
+#include <fstream>
 #include "rt_error_codes.h"
 #include "llm_datadist/llm_datadist.h"
 #include "common/llm_log.h"  // Correct include path
-#include <fstream>
 
 namespace adxl {
 std::string JsonValueToString(const nlohmann::json& j) {
@@ -74,11 +74,9 @@ Status LoadJsonConfig(const std::string& file_path, std::map<AscendString, Ascen
     json_file >> j;
     if (j.is_object()) {
       for (auto it = j.begin(); it != j.end(); ++it) {
-        if (it.value().is_string() || it.value().is_number()) {
-          std::string key = it.key();
-          std::string value = JsonValueToString(it.value());
-          options[AscendString(key.c_str())] = AscendString(value.c_str());
-        }
+        std::string key = it.key();
+        std::string value = JsonValueToString(it.value());
+        options[AscendString(key.c_str())] = AscendString(value.c_str());
       }
     }
     return SUCCESS;

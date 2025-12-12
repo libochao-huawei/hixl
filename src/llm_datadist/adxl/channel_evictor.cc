@@ -10,11 +10,11 @@
 
 #include "channel_evictor.h"
 #include <algorithm>
+#include <common/llm_utils.h>
+#include <adxl/adxl_types.h>
 #include "nlohmann/json.hpp"
 #include "common/msg_handler_plugin.h"
-#include <common/llm_utils.h>
 #include "common/llm_scope_guard.h"
-#include <adxl/adxl_types.h>
 #include "adxl_utils.h"
 
 namespace adxl {
@@ -67,7 +67,8 @@ Status ChannelEvictor::Initialize(const std::map<AscendString, AscendString>& op
 Status ChannelEvictor::StartEvictionThread() {
   if (high_waterline_ > 0 && low_waterline_ > 0) {
     stop_eviction_ = false;
-    eviction_thread_ = std::thread([this]() { 
+    eviction_thread_ = std::thread(
+      [this]() { 
       EvictionLoop(); 
     });
     LLMLOGI("Eviction thread started with waterline: max=%d, high=%d, low=%d", 
@@ -77,7 +78,8 @@ Status ChannelEvictor::StartEvictionThread() {
 }
 
 Status ChannelEvictor::SetupChannelManagerCallbacks() {
-  channel_manager_->SetDisconnectCallback([this](const std::string& channel_id, int32_t timeout_ms) {
+  channel_manager_->SetDisconnectCallback(
+    [this](const std::string& channel_id, int32_t timeout_ms) {
     EvictItem item;
     item.channel_id = channel_id;
     auto client_channel = channel_manager_->GetChannel(ChannelType::kClient, channel_id);
@@ -96,7 +98,8 @@ Status ChannelEvictor::SetupChannelManagerCallbacks() {
     return SUCCESS;
   });
 
-  channel_manager_->SetDisconnectResponseCallback([this](const RequestDisconnectResp& resp) {
+  channel_manager_->SetDisconnectResponseCallback(
+    [this](const RequestDisconnectResp& resp) {
     std::lock_guard<std::mutex> lock(pending_req_mutex_);
     auto it = pending_disconnect_requests_.find(resp.req_id);
     if (it != pending_disconnect_requests_.end()) {
@@ -221,7 +224,9 @@ std::vector<EvictItem> ChannelEvictor::SelectEvictionCandidates(int32_t need_exp
 void ChannelEvictor::EvictionLoop() {
   while (true) {
     std::unique_lock<std::mutex> lock(evict_mutex_);
-    evict_cv_.wait(lock, [this] { 
+    evict_cv_.wait(
+      lock, 
+      [this] { 
       return stop_eviction_ || !evict_queue_.empty(); 
     });
     if (stop_eviction_) {
