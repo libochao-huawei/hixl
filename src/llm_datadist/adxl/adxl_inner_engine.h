@@ -66,6 +66,8 @@ class AdxlInnerEngine {
   Status InitBufferTransferService(const std::map<ge::AscendString, ge::AscendString> &options);
   static void ParseBufferPool(const std::map<AscendString, AscendString> &options,
                               std::string &pool_config);
+  Status LoadGlobalResourceConfig(std::map<AscendString, AscendString> &options);
+  Status ConnectWhenTransfer(const AscendString &remote_engine, int32_t timeout_in_millis = 3000);
   Status ParseBufferPoolParams(const std::map<AscendString, AscendString> &options, uint64_t &buffer_size,
                                uint64_t &npu_pool_size);
 
@@ -81,6 +83,7 @@ class AdxlInnerEngine {
   std::unique_ptr<SegmentTable> segment_table_ = nullptr;
   std::unique_ptr<StreamPool> stream_pool_ = nullptr;
   bool user_config_buffer_pool_{false};
+  bool user_config_channel_pool_{false};
   rtContext_t rt_context_{nullptr};
 
   std::mutex notify_mutex_;
