@@ -63,18 +63,3 @@ if [ -d "${library_path}" ]; then
     fi
 fi
 
-custom_path_file="$INSTALL_DIR/conf/path.cfg"
-common_interface="$INSTALL_DIR/share/info/hixl/script/common_interface.bash"
-owner=$(stat -c %U "$curfile")
-if [ $(id -u) -ne 0 ] && [ "$owner" != "$(whoami)" ] && [ -f "$custom_path_file" ] && [ -f "$common_interface" ]; then
-    . "$common_interface"
-    mk_custom_path "$custom_path_file"
-    for dir_name in "conf" "data"; do
-        dst_dir="$(grep -w "$dir_name" "$custom_path_file" | cut --only-delimited -d"=" -f2-)"
-        eval "dst_dir=$dst_dir"
-        if [ -d "$INSTALL_DIR/$dir_name" ] && [ -d "$dst_dir" ]; then
-            chmod -R u+w $dst_dir/* > /dev/null 2>&1
-            cp -rfL $INSTALL_DIR/$dir_name/* "$dst_dir"
-        fi
-    done
-fi
