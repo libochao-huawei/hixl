@@ -378,7 +378,16 @@ Status BufferTransferService::HandleBufferD2D(const ChannelPtr &channel, BufferR
 Status BufferTransferService::D2DTransfer(const ChannelPtr &channel, TransferOp transfer_op,
                                           const std::vector<TransferOpDesc> &op_descs, uint64_t timeout,
                                           const std::chrono::steady_clock::time_point &start) {
-  auto &stream = channel->GetStream();
+  std::lock_guard<std::mutex> lock(channel->GetTransferMutex());
+  StreamPool *stream_pool = channel->GetStreamPool();
+  ADXL_CHK_BOOL_RET_STATUS(stream_pool != nullptr, FAILED, "Stream pool is null.");
+  rtStream_t stream = nullptr;
+  ADXL_CHK_STATUS_RET(stream_pool->TryAllocStream(stream), "Stream pool get stream failed.");
+  LLM_DISMISSABLE_GUARD(fail_guard, ([stream_pool, &stream]() {
+    if (stream != nullptr) {
+      stream_pool->DestroyStream(stream);
+    }
+  }));
   ADXL_CHK_STATUS_RET(channel->TransferAsyncWithTimeout(transfer_op, op_descs, stream, timeout), "transfer failed.");
   uint64_t time_cost =
       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
@@ -387,6 +396,8 @@ Status BufferTransferService::D2DTransfer(const ChannelPtr &channel, TransferOp 
   auto timeout_in_millis = left_timeout / kMillisToMicros;
   ADXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, TIMEOUT, "Transfer timeout.");
   ADXL_CHK_ACL_RET(rtStreamSynchronizeWithTimeout(stream, timeout_in_millis));
+  LLM_DISMISS_GUARD(fail_guard);
+  stream_pool->FreeStream(stream);
   return SUCCESS;
 }
 
@@ -512,8 +523,17 @@ Status BufferTransferService::ProcessCopyWithBatch(const SliceInfo &slice_info, 
 Status BufferTransferService::ProcessCopyWithAsync(const ChannelPtr &channel, const std::vector<uintptr_t> &src_addrs,
                                                    const std::vector<uintptr_t> &dst_addrs, std::vector<size_t> &sizes,
                                                    CopyExtraInfo extra_info) {
+  std::lock_guard<std::mutex> lock(channel->GetTransferMutex());
   auto &timeout = extra_info.second;
-  auto &stream = channel->GetStream();
+  StreamPool *stream_pool = channel->GetStreamPool();
+  rtStream_t stream = nullptr;
+  ADXL_CHK_STATUS_RET(stream_pool->TryAllocStream(stream), "Stream pool get stream failed.");
+  LLM_DISMISSABLE_GUARD(fail_guard, ([stream_pool, &stream]() {
+    if (stream != nullptr) {
+      stream_pool->DestroyStream(stream);
+    }
+  }));
+  ADXL_CHK_BOOL_RET_STATUS(stream != nullptr, FAILED, "Channel is finalized.");
   auto start = std::chrono::steady_clock::now();
   for (size_t i = 0; i < src_addrs.size(); ++i) {
     ADXL_CHK_ACL_RET(rtMemcpyAsync(llm::ValueToPtr(dst_addrs[i]), sizes[i], llm::ValueToPtr(src_addrs[i]), sizes[i],
@@ -528,6 +548,8 @@ Status BufferTransferService::ProcessCopyWithAsync(const ChannelPtr &channel, co
   ADXL_CHK_ACL_RET(rtStreamSynchronizeWithTimeout(stream, timeout_in_millis));
   LLMLOGI("Async copy time cost:%lu us",
           std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
+  LLM_DISMISS_GUARD(fail_guard);
+  stream_pool->FreeStream(stream);
   return SUCCESS;
 }
 

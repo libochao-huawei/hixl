@@ -27,6 +27,7 @@ constexpr uint64_t kDefaultBufferSize = 8U;
 constexpr const char *kDisabledPoolConfig = "0:0";
 constexpr uint64_t kNeedUseBufferThresh = 256 * 1024U;
 constexpr size_t kMemPoolNum = 2U;
+constexpr int32_t kMaxStreams = 128;
 }
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   std::lock_guard<std::mutex> lk(mutex_);
@@ -40,9 +41,17 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
     (void) rtCtxDestroyEx(rt_context_);
   }));
   segment_table_ = llm::MakeUnique<SegmentTable>();
+  stream_pool_ = llm::MakeUnique<StreamPool>(kMaxStreams);
   ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get()), "Failed to init msg handler.");
   ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
   ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
+  channel_manager_.SetStreamPool(stream_pool_.get());
+  channel_manager_.RegisterNotifyAckCallback([this](uint64_t req_id) {
+    std::lock_guard<std::mutex> lock(notify_mutex_);
+    notify_ack_ready_[req_id] = true;
+    notify_cv_.notify_all();  // Notify all waiting threads, but only the one with matching req_id will continue
+  });
+
   llm::LlmDatadistTimer::Instance().Init();
   statistic_timer_handle_ = llm::LlmDatadistTimer::Instance().CreateTimer([this]() {
     StatisticManager::GetInstance().Dump();
@@ -158,6 +167,7 @@ void AdxlInnerEngine::Finalize() {
   llm::TemporaryRtContext with_context(rt_context_);
   channel_manager_.Finalize();
   msg_handler_.Finalize();
+  stream_pool_->Finalize();
   for (auto &mem : npu_pool_memorys_) {
     if (mem != nullptr) {
       auto ret = rtFree(mem);
@@ -269,7 +279,6 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
-  std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   if (buffer_transfer_service_ != nullptr) {
     const auto start = std::chrono::steady_clock::now();
     bool need_buffer = false;
@@ -280,9 +289,11 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
             std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
     if (need_buffer) {
       ADXL_CHK_BOOL_RET_STATUS(type != TransferType::kEnd, PARAM_INVALID, "Transfer type is invalid.");
+      // do not need lock, add lock inner
       return buffer_transfer_service_->Transfer(channel, type, op_descs, timeout_in_millis);
     }
   }
+  std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   ADXL_CHK_STATUS_RET(channel->TransferSync(operation, op_descs, timeout_in_millis),
                       "Failed to transfer sync, remote_engine:%s", remote_engine.GetString());
   return SUCCESS;
@@ -297,28 +308,29 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
-  std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   auto id = next_req_id_.fetch_add(1);
   req = reinterpret_cast<void*>(static_cast<uintptr_t>(id));
+  std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, req),
                       "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
+  std::lock_guard<std::mutex> lock(req2channel_mutex_);
   req2channel_[id] = remote_engine;
   return SUCCESS;
 }
 
 Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  llm::TemporaryRtContext with_context(rt_context_);
+  std::lock_guard<std::mutex> lock(req2channel_mutex_);
   auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
   auto it = req2channel_.find(id);
   if(it == req2channel_.end()) {
-    LLMLOGE(FAILED, "Request not found, request has been completed or does not exist, req: %llu", id);
+    LLMLOGE(PARAM_INVALID, "Request not found, request has been completed or does not exist, req: %llu", id);
     return PARAM_INVALID;
   }
   auto remote_engine = it->second;
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
-  std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   auto ret = channel->GetTransferStatus(req, status);
   if (status != TransferStatus::WAITING) {
     req2channel_.erase(id);
@@ -328,4 +340,41 @@ Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus
   return ret;
 }
 
+Status AdxlInnerEngine::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis) {
+  // no need for RtContext
+  auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
+  ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
+                           "Failed to get channel, remote_engine:%s", remote_engine.GetString());
+  NotifyMsg notify_msg;
+  notify_msg.req_id = next_notify_id_++; 
+  notify_msg.name = notify.name.GetString();
+  notify_msg.notify_msg = notify.notify_msg.GetString();
+  
+  auto send_callback = [this, &notify_msg, timeout_in_millis](int32_t fd) -> Status {
+    return ControlMsgHandler::SendMsg(fd, ControlMsgType::kNotify, notify_msg, timeout_in_millis);
+  };
+  ADXL_CHK_STATUS_RET(channel->SendControlMsg(send_callback), "Failed to send notify message.");
+  std::unique_lock<std::mutex> lock(notify_mutex_);
+  auto wait_result = notify_cv_.wait_for(
+    lock, 
+    std::chrono::milliseconds(timeout_in_millis), 
+    [this, 
+      req_id = notify_msg.req_id] {
+      auto it_ready = notify_ack_ready_.find(req_id);
+      return (it_ready != notify_ack_ready_.end() && it_ready->second);
+    });
+  
+  Status result_status = wait_result ? SUCCESS : TIMEOUT;
+  notify_ack_ready_.erase(notify_msg.req_id);
+  return result_status;
+}
+
+Status AdxlInnerEngine::GetNotifies(std::vector<NotifyDesc> &notifies) {
+  // no need for RtContext
+  auto server_channels = channel_manager_.GetAllServerChannel();
+  for (const auto &channel : server_channels) {
+    channel->GetNotifyMessages(notifies);
+  }
+  return SUCCESS;
+}
 }  // namespace adxl

@@ -171,8 +171,9 @@ Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> 
   ADXL_CHK_STATUS_RET(ParseServiceLevel(options), "Failed to parse service level");
   handler_plugin_.Initialize();
   if (listen_port_ > 0) {
-    ADXL_CHK_STATUS_RET(StartDaemon(listen_port_), "Failed to start listen deamon, port = %u", listen_port_);
-    LLMEVENT("start daemon success, listen on port:%u", listen_port_);
+    ADXL_CHK_STATUS_RET(StartDaemon(local_ip_, listen_port_), "Failed to start listen deamon, ip:%s, port:%u",
+                        local_ip_.c_str(), listen_port_);
+    LLMEVENT("start daemon success, listen on %s:%u", local_ip_.c_str(), listen_port_);
   }
   segment_table_ = segment_table;
   return SUCCESS;
@@ -190,7 +191,18 @@ void ChannelMsgHandler::Finalize() {
 
 Status ChannelMsgHandler::ParseListenInfo(const std::string &listen_info,
                                           std::string &listen_ip, int32_t &listen_port) {
-  const auto listen_infos = llm::LLMUtils::Split(listen_info, ':');
+  std::vector<std::string> listen_infos;
+  size_t left = listen_info.find('[');
+  size_t right = listen_info.find(']');
+  if (left != std::string::npos && right != std::string::npos && left < right) {
+    listen_infos.emplace_back(listen_info.substr(left + 1, right - left - 1));
+    size_t colon = listen_info.find(':', right);
+    if (colon != std::string::npos) {
+      listen_infos.emplace_back(listen_info.substr(colon + 1));
+    }
+  } else {
+    listen_infos = llm::LLMUtils::Split(listen_info, ':');
+  }
   ADXL_CHK_BOOL_RET_STATUS(listen_infos.size() >= 1U, PARAM_INVALID,
                            "listen info is invalid: %s, expect ${ip}:${port} or ${ip}", listen_info.c_str());
   listen_ip = listen_infos[0];
@@ -230,11 +242,11 @@ Status ChannelMsgHandler::DeregisterMem(MemHandle mem_handle) {
   return SUCCESS;
 }
 
-Status ChannelMsgHandler::StartDaemon(uint32_t listen_port) {
+Status ChannelMsgHandler::StartDaemon(const std::string &ip, uint32_t listen_port) {
   handler_plugin_.RegisterConnectedProcess([this](int32_t fd, bool &keep_fd) {
     (void) ConnectedProcess(fd, keep_fd);
   });
-  ADXL_CHK_LLM_RET(handler_plugin_.StartDaemon(listen_port), "Failed to start daemon.");
+  ADXL_CHK_LLM_RET(handler_plugin_.StartDaemon(ip, listen_port), "Failed to start daemon.");
   return SUCCESS;
 }
 
@@ -334,8 +346,8 @@ Status ChannelMsgHandler::ProcessConnectRequest(int32_t fd, const std::vector<ch
     ret = ConnectInfoProcess(peer_connect_info, peer_connect_info.timeout, false);
   }
   if (ret == SUCCESS) {
-    LLMLOGI("Success to process connect info, local engine:%s, remote engine:%s, timeout:%d ms.",
-           listen_info_.c_str(), peer_connect_info.channel_id.c_str(), peer_connect_info.timeout);
+    LLMEVENT("Success to process connect info, local engine:%s, remote engine:%s, timeout:%d ms.", listen_info_.c_str(),
+             peer_connect_info.channel_id.c_str(), peer_connect_info.timeout);
   }
   ADXL_CHK_STATUS(ret, "Failed to process connect info, local engine:%s, remote engine:%s, timeout:%d ms.",
                   listen_info_.c_str(), peer_connect_info.channel_id.c_str(), peer_connect_info.timeout);
@@ -475,7 +487,6 @@ Status ChannelMsgHandler::Disconnect(const std::string &remote_engine, int32_t t
   auto channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine);
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, channel_id:%s", remote_engine.c_str());
-  std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
   channel->StopHeartbeat();
   // if connect failed, then release client and server auto release channel
   ADXL_CHK_STATUS(llm::MsgHandlerPlugin::Connect(remote_ip, static_cast<uint32_t>(remote_port),

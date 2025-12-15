@@ -39,6 +39,7 @@ constexpr Status ALREADY_CONNECTED = 103903U;
 constexpr Status NOTIFY_FAILED = 103904U;
 constexpr Status UNSUPPORTED = 103905U;
 constexpr Status FAILED = 503900U;
+constexpr Status RESOURCE_EXHAUSTED = 203900U;
 
 using MemHandle = void *;
 
@@ -72,6 +73,11 @@ enum class TransferStatus {
 
 struct TransferArgs{
   uint8_t reserved[128] = {};
+};
+
+struct NotifyDesc {
+  AscendString name;
+  AscendString notify_msg;
 };
 }  // namespace hixl
 
