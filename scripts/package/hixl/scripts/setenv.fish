@@ -59,19 +59,3 @@ if test -d "$library_path"
         end
     end
 end
-
-set -l custom_path_file "$INSTALL_DIR/conf/path.cfg"
-set -l common_interface "$INSTALL_DIR/share/info/hixl/script/common_interface.fish"
-set -l owner (stat -c \%U "$curfile")
-if test (id -u) -ne 0 -a (id -un) != "$owner" -a -f "$custom_path_file" -a -f "$common_interface"
-    . "$common_interface"
-    mk_custom_path "$custom_path_file"
-    for dir_name in "conf" "data"
-        set -l dst_dir (grep -w "$dir_name" "$custom_path_file" | cut --only-delimited -d"=" -f2-)
-        set -l dst_dir (eval echo "$dst_dir")
-        if test -d "$INSTALL_DIR/$dir_name" -a -d "$dst_dir"
-            chmod -R u+w $dst_dir/* > /dev/null 2>&1
-            cp -rfL $INSTALL_DIR/$dir_name/* "$dst_dir"
-        end
-    end
-end

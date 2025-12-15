@@ -47,18 +47,3 @@ if ( -d "${library_path}" ) then
         endif
     endif
 endif
-
-set custom_path_file="$INSTALL_DIR/conf/path.cfg"
-set common_interface="$INSTALL_DIR/share/info/hixl/script/common_interface.csh"
-set owner="`stat -c %U $CURFILE`"
-if ( "`id -u`" != 0 && "`id -un`" != "$owner" && -f "$custom_path_file" && -f "$common_interface" ) then
-    csh -f "$common_interface" mk_custom_path "$custom_path_file"
-    foreach dir_name ("conf" "data")
-        set dst_dir="`grep -w "$dir_name" "$custom_path_file" | cut --only-delimited -d"=" -f2-`"
-        set dst_dir="`eval echo $dst_dir`"
-        if ( -d "$INSTALL_DIR/$dir_name" && -d "$dst_dir" ) then
-            chmod -R u+w $dst_dir/* >& /dev/null
-            cp -rfL $INSTALL_DIR/$dir_name/* "$dst_dir"
-        endif
-    end
-endif
