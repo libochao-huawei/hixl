@@ -9,6 +9,7 @@
 # ----------------------------------------------------------------------------
 
 if (NOT ENABLE_TEST)
+    set(CMAKE_SKIP_RPATH TRUE)
     add_library(llm_datadist_wrapper MODULE
             llm_wrapper_v2.cc
             llm_datadist_v2_wrapper.cc)

@@ -10,6 +10,7 @@
 
 cmake_minimum_required(VERSION 3.7)
 project(llm_datadist)
+set(CMAKE_SKIP_RPATH TRUE)
 set(INC_DIR
         "${HIXL_CODE_DIR}/include"
         "${CMAKE_CURRENT_LIST_DIR}"
