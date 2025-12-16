@@ -9,6 +9,7 @@
 # ----------------------------------------------------------------------------
 
 if (NOT ENABLE_TEST)
+    set(CMAKE_SKIP_RPATH TRUE)
     add_library(metadef_wrapper MODULE
             metadef_wrapper.cc
     )
