@@ -250,39 +250,47 @@ TEST_F(EvictionTest, TestWaterline) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
   options_.erase("GlobalResourceConfig");
-  options_["adxl.max_channel"] = "a";
+  options_["channel_pool.max_channel"] = "a";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  options_["adxl.max_channel"] = "0";
+  options_["channel_pool.max_channel"] = "0";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  options_["adxl.max_channel"] = "8.5";
+  options_["channel_pool.max_channel"] = "8.5";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  options_["adxl.max_channel"] = "-1";
+  options_["channel_pool.max_channel"] = "-1";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  options_["adxl.max_channel"] = "10";
+  options_["channel_pool.max_channel"] = "10";
 
-  options_["adxl.high_waterline"] = "abc";
+  options_["channel_pool.high_waterline"] = "abc";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  options_["adxl.high_waterline"] = "1";
+  options_["channel_pool.high_waterline"] = "1";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  options_["adxl.high_waterline"] = "0";
+  options_["channel_pool.high_waterline"] = "0";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  options_["adxl.high_waterline"] = "0.9";
+  options_["channel_pool.high_waterline"] = "0.9";
   
-  options_["adxl.low_waterline"] = "cba";
+  options_["channel_pool.low_waterline"] = "cba";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  options_["adxl.low_waterline"] = "1";
+  options_["channel_pool.low_waterline"] = "1";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  options_["adxl.low_waterline"] = "0";
+  options_["channel_pool.low_waterline"] = "0";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  options_["adxl.low_waterline"] = "0.6";
+  options_["channel_pool.low_waterline"] = "0.6";
 
-  options_["adxl.high_waterline"] = "0.5";
+  options_["channel_pool.high_waterline"] = "0.5";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  options_["adxl.high_waterline"] = "0.6";
+  options_["channel_pool.high_waterline"] = "0.6";
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
+  
+  options_["channel_pool.high_waterline"] = "0.01";
+  options_["channel_pool.low_waterline"] = "0.001";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
 
-  options_["adxl.high_waterline"] = "0.9";
-  options_["adxl.low_waterline"] = "0.6";
+  options_["channel_pool.high_waterline"] = "0.51";
+  options_["channel_pool.low_waterline"] = "0.501";
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
+  
+  options_["channel_pool.high_waterline"] = "0.9";
+  options_["channel_pool.low_waterline"] = "0.6";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
 }
 }

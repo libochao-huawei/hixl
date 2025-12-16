@@ -47,9 +47,9 @@ public:
 class ChannelEvictorWhiteboxTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    channel_options_["adxl.max_channel"] = "10";
-    channel_options_["adxl.high_waterline"] = "0.8";
-    channel_options_["adxl.low_waterline"] = "0.5";
+    channel_options_["channel_pool.max_channel"] = "10";
+    channel_options_["channel_pool.high_waterline"] = "0.8";
+    channel_options_["channel_pool.low_waterline"] = "0.5";
 
     SetMockRtGetDeviceWay(1);
     llm::MockMmpaForHcclApi::Install();

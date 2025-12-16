@@ -39,8 +39,6 @@ Status ChannelEvictor::Initialize(const std::map<AscendString, AscendString>& op
     if (!(llm::LLMUtils::ToNumber(high_str, high_value))) {
       high_waterline_ratio_ = high_value;
     }
-  } else {
-    high_waterline_ratio_ = kDefaultHighWaterline;
   }
   auto low_it = options.find(OPTION_LOW_WATERLINE);
   if (low_it != options.end()) {
@@ -49,8 +47,6 @@ Status ChannelEvictor::Initialize(const std::map<AscendString, AscendString>& op
     if (!(llm::LLMUtils::ToNumber(low_str, low_value))) {
       low_waterline_ratio_ = low_value;
     }
-  } else {
-    low_waterline_ratio_ = kDefaultLowWaterline;
   }
   high_waterline_ = static_cast<int32_t>(max_channel_ * high_waterline_ratio_);
   low_waterline_ = static_cast<int32_t>(max_channel_ * low_waterline_ratio_);
