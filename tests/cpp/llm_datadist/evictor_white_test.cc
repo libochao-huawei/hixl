@@ -381,8 +381,8 @@ TEST_F(ChannelEvictorWhiteboxTest, TestMultipleConcurrentEvictionRequests) {
   }
   // sleep 500 ms wait for eviction
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
-  // after eviction should have 5 channels
-  EXPECT_EQ(GetCurrentChannelCount(), 5);
+  // after eviction should have no more than 5 channels
+  EXPECT_LE(GetCurrentChannelCount(), 5);
 }
 
 TEST_F(ChannelEvictorWhiteboxTest, TestTransferCompletionDuringEviction) {

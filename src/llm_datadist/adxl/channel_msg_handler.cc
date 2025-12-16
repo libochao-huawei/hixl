@@ -426,9 +426,6 @@ Status ChannelMsgHandler::Connect(const std::string &remote_engine, int32_t time
   auto channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine);
   ADXL_CHK_BOOL_RET_STATUS(channel == nullptr, ALREADY_CONNECTED,
                            "remote_engine:%s is already connected.", remote_engine.c_str());
-  if (user_config_channel_pool_) {
-    channel_evictor_->NotifyEviction();
-  }
   return ChannelMsgHandler::DoConnect(remote_engine, timeout_in_millis);
 }
 

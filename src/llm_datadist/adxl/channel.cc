@@ -118,7 +118,7 @@ Status Channel::Finalize() {
   }
   ClearNotifyMessages();
 
-  disconnect_flag_.store(true, std::memory_order_release);
+  disconnect_flag_.store(false, std::memory_order_release);
   transfer_count_.store(0, std::memory_order_release);
   return ret;
 }
