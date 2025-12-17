@@ -22,7 +22,9 @@ hixl_func_path="${curpath}/hixl_func.sh"
 pkg_version_path="${curpath}/../version.info"
 install_info_old="/etc/ascend_install.info"
 run_dir="$(echo "$2" | cut -d'-' -f 3-)"
- 
+_RUN_PKG_INFO_FILE="${curpath}/../scene.info"
+platform_data=$(grep -e "arch" "${_RUN_PKG_INFO_FILE}" | cut --only-delimited -d"=" -f2-) 
+
 . "${common_func_path}"
 . "${version_compat_func_path}"
 . "${common_func_v2_path}"
@@ -1189,7 +1191,13 @@ if [ "$featuremode" != "all" ]; then
         exit 0
     fi
 fi
- 
+
+architecture=$(uname -m)
+if [ "${architecture}" != "${platform_data}" ] ; then
+    log "INFO" "the architecture of the run package is inconsistent with that of the current enviroment, hixl skip installation."
+    exit 0
+fi
+
 #######################################################
 is_multi_version_pkg "pkg_is_multi_version" "$pkg_version_path"
  
