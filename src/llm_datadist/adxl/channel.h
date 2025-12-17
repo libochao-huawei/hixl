@@ -23,6 +23,12 @@
 
 namespace adxl {
 
+struct ShareHandleInfo {
+  uintptr_t va_addr;
+  size_t len;
+  rtDrvMemFabricHandle share_handle;
+};
+
 enum class ChannelType {
   kClient = 0,
   kServer = 1,
@@ -61,7 +67,7 @@ class Channel {
  public:
   explicit Channel(ChannelInfo info)
       : channel_info_(std::move(info)) {};
-  Status Initialize();
+  Status Initialize(bool enable_use_fabric_mem = false);
   Status Finalize();
   std::string GetChannelId() const;
   Status TransferSync(TransferOp operation,
@@ -90,6 +96,9 @@ class Channel {
   
   void GetNotifyMessages(std::vector<NotifyDesc> &notifies);
 
+  Status ImportMem(const std::vector<ShareHandleInfo> &remote_share_handles, int32_t device_id);
+  std::unordered_map<uintptr_t, ShareHandleInfo>& GetNewVaToOldVa();
+
   Status TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                                   rtStream_t stream, uint64_t timeout);
 
@@ -110,7 +119,7 @@ class Channel {
   std::vector<char> recv_buffer_;
   size_t expected_body_size_ = 0;
   size_t bytes_received_ = 0;
-  
+
   // lock for push/fetch items from notify_messages_
   std::mutex notify_message_mutex_;
   std::vector<NotifyMsg> notify_messages_;
@@ -119,6 +128,11 @@ class Channel {
   std::mutex transfer_reqs_mutex_;
   std::map<uint64_t, std::pair<rtEvent_t, rtStream_t>> transfer_reqs_;
   StreamPool *stream_pool_ = nullptr;
+
+  // mutex for fd
+  std::mutex va_map_mutex_;
+  std::unordered_map<uintptr_t, ShareHandleInfo> new_va_to_old_va_;
+  void *remote_va_ = nullptr;
 };
 using ChannelPtr = std::shared_ptr<Channel>;
 }  // namespace adxl

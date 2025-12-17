@@ -12,10 +12,11 @@
 #include <mutex>
 #include <fcntl.h>
 #include <unistd.h>
+#include "adxl/adxl_checker.h"
 #include "adxl/adxl_utils.h"
-#include "common/llm_inner_types.h"
 #include "common/llm_scope_guard.h"
 #include "common/def_types.h"
+#include "common/llm_log.h"
 
 #include <base/err_msg.h>
 
@@ -26,11 +27,16 @@ std::mutex g_mutex_;
 constexpr uint32_t kMaxOpDescNum = 256U;
 constexpr int64_t kHeartbeatTimeoutInMillis = 120000;
 constexpr int32_t kMillisToMicros = 1000;
+constexpr uint64_t kReserveFlagHugePage = 1U;
 }
 
 int64_t Channel::timeout_in_millis_ = kHeartbeatTimeoutInMillis;
 
-Status Channel::Initialize() {
+Status Channel::Initialize(bool enable_use_fabric_mem) {
+  if (enable_use_fabric_mem) {
+    LLMLOGI("Initialize channel in use fabric mem mode, channel_id:%s", channel_info_.channel_id.c_str());
+    return SUCCESS;
+  }
   LLMLOGI("HcclCommInitClusterInfoMemConfig begin, comm_name=%s, local rank_id=%u, rank_table=%s",
          channel_info_.comm_config.hcclCommName, channel_info_.local_rank_id, channel_info_.rank_table.c_str());
   {
@@ -86,8 +92,10 @@ Status Channel::Finalize() {
       ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
     }
 
-    auto hccl_ret = llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
-    ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
+    if (channel_info_.comm != nullptr) {
+      auto hccl_ret = llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
+      ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
+    }
 
     std::lock_guard<std::mutex> transfer_reqs_lock(transfer_reqs_mutex_);
     for (const auto &transfer_req : transfer_reqs_) {
@@ -116,11 +124,54 @@ Status Channel::Finalize() {
     with_heartbeat_.store(false, std::memory_order_release);
   }
   ClearNotifyMessages();
+
+  {
+    // Clean up imported memory
+    std::lock_guard<std::mutex> lock(va_map_mutex_);
+    for (auto &it : new_va_to_old_va_) {
+      LLMLOGI("Unmap mem:%lu", it.first);
+      ADXL_CHK_ACL_RET(rtUnmapMem(llm::ValueToPtr(it.first)));
+    }
+    if (remote_va_ != nullptr) {
+      LLMLOGI("Release mem:%p", remote_va_);
+      ADXL_CHK_ACL_RET(rtReleaseMemAddress(remote_va_));
+    }
+    new_va_to_old_va_.clear();
+  }
   return ret;
 }
 
 void Channel::SetStreamPool(StreamPool *stream_pool) {
   stream_pool_ = stream_pool;
+}
+
+Status Channel::ImportMem(const std::vector<ShareHandleInfo> &remote_share_handles, int32_t device_id) {
+  size_t total_len = 0;
+  for (auto &remote_share_handle_info : remote_share_handles) {
+    total_len += remote_share_handle_info.len;
+  }
+  if (total_len > 0) {
+    ADXL_CHK_ACL_RET(rtReserveMemAddress(&remote_va_, total_len, 0, nullptr, kReserveFlagHugePage));
+    uintptr_t remote_va_addr = llm::PtrToValue(remote_va_);
+    for (auto &remote_share_handle_info : remote_share_handles) {
+      rtDrvMemHandle remote_pa_handle;
+      auto share_handle = remote_share_handle_info.share_handle;
+      ADXL_CHK_ACL_RET(rtMemImportFromShareableHandleV2(&share_handle, RT_MEM_SHARE_HANDLE_TYPE_FABRIC, 0U, device_id,
+                                                        &remote_pa_handle));
+      ADXL_CHK_ACL_RET(rtMapMem(llm::ValueToPtr(remote_va_addr), remote_share_handle_info.len, 0, remote_pa_handle, 0));
+      LLMLOGI("Imported mem from share handle, remote pa handle:%p, va:%lu, new mapped va addr:%lu, len:%zu.",
+              remote_pa_handle, remote_share_handle_info.va_addr, remote_va_addr, remote_share_handle_info.len);
+      std::lock_guard<std::mutex> lock(va_map_mutex_);
+      new_va_to_old_va_[remote_va_addr] = remote_share_handle_info;
+      remote_va_addr += remote_share_handle_info.len;
+    }
+  }
+  return SUCCESS;
+}
+
+std::unordered_map<uintptr_t, ShareHandleInfo>& Channel::GetNewVaToOldVa() {
+  std::lock_guard<std::mutex> lock(va_map_mutex_);
+  return new_va_to_old_va_;
 }
 
 Status Channel::TransferAsync(TransferOp operation,

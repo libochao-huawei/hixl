@@ -18,6 +18,7 @@
 #include "common/llm_mem_pool.h"
 #include "buffer_transfer_service.h"
 #include "segment_table.h"
+#include "fabric_mem_transfer_service.h"
 
 namespace adxl {
 class AdxlInnerEngine {
@@ -68,6 +69,7 @@ class AdxlInnerEngine {
                               std::string &pool_config);
   Status ParseBufferPoolParams(const std::map<AscendString, AscendString> &options, uint64_t &buffer_size,
                                uint64_t &npu_pool_size);
+  Status ParseEnableFabricMem(const std::map<AscendString, AscendString> &options);
 
   std::string local_engine_;
   ChannelManager channel_manager_;
@@ -91,6 +93,9 @@ class AdxlInnerEngine {
   std::map<uint64_t, AscendString> req2channel_;
   std::atomic<uint64_t> next_req_id_{1};
   void *statistic_timer_handle_{nullptr};
+
+  bool enable_use_fabric_mem_ = false;
+  std::unique_ptr<FabricMemTransferService> fabric_mem_transfer_service_ = nullptr;
 };
 }  // namespace adxl
 

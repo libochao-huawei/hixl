@@ -328,6 +328,28 @@ class RuntimeStub {
     return RT_ERROR_NONE;
   }
   virtual rtError_t rtGetDevice(int32_t *deviceId);
+
+  virtual rtError_t rtMemRetainAllocationHandle(void *devPtr, rtDrvMemHandle *handle) {
+    *handle = (rtDrvMemHandle) new uint8_t[8];
+    return RT_ERROR_NONE;
+  }
+
+  virtual rtError_t rtMemExportToShareableHandleV2(rtDrvMemHandle handle, rtMemSharedHandleType type, uint64_t flags,
+                                                   void *shareableHandle) {
+    return RT_ERROR_NONE;
+  }
+
+  virtual rtError_t rtMemImportFromShareableHandleV2(const void *shareableHandle, rtMemSharedHandleType type,
+                                                     uint64_t flags, int32_t deviceId, rtDrvMemHandle *handle) {
+    *handle = (rtDrvMemHandle) new uint8_t[8];
+    return RT_ERROR_NONE;
+  }
+
+  virtual rtError_t rtMemSetPidToShareableHandleV2(const void *shareableHandle, rtMemSharedHandleType type,
+                                                   int *pid, uint32_t count) {
+    return RT_ERROR_NONE;
+  }
+
  private:
   static std::mutex mutex_;
   static std::shared_ptr<RuntimeStub> instance_;

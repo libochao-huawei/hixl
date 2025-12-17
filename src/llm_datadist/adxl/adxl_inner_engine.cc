@@ -27,7 +27,7 @@ constexpr uint64_t kDefaultBufferSize = 8U;
 constexpr const char *kDisabledPoolConfig = "0:0";
 constexpr uint64_t kNeedUseBufferThresh = 256 * 1024U;
 constexpr size_t kMemPoolNum = 2U;
-constexpr int32_t kMaxStreams = 128;
+constexpr size_t kMaxStreams = 128;
 }
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   std::lock_guard<std::mutex> lk(mutex_);
@@ -40,11 +40,18 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   LLM_DISMISSABLE_GUARD(fail_guard, ([this]() {
     (void) rtCtxDestroyEx(rt_context_);
   }));
+  ADXL_CHK_STATUS_RET(ParseEnableFabricMem(options), "Failed to parse option.");
+  fabric_mem_transfer_service_ = llm::MakeUnique<FabricMemTransferService>();
+  ADXL_CHK_STATUS_RET(fabric_mem_transfer_service_->Initialize(kMaxStreams),
+                      "Failed to initialize fabric mem transfer service.");
   segment_table_ = llm::MakeUnique<SegmentTable>();
   stream_pool_ = llm::MakeUnique<StreamPool>(kMaxStreams);
-  ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get()), "Failed to init msg handler.");
+  ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get(), enable_use_fabric_mem_,
+                                              fabric_mem_transfer_service_.get()),
+                      "Failed to init msg handler.");
   ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
-  ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
+  ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get(), segment_table_.get()),
+                      "Failed to init channel manager.");
   channel_manager_.SetStreamPool(stream_pool_.get());
   channel_manager_.RegisterNotifyAckCallback([this](uint64_t req_id) {
     std::lock_guard<std::mutex> lock(notify_mutex_);
@@ -59,7 +66,29 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   constexpr uint32_t kStatisticTimerPeriod = 80U * 1000U;
   (void)llm::LlmDatadistTimer::Instance().StartTimer(statistic_timer_handle_, kStatisticTimerPeriod, false);
   is_initialized_ = true;
+  StatisticManager::GetInstance().SetEnableUseFabricMem(enable_use_fabric_mem_);
   LLM_DISMISS_GUARD(fail_guard);
+  return SUCCESS;
+}
+
+Status AdxlInnerEngine::ParseEnableFabricMem(const std::map<AscendString, AscendString> &options) {
+  std::string enable_use_fabric_mem_str;
+  const auto &it = options.find(hixl::OPTION_ENABLE_USE_FABRIC_MEM);
+  if (it != options.cend()) {
+    enable_use_fabric_mem_str = it->second.GetString();
+  } else {
+  }
+
+  if (!enable_use_fabric_mem_str.empty()) {
+    uint32_t enable_use_fabric_mem = 0U;
+    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(enable_use_fabric_mem_str, enable_use_fabric_mem),
+                     "%s is invalid, value = %s", hixl::OPTION_ENABLE_USE_FABRIC_MEM,
+                     enable_use_fabric_mem_str.c_str());
+    ADXL_CHK_BOOL_RET_STATUS(enable_use_fabric_mem == 1 || enable_use_fabric_mem == 0, PARAM_INVALID,
+                             "%s is invalid, should be zero or one.", hixl::OPTION_ENABLE_USE_FABRIC_MEM);
+    LLMLOGI("set %s to %d.", hixl::OPTION_ENABLE_USE_FABRIC_MEM, enable_use_fabric_mem);
+    enable_use_fabric_mem_ = enable_use_fabric_mem;
+  }
   return SUCCESS;
 }
 
@@ -177,6 +206,9 @@ void AdxlInnerEngine::Finalize() {
   if (buffer_transfer_service_ != nullptr) {
     buffer_transfer_service_->Finalize();
   }
+  if (fabric_mem_transfer_service_ != nullptr) {
+    fabric_mem_transfer_service_->Finalize();
+  }
   if (rt_context_ != nullptr) {
     (void) rtCtxDestroyEx(rt_context_);
   }
@@ -279,6 +311,10 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
+  if (enable_use_fabric_mem_) {
+    std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
+    return fabric_mem_transfer_service_->Transfer(channel, operation, op_descs, timeout_in_millis);
+  }
   if (buffer_transfer_service_ != nullptr) {
     const auto start = std::chrono::steady_clock::now();
     bool need_buffer = false;
@@ -311,8 +347,13 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   auto id = next_req_id_.fetch_add(1);
   req = reinterpret_cast<void*>(static_cast<uintptr_t>(id));
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
-  ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, req),
-                      "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
+  if (enable_use_fabric_mem_) {
+    ADXL_CHK_STATUS_RET(fabric_mem_transfer_service_->TransferAsync(channel, operation, op_descs, req),
+                        "Failed to call async transfer , remote_engine:%s", remote_engine.GetString());
+  } else {
+    ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, req),
+                        "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
+  }
   std::lock_guard<std::mutex> lock(req2channel_mutex_);
   req2channel_[id] = remote_engine;
   return SUCCESS;
@@ -331,9 +372,14 @@ Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
-  auto ret = channel->GetTransferStatus(req, status);
+  Status ret;
+  if (enable_use_fabric_mem_) {
+    ret = fabric_mem_transfer_service_->GetTransferStatus(channel, req, status);
+  } else {
+    ret = channel->GetTransferStatus(req, status);
+  }
   if (status != TransferStatus::WAITING) {
-    req2channel_.erase(id);
+    req2channel_.erase(it);
   }
   ADXL_CHK_STATUS_RET(ret, "Failed to get transfer status, req: %llu, remote_engine:%s",
                       id, remote_engine.GetString());

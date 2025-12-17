@@ -21,6 +21,7 @@
 #include "channel.h"
 #include "common/llm_mem_pool.h"
 #include "buffer_transfer_service.h"
+#include "segment_table.h"
 
 namespace adxl {
 
@@ -31,9 +32,9 @@ class ChannelManager {
  public:
   ChannelManager() = default;
   ~ChannelManager() = default;
-  Status Initialize(BufferTransferService *buffer_transfer_service);
+  Status Initialize(BufferTransferService *buffer_transfer_service, SegmentTable *segment_table);
   Status Finalize();
-  Status CreateChannel(const ChannelInfo &channel_info, ChannelPtr &channel_ptr);
+  Status CreateChannel(const ChannelInfo &channel_info, ChannelPtr &channel_ptr, bool enable_use_fabric_mem = false);
   ChannelPtr GetChannel(ChannelType channel_type, const std::string &channel_id);
   Status DestroyChannel(ChannelType channel_type, const std::string &channel_id);
   static void SetHeartbeatWaitTime(int32_t time_in_millis);
@@ -85,6 +86,7 @@ private:
   std::mutex cv_mutex_;
   std::condition_variable cv_;
 
+  // mutex for map channels_
   std::mutex mutex_;
   std::map<std::pair<ChannelType, std::string>, ChannelPtr> channels_;
 
@@ -97,6 +99,8 @@ private:
 
   std::thread msg_receiver_;
   rtContext_t rt_context_{nullptr};
+
+  SegmentTable *segment_table_ = nullptr;
 };
 }  // namespace adxl
 
