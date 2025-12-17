@@ -316,12 +316,16 @@ Status ChannelEvictor::ResetAllTransferFlags() {
   auto client_channels = channel_manager_->GetAllClientChannel();
   auto server_channels = channel_manager_->GetAllServerChannel();
   for (auto& channel : client_channels) {
-    channel->SetHasTransferred(false);
+    if (channel->GetTransferCount() == 0) {
+      channel->SetHasTransferred(false);
+    }
   }
   for (auto& channel : server_channels) {
-    channel->SetHasTransferred(false);
+    if (channel->GetTransferCount() == 0) {
+      channel->SetHasTransferred(false);
+    }
   }
-  LLMLOGI("Reset all transfer flags, client=%zu, server=%zu", 
+  LLMLOGI("Reset transfer flags, client=%zu, server=%zu", 
     client_channels.size(), server_channels.size());
   return SUCCESS;
 }

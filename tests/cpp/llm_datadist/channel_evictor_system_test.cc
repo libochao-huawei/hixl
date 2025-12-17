@@ -293,4 +293,208 @@ TEST_F(EvictionTest, TestWaterline) {
   options_["channel_pool.low_waterline"] = "0.6";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
 }
+
+TEST_F(EvictionTest, ClientDisconnectHandlingAsync) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl engine2;
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options_), SUCCESS);
+
+  hixl::MemDesc mem{};
+  // mock addr 1234
+  mem.addr = 1234;
+  // mock len 10
+  mem.len = 10;
+  MemHandle handle1 = nullptr;
+  EXPECT_EQ(engine1.RegisterMem(mem, MEM_DEVICE, handle1), SUCCESS);
+
+  MemHandle handle2 = nullptr;
+  EXPECT_EQ(engine2.RegisterMem(mem, MEM_DEVICE, handle2), SUCCESS);
+
+  int32_t src = 1;
+  int32_t dst = 2;
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  TransferReq req = nullptr;
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", READ, {desc}, {}, req), SUCCESS);
+  // after transfer, src set to 2
+  EXPECT_EQ(src, 2);
+  src = 1;
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req), SUCCESS);
+  EXPECT_EQ(dst, 1);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+TEST_F(EvictionTest, ConcurrentTransferSyncAndEviction) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl client;
+  EXPECT_EQ(client.Initialize("127.0.0.1:30000", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl server1;
+  EXPECT_EQ(server1.Initialize("127.0.0.1:30001", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(2);
+  Hixl server2;
+  EXPECT_EQ(server2.Initialize("127.0.0.1:30002", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(3);
+  Hixl server3;
+  EXPECT_EQ(server3.Initialize("127.0.0.1:30003", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(4);
+  Hixl server4;
+  EXPECT_EQ(server4.Initialize("127.0.0.1:30004", options_), SUCCESS);
+
+  // Connect to all servers
+  //EXPECT_EQ(client.Connect("127.0.0.1:30001"), SUCCESS);
+  //EXPECT_EQ(client.Connect("127.0.0.1:30002"), SUCCESS);
+  EXPECT_EQ(client.Connect("127.0.0.1:30003"), SUCCESS);
+  EXPECT_EQ(client.Connect("127.0.0.1:30004"), SUCCESS);
+
+  // Register memory for transfer
+  hixl::MemDesc mem{};
+  mem.addr = 1234;
+  mem.len = 10;
+  MemHandle client_handle = nullptr;
+  EXPECT_EQ(client.RegisterMem(mem, MEM_DEVICE, client_handle), SUCCESS);
+
+  MemHandle server1_handle = nullptr;
+  MemHandle server2_handle = nullptr;
+  EXPECT_EQ(server1.RegisterMem(mem, MEM_DEVICE, server1_handle), SUCCESS);
+  EXPECT_EQ(server2.RegisterMem(mem, MEM_DEVICE, server2_handle), SUCCESS);
+
+  int32_t src = 1;
+  int32_t dst = 2;
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+
+  auto transfer_func = [&client, &desc](const AscendString& server_addr) {
+    client.TransferSync(server_addr, READ, {desc});
+    std::this_thread::sleep_for(std::chrono::microseconds(5000));
+  };
+
+  // Start concurrent transfers on channels 1 and 2
+  std::thread transfer_thread1(transfer_func, "127.0.0.1:30001");
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  std::thread transfer_thread2(transfer_func, "127.0.0.1:30002");
+
+  // Sleep to allow transfers to start and eviction to happen
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  // Verify that channels with ongoing transfers are not evicted
+  // Channels 1 and 2 should still be connected because they have ongoing transfers
+  // Channels 3 and 4 should be evicted since they have no transfers
+  EXPECT_EQ(client.Disconnect("127.0.0.1:30003"), NOT_CONNECTED);
+  EXPECT_EQ(client.Disconnect("127.0.0.1:30004"), NOT_CONNECTED);
+
+  // Verify that channels with ongoing transfers are still connected
+  EXPECT_EQ(client.Connect("127.0.0.1:30001"), ALREADY_CONNECTED);
+  EXPECT_EQ(client.Connect("127.0.0.1:30002"), ALREADY_CONNECTED);
+
+  if (transfer_thread1.joinable()) {
+    transfer_thread1.join();
+  }
+  if (transfer_thread2.joinable()) {
+    transfer_thread2.join();
+  }
+
+  EXPECT_EQ(client.DeregisterMem(client_handle), SUCCESS);
+  EXPECT_EQ(server1.DeregisterMem(server1_handle), SUCCESS);
+  EXPECT_EQ(server2.DeregisterMem(server2_handle), SUCCESS);
+
+  client.Finalize();
+  server1.Finalize();
+  server2.Finalize();
+  server3.Finalize();
+  server4.Finalize();
+}
+
+
+TEST_F(EvictionTest, ConcurrentTransferAsyncAndEviction) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl client;
+  EXPECT_EQ(client.Initialize("127.0.0.1:40000", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl server1;
+  EXPECT_EQ(server1.Initialize("127.0.0.1:40001", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(2);
+  Hixl server2;
+  EXPECT_EQ(server2.Initialize("127.0.0.1:40002", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(3);
+  Hixl server3;
+  EXPECT_EQ(server3.Initialize("127.0.0.1:40003", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(4);
+  Hixl server4;
+  EXPECT_EQ(server4.Initialize("127.0.0.1:40004", options_), SUCCESS);
+
+  // Connect to all servers
+  //EXPECT_EQ(client.Connect("127.0.0.1:40001"), SUCCESS);
+  //EXPECT_EQ(client.Connect("127.0.0.1:40002"), SUCCESS);
+  EXPECT_EQ(client.Connect("127.0.0.1:40003"), SUCCESS);
+  EXPECT_EQ(client.Connect("127.0.0.1:40004"), SUCCESS);
+
+  hixl::MemDesc mem{};
+  mem.addr = 1234;
+  mem.len = 10;
+  MemHandle client_handle = nullptr;
+  EXPECT_EQ(client.RegisterMem(mem, MEM_DEVICE, client_handle), SUCCESS);
+
+  MemHandle server1_handle = nullptr;
+  MemHandle server2_handle = nullptr;
+  EXPECT_EQ(server1.RegisterMem(mem, MEM_DEVICE, server1_handle), SUCCESS);
+  EXPECT_EQ(server2.RegisterMem(mem, MEM_DEVICE, server2_handle), SUCCESS);
+
+  int32_t src = 1;
+  int32_t dst = 2;
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+
+  auto transfer_async_func = [&client, &desc](const AscendString& server_addr) {
+    TransferReq req = nullptr;
+    client.TransferAsync(server_addr, READ, {desc}, {}, req);
+  };
+
+  std::thread transfer_thread1(transfer_async_func, "127.0.0.1:40001");
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  std::thread transfer_thread2(transfer_async_func, "127.0.0.1:40002");
+
+  // Sleep to allow transfers to start and eviction to happen
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  // Verify that channels with ongoing transfers are not evicted
+  // Channels 1 and 2 should still be connected because they have ongoing transfers
+  // Channels 3 and 4 should be evicted since they have no transfers
+  EXPECT_EQ(client.Disconnect("127.0.0.1:40003"), NOT_CONNECTED);
+  EXPECT_EQ(client.Disconnect("127.0.0.1:40004"), NOT_CONNECTED); 
+  // Verify that channels with ongoing transfers are still connected
+  EXPECT_EQ(client.Connect("127.0.0.1:40001"), ALREADY_CONNECTED);
+  EXPECT_EQ(client.Connect("127.0.0.1:40002"), ALREADY_CONNECTED);
+
+  if (transfer_thread1.joinable()) {
+    transfer_thread1.join();
+  }
+  if (transfer_thread2.joinable()) {
+    transfer_thread2.join();
+  }
+
+  EXPECT_EQ(client.DeregisterMem(client_handle), SUCCESS);
+  EXPECT_EQ(server1.DeregisterMem(server1_handle), SUCCESS);
+  EXPECT_EQ(server2.DeregisterMem(server2_handle), SUCCESS);
+
+  client.Finalize();
+  server1.Finalize();
+  server2.Finalize();
+  server3.Finalize();
+  server4.Finalize();
+}
 }
