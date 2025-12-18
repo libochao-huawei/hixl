@@ -58,8 +58,6 @@ class ChannelManager {
   }
 
  private:
-  int max_channel = 512;
-
   void SendHeartbeats();
   void CheckHeartbeatTimeouts();
   

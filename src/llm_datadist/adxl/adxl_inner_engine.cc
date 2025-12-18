@@ -46,6 +46,8 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(std::map<AscendString, AscendSt
     ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(max_it->second.GetString(), max_channel), 
                     "Invalid max_channel: %s", max_it->second.GetString());
     ADXL_CHK_BOOL_RET_STATUS(max_channel > 0, PARAM_INVALID, "Invalid max_channel: %d (must be > 0)", max_channel);
+    ADXL_CHK_BOOL_RET_STATUS(max_channel <= kDefaultMaxChannel, PARAM_INVALID, 
+                             "Invalid max_channel: %d (must be <= %d)", max_channel, kDefaultMaxChannel);
   }
 
   double high_waterline_ratio = kDefaultHighWaterline;
@@ -79,6 +81,11 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(std::map<AscendString, AscendSt
   user_config_channel_pool_ = (high_it != options.end() && low_it != options.end());
   if (user_config_channel_pool_) {
     msg_handler_.SetUserChannelPoolConfig();
+    msg_handler_.SetHighWaterline(high_waterline);
+    msg_handler_.SetLowWaterline(low_waterline);
+  } else {
+    ADXL_CHK_BOOL_RET_STATUS(max_it == options.end(), PARAM_INVALID, 
+                            "Max channel should be set together with high&low waterlines.");
   }
   return SUCCESS;
 }
@@ -99,8 +106,8 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   }));
   segment_table_ = llm::MakeUnique<SegmentTable>();
   stream_pool_ = llm::MakeUnique<StreamPool>(kMaxStreams);
-  ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options_copy, segment_table_.get()), "Failed to init msg handler.");
-  ADXL_CHK_STATUS_RET(InitBufferTransferService(options_copy), "Failed to init buffer memory pool.");
+  ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get()), "Failed to init msg handler.");
+  ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
   ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
   channel_manager_.SetStreamPool(stream_pool_.get());
   channel_manager_.RegisterNotifyAckCallback([this](uint64_t req_id) {
@@ -264,6 +271,7 @@ Status AdxlInnerEngine::DeregisterMem(MemHandle mem_handle) {
 }
 
 Status AdxlInnerEngine::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  std::lock_guard<std::mutex> lock(connection_mutex_);
   LLMEVENT("Start to connect, local engine:%s, remote engine:%s, timeout:%d ms.",
           local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
   llm::TemporaryRtContext with_context(rt_context_);
@@ -346,9 +354,18 @@ Status AdxlInnerEngine::ConnectWhenTransfer(const AscendString &remote_engine, i
     std::this_thread::sleep_for(std::chrono::milliseconds(kCheckDisconnetPeriod));
   }
   if (channel == nullptr) {
-    LLMLOGI("Not connected, start to connect: %s", remote_engine.GetString());
-    ADXL_CHK_STATUS_RET(Connect(remote_engine, timeout_in_millis),
-                        "Failed to connect remote engine.");
+    // Double-checked locking: first check without lock
+    std::lock_guard<std::mutex> lock(connection_mutex_);
+    // Second check with lock to avoid race conditions
+    channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
+    if (channel == nullptr) {
+      LLMEVENT("Start to connect, local engine:%s, remote engine:%s, timeout:%d ms.",
+          local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+      llm::TemporaryRtContext with_context(rt_context_);
+      ADXL_CHK_STATUS_RET(msg_handler_.Connect(remote_engine.GetString(), timeout_in_millis),
+                          "Failed to connect, remote engine:%s, timeout:%d ms",
+                          remote_engine.GetString(), timeout_in_millis);
+    }
   }
   return SUCCESS;
 }
@@ -365,7 +382,6 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
   if (user_config_channel_pool_) {
-    std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
     channel->SetHasTransferred(true);
     channel->IncrementTransferCount();
   }

@@ -416,7 +416,6 @@ TEST_F(EvictionTest, ConcurrentTransferSyncAndEviction) {
   server4.Finalize();
 }
 
-
 TEST_F(EvictionTest, ConcurrentTransferAsyncAndEviction) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl client;
@@ -497,4 +496,156 @@ TEST_F(EvictionTest, ConcurrentTransferAsyncAndEviction) {
   server3.Finalize();
   server4.Finalize();
 }
+
+// Test multiple concurrent TransferSync calls, ensure none return NOT_CONNECTED or ALREADY_CONNECTED
+TEST_F(EvictionTest, ConcurrentTransfersWithoutConnectStatusErrors) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl client;
+  EXPECT_EQ(client.Initialize("127.0.0.1:50000", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl server;
+  EXPECT_EQ(server.Initialize("127.0.0.1:50001", options_), SUCCESS);
+
+  // Atomic variables to track test results
+  std::atomic<int> complete_count{0};
+  std::atomic<int> not_connected_count{0};
+  std::atomic<int> already_connected_count{0};
+  const int total_threads = 30;
+  const int32_t timeout = 10000; // 10 seconds timeout
+
+  // Create a vector of threads
+  std::vector<std::thread> threads;
+  threads.reserve(total_threads);
+
+  // Prepare transfer data
+  int32_t src = 1;
+  int32_t dst = 2;
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), 
+                     reinterpret_cast<uintptr_t>(&dst), 
+                     sizeof(int32_t)};
+
+  // Launch multiple concurrent threads, all calling TransferSync
+  // This simulates the real-world scenario where multiple transfers
+  // are initiated and all trigger ConnectWhenTransfer internally
+  for (int i = 0; i < total_threads; ++i) {
+    threads.emplace_back([&client, &desc, timeout, &complete_count, 
+                         &not_connected_count, &already_connected_count]() {
+      // Add random delay to increase the chance of race conditions
+      std::this_thread::sleep_for(std::chrono::microseconds(std::rand() % 1500));
+      
+      // This will trigger ConnectWhenTransfer internally because we haven't connected yet
+      Status ret = client.TransferSync("127.0.0.1:50001", READ, {desc}, timeout);
+      
+      // Count the results
+      complete_count++;
+      
+      if (ret == NOT_CONNECTED) {
+        not_connected_count++;
+      } else if (ret == ALREADY_CONNECTED) {
+        already_connected_count++;
+      }
+    });
+  }
+
+  // Join all threads. If deadlock occurs, this will hang indefinitely
+  for (auto& thread : threads) {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+
+  // Verify all threads completed
+  EXPECT_EQ(complete_count.load(), total_threads) << 
+    "Not all concurrent transfer calls completed. " <<
+    "Completed: " << complete_count.load() << ", Total: " << total_threads;
+
+  // Verify no Transfer returned NOT_CONNECTED or ALREADY_CONNECTED status
+  EXPECT_EQ(not_connected_count.load(), 0) << 
+    "Transfer calls should never return NOT_CONNECTED when GlobalResourceConfig is properly set";
+  
+  EXPECT_EQ(already_connected_count.load(), 0) << 
+    "Transfer calls should never return ALREADY_CONNECTED status";
+
+  // Cleanup
+  client.Finalize();
+  server.Finalize();
+  
+  SUCCEED() << "No NOT_CONNECTED or ALREADY_CONNECTED status returned from " << 
+              total_threads << " concurrent TransferSync calls";
+}
+
+// Test multiple concurrent TransferAsync calls, ensure none return NOT_CONNECTED or ALREADY_CONNECTED
+TEST_F(EvictionTest, ConcurrentAsyncTransfersWithoutConnectStatusErrors) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl client;
+  EXPECT_EQ(client.Initialize("127.0.0.1:51000", options_), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl server;
+  EXPECT_EQ(server.Initialize("127.0.0.1:51001", options_), SUCCESS);
+
+  // Atomic variables to track test results
+  std::atomic<int> complete_count{0};
+  std::atomic<int> not_connected_count{0};
+  std::atomic<int> already_connected_count{0};
+  const int total_threads = 25;
+  const int32_t timeout = 8000; // 8 seconds timeout
+
+  // Create a vector of threads
+  std::vector<std::thread> threads;
+  threads.reserve(total_threads);
+
+  // Launch multiple concurrent threads, all calling TransferAsync
+  for (int i = 0; i < total_threads; ++i) {
+    threads.emplace_back([&client, &complete_count, 
+                         &not_connected_count, &already_connected_count]() {
+      // Add random delay to increase race conditions
+      std::this_thread::sleep_for(std::chrono::microseconds(std::rand() % 1200));
+      
+      // Prepare dummy transfer data
+      int32_t src = 1;
+      int32_t dst = 2;
+      TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), 
+                         reinterpret_cast<uintptr_t>(&dst), 
+                         sizeof(int32_t)};
+      
+      // This will trigger ConnectWhenTransfer internally
+      TransferReq req = nullptr;
+      Status ret = client.TransferAsync("127.0.0.1:51001", READ, {desc}, {}, req);
+      
+      complete_count++;
+      
+      if (ret == NOT_CONNECTED) {
+        not_connected_count++;
+      } else if (ret == ALREADY_CONNECTED) {
+        already_connected_count++;
+      }
+    });
+  }
+
+  // Join all threads
+  for (auto& thread : threads) {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+
+  EXPECT_EQ(complete_count.load(), total_threads) << 
+    "Not all concurrent TransferAsync calls completed";
+  
+  // Verify no Transfer returned NOT_CONNECTED or ALREADY_CONNECTED status
+  EXPECT_EQ(not_connected_count.load(), 0) << 
+    "TransferAsync calls should never return NOT_CONNECTED when GlobalResourceConfig is properly set";
+  
+  EXPECT_EQ(already_connected_count.load(), 0) << 
+    "TransferAsync calls should never return ALREADY_CONNECTED status";
+
+  client.Finalize();
+  server.Finalize();
+  
+  SUCCEED() << "No NOT_CONNECTED or ALREADY_CONNECTED status returned from " <<
+              total_threads << " concurrent TransferAsync calls";
+}
+
 }

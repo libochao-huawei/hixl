@@ -93,6 +93,8 @@ class AdxlInnerEngine {
   std::mutex req2channel_mutex_;
   std::map<uint64_t, AscendString> req2channel_;
   std::atomic<uint64_t> next_req_id_{1};
+  // Mutex to protect connection operations (Connect and ConnectWhenTransfer)
+  std::mutex connection_mutex_;
   void *statistic_timer_handle_{nullptr};
 };
 }  // namespace adxl

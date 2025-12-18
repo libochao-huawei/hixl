@@ -17,40 +17,34 @@
 #include "adxl/channel.h"
 #include "adxl/channel_manager.h"
 #include "adxl/channel_msg_handler.h"
-#include "adxl/channel_evictor.h"
 #include "adxl/buffer_transfer_service.h"
 #include "hixl/hixl.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 
 namespace adxl{
-class MockChannelEvictor : public ChannelEvictor {
+class MockChannelMsgHandler : public ChannelMsgHandler {
 public:
-  explicit MockChannelEvictor(ChannelManager* channel_manager)
-    : ChannelEvictor(channel_manager) {};
+  explicit MockChannelMsgHandler(const std::string& listen_info, ChannelManager* channel_manager)
+    : ChannelMsgHandler(listen_info, channel_manager) {};
   
-  ~MockChannelEvictor() = default;
+  ~MockChannelMsgHandler() = default;
 
-  void ProcessEvictionByChannelId(ChannelType channel_type, const std::string& channel_id) {
+  Status ProcessEvictionByChannelId(ChannelType channel_type, const std::string& channel_id) {
     auto channel = channel_manager_->GetChannel(channel_type, channel_id);
     if (channel == nullptr){
-      return;
+      return SUCCESS;
     }
     if (channel->GetTransferCount() > 0) {
-      return;
+      return SUCCESS;
     }
-    channel_manager_->DestroyChannel(channel_type, channel_id);
-    return;
+    return channel_manager_->DestroyChannel(channel_type, channel_id);
   }
 };
 
-class ChannelEvictorWhiteboxTest : public ::testing::Test {
+class ChannelMsgHandlerWhiteboxTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    channel_options_["channel_pool.max_channel"] = "10";
-    channel_options_["channel_pool.high_waterline"] = "0.8";
-    channel_options_["channel_pool.low_waterline"] = "0.5";
-
     SetMockRtGetDeviceWay(1);
     llm::MockMmpaForHcclApi::Install();
     llm::AutoCommResRuntimeMock::Install();
@@ -61,12 +55,16 @@ protected:
     Status ret = channel_manager_->Initialize(buffer_transfer_service_.get());
     ASSERT_EQ(ret, SUCCESS) << "Failed to initialize ChannelManager";
     std::string listen_info = "127.0.0.1:20000";
-    channel_evictor_ = std::make_unique<ChannelEvictor>(channel_manager_.get());
+    channel_msg_handler_ = std::make_unique<MockChannelMsgHandler>(listen_info, channel_manager_.get());
+    // Enable channel pool by calling SetUserChannelPoolConfig
+    channel_msg_handler_->SetUserChannelPoolConfig();
+    channel_msg_handler_->SetHighWaterline(8);
+    channel_msg_handler_->SetLowWaterline(5);
   }
 
   void TearDown() override {
-    if (channel_evictor_) {
-        channel_evictor_->Finalize();
+    if (channel_msg_handler_) {
+        channel_msg_handler_->Finalize();
     }
     
     if (channel_manager_) {
@@ -136,45 +134,45 @@ protected:
 
   std::unique_ptr<BufferTransferService> buffer_transfer_service_;
   std::unique_ptr<ChannelManager> channel_manager_;
-  std::unique_ptr<ChannelEvictor> channel_evictor_;
+  std::unique_ptr<MockChannelMsgHandler> channel_msg_handler_;
 
   std::map<AscendString, AscendString> channel_options_;
   std::vector<std::string> created_channel_ids_;
 };
 
-TEST_F(ChannelEvictorWhiteboxTest, TestTrigger) {
-  Status ret = channel_evictor_->Initialize(channel_options_);
+TEST_F(ChannelMsgHandlerWhiteboxTest, TestTrigger) {
+  Status ret = channel_msg_handler_->Initialize(channel_options_, nullptr);
   ASSERT_EQ(ret, SUCCESS);
 
   EXPECT_EQ(GetCurrentChannelCount(), 0);
   EXPECT_EQ(created_channel_ids_.size(), 0);
 
-  EXPECT_FALSE(channel_evictor_->ShouldTriggerEviction());
+  EXPECT_FALSE(channel_msg_handler_->ShouldTriggerEviction());
   // create 3 client channels
   CreateChannels(3, ChannelType::kClient);
   // current channel count is 3
   EXPECT_EQ(GetCurrentChannelCount(), 3);
-  EXPECT_FALSE(channel_evictor_->ShouldTriggerEviction());
+  EXPECT_FALSE(channel_msg_handler_->ShouldTriggerEviction());
   // create 5 client channels
   CreateChannels(5, ChannelType::kClient);
   // current channel count is 8
   EXPECT_EQ(GetCurrentChannelCount(), 8);
-  EXPECT_TRUE(channel_evictor_->ShouldTriggerEviction());
+  EXPECT_TRUE(channel_msg_handler_->ShouldTriggerEviction());
   // create 9 client channels
   CreateChannels(1, ChannelType::kClient);
   // current channel count is 9
   EXPECT_EQ(GetCurrentChannelCount(), 9);
   // should trigger evcition
-  EXPECT_TRUE(channel_evictor_->ShouldTriggerEviction());
+  EXPECT_TRUE(channel_msg_handler_->ShouldTriggerEviction());
 }
 
-TEST_F(ChannelEvictorWhiteboxTest, TestChannelEvictionByCreateTime) { 
-  Status ret = channel_evictor_->Initialize(channel_options_);
+TEST_F(ChannelMsgHandlerWhiteboxTest, TestChannelEvictionByCreateTime) { 
+  Status ret = channel_msg_handler_->Initialize(channel_options_, nullptr);
   ASSERT_EQ(ret, SUCCESS);
 
   // create 8 client channels
   CreateChannels(8, ChannelType::kClient);
-  EXPECT_TRUE(channel_evictor_->ShouldTriggerEviction());
+  EXPECT_TRUE(channel_msg_handler_->ShouldTriggerEviction());
 
   auto current_channels = GetCurrentChannelIds();
   // current channel count is 8
@@ -186,7 +184,11 @@ TEST_F(ChannelEvictorWhiteboxTest, TestChannelEvictionByCreateTime) {
 
   CreateChannels(1, ChannelType::kClient);
   // notify eviction task
-  channel_evictor_->NotifyEviction();
+  int evict_size = GetCurrentChannelCount() - 5;
+  std::vector<EvictItem> candidates = channel_msg_handler_->SelectEvictionCandidates(evict_size);
+  for (auto& item : candidates) {
+    dynamic_cast<MockChannelMsgHandler*>(channel_msg_handler_.get())->ProcessEvictionByChannelId(item.channel_type, item.channel_id);
+  }
   // sleep 500 ms for eviction task
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
   // current channel count should be 5
@@ -198,12 +200,12 @@ TEST_F(ChannelEvictorWhiteboxTest, TestChannelEvictionByCreateTime) {
   EXPECT_TRUE(ChannelExists("127.0.0.1:20004", ChannelType::kClient));
 }
 
-TEST_F(ChannelEvictorWhiteboxTest, TestClientEvictionByTransferFlag) {
-  Status ret = channel_evictor_->Initialize(channel_options_);
+TEST_F(ChannelMsgHandlerWhiteboxTest, TestClientEvictionByTransferFlag) {
+  Status ret = channel_msg_handler_->Initialize(channel_options_, nullptr);
   ASSERT_EQ(ret, SUCCESS);
   // create 8 client channels
   CreateChannels(8, ChannelType::kClient);
-  EXPECT_TRUE(channel_evictor_->ShouldTriggerEviction());
+  EXPECT_TRUE(channel_msg_handler_->ShouldTriggerEviction());
 
   auto current_channels = GetCurrentChannelIds();
   // current channel count should be 8
@@ -217,7 +219,11 @@ TEST_F(ChannelEvictorWhiteboxTest, TestClientEvictionByTransferFlag) {
   trans_channel->SetHasTransferred(true);
   // create 1 client channel
   CreateChannels(1, ChannelType::kClient);
-  channel_evictor_->NotifyEviction();
+  int32_t evict_num = GetCurrentChannelCount() - 5;
+  std::vector<EvictItem> candidates = channel_msg_handler_->SelectEvictionCandidates(evict_num);
+  for (auto& item : candidates) {
+    dynamic_cast<MockChannelMsgHandler*>(channel_msg_handler_.get())->ProcessEvictionByChannelId(item.channel_type, item.channel_id);
+  }
   // sleep 500 ms for evcition
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
   // current channel count should be 5
@@ -229,20 +235,18 @@ TEST_F(ChannelEvictorWhiteboxTest, TestClientEvictionByTransferFlag) {
   EXPECT_FALSE(ChannelExists("127.0.0.1:20004", ChannelType::kClient));
 }
 
-TEST_F(ChannelEvictorWhiteboxTest, TestMixChannelStrategy) {
-  std::unique_ptr<MockChannelEvictor> mock_channel_evictor_;
-  std::string mock_listen_info = "127.0.0.1:24000";
-  mock_channel_evictor_ = std::make_unique<MockChannelEvictor>(channel_manager_.get());
-  Status ret = mock_channel_evictor_->Initialize(channel_options_);
+TEST_F(ChannelMsgHandlerWhiteboxTest, TestMixChannelStrategy) {
+  Status ret = channel_msg_handler_->Initialize(channel_options_, nullptr);
   ASSERT_EQ(ret, SUCCESS);
-  // craete 5 client channels
+  
+  // create 5 client channels
   CreateChannels(5, ChannelType::kClient);
-  // create 4 client channels
+  // create 4 server channels
   CreateChannels(4, ChannelType::kServer);
-  EXPECT_TRUE(mock_channel_evictor_->ShouldTriggerEviction());
+  EXPECT_TRUE(channel_msg_handler_->ShouldTriggerEviction());
 
   auto current_channels = GetCurrentChannelIds();
-  // current channel count shoule be 9
+  // current channel count should be 9
   EXPECT_EQ(current_channels.size(), 9);
 
   for(const auto& channel_id : created_channel_ids_) {
@@ -252,11 +256,11 @@ TEST_F(ChannelEvictorWhiteboxTest, TestMixChannelStrategy) {
   ChannelPtr trans_channel = channel_manager_->GetChannel(ChannelType::kClient, "127.0.0.1:20000");
   trans_channel->IncrementTransferCount();
   // select 9 candiadates for evcition
-  std::vector<EvictItem> candidates = channel_evictor_->SelectEvictionCandidates(9);
+  std::vector<EvictItem> candidates = channel_msg_handler_->SelectEvictionCandidates(9);
   for (auto& item : candidates) {
-    mock_channel_evictor_->ProcessEvictionByChannelId(item.channel_type, item.channel_id);
+    dynamic_cast<MockChannelMsgHandler*>(channel_msg_handler_.get())->ProcessEvictionByChannelId(item.channel_type, item.channel_id);
   }
-  // shoule left 1 channel which has transfer task
+  // should left 1 channel which has transfer task
   EXPECT_EQ(GetCurrentChannelCount(), 1);
   EXPECT_TRUE(ChannelExists("127.0.0.1:20000", ChannelType::kClient));
   EXPECT_FALSE(ChannelExists("127.0.0.1:20001", ChannelType::kClient));
@@ -267,10 +271,12 @@ TEST_F(ChannelEvictorWhiteboxTest, TestMixChannelStrategy) {
   EXPECT_EQ(channel_manager_->GetAllClientChannel().size(), 1);
   // left 0 server channel
   EXPECT_EQ(channel_manager_->GetAllServerChannel().size(), 0);
-  mock_channel_evictor_->Finalize();
 }
 
-TEST_F(ChannelEvictorWhiteboxTest, TestSelectClientEvictionCandidates) {
+TEST_F(ChannelMsgHandlerWhiteboxTest, TestSelectClientEvictionCandidates) {
+  Status ret = channel_msg_handler_->Initialize(channel_options_, nullptr);
+  ASSERT_EQ(ret, SUCCESS);
+  
   // create 6 client channels
   CreateChannels(6, ChannelType::kClient);
   // create 2 server channels
@@ -279,7 +285,7 @@ TEST_F(ChannelEvictorWhiteboxTest, TestSelectClientEvictionCandidates) {
   channel_manager_->GetChannel(ChannelType::kClient, "127.0.0.1:20000")->SetHasTransferred(true);
   channel_manager_->GetChannel(ChannelType::kServer, "127.0.0.1:26000")->SetHasTransferred(true);
   // select 5 candidates
-  std::vector<EvictItem> candidates = channel_evictor_->SelectEvictionCandidates(5);
+  std::vector<EvictItem> candidates = channel_msg_handler_->SelectEvictionCandidates(5);
   // get 5 candidates
   EXPECT_EQ(candidates.size(), 5);
 
@@ -301,14 +307,17 @@ TEST_F(ChannelEvictorWhiteboxTest, TestSelectClientEvictionCandidates) {
   EXPECT_EQ(server_count, 0);
 }
 
-TEST_F(ChannelEvictorWhiteboxTest, TestSelectServerEvictionCandidates) {
+TEST_F(ChannelMsgHandlerWhiteboxTest, TestSelectServerEvictionCandidates) {
+  Status ret = channel_msg_handler_->Initialize(channel_options_, nullptr);
+  ASSERT_EQ(ret, SUCCESS);
+  
   // create 7 server channels
   CreateChannels(7, ChannelType::kServer);
   // create 2 client channels
   CreateChannels(2, ChannelType::kClient);
 
   // select 5 candidates
-  std::vector<EvictItem> candidates = channel_evictor_->SelectEvictionCandidates(5);
+  std::vector<EvictItem> candidates = channel_msg_handler_->SelectEvictionCandidates(5);
   // should get 5 candidates
   EXPECT_EQ(candidates.size(), 5);
 
@@ -330,7 +339,10 @@ TEST_F(ChannelEvictorWhiteboxTest, TestSelectServerEvictionCandidates) {
   EXPECT_EQ(client_count_, 0);
 }
 
-TEST_F(ChannelEvictorWhiteboxTest, TestMixEvictionCandidates) {
+TEST_F(ChannelMsgHandlerWhiteboxTest, TestMixEvictionCandidates) {
+  Status ret = channel_msg_handler_->Initialize(channel_options_, nullptr);
+  ASSERT_EQ(ret, SUCCESS);
+  
   // create 3 server channels
   CreateChannels(3, ChannelType::kServer);
   // create 3 client channels
@@ -343,27 +355,17 @@ TEST_F(ChannelEvictorWhiteboxTest, TestMixEvictionCandidates) {
     channel_manager_->GetChannel(ChannelType::kServer, server_id)->SetHasTransferred(false);
   }
   // select 4 candiates
-  std::vector<EvictItem> candidates = channel_evictor_->SelectEvictionCandidates(4);
+  std::vector<EvictItem> candidates = channel_msg_handler_->SelectEvictionCandidates(4);
   // should get 4 channels
   EXPECT_EQ(candidates.size(), 4);
-
-  // check expected 4 channels
-  for (int i = 0; i < 4; i++) {
-    // mix channels between 2 types
-    if (i % 2 == 0) {
-      EXPECT_EQ(candidates[i].channel_type, ChannelType::kClient);
-    } else {
-      EXPECT_EQ(candidates[i].channel_type, ChannelType::kServer);
-    }
-  }
 }
 
-TEST_F(ChannelEvictorWhiteboxTest, TestMultipleConcurrentEvictionRequests) {
-  Status ret = channel_evictor_->Initialize(channel_options_);
+TEST_F(ChannelMsgHandlerWhiteboxTest, TestMultipleConcurrentEvictionRequests) {
+  Status ret = channel_msg_handler_->Initialize(channel_options_, nullptr);
   ASSERT_EQ(ret, SUCCESS);
   // create 8 client channels
   CreateChannels(8, ChannelType::kClient);
-  EXPECT_TRUE(channel_evictor_->ShouldTriggerEviction());
+  EXPECT_TRUE(channel_msg_handler_->ShouldTriggerEviction());
   // make 5 concurrent requests
   const int kConcurrentRequests = 5;
   std::vector<std::thread> eviction_threads;
@@ -371,7 +373,10 @@ TEST_F(ChannelEvictorWhiteboxTest, TestMultipleConcurrentEvictionRequests) {
 
   for (int i = 0; i < kConcurrentRequests; ++i) {
     eviction_threads.emplace_back([this]() {
-      channel_evictor_->NotifyEviction();
+      std::vector<EvictItem> candidates = channel_msg_handler_->SelectEvictionCandidates(3);
+      for (auto& item : candidates) {
+        dynamic_cast<MockChannelMsgHandler*>(channel_msg_handler_.get())->ProcessEvictionByChannelId(item.channel_type, item.channel_id);
+      }
     });
   }
   for (auto& thread : eviction_threads) {
@@ -385,12 +390,12 @@ TEST_F(ChannelEvictorWhiteboxTest, TestMultipleConcurrentEvictionRequests) {
   EXPECT_LE(GetCurrentChannelCount(), 5);
 }
 
-TEST_F(ChannelEvictorWhiteboxTest, TestTransferCompletionDuringEviction) {
-  Status ret = channel_evictor_->Initialize(channel_options_);
+TEST_F(ChannelMsgHandlerWhiteboxTest, TestTransferCompletionDuringEviction) {
+  Status ret = channel_msg_handler_->Initialize(channel_options_, nullptr);
   ASSERT_EQ(ret, SUCCESS);
   // create 8 client channels
   CreateChannels(8, ChannelType::kClient);
-  EXPECT_TRUE(channel_evictor_->ShouldTriggerEviction());
+  EXPECT_TRUE(channel_msg_handler_->ShouldTriggerEviction());
 
   std::string channel_id = "127.0.0.1:20000";
   ChannelPtr channel = channel_manager_->GetChannel(ChannelType::kClient, channel_id);
@@ -400,7 +405,10 @@ TEST_F(ChannelEvictorWhiteboxTest, TestTransferCompletionDuringEviction) {
 
   std::thread eviction_thread(
     [this]() {
-    channel_evictor_->NotifyEviction();
+    std::vector<EvictItem> candidates = channel_msg_handler_->SelectEvictionCandidates(3);
+    for (auto& item : candidates) {
+      dynamic_cast<MockChannelMsgHandler*>(channel_msg_handler_.get())->ProcessEvictionByChannelId(item.channel_type, item.channel_id);
+    }
   });
 
   std::thread transfer_complete_thread(

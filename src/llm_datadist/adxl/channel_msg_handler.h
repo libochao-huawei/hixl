@@ -23,7 +23,6 @@
 #include "common/msg_handler_plugin.h"
 #include "segment_table.h"
 #include "adxl_utils.h"
-#include "channel_evictor.h"
 
 namespace adxl {
 enum class ChannelMsgType : int32_t {
@@ -56,6 +55,18 @@ struct ChannelDisconnectInfo {
   std::string channel_id;
 };
 
+struct EvictItem {
+    std::string channel_id;
+    ChannelType channel_type;
+    int32_t timeout_ms{1000};
+};
+
+struct PendingDisconnectRequest {
+    std::condition_variable cv;
+    bool received{false};
+    RequestDisconnectResp resp;
+};
+
 class ChannelMsgHandler {
  public:
   ChannelMsgHandler(const std::string &listen_info, ChannelManager *channel_manager)
@@ -83,6 +94,14 @@ class ChannelMsgHandler {
     user_config_channel_pool_ = true;
   }
   
+  void SetHighWaterline(const int32_t high_waterline) {
+    high_waterline_ = high_waterline;
+  }
+
+  void SetLowWaterline(const int32_t low_waterline) {
+    low_waterline_ = low_waterline;
+  }
+
  private:
   static Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);
   Status StartDaemon(uint32_t listen_port);
@@ -105,6 +124,33 @@ class ChannelMsgHandler {
   Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
   Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
   Status DoConnect(const std::string &remote_engine, int32_t timeout_in_millis);
+  Status InitChannelPool();
+
+  int32_t GetTotalChannelCount() const;
+  bool ShouldTriggerEviction() const;
+  Status NotifyEviction();
+  Status ProcessEviction(const EvictItem& item);
+  Status ResetAllTransferFlags();
+  void EvictionLoop();
+  std::vector<EvictItem> SelectEvictionCandidates(int32_t need_expire);
+  Status StartEvictionThread();
+  Status SetupChannelManagerCallbacks();
+  
+  Status ProcessServerEviction(const std::string& channel_id, ChannelPtr channel);
+  Status ProcessClientEviction(const std::string& channel_id, int32_t timeout_ms);
+
+  int32_t max_channel_{kDefaultMaxChannel};
+  int32_t high_waterline_{0};
+  int32_t low_waterline_{0};
+
+  std::mutex evict_mutex_;
+  std::condition_variable evict_cv_;
+  std::queue<EvictItem> evict_queue_;
+  std::atomic<bool> stop_eviction_{false};
+  std::thread eviction_thread_;
+  std::mutex pending_req_mutex_;
+  std::map<uint64_t, std::shared_ptr<PendingDisconnectRequest>> pending_disconnect_requests_;
+  std::atomic<uint64_t> next_req_id_{1};
 
   std::string listen_info_;
   ChannelManager *channel_manager_;
@@ -122,7 +168,7 @@ class ChannelMsgHandler {
   HcclCommConfig comm_config_;
 
   SegmentTable *segment_table_ = nullptr;
-  std::unique_ptr<ChannelEvictor> channel_evictor_ = nullptr;
+  //std::unique_ptr<ChannelEvictor> channel_evictor_ = nullptr;
 };
 }  // namespace adxl
 
