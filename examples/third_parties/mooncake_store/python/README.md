@@ -78,8 +78,7 @@ def batch_get_into_multi_buffers(self, keys: List[str], all_buffer_ptrs: List[Li
 
 1. 安装CANN包，样例中场景为root用户安装与使用
 
-2. Mooncake编译安装，注意使用`-DUSE_ASCEND_DIRECT=ON` 参数启用Hixl功能；具体的编译安装步骤，参考[Mooncake 安装文档](https://github.com/kvcache-ai/Mooncake/blob/main/doc/zh/build.md)
-
+2. Mooncake编译安装，推荐使用 `v0.3.7.post2` 注意使用`-DUSE_ASCEND_DIRECT=ON` 参数启用Hixl功能；具体的编译安装步骤，参考[Mooncake 安装文档](https://github.com/kvcache-ai/Mooncake/blob/v0.3.7.post2/doc/zh/build.md)
 
 ### 执行测试用例
 
