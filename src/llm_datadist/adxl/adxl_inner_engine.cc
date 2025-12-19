@@ -33,16 +33,32 @@ constexpr int32_t kConnectWhenTransferTimeout = 3000;
 constexpr int32_t kMaxStreams = 128;
 }
 
-Status AdxlInnerEngine::LoadGlobalResourceConfig(std::map<AscendString, AscendString>& options) {
+Status AdxlInnerEngine::ParseWaterlineRatio(const std::map<AscendString, AscendString>& json_options, 
+                                            const char* option_name, double default_value, double& parsed_value) {
+  parsed_value = default_value;
+  auto option_it = json_options.find(option_name);
+  if (option_it != json_options.end()) {
+    double value = 0.0;
+    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(option_it->second.GetString(), value), 
+                    "Invalid %s: %s", option_name, option_it->second.GetString());
+    ADXL_CHK_BOOL_RET_STATUS(value > 0.0 && value < 1.0, PARAM_INVALID, 
+                            "Invalid %s: %.2f (must be 0~1)", option_name, value);
+    parsed_value = value;
+  }
+  return SUCCESS;
+}
+
+Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, AscendString>& options) {
   auto config_it = options.find(hixl::OPTION_GLOBAL_RESOURCE_CONFIG);
+  std::map<AscendString, AscendString> json_options;
   if (config_it != options.end()) {
-    ADXL_CHK_STATUS_RET(LoadJsonConfig(config_it->second.GetString(), options), 
+    ADXL_CHK_STATUS_RET(LoadJsonConfig(config_it->second.GetString(), json_options), 
                         "Failed to load JSON config from file: %s", config_it->second.GetString());
   }
 
   int32_t max_channel = kDefaultMaxChannel;
-  auto max_it = options.find(adxl::OPTION_MAX_CHANNEL);
-  if (max_it != options.end()) {
+  auto max_it = json_options.find(adxl::OPTION_MAX_CHANNEL);
+  if (max_it != json_options.end()) {
     ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(max_it->second.GetString(), max_channel), 
                     "Invalid max_channel: %s", max_it->second.GetString());
     ADXL_CHK_BOOL_RET_STATUS(max_channel > 0, PARAM_INVALID, "Invalid max_channel: %d (must be > 0)", max_channel);
@@ -51,26 +67,14 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(std::map<AscendString, AscendSt
   }
 
   double high_waterline_ratio = kDefaultHighWaterline;
-  auto high_it = options.find(adxl::OPTION_HIGH_WATERLINE);
-  if (high_it != options.end()) {
-    double high_value = 0.0;
-    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(high_it->second.GetString(), high_value), 
-                    "Invalid high_waterline: %s", high_it->second.GetString());
-    ADXL_CHK_BOOL_RET_STATUS(high_value > 0.0 && high_value < 1.0, PARAM_INVALID, 
-                            "Invalid high_waterline: %.2f (must be 0~1)", high_value);
-    high_waterline_ratio = high_value;
-  }
+  ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_HIGH_WATERLINE, 
+                                          kDefaultHighWaterline, high_waterline_ratio), 
+                      "Failed to parse high_waterline");
 
   double low_waterline_ratio = kDefaultLowWaterline;
-  auto low_it = options.find(adxl::OPTION_LOW_WATERLINE);
-  if (low_it != options.end()) {
-    double low_value = 0.0;
-    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(low_it->second.GetString(), low_value), 
-                    "Invalid low_waterline: %s", low_it->second.GetString());
-    ADXL_CHK_BOOL_RET_STATUS(low_value > 0.0 && low_value < 1.0, PARAM_INVALID, 
-                            "Invalid low_waterline: %.2f (must be 0~1)", low_value);
-    low_waterline_ratio = low_value;
-  }
+  ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_LOW_WATERLINE, 
+                                          kDefaultLowWaterline, low_waterline_ratio), 
+                      "Failed to parse low_waterline");
 
   const int32_t high_waterline = std::max(static_cast<int32_t>(max_channel * high_waterline_ratio), 1);
   const int32_t low_waterline = std::max(static_cast<int32_t>(max_channel * low_waterline_ratio), 1);
@@ -78,13 +82,17 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(std::map<AscendString, AscendSt
   ADXL_CHK_BOOL_RET_STATUS(high_waterline - low_waterline >= 1, PARAM_INVALID, 
                           "high_waterline (%.2f) must be at least 1 greater than low_waterline (%.2f) when calculated", 
                           high_waterline_ratio, low_waterline_ratio);
-  user_config_channel_pool_ = (high_it != options.end() && low_it != options.end());
+  
+  auto high_it = json_options.find(adxl::OPTION_HIGH_WATERLINE);
+  auto low_it = json_options.find(adxl::OPTION_LOW_WATERLINE);
+  user_config_channel_pool_ = (high_it != json_options.end() && low_it != json_options.end());
+  
   if (user_config_channel_pool_) {
     msg_handler_.SetUserChannelPoolConfig();
     msg_handler_.SetHighWaterline(high_waterline);
     msg_handler_.SetLowWaterline(low_waterline);
   } else {
-    ADXL_CHK_BOOL_RET_STATUS(max_it == options.end(), PARAM_INVALID, 
+    ADXL_CHK_BOOL_RET_STATUS(max_it == json_options.end(), PARAM_INVALID, 
                             "Max channel should be set together with high&low waterlines.");
   }
   return SUCCESS;
@@ -93,8 +101,7 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(std::map<AscendString, AscendSt
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   std::lock_guard<std::mutex> lk(mutex_);
 
-  std::map<AscendString, AscendString> options_copy = options;
-  ADXL_CHK_STATUS_RET(LoadGlobalResourceConfig(options_copy), "Failed to load global resource config.");
+  ADXL_CHK_STATUS_RET(LoadGlobalResourceConfig(options), "Failed to load global resource config.");
   ADXL_CHK_LLM_RET(llm::HcclAdapter::GetInstance().Initialize(), "HcclSoManager initialize failed.");
   int32_t device_id = -1;
   ADXL_CHK_ACL_RET(rtGetDevice(&device_id));
