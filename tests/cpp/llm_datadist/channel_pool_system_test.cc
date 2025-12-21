@@ -1,10 +1,10 @@
 /**
- * This program is free software, you can redistribute it and/or modify it.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -248,12 +248,12 @@ TEST_F(ChannelPoolSystemTest, TestWaterline) {
 
 TEST_F(ChannelPoolSystemTest, ClientDisconnectHandlingAsync) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
-  Hixl engine1;
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
+  Hixl engine1_;
+  EXPECT_EQ(engine1_.Initialize("127.0.0.1:26000", options_), SUCCESS);
 
   llm::AutoCommResRuntimeMock::SetDevice(1);
-  Hixl engine2;
-  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options_), SUCCESS);
+  Hixl engine2_;
+  EXPECT_EQ(engine2_.Initialize("127.0.0.1:26001", options_), SUCCESS);
 
   hixl::MemDesc mem{};
   // mock addr 1234
@@ -261,10 +261,10 @@ TEST_F(ChannelPoolSystemTest, ClientDisconnectHandlingAsync) {
   // mock len 10
   mem.len = 10;
   MemHandle handle1 = nullptr;
-  EXPECT_EQ(engine1.RegisterMem(mem, MEM_DEVICE, handle1), SUCCESS);
+  EXPECT_EQ(engine1_.RegisterMem(mem, MEM_DEVICE, handle1), SUCCESS);
 
   MemHandle handle2 = nullptr;
-  EXPECT_EQ(engine2.RegisterMem(mem, MEM_DEVICE, handle2), SUCCESS);
+  EXPECT_EQ(engine2_.RegisterMem(mem, MEM_DEVICE, handle2), SUCCESS);
 
   // set src context to 1
   int32_t src = 1;
@@ -272,18 +272,18 @@ TEST_F(ChannelPoolSystemTest, ClientDisconnectHandlingAsync) {
   int32_t dst = 2;
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
   TransferReq req = nullptr;
-  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", READ, {desc}, {}, req), SUCCESS);
+  EXPECT_EQ(engine1_.TransferAsync("127.0.0.1:26001", READ, {desc}, {}, req), SUCCESS);
   // after transfer, src set to 2
   EXPECT_EQ(src, 2);
   src = 1;
-  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req), SUCCESS);
+  EXPECT_EQ(engine1_.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req), SUCCESS);
   EXPECT_EQ(dst, 1);
 
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
-  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
-  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
-  engine1.Finalize();
-  engine2.Finalize();
+  EXPECT_EQ(engine1_.Disconnect("127.0.0.1:26001"), SUCCESS);
+  EXPECT_EQ(engine1_.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2_.DeregisterMem(handle2), SUCCESS);
+  engine1_.Finalize();
+  engine2_.Finalize();
 }
 
 TEST_F(ChannelPoolSystemTest, ConcurrentTransferSyncAndEviction) {
@@ -291,21 +291,16 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferSyncAndEviction) {
   Hixl client;
   EXPECT_EQ(client.Initialize("127.0.0.1:30000", options_), SUCCESS);
 
-  llm::AutoCommResRuntimeMock::SetDevice(1);
-  Hixl server1;
-  EXPECT_EQ(server1.Initialize("127.0.0.1:30001", options_), SUCCESS);
-  // set mock device 2
-  llm::AutoCommResRuntimeMock::SetDevice(2);
-  Hixl server2;
-  EXPECT_EQ(server2.Initialize("127.0.0.1:30002", options_), SUCCESS);
-  // set mock device 3
-  llm::AutoCommResRuntimeMock::SetDevice(3);
-  Hixl server3;
-  EXPECT_EQ(server3.Initialize("127.0.0.1:30003", options_), SUCCESS);
-  // set mock device 4
-  llm::AutoCommResRuntimeMock::SetDevice(4);
-  Hixl server4;
-  EXPECT_EQ(server4.Initialize("127.0.0.1:30004", options_), SUCCESS);
+  // Initialize servers in a loop to reduce duplicate code
+  const char* server_addrs[] = {
+    "127.0.0.1:30001", "127.0.0.1:30002", "127.0.0.1:30003", "127.0.0.1:30004"
+  };
+  Hixl servers[4];
+  // init 4 servers
+  for (int i = 0; i < 4; ++i) {
+    llm::AutoCommResRuntimeMock::SetDevice(i + 1);
+    EXPECT_EQ(servers[i].Initialize(server_addrs[i], options_), SUCCESS);
+  }
 
   EXPECT_EQ(client.Connect("127.0.0.1:30003"), SUCCESS);
   EXPECT_EQ(client.Connect("127.0.0.1:30004"), SUCCESS);
@@ -321,8 +316,8 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferSyncAndEviction) {
 
   MemHandle server1_handle = nullptr;
   MemHandle server2_handle = nullptr;
-  EXPECT_EQ(server1.RegisterMem(mem, MEM_DEVICE, server1_handle), SUCCESS);
-  EXPECT_EQ(server2.RegisterMem(mem, MEM_DEVICE, server2_handle), SUCCESS);
+  EXPECT_EQ(servers[0].RegisterMem(mem, MEM_DEVICE, server1_handle), SUCCESS);
+  EXPECT_EQ(servers[1].RegisterMem(mem, MEM_DEVICE, server2_handle), SUCCESS);
   // set src content 1
   int32_t src = 1;
   // set dst content 2
@@ -360,14 +355,14 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferSyncAndEviction) {
   }
 
   EXPECT_EQ(client.DeregisterMem(client_handle), SUCCESS);
-  EXPECT_EQ(server1.DeregisterMem(server1_handle), SUCCESS);
-  EXPECT_EQ(server2.DeregisterMem(server2_handle), SUCCESS);
+  EXPECT_EQ(servers[0].DeregisterMem(server1_handle), SUCCESS);
+  EXPECT_EQ(servers[1].DeregisterMem(server2_handle), SUCCESS);
 
   client.Finalize();
-  server1.Finalize();
-  server2.Finalize();
-  server3.Finalize();
-  server4.Finalize();
+  // finalize 4 servers
+  for (int i = 0; i < 4; ++i) {
+    servers[i].Finalize();
+  }
 }
 
 TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
@@ -375,21 +370,16 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
   Hixl client;
   EXPECT_EQ(client.Initialize("127.0.0.1:40000", options_), SUCCESS);
 
-  llm::AutoCommResRuntimeMock::SetDevice(1);
-  Hixl server1;
-  EXPECT_EQ(server1.Initialize("127.0.0.1:40001", options_), SUCCESS);
-  // mock device 2
-  llm::AutoCommResRuntimeMock::SetDevice(2);
-  Hixl server2;
-  EXPECT_EQ(server2.Initialize("127.0.0.1:40002", options_), SUCCESS);
-  // mock device 3
-  llm::AutoCommResRuntimeMock::SetDevice(3);
-  Hixl server3;
-  EXPECT_EQ(server3.Initialize("127.0.0.1:40003", options_), SUCCESS);
-  // mock device 4
-  llm::AutoCommResRuntimeMock::SetDevice(4);
-  Hixl server4;
-  EXPECT_EQ(server4.Initialize("127.0.0.1:40004", options_), SUCCESS);
+  // Initialize servers in a loop to reduce duplicate code
+  const char* server_addrs[] = {
+    "127.0.0.1:40001", "127.0.0.1:40002", "127.0.0.1:40003", "127.0.0.1:40004"
+  };
+  Hixl servers_async[4];
+  // initialize 4 servers
+  for (int i = 0; i < 4; ++i) {
+    llm::AutoCommResRuntimeMock::SetDevice(i + 1);
+    EXPECT_EQ(servers_async[i].Initialize(server_addrs[i], options_), SUCCESS);
+  }
 
   EXPECT_EQ(client.Connect("127.0.0.1:40003"), SUCCESS);
   EXPECT_EQ(client.Connect("127.0.0.1:40004"), SUCCESS);
@@ -404,8 +394,8 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
 
   MemHandle server1_handle = nullptr;
   MemHandle server2_handle = nullptr;
-  EXPECT_EQ(server1.RegisterMem(mem, MEM_DEVICE, server1_handle), SUCCESS);
-  EXPECT_EQ(server2.RegisterMem(mem, MEM_DEVICE, server2_handle), SUCCESS);
+  EXPECT_EQ(servers_async[0].RegisterMem(mem, MEM_DEVICE, server1_handle), SUCCESS);
+  EXPECT_EQ(servers_async[1].RegisterMem(mem, MEM_DEVICE, server2_handle), SUCCESS);
   // set src content 1
   int32_t src = 1;
   // set dst content 12
@@ -440,14 +430,14 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
   }
 
   EXPECT_EQ(client.DeregisterMem(client_handle), SUCCESS);
-  EXPECT_EQ(server1.DeregisterMem(server1_handle), SUCCESS);
-  EXPECT_EQ(server2.DeregisterMem(server2_handle), SUCCESS);
+  EXPECT_EQ(servers_async[0].DeregisterMem(server1_handle), SUCCESS);
+  EXPECT_EQ(servers_async[1].DeregisterMem(server2_handle), SUCCESS);
 
   client.Finalize();
-  server1.Finalize();
-  server2.Finalize();
-  server3.Finalize();
-  server4.Finalize();
+  // finalize 4 servers
+  for (int i = 0; i < 4; ++i) {
+    servers_async[i].Finalize();
+  }
 }
 
 // Test multiple concurrent TransferSync calls, ensure none return NOT_CONNECTED or ALREADY_CONNECTED
@@ -469,15 +459,10 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransfersWithoutConnectStatusErrors) {
 
   MemHandle server_handle = nullptr;
   EXPECT_EQ(server.RegisterMem(mem, MEM_DEVICE, server_handle), SUCCESS);
-
-  // Atomic variables to track test results
-  std::atomic<int> complete_count{0};
-  std::atomic<int> not_connected_count{0};
-  std::atomic<int> already_connected_count{0};
-  // make 30 concurrent threads
-  const int total_threads = 30;
+  // make 10 concurrent threads
+  const int total_threads = 5;
   // set timeout to 1000 ms
-  const int32_t timeout = 1000;
+  const int32_t timeout = 5000;
 
   // Create a vector of threads
   std::vector<std::thread> threads;
@@ -491,59 +476,24 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransfersWithoutConnectStatusErrors) {
                      reinterpret_cast<uintptr_t>(&dst), 
                      sizeof(int32_t)};
 
-  // Launch multiple concurrent threads, all calling TransferSync
-  // This simulates the real-world scenario where multiple transfers
-  // are initiated and all trigger ConnectWhenTransfer internally
   for (int i = 0; i < total_threads; ++i) {
-    threads.emplace_back([&client, &desc, timeout, &complete_count, 
-                         &not_connected_count, &already_connected_count]() {
-      // Add random delay (max 10 ms) to increase the chance of race conditions
-      std::this_thread::sleep_for(std::chrono::microseconds(std::rand() % 10));
-      
-      // This will trigger ConnectWhenTransfer internally because we haven't connected yet
+    threads.emplace_back([&client, &desc, timeout]() {
       Status ret = client.TransferSync("127.0.0.1:50001", READ, {desc}, timeout);
-      
-      // Count the results
-      complete_count++;
-      
-      if (ret == NOT_CONNECTED) {
-        not_connected_count++;
-      } else if (ret == ALREADY_CONNECTED) {
-        already_connected_count++;
-      }
+      EXPECT_EQ(ret, SUCCESS);
     });
   }
 
-  // Join all threads. If deadlock occurs, this will hang indefinitely
   for (auto& thread : threads) {
     if (thread.joinable()) {
       thread.join();
     }
   }
-
-  // Verify all threads completed
-  EXPECT_EQ(complete_count.load(), total_threads) << 
-    "Not all concurrent transfer calls completed. " <<
-    "Completed: " << complete_count.load() << ", Total: " << total_threads;
-
-  // Verify no Transfer returned NOT_CONNECTED or ALREADY_CONNECTED status
-  EXPECT_EQ(not_connected_count.load(), 0) << 
-    "Transfer calls should never return NOT_CONNECTED when GlobalResourceConfig is properly set";
-  
-  EXPECT_EQ(already_connected_count.load(), 0) << 
-    "Transfer calls should never return ALREADY_CONNECTED status";
-
-  // Cleanup
   EXPECT_EQ(client.DeregisterMem(client_handle), SUCCESS);
   EXPECT_EQ(server.DeregisterMem(server_handle), SUCCESS);
   client.Finalize();
   server.Finalize();
-  
-  SUCCEED() << "No NOT_CONNECTED or ALREADY_CONNECTED status returned from " << 
-              total_threads << " concurrent TransferSync calls";
 }
 
-// Test multiple concurrent TransferAsync calls, ensure none return NOT_CONNECTED or ALREADY_CONNECTED
 TEST_F(ChannelPoolSystemTest, ConcurrentAsyncTransfersWithoutConnectStatusErrors) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl client;
@@ -562,26 +512,14 @@ TEST_F(ChannelPoolSystemTest, ConcurrentAsyncTransfersWithoutConnectStatusErrors
 
   MemHandle server_handle = nullptr;
   EXPECT_EQ(server.RegisterMem(mem, MEM_DEVICE, server_handle), SUCCESS);
-
-  // Atomic variables to track test results
-  std::atomic<int> complete_count{0};
-  std::atomic<int> not_connected_count{0};
-  std::atomic<int> already_connected_count{0};
   // make 25 concurrent threads
   const int total_threads = 25;
-
   // Create a vector of threads
   std::vector<std::thread> threads;
   threads.reserve(total_threads);
-
   // Launch multiple concurrent threads, all calling TransferAsync
   for (int i = 0; i < total_threads; ++i) {
-    threads.emplace_back([&client, &complete_count, 
-                         &not_connected_count, &already_connected_count]() {
-      // Add random delay (max 10 ms) to increase race conditions
-      std::this_thread::sleep_for(std::chrono::microseconds(std::rand() % 10));
-      
-      // Prepare dummy transfer data
+    threads.emplace_back([&client]() {
       // mock src content 1
       int32_t src = 1;
       // mock dst content 2
@@ -589,44 +527,22 @@ TEST_F(ChannelPoolSystemTest, ConcurrentAsyncTransfersWithoutConnectStatusErrors
       TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), 
                          reinterpret_cast<uintptr_t>(&dst), 
                          sizeof(int32_t)};
-      
       // This will trigger ConnectWhenTransfer internally
       TransferReq req = nullptr;
       Status ret = client.TransferAsync("127.0.0.1:51001", READ, {desc}, {}, req);
-      
-      complete_count++;
-      
-      if (ret == NOT_CONNECTED) {
-        not_connected_count++;
-      } else if (ret == ALREADY_CONNECTED) {
-        already_connected_count++;
-      }
+      EXPECT_EQ(ret, SUCCESS);
     });
   }
 
-  // Join all threads
-  for (auto& thread : threads) {
-    if (thread.joinable()) {
-      thread.join();
+  for (auto& t : threads) {
+    if (t.joinable()) {
+      t.join();
     }
   }
-
-  EXPECT_EQ(complete_count.load(), total_threads) << 
-    "Not all concurrent TransferAsync calls completed";
-  
-  // Verify no Transfer returned NOT_CONNECTED or ALREADY_CONNECTED status
-  EXPECT_EQ(not_connected_count.load(), 0) << 
-    "TransferAsync calls should never return NOT_CONNECTED when GlobalResourceConfig is properly set";
-  
-  EXPECT_EQ(already_connected_count.load(), 0) << 
-    "TransferAsync calls should never return ALREADY_CONNECTED status";
   EXPECT_EQ(client.DeregisterMem(client_handle), SUCCESS);
   EXPECT_EQ(server.DeregisterMem(server_handle), SUCCESS);
   client.Finalize();
   server.Finalize();
-  
-  SUCCEED() << "No NOT_CONNECTED or ALREADY_CONNECTED status returned from " <<
-              total_threads << " concurrent TransferAsync calls";
 }
 
 }

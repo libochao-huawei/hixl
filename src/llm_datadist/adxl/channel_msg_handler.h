@@ -168,7 +168,6 @@ class ChannelMsgHandler {
   HcclCommConfig comm_config_;
 
   SegmentTable *segment_table_ = nullptr;
-  //std::unique_ptr<ChannelEvictor> channel_evictor_ = nullptr;
 };
 }  // namespace adxl
 
