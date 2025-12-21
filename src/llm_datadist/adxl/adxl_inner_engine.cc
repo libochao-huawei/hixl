@@ -86,7 +86,6 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, As
   auto high_it = json_options.find(adxl::OPTION_HIGH_WATERLINE);
   auto low_it = json_options.find(adxl::OPTION_LOW_WATERLINE);
   user_config_channel_pool_ = (high_it != json_options.end() && low_it != json_options.end());
-  
   if (user_config_channel_pool_) {
     msg_handler_.SetUserChannelPoolConfig();
     msg_handler_.SetHighWaterline(high_waterline);
