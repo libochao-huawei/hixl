@@ -277,7 +277,16 @@ Status AdxlInnerEngine::DeregisterMem(MemHandle mem_handle) {
 }
 
 Status AdxlInnerEngine::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
-  std::lock_guard<std::mutex> lock(connection_mutex_);
+  if (user_config_channel_pool_) {
+    std::lock_guard<std::mutex> lock(connection_mutex_);
+    LLMEVENT("Start to connect, local engine:%s, remote engine:%s, timeout:%d ms.",
+          local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+    llm::TemporaryRtContext with_context(rt_context_);
+    ADXL_CHK_STATUS_RET(msg_handler_.Connect(remote_engine.GetString(), timeout_in_millis),
+                      "Failed to connect, remote engine:%s, timeout:%d ms",
+                      remote_engine.GetString(), timeout_in_millis);
+    return SUCCESS;
+  }
   LLMEVENT("Start to connect, local engine:%s, remote engine:%s, timeout:%d ms.",
           local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
   llm::TemporaryRtContext with_context(rt_context_);
@@ -390,10 +399,10 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
   if (user_config_channel_pool_) {
     channel->SetHasTransferred(true);
     channel->IncrementTransferCount();
-    LLM_MAKE_GUARD(transfer_count_guard, [&channel]() {
-      channel->DecrementTransferCount();
-    });
   }
+  LLM_MAKE_GUARD(transfer_count_guard, [&channel]() {
+    channel->DecrementTransferCount();
+  });
   if (buffer_transfer_service_ != nullptr) {
     const auto start = std::chrono::steady_clock::now();
     bool need_buffer = false;
