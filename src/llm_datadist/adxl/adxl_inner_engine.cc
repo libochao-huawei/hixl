@@ -399,10 +399,10 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
   if (user_config_channel_pool_) {
     channel->SetHasTransferred(true);
     channel->IncrementTransferCount();
+    LLM_MAKE_GUARD(transfer_count_guard, [&channel]() {
+      channel->DecrementTransferCount();
+    });
   }
-  LLM_MAKE_GUARD(transfer_count_guard, [&channel]() {
-    channel->DecrementTransferCount();
-  });
   if (buffer_transfer_service_ != nullptr) {
     const auto start = std::chrono::steady_clock::now();
     bool need_buffer = false;
@@ -438,14 +438,19 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   auto id = next_req_id_.fetch_add(1);
   req = reinterpret_cast<void*>(static_cast<uintptr_t>(id));
   std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
-  channel->SetHasTransferred(true);
-  channel->IncrementTransferCount();
-  LLM_DISMISSABLE_GUARD(transfer_count_guard, [&channel]() {
-    channel->DecrementTransferCount();
-  });
-  ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, req),
+  if (user_config_channel_pool_) {
+    channel->SetHasTransferred(true);
+    channel->IncrementTransferCount();
+    LLM_DISMISSABLE_GUARD(transfer_count_guard, [&channel]() {
+      channel->DecrementTransferCount();
+    });
+    ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, req),
                       "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
-  LLM_DISMISS_GUARD(transfer_count_guard);
+    LLM_DISMISS_GUARD(transfer_count_guard);
+  } else {
+    ADXL_CHK_STATUS_RET(channel->TransferAsync(operation, op_descs, optional_args, req),
+                      "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
+  }
   std::lock_guard<std::mutex> lock(req2channel_mutex_);
   req2channel_[id] = remote_engine;
   return SUCCESS;
@@ -466,7 +471,9 @@ Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
   auto ret = channel->GetTransferStatus(req, status);
   if (status != TransferStatus::WAITING) {
-    channel->DecrementTransferCount();
+    if (user_config_channel_pool_) {
+      channel->DecrementTransferCount();
+    }
     req2channel_.erase(id);
   }
   ADXL_CHK_STATUS_RET(ret, "Failed to get transfer status, req: %llu, remote_engine:%s",
