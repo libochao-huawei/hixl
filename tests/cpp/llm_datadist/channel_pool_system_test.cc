@@ -545,4 +545,74 @@ TEST_F(ChannelPoolSystemTest, ConcurrentAsyncTransfersWithoutConnectStatusErrors
   server.Finalize();
 }
 
+TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
+  options_["GlobalResourceConfig"] = 
+    "../tests/cpp/llm_datadist/global_resource_configs/resource_exhausted_config.json";
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl client_exhausted;
+  EXPECT_EQ(client_exhausted.Initialize("127.0.0.1:60000", options_), SUCCESS);
+
+  // Initialize servers in a loop to reduce duplicate code
+  const char* server_addrs[] = {
+    "127.0.0.1:60001", "127.0.0.1:60002", "127.0.0.1:60003", "127.0.0.1:60004"
+  };
+  Hixl servers_async[4];
+  // initialize 4 servers
+  for (int i = 0; i < 4; ++i) {
+    llm::AutoCommResRuntimeMock::SetDevice(i + 1);
+    EXPECT_EQ(servers_async[i].Initialize(server_addrs[i], options_), SUCCESS);
+  }
+
+  EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60001"), SUCCESS);
+  EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60002"), SUCCESS);
+
+  hixl::MemDesc mem{};
+  // mock mem addr 1134
+  mem.addr = 1134;
+  // mock mem len 8
+  mem.len = 8;
+  MemHandle client_handle = nullptr;
+  EXPECT_EQ(client_exhausted.RegisterMem(mem, MEM_DEVICE, client_handle), SUCCESS);
+
+  MemHandle server1_handle = nullptr;
+  MemHandle server2_handle = nullptr;
+  EXPECT_EQ(servers_async[0].RegisterMem(mem, MEM_DEVICE, server1_handle), SUCCESS);
+  EXPECT_EQ(servers_async[1].RegisterMem(mem, MEM_DEVICE, server2_handle), SUCCESS);
+  // set src content 10
+  int32_t src = 10;
+  // set dst content 12
+  int32_t dst = 12;
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+
+  auto transfer_async_func = [&client_exhausted, &desc](const AscendString& server_addr) {
+    TransferReq req = nullptr;
+    client_exhausted.TransferAsync(server_addr, READ, {desc}, {}, req);
+  };
+
+  std::thread transfer_thread1(transfer_async_func, "127.0.0.1:60001");
+  std::thread transfer_thread2(transfer_async_func, "127.0.0.1:60002");
+
+  // Sleep 200 ms to allow transfers to start and eviction to happen
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60003"), SUCCESS);
+  EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60004"), RESOURCE_EXHAUSTED);
+
+  if (transfer_thread1.joinable()) {
+    transfer_thread1.join();
+  }
+  if (transfer_thread2.joinable()) {
+    transfer_thread2.join();
+  }
+
+  EXPECT_EQ(client_exhausted.DeregisterMem(client_handle), SUCCESS);
+  EXPECT_EQ(servers_async[0].DeregisterMem(server1_handle), SUCCESS);
+  EXPECT_EQ(servers_async[1].DeregisterMem(server2_handle), SUCCESS);
+
+  client_exhausted.Finalize();
+  // finalize 4 servers
+  for (int i = 0; i < 4; ++i) {
+    servers_async[i].Finalize();
+  }
+}
 }

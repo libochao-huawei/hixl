@@ -207,7 +207,7 @@ Status ChannelManager::HandleControlMessage(const ChannelPtr &channel) const {
     case ControlMsgType::kRequestDisconnectResp:
       return HandleRequestDisconnectRespMessage(channel, msg_str);
     default:
-      LLMLOGW("Unsupported msg type: %d", msg_type);
+      LLMLOGW("Unsupported msg type: %d", static_cast<int>(msg_type));
       return SUCCESS;
   }
 }
@@ -230,10 +230,10 @@ Status ChannelManager::HandleBufferReqMessage(const ChannelPtr &channel, const s
 
 Status ChannelManager::HandleBufferRespMessage(const ChannelPtr &channel, const std::string &msg_str) const {
   BufferResp buffer_resp{};
-  ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), buffer_resp), "Failed to deserialize msg");
+  ADXL_CHK_STATUS_RET(ControlMsgHandler::Deserialize(msg_str.c_str(), buffer_resp), "Failed to deserialize buffer resp msg");
   LLMLOGI("Recv buffer resp for channel:%s", channel->GetChannelId().c_str());
   if (buffer_transfer_service_ != nullptr) {
-    buffer_transfer_service_->PushBufferResp(channel, buffer_resp);
+    (void)buffer_transfer_service_->PushBufferResp(channel, buffer_resp);
   }
   return SUCCESS;
 }

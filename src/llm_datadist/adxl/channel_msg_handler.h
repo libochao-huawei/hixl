@@ -102,6 +102,10 @@ class ChannelMsgHandler {
     low_waterline_ = low_waterline;
   }
 
+  void SetMaxChannel(const int32_t max_channel) {
+    max_channel_ = max_channel;
+  }
+
  private:
   static Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);
   Status StartDaemon(uint32_t listen_port);

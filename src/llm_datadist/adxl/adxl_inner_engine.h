@@ -67,7 +67,7 @@ class AdxlInnerEngine {
   static void ParseBufferPool(const std::map<AscendString, AscendString> &options,
                               std::string &pool_config);
   Status ParseWaterlineRatio(const std::map<AscendString, AscendString>& json_options, 
-                             const char* option_name, double default_value, double& parsed_value);
+                             const char* option_name, double& parsed_value);
   Status LoadGlobalResourceConfig(const std::map<AscendString, AscendString> &options);
   Status ConnectWhenTransfer(const AscendString &remote_engine, int32_t timeout_in_millis = 3000);
   Status ParseBufferPoolParams(const std::map<AscendString, AscendString> &options, uint64_t &buffer_size,

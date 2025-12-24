@@ -28,22 +28,19 @@ constexpr uint64_t kDefaultBufferSize = 8U;
 constexpr const char *kDisabledPoolConfig = "0:0";
 constexpr uint64_t kNeedUseBufferThresh = 256 * 1024U;
 constexpr size_t kMemPoolNum = 2U;
-constexpr uint32_t kCheckDisconnetPeriod = 10U;
-constexpr int32_t kConnectWhenTransferTimeout = 3000;
+constexpr uint32_t kCheckDisconnetPeriod = 10U; // ms
+constexpr int32_t kConnectWhenTransferTimeout = 3000; // ms
 constexpr int32_t kMaxStreams = 128;
 }
 
 Status AdxlInnerEngine::ParseWaterlineRatio(const std::map<AscendString, AscendString>& json_options, 
-                                            const char* option_name, double default_value, double& parsed_value) {
-  parsed_value = default_value;
+                                            const char* option_name, double& value) {
   auto option_it = json_options.find(option_name);
   if (option_it != json_options.end()) {
-    double value = 0.0;
     ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(option_it->second.GetString(), value), 
                     "Invalid %s: %s", option_name, option_it->second.GetString());
     ADXL_CHK_BOOL_RET_STATUS(value > 0.0 && value < 1.0, PARAM_INVALID, 
                             "Invalid %s: %.2f (must be 0~1)", option_name, value);
-    parsed_value = value;
   }
   return SUCCESS;
 }
@@ -66,30 +63,27 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, As
                              "Invalid max_channel: %d (must be <= %d)", max_channel, kDefaultMaxChannel);
   }
 
-  double high_waterline_ratio = kDefaultHighWaterline;
+  double high_waterline_ratio = -1.0;
   ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_HIGH_WATERLINE, 
-                                          kDefaultHighWaterline, high_waterline_ratio), 
+                                          high_waterline_ratio), 
                       "Failed to parse high_waterline");
 
-  double low_waterline_ratio = kDefaultLowWaterline;
+  double low_waterline_ratio = -1.0;
   ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_LOW_WATERLINE, 
-                                          kDefaultLowWaterline, low_waterline_ratio), 
+                                          low_waterline_ratio), 
                       "Failed to parse low_waterline");
-
-  const int32_t high_waterline = std::max(static_cast<int32_t>(max_channel * high_waterline_ratio), 1);
-  const int32_t low_waterline = std::max(static_cast<int32_t>(max_channel * low_waterline_ratio), 1);
-  
-  ADXL_CHK_BOOL_RET_STATUS(high_waterline - low_waterline >= 1, PARAM_INVALID, 
+  user_config_channel_pool_ = (high_waterline_ratio > 0.0 && high_waterline_ratio < 1.0) &&
+                              (low_waterline_ratio > 0.0 && low_waterline_ratio < 1.0);
+  if (user_config_channel_pool_) {
+    const int32_t high_waterline = std::max(static_cast<int32_t>(max_channel * high_waterline_ratio), 1);
+    const int32_t low_waterline = std::max(static_cast<int32_t>(max_channel * low_waterline_ratio), 1);
+    ADXL_CHK_BOOL_RET_STATUS(high_waterline - low_waterline >= 1, PARAM_INVALID, 
                           "high_waterline (%.2f) must be at least 1 greater than low_waterline (%.2f) when calculated", 
                           high_waterline_ratio, low_waterline_ratio);
-  
-  auto high_it = json_options.find(adxl::OPTION_HIGH_WATERLINE);
-  auto low_it = json_options.find(adxl::OPTION_LOW_WATERLINE);
-  user_config_channel_pool_ = (high_it != json_options.end() && low_it != json_options.end());
-  if (user_config_channel_pool_) {
     msg_handler_.SetUserChannelPoolConfig();
     msg_handler_.SetHighWaterline(high_waterline);
     msg_handler_.SetLowWaterline(low_waterline);
+    msg_handler_.SetMaxChannel(max_channel);
   } else {
     ADXL_CHK_BOOL_RET_STATUS(max_it == json_options.end(), PARAM_INVALID, 
                             "Max channel should be set together with high&low waterlines.");
@@ -399,10 +393,12 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
   if (user_config_channel_pool_) {
     channel->SetHasTransferred(true);
     channel->IncrementTransferCount();
-    LLM_MAKE_GUARD(transfer_count_guard, [&channel]() {
-      channel->DecrementTransferCount();
-    });
   }
+  LLM_MAKE_GUARD(transfer_count_guard, ([&channel, this]() {
+    if (user_config_channel_pool_) {
+      channel->DecrementTransferCount();
+    }
+  }));
   if (buffer_transfer_service_ != nullptr) {
     const auto start = std::chrono::steady_clock::now();
     bool need_buffer = false;

@@ -31,8 +31,6 @@ constexpr const char* OPTION_HIGH_WATERLINE = "channel_pool.high_waterline";
 constexpr const char* OPTION_LOW_WATERLINE = "channel_pool.low_waterline";
 
 constexpr int kDefaultMaxChannel = 512;
-constexpr double kDefaultHighWaterline = 0.9;  // 90%
-constexpr double kDefaultLowWaterline = 0.6;   // 60%
 bool NeedErrorLog(Status status);
 }  // namespace adxl
 #endif  // CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_ADXL_UTILS_H
