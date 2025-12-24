@@ -96,6 +96,10 @@ mooncake_master \
 
 在`run.sh`中，通过`export HCCL_INTRA_ROCE_ENABLE=1 `选择传输方式为RDMA（如果设置为0，则机器内默认走hccs）
 
+注意不要同时禁用ROCE 和 PCIE，否则会有以下报错：
+
+>  [Parse] [IntraLinkType]only set HCCL_INTRA_ROCE_ENABLE, and the val is zero, pls set HCCL_INTRA_PCIE_ENABLE
+
 执行时通过在终端执行：
 
 ``````bash 
