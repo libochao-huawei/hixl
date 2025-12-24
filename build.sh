@@ -18,7 +18,6 @@ BUILD_PATH="${BASEPATH}/${BUILD_RELATIVE_PATH}/"
 
 # print usage message
 usage() {
-  echo "Usage:"
   echo "  sh build.sh [-h | --help] [-v | --verbose] [-j<N>]"
   echo "              [--pkg] [--examples]"
   echo "              [--build_type=<Release|Debug> | --build-type=<Release|Debug]"
