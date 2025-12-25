@@ -146,6 +146,7 @@ build() {
   cmake -D CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
         -D CMAKE_INSTALL_PREFIX=${OUTPUT_PATH} \
         -D ENABLE_EXAMPLES=${ENABLE_EXAMPLES} \
+        -D CMAKE_CXX_FLAGS="-Wno-ignored-attributes" \
         -D ENABLE_BENCHMARKS=${ENABLE_BENCHMARKS} \
         -D ENABLE_ASAN=${ENABLE_ASAN} \
         -D ENABLE_GCOV=${ENABLE_GCOV} \
