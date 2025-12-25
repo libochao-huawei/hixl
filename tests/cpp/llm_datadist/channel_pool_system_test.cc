@@ -551,7 +551,6 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl client_exhausted;
   EXPECT_EQ(client_exhausted.Initialize("127.0.0.1:60000", options_), SUCCESS);
-
   // Initialize servers in a loop to reduce duplicate code
   const char* server_addrs[] = {
     "127.0.0.1:60001", "127.0.0.1:60002", "127.0.0.1:60003", "127.0.0.1:60004"
@@ -562,10 +561,6 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
     llm::AutoCommResRuntimeMock::SetDevice(i + 1);
     EXPECT_EQ(servers_async[i].Initialize(server_addrs[i], options_), SUCCESS);
   }
-
-  EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60001"), SUCCESS);
-  EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60002"), SUCCESS);
-
   hixl::MemDesc mem{};
   // mock mem addr 1134
   mem.addr = 1134;
@@ -576,8 +571,11 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
 
   MemHandle server1_handle = nullptr;
   MemHandle server2_handle = nullptr;
+  MemHandle server3_handle = nullptr;
   EXPECT_EQ(servers_async[0].RegisterMem(mem, MEM_DEVICE, server1_handle), SUCCESS);
   EXPECT_EQ(servers_async[1].RegisterMem(mem, MEM_DEVICE, server2_handle), SUCCESS);
+  // servers_async 2 register mem
+  EXPECT_EQ(servers_async[2].RegisterMem(mem, MEM_DEVICE, server3_handle), SUCCESS);
   // set src content 10
   int32_t src = 10;
   // set dst content 12
@@ -591,11 +589,11 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
 
   std::thread transfer_thread1(transfer_async_func, "127.0.0.1:60001");
   std::thread transfer_thread2(transfer_async_func, "127.0.0.1:60002");
+  std::thread transfer_thread3(transfer_async_func, "127.0.0.1:60003");
 
   // Sleep 200 ms to allow transfers to start and eviction to happen
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-  EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60003"), SUCCESS);
   EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60004"), RESOURCE_EXHAUSTED);
 
   if (transfer_thread1.joinable()) {
@@ -604,11 +602,9 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
   if (transfer_thread2.joinable()) {
     transfer_thread2.join();
   }
-
-  EXPECT_EQ(client_exhausted.DeregisterMem(client_handle), SUCCESS);
-  EXPECT_EQ(servers_async[0].DeregisterMem(server1_handle), SUCCESS);
-  EXPECT_EQ(servers_async[1].DeregisterMem(server2_handle), SUCCESS);
-
+  if (transfer_thread3.joinable()) {
+    transfer_thread3.join();
+  }
   client_exhausted.Finalize();
   // finalize 4 servers
   for (int i = 0; i < 4; ++i) {

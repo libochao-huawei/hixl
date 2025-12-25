@@ -294,7 +294,19 @@ Status ChannelMsgHandler::CreateChannel(const ChannelInfo &channel_info, bool is
 Status ChannelMsgHandler::ConnectInfoProcess(const ChannelConnectInfo &peer_channel_info,
                                              int32_t timeout, bool is_client) {
   if (user_config_channel_pool_) {
+    auto start_time = std::chrono::steady_clock::now();
     NotifyEviction();
+    while(GetTotalChannelCount() >= max_channel_) {
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start_time).count();
+      if (elapsed >= timeout) {
+        LLMLOGE(RESOURCE_EXHAUSTED, 
+                "Failed to Connect %s after %d ms, channel resourse exhausted, adjust channel pool config to avoid", 
+                peer_channel_info.channel_id.c_str(), timeout);
+        return RESOURCE_EXHAUSTED;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(kCheckDisconnetPeriod));
+    }
   }
   auto rank_table_generator = llm::RankTableGeneratorFactory::Create(local_comm_res_, peer_channel_info.comm_res);
   ADXL_CHK_BOOL_RET_STATUS(rank_table_generator != nullptr, PARAM_INVALID,
@@ -429,21 +441,6 @@ Status ChannelMsgHandler::Connect(const std::string &remote_engine, int32_t time
   auto channel = channel_manager_->GetChannel(ChannelType::kClient, remote_engine);
   ADXL_CHK_BOOL_RET_STATUS(channel == nullptr, ALREADY_CONNECTED,
                            "remote_engine:%s is already connected.", remote_engine.c_str());
-  auto start_time = std::chrono::steady_clock::now();
-  while(true) {
-    if (GetTotalChannelCount() < max_channel_) {
-      break;
-    }
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now() - start_time).count();
-    if (elapsed >= timeout_in_millis) {
-      LLMLOGE(RESOURCE_EXHAUSTED, 
-              "Failed to Connect %s after %d ms, channel resourse exhausted, adjust channel pool config to avoid", 
-              remote_engine.c_str(), timeout_in_millis);
-      return RESOURCE_EXHAUSTED;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(kCheckDisconnetPeriod));
-  }
   return ChannelMsgHandler::DoConnect(remote_engine, timeout_in_millis);
 }
 
