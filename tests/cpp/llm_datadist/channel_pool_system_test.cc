@@ -565,6 +565,7 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
 
   EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60001"), SUCCESS);
   EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60002"), SUCCESS);
+  EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60003"), SUCCESS);
 
   hixl::MemDesc mem{};
   // mock mem addr 1134
@@ -576,8 +577,10 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
 
   MemHandle server1_handle = nullptr;
   MemHandle server2_handle = nullptr;
+  MemHandle server3_handle = nullptr;
   EXPECT_EQ(servers_async[0].RegisterMem(mem, MEM_DEVICE, server1_handle), SUCCESS);
   EXPECT_EQ(servers_async[1].RegisterMem(mem, MEM_DEVICE, server2_handle), SUCCESS);
+  EXPECT_EQ(servers_async[2].RegisterMem(mem, MEM_DEVICE, server3_handle), SUCCESS);
   // set src content 10
   int32_t src = 10;
   // set dst content 12
@@ -591,11 +594,11 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
 
   std::thread transfer_thread1(transfer_async_func, "127.0.0.1:60001");
   std::thread transfer_thread2(transfer_async_func, "127.0.0.1:60002");
+  std::thread transfer_thread3(transfer_async_func, "127.0.0.1:60003");
 
   // Sleep 200 ms to allow transfers to start and eviction to happen
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-  EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60003"), SUCCESS);
   EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60004"), RESOURCE_EXHAUSTED);
 
   if (transfer_thread1.joinable()) {
@@ -604,10 +607,14 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
   if (transfer_thread2.joinable()) {
     transfer_thread2.join();
   }
+  if (transfer_thread3.joinable()) {
+    transfer_thread3.join();
+  }
 
   EXPECT_EQ(client_exhausted.DeregisterMem(client_handle), SUCCESS);
   EXPECT_EQ(servers_async[0].DeregisterMem(server1_handle), SUCCESS);
   EXPECT_EQ(servers_async[1].DeregisterMem(server2_handle), SUCCESS);
+  EXPECT_EQ(servers_async[2].DeregisterMem(server3_handle), SUCCESS);
 
   client_exhausted.Finalize();
   // finalize 4 servers
