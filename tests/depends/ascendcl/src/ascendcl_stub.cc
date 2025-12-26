@@ -180,7 +180,7 @@ aclError AclRuntimeStub::aclrtStreamAbort(aclrtStream stream) {
 }
 
 aclError AclRuntimeStub::aclrtSynchronizeStream(aclrtStream stream) {
-  const char * const kEnvRecordPath = "CONSTANT_FOLDING_PASS_9";
+  const char * const kEnvRecordPath = "STREAM_SYNC_FAIL";
   char record_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&record_path[0]).find("mock_fail") != std::string::npos) {
@@ -225,7 +225,7 @@ aclError AclRuntimeStub::aclrtSynchronizeStream(aclrtStream stream) {
 }
 
 aclError AclRuntimeStub::aclrtSynchronizeStreamWithTimeout(aclrtStream stream, int32_t timeout) {
-  const char * const kEnvRecordPath = "CONSTANT_FOLDING_PASS_9";
+  const char * const kEnvRecordPath = "STREAM_SYNC_FAIL";
   char record_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&record_path[0]).find("mock_fail") != std::string::npos) {

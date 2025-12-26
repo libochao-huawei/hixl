@@ -118,7 +118,7 @@ void RuntimeStub::UnInstall(RuntimeStub*){
 }
 
 rtError_t RuntimeStub::rtStreamSynchronizeWithTimeout(rtStream_t stm, int32_t timeout) {
-  const char * const kEnvRecordPath = "CONSTANT_FOLDING_PASS_9";
+  const char * const kEnvRecordPath = "STREAM_SYNC_FAIL";
   char record_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&record_path[0]).find("mock_fail") != std::string::npos) {
@@ -825,7 +825,7 @@ rtError_t rtGetDevicePhyIdByIndex(uint32_t devIndex, uint32_t *phyId) {
 }
 
 rtError_t rtStreamSynchronize(rtStream_t stream) {
-  const char * const kEnvRecordPath = "CONSTANT_FOLDING_PASS_9";
+  const char * const kEnvRecordPath = "STREAM_SYNC_FAIL";
   char record_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&record_path[0]).find("mock_fail") != std::string::npos) {
@@ -1997,6 +1997,25 @@ rtError_t rtsLaunchCpuKernel(const rtFuncHandle funcHandle, const uint32_t block
                              const rtKernelLaunchCfg_t *cfg, rtCpuKernelArgs_t *argsInfo)
 {
   return llm::RuntimeStub::GetInstance()->rtsLaunchCpuKernel(funcHandle, blockDim, st, cfg, argsInfo);
+}
+
+rtError_t rtMemRetainAllocationHandle(void *devPtr, rtDrvMemHandle *handle) {
+  return llm::RuntimeStub::GetInstance()->rtMemRetainAllocationHandle(devPtr, handle);
+}
+
+rtError_t rtPointerGetAttributes(rtPointerAttributes_t *attributes, const void *ptr) {
+  return llm::RuntimeStub::GetInstance()->rtPointerGetAttributes(attributes, ptr);
+}
+
+rtError_t rtMemExportToShareableHandleV2(rtDrvMemHandle handle, rtMemSharedHandleType type, uint64_t flags,
+                                         void *shareableHandle) {
+  return llm::RuntimeStub::GetInstance()->rtMemExportToShareableHandleV2(handle, type, flags, shareableHandle);
+}
+
+rtError_t rtMemImportFromShareableHandleV2(const void *shareableHandle, rtMemSharedHandleType type, uint64_t flags,
+                                           int32_t deviceId, rtDrvMemHandle *handle) {
+  return llm::RuntimeStub::GetInstance()->rtMemImportFromShareableHandleV2(shareableHandle, type, flags, deviceId,
+                                                                           handle);
 }
 
 #ifdef __cplusplus
