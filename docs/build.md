@@ -1,11 +1,13 @@
-# 构建
+# 源码构建
 
-## 编译
-
-### 环境准备
+## 环境准备
 本项目支持源码编译，在源码编译前，请根据如下步骤完成相关环境准备。
 
-1. **安装依赖**
+### 1. **安装依赖**
+
+请根据实际情况选择 **方式一（手动安装依赖）** 或 **方式二（使用Docker容器）** 完成相关环境准备。
+
+#### 方式一: 手动安装
 
    以下所列为源码编译用到的依赖，请注意版本要求。  
 
@@ -37,11 +39,43 @@
      sudo apt-get install ccache
      ```
 
-2. **安装驱动与固件（运行态依赖）**  
+#### 方式二：使用Docker容器
 
-    运行样例时必须安装驱动与固件，安装指导详见[《CANN软件安装指南》](https://www.hiascend.com/document/redirect/CannCommunityInstSoftware)。  
+  **配套 X86 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_x86:lv1_latest`
+  
+  **配套 ARM 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_arm:lv1_latest`
 
-3. **安装社区版CANN toolkit包**
+  以下是推荐的使用方式，可供参考:
+
+  ```shell
+  image=${根据本地机器架构类型从上面选择配套的构建镜像地址}
+
+  # 1. 拉取配套构建镜像
+  docker pull ${image}
+  # 2. 创建容器
+  docker run --name env_for_hixl_build --cap-add SYS_PTRACE -d -it ${image} /bin/bash
+  # 3. 启动容器
+  docker start env_for_hixl_build
+  # 4. 进入容器
+  docker exec -it env_for_hixl_build /bin/bash
+  ```
+
+  > [!NOTE]说明
+  > - `--cap-add SYS_PTRACE`：创建Docker容器时添加`SYS_PTRACE`权限，以支持[本地验证](#本地验证tests)时的内存泄漏检测功能。
+  > - 更多 docker 选项介绍请通过 `docker --help` 查询。
+
+  > [!NOTE]说明
+  > - 使用Docker镜像时，无需安装驱动与固件。
+
+  完成后可以进入[安装CANN-Toolkit软件包](#3-安装社区版cann-toolkit包)章节。
+
+### 2. **安装驱动与固件（运行样例依赖）**  
+
+    驱动与固件为运行样例时的依赖，且必须安装。若仅编译源码或进行本地验证，可跳过此步骤。
+
+    驱动与固件的安装指导，可详见[《CANN软件安装指南》](https://www.hiascend.com/document/redirect/CannCommunityInstSoftware)。  
+
+### 3. **安装社区版CANN toolkit包**
 
     根据实际环境，下载对应`Ascend-cann-toolkit_${cann_version}_linux-${arch}.run`包，下载链接为[CANN包社区版资源下载](https://ascend.devcloud.huaweicloud.com/cann/run/software/8.5.0-beta.1)。
     
@@ -55,7 +89,8 @@
     - \$\{arch\}：表示CPU架构，如aarch64、x86_64。
     - \$\{cann\_install\_path\}：表示指定安装路径，可选，默认安装在`/usr/local/Ascend`目录，指定路径安装时，指定的路径权限需设置为755。
 
-4. **安装社区版CANN ops包**
+### 4. **安装社区版CANN ops包（运行样例依赖）**
+    社区版CANN ops包为运行样例时的依赖，且必须安装。若仅编译源码或进行本地验证，可跳过此步骤。
 
     根据产品型号和环境架构，下载对应CANN ops包，下载链接为[CANN包社区版资源下载](https://ascend.devcloud.huaweicloud.com/cann/run/software/8.5.0-beta.1)：
 
@@ -77,15 +112,16 @@
     ```
 
     - \$\{cann\_install\_path\}：表示指定安装路径，需要与toolkit包安装在相同路径，默认安装在`/usr/local/Ascend`目录。
-   
 
-### 源码下载
+## 源码下载
 
 开发者可通过如下命令下载本仓源码：
 ```bash
 git clone https://gitcode.com/cann/hixl.git
 ```
 - 注意：gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。  
+
+## 源码编译
 
 ### 配置环境变量
 	
@@ -111,7 +147,6 @@ bash build.sh
   ```
   bash build.sh -h
   ```
-
 
 ## 本地验证(tests)
 利用tests路径下的测试用例进行本地验证:
