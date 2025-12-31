@@ -19,6 +19,7 @@ set(INC_DIR
         "${CMAKE_CURRENT_LIST_DIR}/hccl"
         "${CMAKE_CURRENT_LIST_DIR}/common"
         "${CMAKE_CURRENT_LIST_DIR}/fsm"
+        "${HIXL_CODE_DIR}/src/hixl"
         )
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 
@@ -37,6 +38,7 @@ file(GLOB LLM_SRC_LIST
         "${CMAKE_CURRENT_LIST_DIR}/memory/span/*.cc"
         "${CMAKE_CURRENT_LIST_DIR}/memory/type/*.cc"
         "${CMAKE_CURRENT_LIST_DIR}/memory/util/*.cc"
+        "${HIXL_CODE_DIR}/src/hixl/common/*.cc"
         )
 
 add_library(llm_datadist SHARED ${LLM_SRC_LIST})
@@ -80,6 +82,7 @@ set(ADXL_INC_DIR
         "${CMAKE_CURRENT_LIST_DIR}"
         "${CMAKE_CURRENT_LIST_DIR}/hccl"
         "${CMAKE_CURRENT_LIST_DIR}/common"
+        "${HIXL_CODE_DIR}/src/hixl"
         )
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 

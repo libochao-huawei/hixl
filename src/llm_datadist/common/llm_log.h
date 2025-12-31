@@ -27,6 +27,7 @@
 #include "base/err_msg.h"
 #include "rt_error_codes.h"
 #include "runtime/rt.h"
+#include "hixl/hixl_types.h"
 #ifdef __GNUC__
 #include <unistd.h>
 #include <sys/syscall.h>
