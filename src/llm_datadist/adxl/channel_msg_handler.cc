@@ -200,8 +200,7 @@ Status ChannelMsgHandler::ParseServiceLevel(const std::map<AscendString, AscendS
 Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> &options, SegmentTable *segment_table,
                                      FabricMemTransferService *fabric_mem_transfer_service) {
   ADXL_CHECK_NOTNULL(channel_manager_);
-  ADXL_CHK_ACL_RET(aclrtGetCurrentContext(&aclrt_context_));
-  ADXL_CHK_ACL_RET(aclrtGetDevice(&device_id_));
+  ADXL_CHK_ACL_RET(rtGetDevice(&device_id_));
   HIXL_CHK_STATUS_RET(hixl::ParseListenInfo(listen_info_, local_ip_, listen_port_), "Failed to parse listen info");
   ADXL_CHK_LLM_RET(llm::LocalCommResGenerator::Generate(local_ip_, device_id_, local_comm_res_),
                    "Failed to generate local comm res, local_ip:%s, device_id:%d",

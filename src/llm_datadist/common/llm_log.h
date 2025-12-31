@@ -25,7 +25,8 @@
 #include "llm_datadist/llm_error_codes.h"
 #include "dlog_pub.h"
 #include "base/err_msg.h"
-#include "acl/acl.h"
+#include "rt_error_codes.h"
+#include "runtime/rt.h"
 #include "hixl/hixl_types.h"
 #ifdef __GNUC__
 #include <unistd.h>

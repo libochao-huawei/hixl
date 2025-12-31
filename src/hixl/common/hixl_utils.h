@@ -13,10 +13,12 @@
 
 #include <memory>
 #include <utility>
-#include "hccl/hccl_types.h"
-#include "hixl/hixl_types.h"
+#include <sstream>
 #include "hixl_cs.h"
 #include "hixl_inner_types.h"
+#include "hccl/hccl_types.h"
+#include "hixl/hixl_types.h"
+#include "hixl_checker.h"
 
 namespace hixl {
 template <typename _Tp, typename... _Args>
@@ -40,6 +42,15 @@ inline auto MakeUnique(Args &&...args) -> typename MakeUniq<T>::unique_obj {
 template <typename T, typename... Args>
 inline typename MakeUniq<T>::invalid_type MakeUnique(Args &&...) = delete;
 
+template<typename T>
+static hixl::Status ToNumber(const std::string &num_str, T &value) {
+    std::stringstream ss(num_str);
+    ss >> value;
+    HIXL_CHK_BOOL_RET_STATUS(!ss.fail(), hixl::PARAM_INVALID, "Failed to convert [%s] to number", num_str.c_str());
+    HIXL_CHK_BOOL_RET_STATUS(ss.eof(), hixl::PARAM_INVALID, "Failed to convert [%s] to number", num_str.c_str());
+    return hixl::SUCCESS;
+}
+
 Status HcclError2Status(HcclResult ret);
 
 Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndPointInfo &endpoint);
@@ -47,6 +58,13 @@ Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndPointInfo
 Status ParseIpAddress(const std::string &ip_str, CommAddr &addr);
 
 Status SerializeEndPointConfigList(const std::vector<EndPointConfig> &list, std::string &msg_str);
+
+Status CheckIp(const std::string &ip);
+
+std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char_t delim);
+
+Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);
+
 }  // namespace hixl
 
 #endif  // CANN_HIXL_SRC_HIXL_COMMON_HIXL_UTILS_H_

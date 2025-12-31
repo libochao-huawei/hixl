@@ -29,7 +29,7 @@ class HixlEngine : public hixl::Engine {
    * 当设置host_port且host_port > 0时代表当前HixlEngine作为server端，需要对配置端口进行监听
    */
   explicit HixlEngine(const AscendString &local_engine)
-      : Engine(local_engine), local_engine_(local_engine.GetString()), is_initialized_(false) {};
+      : Engine(local_engine), local_engine_(local_engine.GetString()) {};
 
   /**
    * @brief 判断HixlEngine是否初始化
@@ -140,8 +140,8 @@ class HixlEngine : public hixl::Engine {
 
   std::mutex mutex_;
 
-  std::string local_engine_;
   std::atomic<bool> is_initialized_;
+  std::string local_engine_;
   ClientManager client_manager_;
   HixlServer server_;
   std::map<void *, MemInfo> mem_map_;
