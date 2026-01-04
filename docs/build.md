@@ -126,16 +126,16 @@ git clone https://gitcode.com/cann/hixl.git
 
  ```bash
 # 默认路径安装，以root用户为例（非root用户，将/usr/local替换为${HOME}）
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
+source /usr/local/Ascend/cann/set_env.sh
 # 指定路径安装
-# source ${cann_install_path}/set_env.sh
+# source ${cann_install_path}/cann/set_env.sh
  ```
 
 ### 编译执行
 
 ```bash
 # 默认路径安装，root用户默认路径是/usr/local/Ascend，普通用户默认路径是${HOME}/Ascend
-bash build.sh 
+bash build.sh --examples
 ```
 成功编译后会在build_out目录下生成`cann-hixl_${cann_version}_linux-${arch}.run`，同时会将C++用例一同编译，在build/examples/cpp路径下生成编译后的二进制文件。  
 - ${cann_version}表示cann版本号。
