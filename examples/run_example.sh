@@ -21,14 +21,16 @@ run_pair() {
     local cmd2="$2"
     local has_error=0
 
-    local binary_name1=$(echo "${cmd1#./}" | cut -d' ' -f1)
-    local binary_name2=$(echo "${cmd2#./}" | cut -d' ' -f1)
+    if [ "$#" -eq "3" ]; then
+        local binary_name1=$(echo "$cmd1" | grep -oP '(?<=\/)[^\/\s]+(?=\s|$)')
+        local binary_name2=$(echo "$cmd2" | grep -oP '(?<=\/)[^\/\s]+(?=\s|$)')
 
-    if [ ! -f "$binary_name1" ] || [ ! -f "$binary_name1" ]; then
-        echo "Binary does not exist!"
-        has_error=1
-        flag=1
-        exit 1
+        if [ ! -f "$binary_name1" ] || [ ! -f "$binary_name1" ]; then
+            echo "Binary does not exist!"
+            has_error=1
+            flag=1
+            exit 1
+        fi
     fi
 
     tmp1=$(mktemp)
@@ -76,11 +78,11 @@ run_pair() {
 main() {
     # C++ examples
     cd "${BASEPATH}/../build/examples/cpp"
-    run_pair "./prompt_pull_cache_and_blocks ${device_id_1} 127.0.0.1" "./decoder_pull_cache_and_blocks ${device_id_2} 127.0.0.1 127.0.0.1"
-    run_pair "./prompt_push_cache_and_blocks ${device_id_1} 127.0.0.1 127.0.0.1" "./decoder_push_cache_and_blocks ${device_id_2} 127.0.0.1"
-    run_pair "./prompt_switch_roles ${device_id_1} 127.0.0.1 127.0.0.1" "./decoder_switch_roles ${device_id_2} 127.0.0.1 127.0.0.1"
-    run_pair "./client_server_h2d ${device_id_1} 127.0.0.1 127.0.0.1:16000" "./client_server_h2d ${device_id_2} 127.0.0.1:16000"
-    run_pair "./server_server_d2d ${device_id_1} 127.0.0.1:16000 127.0.0.1:16001" "./server_server_d2d ${device_id_2} 127.0.0.1:16001 127.0.0.1:16000"
+    run_pair "./prompt_pull_cache_and_blocks ${device_id_1} 127.0.0.1" "./decoder_pull_cache_and_blocks ${device_id_2} 127.0.0.1 127.0.0.1" "check"
+    run_pair "./prompt_push_cache_and_blocks ${device_id_1} 127.0.0.1 127.0.0.1" "./decoder_push_cache_and_blocks ${device_id_2} 127.0.0.1" "check"
+    run_pair "./prompt_switch_roles ${device_id_1} 127.0.0.1 127.0.0.1" "./decoder_switch_roles ${device_id_2} 127.0.0.1 127.0.0.1" "check"
+    run_pair "HCCL_INTRA_ROCE_ENABLE=1 ./client_server_h2d ${device_id_1} 127.0.0.1 127.0.0.1:16000" "HCCL_INTRA_ROCE_ENABLE=1 ./client_server_h2d ${device_id_2} 127.0.0.1:16000" "check"
+    run_pair "HCCL_INTRA_ROCE_ENABLE=1 ./server_server_d2d ${device_id_1} 127.0.0.1:16000 127.0.0.1:16001" "HCCL_INTRA_ROCE_ENABLE=1 ./server_server_d2d ${device_id_2} 127.0.0.1:16001 127.0.0.1:16000" "check"
 
     
     if [ "$flag" -eq "0" ]; then
