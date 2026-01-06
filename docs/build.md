@@ -13,7 +13,7 @@
 
   - GCC >= 7.3.0
 
-  - Python3 3.9/3.11/3.12(当前仅支持这三个版本)
+  - Python 3.9~3.12
 
   - CMake >= 3.16.0  (建议使用3.20.0版本)
     ```shell
@@ -42,7 +42,7 @@
 #### 方式二：使用Docker容器
 
   **配套 X86 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_x86:lv1_latest`
-  
+
   **配套 ARM 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_arm:lv1_latest`
 
   以下是推荐的使用方式，可供参考:
@@ -61,12 +61,13 @@
   ```
 
   > [!NOTE]说明
+  >
   > - `--cap-add SYS_PTRACE`：创建Docker容器时添加`SYS_PTRACE`权限，以支持[本地验证](#本地验证tests)时的内存泄漏检测功能。
   > - 更多 docker 选项介绍请通过 `docker --help` 查询。
 
   完成后可以进入[安装CANN-Toolkit软件包](#3-安装社区版cann-toolkit包)章节。
 
-### 2. **安装驱动与固件（运行样例依赖）**  
+### 2. **安装驱动与固件（运行样例依赖）**
 
   驱动与固件为运行样例时的依赖，且必须安装。若仅编译源码或进行本地验证，可跳过此步骤。
 
@@ -121,7 +122,7 @@ git clone https://gitcode.com/cann/hixl.git
 ## 源码编译
 
 ### 配置环境变量
-	
+
 根据实际场景，选择合适的命令。
 
  ```bash

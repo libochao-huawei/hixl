@@ -4,75 +4,7 @@
 
 ⚠️ **注意：在零拷贝接口调用前，必须完成buffer的注册**
 
-> 需要先调用Mooncake store的register_buffer()完成注册，相关API可以参考[Mooncake Store Python API](https://kvcache-ai.github.io/Mooncake/python-api-reference/mooncake-store.html#register-buffer)
-
-#### batch_put_from
-
-```
-def batch_put_from(self, keys: List[str], buffer_ptrs: List[int], sizes: List[int], config: ReplicateConfig = None) -> List[int]
-```
-
-**参数:**
-
-- `keys` (List[str]): List of object identifiers
-- `buffer_ptrs` (List[int]): List of memory addresses
-- `sizes` (List[int]): List of buffer sizes
-- `config` (ReplicateConfig, optional): Replication configuration
-
-**返回值:**
-
-- `List[int]`: List of status codes for each operation (0 = success, negative = error)
-
-#### batch_get_into
-
-```
-def batch_get_into(self, keys: List[str], buffer_ptrs: List[int], sizes: List[int]) -> List[int]
-```
-
-**参数:**
-
-- `keys` (List[str]): List of object identifiers
-- `buffer_ptrs` (List[int]): List of memory addresses
-- `sizes` (List[int]): List of buffer sizes
-
-**返回值:**
-
-- `List[int]`: List of bytes read for each operation (positive = success, negative = error)
-
-#### batch_put_from_multi_buffers
-
-```
-def batch_put_from_multi_buffers(self, keys: List[str], all_buffer_ptrs: List[List[int]], all_sizes: List[List[int]],config: ReplicateConfig = None) -> List[int]
-```
-
-**参数：**
-
-- `keys` (List[str]): List of object identifiers
-- `all_buffer_ptrs` (List[List[int]]): all List of memory addresses
-- `all_sizes` (List[List[int]]): all List of buffer sizes
-- `config` (ReplicateConfig, optional): Replication configuration
-
-**返回值：**
-
-- `List[int]`: List of status codes for each operation (0 = success, negative = error)
-
-#### batch_get_into_multi_buffers
-
-```
-def batch_get_into_multi_buffers(self, keys: List[str], all_buffer_ptrs: List[List[int]], all_sizes: List[List[int]]) -> List[int]
-```
-
-**参数:**
-
-- `keys` (List[str]): List of object identifiers
-- `all_buffer_ptrs` (List[List[int]]): all List of memory addresses
-- `all_sizes` (List[List[int]]): all List of buffer sizes
-
-**返回值:**
-
-- `List[int]`: List of bytes read for each operation (positive = success, negative = error)
-
-测试接口的详细信息，可以参考Mooncake接口文档
+> 需要先调用Mooncake store的register_buffer()完成注册，本次测试相关API详细资料可以参考[Mooncake Store Python API](https://kvcache-ai.github.io/Mooncake/python-api-reference/mooncake-store.html#register-buffer)
 
 ### 环境准备（已安装可跳过）
 
@@ -96,7 +28,7 @@ mooncake_master \
 
 在`run.sh`中，通过`export HCCL_INTRA_ROCE_ENABLE=1 `选择传输方式为RDMA（如果设置为0，则机器内默认走hccs）
 
-注意不要同时禁用ROCE 和 PCIE，否则会有以下报错：
+在多机运行时，注意不要同时禁用ROCE 和 PCIE，否则会有以下报错：
 
 >  [Parse] [IntraLinkType]only set HCCL_INTRA_ROCE_ENABLE, and the val is zero, pls set HCCL_INTRA_PCIE_ENABLE
 
@@ -110,12 +42,14 @@ bash run.sh **.py
 
 并通过命令传入执行参数，具体的参数列表如下：
 
-* device_id ，必填，类型为int，当前进程所在npu设备
-* schema，选填，类型为str，默认为“d2d”，当前测试的传输类型，（必须为h2h，h2d，d2h，d2d ，不区分大小写）
-* config，选填， 类型为str，为yaml配置文件的路径，由于当前代码中删除了硬编码的初始值，可以选择修改代码或者传入config参数的方式，执行用例
-* rank，选填，类型为int，当前进程的rank，如果不传入，默认为 **device_id // 2**
-* world_size，选填，类型为int，分布式集群配置的设备数
-* distributed，选填，是否启用分布式集群
+| 参数名      | 是否必填 | 参数类型 | 参数解释                                                     |
+| ----------- | -------- | -------- | ------------------------------------------------------------ |
+| device_id   | 必填     | int      | 当前进程所在npu设备                                          |
+| schema      | 选填     | str      | 默认为“d2d”，当前测试传输的源地址类型与目的地址类型，<br />取值范围为h2h，h2d，d2h，d2d ，不区分大小写 |
+| config      | 选填     | str      | yaml配置文件的路径                                           |
+| rank        | 选填     | int      | 当前进程的rank，如果不传入，默认为 **device_id // 2**        |
+| world_size  | 选填     | int      | 分布式集群配置的进程数                                       |
+| distributed | 选填     | bool     | 是否为分布式集群运行                                         |
 
 > 注意，某些参数也可以通过配置文件的方式配置，但是命令行传入优先级更高
 
