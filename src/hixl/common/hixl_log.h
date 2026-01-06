@@ -13,7 +13,6 @@
 
 #include <cinttypes>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include "dlog_pub.h"
 #include "base/err_msg.h"

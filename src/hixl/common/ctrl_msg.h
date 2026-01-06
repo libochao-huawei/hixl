@@ -26,8 +26,6 @@ enum class CtrlMsgType : int32_t {
   kGetRemoteMemReq = 3,
   kGetRemoteMemResp = 4,
   kDestroyChannelReq = 5,
-  kGetEndPointInfoReq = 6,
-  kGetEndPointInfoResp = 7,
   kEnd
 };
 
@@ -37,8 +35,8 @@ struct CtrlMsg {
 };
 
 struct CreateChannelReq {
-  EndpointDesc src;
-  EndpointDesc dst;
+  EndPointInfo src;
+  EndPointInfo dst;
 };
 
 struct CreateChannelResp {
@@ -51,7 +49,7 @@ struct GetRemoteMemReq {
 };
 
 struct HixlMemDesc {
-  HcommMem mem;
+  HcclMem mem;
   std::string tag;
   void *export_desc = nullptr;
   uint32_t export_len = 0U;

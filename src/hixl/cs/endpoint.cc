@@ -18,13 +18,7 @@ namespace hixl {
 
 Status Endpoint::Initialize() {
   std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_LOGI("[JZY] HcommEndpointCreate start");
-  HIXL_LOGI("endpoint:=%d", endpoint_.protocol);
-  HIXL_LOGI("[JZY] endpoint_.loc.device.devPhyId=%u", endpoint_.loc.device.devPhyId);
-  HIXL_CHK_HCCL_RET(HcommEndpointCreate(&endpoint_, &handle_));
-  HIXL_LOGI("[JZY] HcommEndpointCreate end");
-
-  HIXL_LOGI("handle_:=%p", handle_);
+  HIXL_CHK_HCCL_RET(HcommEndPointCreate(&endpoint_, &handle_));
   return SUCCESS;
 }
 
@@ -48,7 +42,7 @@ Status Endpoint::Finalize() {
     }
   }
   reg_mems_.clear();
-  auto hccl_ret = HcommEndpointDestroy(handle_);
+  auto hccl_ret = HcommEndPointDestroy(handle_);
   if (hccl_ret != HCCL_SUCCESS) {
     ret = hixl::HcclError2Status(hccl_ret);
     HIXL_LOGE(ret, "HcommEndpointDestroy failed, ret: %d", hccl_ret);
@@ -61,13 +55,13 @@ EndPointHandle Endpoint::GetHandle() const {
   return handle_;
 }
 
-const EndpointDesc &Endpoint::GetEndpoint() const {
+const EndPointInfo &Endpoint::GetEndpoint() const {
   return endpoint_;
 }
 
-Status Endpoint::RegisterMem(const char *mem_tag, const HcommMem &mem, MemHandle &mem_handle) {
+Status Endpoint::RegisterMem(const char *mem_tag, const HcclMem &mem, MemHandle &mem_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_CHK_HCCL_RET(HcommMemReg(handle_, mem_tag, mem, &mem_handle));
+  HIXL_CHK_HCCL_RET(HcommMemReg(handle_, mem, &mem_handle));
   HixlMemDesc desc{};
   if (mem_tag != nullptr) {
     desc.tag = mem_tag;
@@ -102,21 +96,12 @@ Status Endpoint::ExportMem(std::vector<HixlMemDesc> &mem_descs) {
   return SUCCESS;
 }
 
-Status Endpoint::CreateChannel(const EndpointDesc &remote_endpoint, ChannelHandle &channel_handle) {
+Status Endpoint::CreateChannel(const EndPointInfo &remote_endpoint, ChannelHandle &channel_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[channel] CreateChannel called before Initialize");
-  CommEngine engine = CommEngine::COMM_ENGINE_RESERVED;
-  if (endpoint_.loc.locType == EndpointLocType::ENDPOINT_LOC_TYPE_HOST) {
-    engine = CommEngine::COMM_ENGINE_CPU;
-  } else if (endpoint_.loc.locType == EndpointLocType::ENDPOINT_LOC_TYPE_DEVICE) {
-    engine = CommEngine::COMM_ENGINE_AICPU;
-  } else {
-    HIXL_LOGE(PARAM_INVALID, "[channel] invalid endpoint location=%d",
-              static_cast<int32_t>(endpoint_.loc.locType));
-    return PARAM_INVALID;
-  }
-  HcommChannelDesc ch_desc{};
-  ch_desc.remoteEndpoint = remote_endpoint;
+  CommEngine engine = CommEngine::COMM_ENGINE_HOSTCPU;
+  HcommChannelDescNew ch_desc{};
+  ch_desc.remoteEndPoint = remote_endpoint;
   ch_desc.notifyNum = 1U;
   ChannelPtr channel = MakeShared<Channel>();
   HIXL_CHECK_NOTNULL(channel);
@@ -126,15 +111,6 @@ Status Endpoint::CreateChannel(const EndpointDesc &remote_endpoint, ChannelHandl
   channels_[h] = channel;
   channel_handle = h;
   return SUCCESS;
-}
-
-Status Endpoint::GetChannelStatus(ChannelHandle channel_handle, int32_t *status_out) {
-  HIXL_CHECK_NOTNULL(status_out);
-  std::lock_guard<std::mutex> lock(mutex_);
-  auto it = channels_.find(channel_handle);
-  HIXL_CHK_BOOL_RET_STATUS(it != channels_.end(), PARAM_INVALID,
-                           "GetChannelStatus failed, channel not found, handle=%lu", channel_handle);
-  return it->second->GetStatus(channel_handle, status_out);
 }
 
 Status Endpoint::DestroyChannel(ChannelHandle channel_handle) {
@@ -148,15 +124,6 @@ Status Endpoint::DestroyChannel(ChannelHandle channel_handle) {
 
   channels_.erase(it);
   HIXL_LOGI("Endpoint::DestroyChannel success, handle=%lu", channel_handle);
-  return SUCCESS;
-}
-
-Status Endpoint::MemImport(const void *mem_desc, uint32_t desc_len, HcommMem &out_buf) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_CHECK_NOTNULL(handle_);
-  HIXL_CHECK_NOTNULL(mem_desc);
-
-  HIXL_CHK_HCCL_RET(HcommMemImport(handle_, mem_desc, desc_len, &out_buf));
   return SUCCESS;
 }
 

@@ -37,16 +37,16 @@ class HixlCSServer {
 
   ~HixlCSServer() = default;
 
-  Status Initialize(const EndpointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config);
+  Status Initialize(const EndPointInfo *endpoint_list, uint32_t list_num, const HixlServerConfig *config);
   Status Finalize();
-  Status RegisterMem(const char *mem_tag, const HcommMem *mem, MemHandle *mem_handle);
+  Status RegisterMem(const char *mem_tag, const HcclMem *mem, MemHandle *mem_handle);
   Status DeregisterMem(MemHandle mem_handle);
   Status Listen(uint32_t backlog);
   Status RegProc(CtrlMsgType msg_type, MsgProcessor proc);
 
  private:
   template <typename T>
-  static Status Serialize(const T &msg, std::string &msg_str);
+  Status Serialize(const T &msg, std::string &msg_str);
   Status CreateChannel(int32_t fd, const char *msg, uint64_t msg_len);
   Status DestroyChannel(int32_t fd, const char *msg, uint64_t msg_len);
   Status GetRemoteMem(int32_t fd, const char *msg, uint64_t msg_len);
@@ -79,12 +79,6 @@ class HixlCSServer {
 
   void *trans_flag_ = nullptr;
   MemHandle trans_flag_handle_ = nullptr;
-
-  void *host_trans_flag_ = nullptr;        // Host 侧 Flag 内存指针
-  MemHandle host_trans_flag_handle_ = nullptr; // Host 侧 Flag 注册句柄
-
-  void *dev_trans_flag_ = nullptr;         // Device 侧 Flag 内存指针
-  MemHandle dev_trans_flag_handle_ = nullptr;  // Device 侧 Flag 注册句柄
 };
 }  // namespace hixl
 

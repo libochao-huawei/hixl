@@ -29,7 +29,7 @@ class MsgHandler {
 
  private:
   void HandleMsg();
-  static Status HandleMsg(int32_t fd, CtrlMsgPtr msg, MsgProcessor proc);
+  Status HandleMsg(int32_t fd, CtrlMsgPtr msg, MsgProcessor proc);
 
   std::mutex req_mutex_;
   std::queue<std::pair<int32_t, CtrlMsgPtr>> req_queue_;
@@ -39,7 +39,6 @@ class MsgHandler {
   std::unique_ptr<ThreadPool> thread_pool_ = nullptr;
   std::atomic<bool> running_{false};
   std::thread listener_;
-  aclrtContext ctx_ = nullptr;
 };
 }  // namespace hixl
 

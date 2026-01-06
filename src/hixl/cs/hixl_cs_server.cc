@@ -16,7 +16,7 @@
 #include "common/scope_guard.h"
 #include "common/ctrl_msg_plugin.h"
 
-static inline void to_json(nlohmann::json &j, const HcommMem &m) {
+static inline void to_json(nlohmann::json &j, const HcclMem &m) {
   j = nlohmann::json{};
   j["type"] = m.type;
   j["addr"] = static_cast<uint64_t>(reinterpret_cast<intptr_t>(m.addr));
@@ -27,61 +27,25 @@ namespace hixl {
 namespace {
 constexpr int32_t kMaxEventsNum = 128;  // epoll_wait并发处理事件数量，减少epoll系统调用
 constexpr int32_t kEpollWaitTimeInMillis = 100;  // epoll_wait等待超时时间
-constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";// client用于感知收发完成的标识
-constexpr const char *kTransFlagNameDevice = "_hixl_builtin_dev_trans_flag";// client用于感知收发完成的标识
+constexpr const char *kTransFinishedFlagName = "_hixl_builtin_dev_trans_flag";  // client用于感知收发完成的标识
 }  // namespace
 
 Status HixlCSServer::InitTransFinishedFlag() {
-  bool has_host_ep = false;
-  bool has_device_ep = false;
-  auto all_handles = endpoint_store_.GetAllEndpointHandles();
-  for (auto handle : all_handles) {
-    auto endpoint = endpoint_store_.GetEndpoint(handle);
-    if (endpoint) {
-      if (endpoint->GetEndpoint().loc.locType == ENDPOINT_LOC_TYPE_HOST) {
-        has_host_ep = true;
-      } else if (endpoint->GetEndpoint().loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
-        has_device_ep = true;
-      }
-    }
-  }
-  if (has_host_ep) {
-    void* host_flag = nullptr;
-    host_flag = malloc(sizeof(int64_t));
-    // HIXL_CHK_RT_RET(rtMalloc(&host_flag, sizeof(int64_t), RT_MEMORY_HOST, HIXL_MODULE_NAME));
-    *static_cast<int64_t*>(host_flag) = 1;
-    HcommMem mem{};
-    mem.type = HCCL_MEM_TYPE_HOST;
-    mem.addr = host_flag;
-    mem.size = sizeof(int64_t);
-    MemHandle handle = nullptr;
-    HIXL_CHK_STATUS_RET(RegisterMem(kTransFlagNameHost, &mem, &handle),
-                        "Failed to reg HOST trans finished flag");
-
-    host_trans_flag_ = host_flag;
-    host_trans_flag_handle_ = handle;
-  }
-  if (has_device_ep) {
-    void* dev_flag = nullptr;
-    HIXL_CHK_ACL_RET(aclrtMalloc(&dev_flag, sizeof(int64_t),
-        static_cast<aclrtMemMallocPolicy>(ACL_MEM_TYPE_HIGH_BAND_WIDTH | ACL_MEM_MALLOC_HUGE_ONLY)));
-    int64_t val = 1;
-    HIXL_CHK_ACL_RET(aclrtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), ACL_MEMCPY_HOST_TO_DEVICE));
-    HcommMem mem{};
-    mem.type = HCCL_MEM_TYPE_DEVICE;
-    mem.addr = dev_flag;
-    mem.size = sizeof(int64_t);
-
-    MemHandle handle = nullptr;
-    HIXL_CHK_STATUS_RET(RegisterMem(kTransFlagNameDevice, &mem, &handle),
-                        "Failed to reg DEVICE trans finished flag");
-    dev_trans_flag_ = dev_flag;
-    dev_trans_flag_handle_ = handle;
-  }
+  HIXL_CHK_RT_RET(
+      rtMalloc(&trans_flag_, sizeof(int64_t), RT_MEMORY_HBM | RT_MEMORY_POLICY_HUGE_PAGE_ONLY, HIXL_MODULE_NAME));
+  int64_t trans_finished_flag = 1;
+  HIXL_CHK_RT_RET(
+      rtMemcpy(trans_flag_, sizeof(int64_t), &trans_finished_flag, sizeof(int64_t), RT_MEMCPY_HOST_TO_DEVICE));
+  HcclMem mem{};
+  mem.type = HCCL_MEM_TYPE_DEVICE;
+  mem.addr = trans_flag_;
+  mem.size = sizeof(int64_t);
+  HIXL_CHK_STATUS_RET(RegisterMem(kTransFinishedFlagName, &mem, &trans_flag_handle_),
+                      "Failed to reg trans finished flag");
   return SUCCESS;
 }
 
-Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config) {
+Status HixlCSServer::Initialize(const EndPointInfo *endpoint_list, uint32_t list_num, const HixlServerConfig *config) {
   HIXL_CHECK_NOTNULL(endpoint_list);
   HIXL_CHECK_NOTNULL(config);
   HIXL_CHK_BOOL_RET_STATUS(list_num > 0, PARAM_INVALID, "endpoint list num:%u is invalid, must > 0", list_num);
@@ -119,26 +83,11 @@ Status HixlCSServer::Finalize() {
   auto ret = endpoint_store_.Finalize();
   HIXL_CHK_STATUS(ret, "Failed to finalize endpoint store.");
   if (trans_flag_ != nullptr) {
-    auto rt_ret = aclrtFree(trans_flag_);
-    if (rt_ret != ACL_SUCCESS) {
+    auto rt_ret = rtFree(trans_flag_);
+    if (rt_ret != RT_ERROR_NONE) {
       HIXL_LOGE(FAILED, "Failed to free trans finished flag, ret:%d", rt_ret);
     }
     trans_flag_ = nullptr;
-  }
-  if (host_trans_flag_ != nullptr) {
-    free(host_trans_flag_);
-    // auto rt_ret = aclrtFree(host_trans_flag_);
-    // if (rt_ret != ACL_SUCCESS) {
-    //   HIXL_LOGE(FAILED, "Failed to free HOST trans finished flag, ret:%d", rt_ret);
-    // }
-    host_trans_flag_ = nullptr;
-  }
-  if (dev_trans_flag_ != nullptr) {
-    auto rt_ret = aclrtFree(dev_trans_flag_);
-    if (rt_ret != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "Failed to free DEVICE trans finished flag, ret:%d", rt_ret);
-    }
-    dev_trans_flag_ = nullptr;
   }
 
   if (listen_fd_ != -1) {
@@ -154,7 +103,7 @@ Status HixlCSServer::Finalize() {
   return ret;
 }
 
-Status HixlCSServer::RegisterMem(const char *mem_tag, const HcommMem *mem, MemHandle *mem_handle) {
+Status HixlCSServer::RegisterMem(const char *mem_tag, const HcclMem *mem, MemHandle *mem_handle) {
   HIXL_EVENT("[HixlServer] register mem start, addr:%p, size:%lu, type:%d",
              mem->addr, mem->size, static_cast<int32_t>(mem->type));
   auto all_handles = endpoint_store_.GetAllEndpointHandles();
@@ -211,7 +160,6 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   HIXL_DISMISSABLE_GUARD(failed, ([fd, this]() {
     CreateChannelResp resp{};
     resp.result = FAILED;
-    HIXL_LOGI("[JZY] SendCreateChannelResp start");
     HIXL_CHK_STATUS(SendCreateChannelResp(fd, resp));
   }));
   HIXL_CHECK_NOTNULL(msg);
@@ -224,9 +172,7 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   CreateChannelResp resp{};
   resp.dst_ep_handle = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(handle));
   ChannelHandle channel_handle = 0UL;
-  HIXL_LOGI("[JZY] CreateChannel start");
   HIXL_CHK_STATUS_RET(ep->CreateChannel(req.src, channel_handle), "Failed to create channel");
-  HIXL_LOGI("[JZY] CreateChannel end");
   std::lock_guard<std::mutex> lock(chn_mutex_);
   EndpointChannelInfo info{};
   info.endpoint_handle = handle;
@@ -235,7 +181,6 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   HIXL_DISMISS_GUARD(failed);
   resp.result = SUCCESS;
   HIXL_CHK_STATUS_RET(SendCreateChannelResp(fd, resp), "Failed to send create channel resp");
-  HIXL_LOGI("[HIXLCSSERVER JZY]resp.result=%d", resp.result);
   return SUCCESS;
 }
 

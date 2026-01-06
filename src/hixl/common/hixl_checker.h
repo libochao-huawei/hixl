@@ -13,8 +13,7 @@
 
 #include "hixl/hixl_types.h"
 #include "base/err_msg.h"
-#include "acl/acl.h"
-#include "acl/acl.h"
+#include "runtime/rt.h"
 #include "hixl_log.h"
 
 // If expr is not SUCCESS, print the log and return the same value
@@ -74,7 +73,7 @@
     if (_ret != HCCL_SUCCESS) {                                                                      \
       REPORT_INNER_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_ret)); \
       const auto _hixl_ret = hixl::HcclError2Status(_ret);                                           \
-      HIXL_LOGE(_hixl_ret, "Call hccl api:%s failed, ret: 0x%X", #expr, static_cast<uint32_t>(_ret));          \
+      HIXL_LOGE(_hixl_ret, "Call hccl api failed, ret: 0x%X", static_cast<uint32_t>(_ret));          \
       return _hixl_ret;                                                                              \
     }                                                                                                \
   } while (false)
@@ -85,30 +84,19 @@
     if (_ret != HCCL_SUCCESS) {                                                                      \
       REPORT_INNER_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_ret)); \
       const auto _hixl_ret = hixl::HcclError2Status(_ret);                                           \
-      HIXL_LOGE(_hixl_ret, "Call hccl api:%s failed, ret: 0x%X", #expr, static_cast<uint32_t>(_ret));          \
+      HIXL_LOGE(_hixl_ret, "Call hccl api failed, ret: 0x%X", static_cast<uint32_t>(_ret));          \
     }                                                                                                \
   } while (false)
 
-// If expr is not ACL_SUCCESS, print the log and return FAILED
-#define HIXL_CHK_ACL_RET(expr)                                                                       \
+// If expr is not 0, print the log and return
+#define HIXL_CHK_RT_RET(expr)                                                                        \
   do {                                                                                               \
-    const aclError _ret = (expr);                                                                    \
-    if (_ret != ACL_SUCCESS) {                                                                       \
+    const rtError_t _ret = (expr);                                                                   \
+    if (_ret != RT_ERROR_NONE) {                                                                     \
       REPORT_INNER_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_ret)); \
-      HIXL_LOGE(FAILED, "Call acl api:%s failed, ret: 0x%X", #expr, static_cast<uint32_t>(_ret));              \
+      HIXL_LOGE(FAILED, "Call rt api failed, ret: 0x%X", static_cast<uint32_t>(_ret));               \
       return FAILED;                                                                                 \
     }                                                                                                \
   } while (false)
-
-// If expr != ACL_SUCCESS, print the log and do not return
-#define HIXL_CHK_ACL(expr, ...)                                                                       \
-  do {                                                                                                \
-    const aclError _ret = (expr);                                                                     \
-    if (_ret != ACL_SUCCESS) {                                                                        \
-      REPORT_INNER_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_ret));  \
-      HIXL_LOGE(FAILED, "Call acl api failed, ret: 0x%X. " __VA_ARGS__, static_cast<uint32_t>(_ret)); \
-    }                                                                                                 \
-  } while (false)
-
 
 #endif  // CANN_HIXL_SRC_HIXL_COMMON_HIXL_CHECKER_H_
