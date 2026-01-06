@@ -22,6 +22,7 @@ target_link_libraries(runtime_stub
         mmpa_headers
     PUBLIC
         runtime_headers
+        mmpa_stub
 )
 
 stub_module(runtime runtime_stub)
