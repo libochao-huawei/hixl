@@ -154,7 +154,7 @@ class Channel {
   
   friend class ChannelManager;
   std::mutex transfer_reqs_mutex_;
-  std::map<uint64_t, std::pair<rtEvent_t, rtStream_t>> transfer_reqs_;
+  std::unordered_map<uint64_t, AsyncRecord> req_2_async_record_;
   StreamPool *stream_pool_ = nullptr;
 
   // mutex for fd

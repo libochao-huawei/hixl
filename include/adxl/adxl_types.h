@@ -12,7 +12,10 @@
 #define CANN_GRAPH_ENGINE_INC_EXTERNAL_ADXL_ADXL_TYPES_H_
 
 #include <cstdint>
+#include <chrono>
 #include "external/ge_common/ge_api_error_codes.h"
+#include "adxl/adxl_types.h"
+#include "runtime/rt.h"
 
 #ifdef FUNC_VISIBILITY
 #define ASCEND_FUNC_VISIBILITY __attribute__((visibility("default")))
@@ -79,6 +82,12 @@ struct TransferArgs{
 struct NotifyDesc {
   AscendString name;
   AscendString notify_msg;
+};
+
+using AsyncResource = std::pair<rtStream_t, rtEvent_t>;
+struct AsyncRecord {
+  std::vector<AsyncResource> async_resources;
+  std::chrono::steady_clock::time_point real_start;
 };
 }  // namespace adxl
 
