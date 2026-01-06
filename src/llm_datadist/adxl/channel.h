@@ -160,6 +160,7 @@ class Channel {
   // mutex for fd
   std::mutex va_map_mutex_;
   std::unordered_map<uintptr_t, ShareHandleInfo> new_va_to_old_va_;
+  std::vector<rtDrvMemHandle> remote_pa_handles_;
   void *remote_va_ = nullptr;
   bool enable_use_fabric_mem_ = false;
 };

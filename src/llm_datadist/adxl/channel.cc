@@ -157,6 +157,9 @@ void Channel::ClearImportedMem() {
       LLMLOGE(FAILED, "Call rtReleaseMemAddress ret:%d.", rt_ret);
     }
   }
+  for (auto &remote_pa_handle : remote_pa_handles_) {
+    LLM_CHK_ACL(rtFreePhysical(remote_pa_handle));
+  }
   new_va_to_old_va_.clear();
 }
 
@@ -170,6 +173,7 @@ Status Channel::ImportMem(const std::vector<ShareHandleInfo> &remote_share_handl
     total_len += remote_share_handle_info.len;
   }
   if (total_len > 0U) {
+    LLM_DISMISSABLE_GUARD(fail_guard, ([this]() { ClearImportedMem(); }));
     ADXL_CHK_ACL_RET(rtReserveMemAddress(&remote_va_, total_len, 0, nullptr, kReserveFlagHugePage));
     uintptr_t remote_va_addr = llm::PtrToValue(remote_va_);
     for (auto &remote_share_handle_info : remote_share_handles) {
@@ -177,6 +181,7 @@ Status Channel::ImportMem(const std::vector<ShareHandleInfo> &remote_share_handl
       auto share_handle = remote_share_handle_info.share_handle;
       ADXL_CHK_ACL_RET(rtMemImportFromShareableHandleV2(&share_handle, RT_MEM_SHARE_HANDLE_TYPE_FABRIC, 0U, device_id,
                                                         &remote_pa_handle));
+      remote_pa_handles_.emplace_back(remote_pa_handle);
       ADXL_CHK_ACL_RET(rtMapMem(llm::ValueToPtr(remote_va_addr), remote_share_handle_info.len, 0, remote_pa_handle, 0));
       LLMLOGI("Imported mem from share handle, va:%lu, new mapped va addr:%lu, len:%zu.",
               remote_share_handle_info.va_addr, remote_va_addr, remote_share_handle_info.len);
@@ -184,6 +189,7 @@ Status Channel::ImportMem(const std::vector<ShareHandleInfo> &remote_share_handl
       new_va_to_old_va_[remote_va_addr] = remote_share_handle_info;
       remote_va_addr += remote_share_handle_info.len;
     }
+    LLM_DISMISS_GUARD(fail_guard);
   }
   return SUCCESS;
 }
