@@ -10,6 +10,7 @@
 
 #include "adxl_inner_engine.h"
 #include "runtime/rt.h"
+#include "rt_error_codes.h"
 #include "hccl/hccl_adapter.h"
 #include "common/llm_utils.h"
 #include "common/llm_scope_guard.h"
@@ -33,13 +34,13 @@ constexpr int32_t kConnectWhenTransferTimeout = 3000; // ms
 constexpr size_t kMaxStreams = 512;
 }
 
-Status AdxlInnerEngine::ParseWaterlineRatio(const std::map<AscendString, AscendString>& json_options, 
+Status AdxlInnerEngine::ParseWaterlineRatio(const std::map<AscendString, AscendString>& json_options,
                                             const char* option_name, double& value) {
   auto option_it = json_options.find(option_name);
   if (option_it != json_options.end()) {
-    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(option_it->second.GetString(), value), 
+    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(option_it->second.GetString(), value),
                     "Invalid %s: %s", option_name, option_it->second.GetString());
-    ADXL_CHK_BOOL_RET_STATUS(value > 0.0 && value < 1.0, PARAM_INVALID, 
+    ADXL_CHK_BOOL_RET_STATUS(value > 0.0 && value < 1.0, PARAM_INVALID,
                             "Invalid %s: %.2f (must be 0~1)", option_name, value);
   }
   return SUCCESS;
@@ -49,43 +50,43 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, As
   auto config_it = options.find(hixl::OPTION_GLOBAL_RESOURCE_CONFIG);
   std::map<AscendString, AscendString> json_options;
   if (config_it != options.end()) {
-    ADXL_CHK_STATUS_RET(LoadJsonConfig(config_it->second.GetString(), json_options), 
+    ADXL_CHK_STATUS_RET(LoadJsonConfig(config_it->second.GetString(), json_options),
                         "Failed to load JSON config from file: %s", config_it->second.GetString());
   }
 
   int32_t max_channel = kDefaultMaxChannel;
   auto max_it = json_options.find(adxl::OPTION_MAX_CHANNEL);
   if (max_it != json_options.end()) {
-    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(max_it->second.GetString(), max_channel), 
+    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(max_it->second.GetString(), max_channel),
                     "Invalid max_channel: %s", max_it->second.GetString());
     ADXL_CHK_BOOL_RET_STATUS(max_channel > 0, PARAM_INVALID, "Invalid max_channel: %d (must be > 0)", max_channel);
-    ADXL_CHK_BOOL_RET_STATUS(max_channel <= kDefaultMaxChannel, PARAM_INVALID, 
+    ADXL_CHK_BOOL_RET_STATUS(max_channel <= kDefaultMaxChannel, PARAM_INVALID,
                              "Invalid max_channel: %d (must be <= %d)", max_channel, kDefaultMaxChannel);
   }
 
   double high_waterline_ratio = -1.0;
-  ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_HIGH_WATERLINE, 
-                                          high_waterline_ratio), 
+  ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_HIGH_WATERLINE,
+                                          high_waterline_ratio),
                       "Failed to parse high_waterline");
 
   double low_waterline_ratio = -1.0;
-  ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_LOW_WATERLINE, 
-                                          low_waterline_ratio), 
+  ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_LOW_WATERLINE,
+                                          low_waterline_ratio),
                       "Failed to parse low_waterline");
   user_config_channel_pool_ = (high_waterline_ratio > 0.0 && high_waterline_ratio < 1.0) &&
                               (low_waterline_ratio > 0.0 && low_waterline_ratio < 1.0);
   if (user_config_channel_pool_) {
     const int32_t high_waterline = std::max(static_cast<int32_t>(max_channel * high_waterline_ratio), 1);
     const int32_t low_waterline = std::max(static_cast<int32_t>(max_channel * low_waterline_ratio), 1);
-    ADXL_CHK_BOOL_RET_STATUS(high_waterline - low_waterline >= 1, PARAM_INVALID, 
-                          "high_waterline (%.2f) must be at least 1 greater than low_waterline (%.2f) when calculated", 
+    ADXL_CHK_BOOL_RET_STATUS(high_waterline - low_waterline >= 1, PARAM_INVALID,
+                          "high_waterline (%.2f) must be at least 1 greater than low_waterline (%.2f) when calculated",
                           high_waterline_ratio, low_waterline_ratio);
     msg_handler_.SetUserChannelPoolConfig();
     msg_handler_.SetHighWaterline(high_waterline);
     msg_handler_.SetLowWaterline(low_waterline);
     msg_handler_.SetMaxChannel(max_channel);
   } else {
-    ADXL_CHK_BOOL_RET_STATUS(max_it == json_options.end(), PARAM_INVALID, 
+    ADXL_CHK_BOOL_RET_STATUS(max_it == json_options.end(), PARAM_INVALID,
                             "Max channel should be set together with high&low waterlines.");
   }
   return SUCCESS;
@@ -394,7 +395,7 @@ Status AdxlInnerEngine::ConnectWhenTransfer(const AscendString &remote_engine, i
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - start_time).count();
     if(elapsed >= timeout_in_millis) {
-      LLMEVENT("Channel is still disconneting after timeout, remote_engine: %s, timeout: %d", 
+      LLMEVENT("Channel is still disconneting after timeout, remote_engine: %s, timeout: %d",
                 remote_engine.GetString(), timeout_in_millis);
       return FAILED;
     }
@@ -439,7 +440,10 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
   }));
   if (fabric_mem_transfer_service_ != nullptr) {
     std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
-    return fabric_mem_transfer_service_->Transfer(channel, operation, op_descs, timeout_in_millis);
+    auto ret = fabric_mem_transfer_service_->Transfer(channel, operation, op_descs, timeout_in_millis);
+    ADXL_CHK_BOOL_RET_STATUS(ret != ACL_ERROR_RT_SUSPECT_REMOTE_ERROR, ACL_ERROR_RT_SUSPECT_REMOTE_ERROR,
+                             "Probably caused by temporary sdma error, please try again.");
+    return ret;
   }
   if (buffer_transfer_service_ != nullptr) {
     const auto start = std::chrono::steady_clock::now();
@@ -522,6 +526,10 @@ Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus
       channel->DecrementTransferCount();
     }
     req2channel_.erase(it);
+  }
+  if (fabric_mem_transfer_service_ != nullptr) {
+    ADXL_CHK_BOOL_RET_STATUS(ret != ACL_ERROR_RT_SUSPECT_REMOTE_ERROR, ACL_ERROR_RT_SUSPECT_REMOTE_ERROR,
+                             "Probably caused by temporary sdma error, please try again.");
   }
   ADXL_CHK_STATUS_RET(ret, "Failed to get transfer status, req: %llu, remote_engine:%s",
                       id, remote_engine.GetString());
