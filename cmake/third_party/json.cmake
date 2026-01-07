@@ -32,6 +32,7 @@ find_package_handle_standard_args(json
 
 if(json_FOUND AND NOT FORCE_REBUILD_CANN_3RD)
     message("json found in ${JSON_INSTALL_PATH}, and not force rebuild cann third_party")
+    message("111111111111111111111000json")
     set(JSON_INCLUDE_DIR ${JSON_INCLUDE})
     add_library(json INTERFACE IMPORTED)
     set_target_properties(json PROPERTIES
@@ -39,6 +40,7 @@ if(json_FOUND AND NOT FORCE_REBUILD_CANN_3RD)
 else()
     set(REQ_URL "https://gitcode.com/cann-src-third-party/json/releases/download/v3.11.3/include.zip")
     message("json not found in ${JSON_INSTALL_PATH}, begin load from ${REQ_URL}")
+    message("1111111111111111111110001111111json")
 
     file(MAKE_DIRECTORY ${JSON_DOWNLOAD_PATH})
     file(DOWNLOAD 

@@ -18,6 +18,7 @@ endif()
 # 默认配置的makeself还是不存在则下载
 if (NOT EXISTS "${MAKESELF_PATH}/makeself-header.sh" OR NOT EXISTS "${MAKESELF_PATH}/makeself.sh")
     set(MAKESELF_URL "https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz")
+    message("11111111111111111111100011111make")
     message(STATUS "Downloading ${MAKESELF_NAME} from ${MAKESELF_URL}")
 
     include(FetchContent)
@@ -35,6 +36,7 @@ if (NOT EXISTS "${MAKESELF_PATH}/makeself-header.sh" OR NOT EXISTS "${MAKESELF_P
         ERROR_VARIABLE CHMOD_ERROR
     )
 else()
+message("111111111111111111111000make")
     execute_process(
         COMMAND cp -fr ${MAKESELF_PATH} ${CMAKE_BINARY_DIR}
         COMMAND chmod 700 "${CMAKE_BINARY_DIR}/makeself/makeself.sh"
