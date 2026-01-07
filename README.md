@@ -79,3 +79,4 @@ HIXL（Huawei Xfer Library）是一个灵活、高效的昇腾单边通信库，
 - [贡献指南](CONTRIBUTING.md)
 - [安全声明](SECURITY.md)
 - [许可证](LICENSE)
+
