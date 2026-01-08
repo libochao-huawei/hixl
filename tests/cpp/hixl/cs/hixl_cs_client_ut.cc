@@ -48,7 +48,7 @@ static constexpr uint32_t kTimeOutOne = 1000U;
 static constexpr char kGetRemoteMemStr0[] = "_hixl_builtin_dev_trans_flag";
 static constexpr char kGetRemoteMemStr1[] = "a";
 static constexpr char kGetRemoteMemStr2[] = "b";
-static HcommMem gRemoteSentinel{};
+static HcclMem gRemoteSentinel{};
 static char *gTagsSentinel[1] = {nullptr};
 static constexpr uint32_t kNumSentinel = 123U;
 enum class MiniSrvMode : uint32_t {
@@ -363,9 +363,9 @@ class MiniServer {
     return R"({
     "result": 0,
     "mem_descs": [
-      { "tag": "_hixl_builtin_dev_trans_flag", "export_desc": [97,98,99,100], "mem": { "type": 0, "addr": 4096, "size": 8 } },
-      { "tag": "a", "export_desc": [101,102,103,104], "mem": { "type": 0, "addr": 1, "size": 1 } },
-      { "tag": "b", "export_desc": [105,106,107,108], "mem": { "type": 1, "addr": 2, "size": 1 } }
+      { "tag": "_hixl_builtin_dev_trans_flag", "export_desc": "abcd", "mem": { "type": 0, "addr": 4096, "size": 8 } },
+      { "tag": "a", "export_desc": "efgh", "mem": { "type": 0, "addr": 1, "size": 1 } },
+      { "tag": "b", "export_desc": "ijkl", "mem": { "type": 1, "addr": 2, "size": 1 } }
     ]
   })";
   }
@@ -374,9 +374,9 @@ class MiniServer {
     return R"({
     "result": 0,
     "mem_descs": [
-      { "tag": "_hixl_builtin_dev_trans_flag", "export_desc": [109,110,111,112], "mem": { "type": 0, "addr": 8192, "size": 8 } },
-      { "tag": "a", "export_desc": [113,114,115,116], "mem": { "type": 0, "addr": 11, "size": 2 } },
-      { "tag": "b", "export_desc": [117,118,119,120], "mem": { "type": 1, "addr": 22, "size": 3 } }
+      { "tag": "_hixl_builtin_dev_trans_flag", "export_desc": "mnop", "mem": { "type": 0, "addr": 8192, "size": 8 } },
+      { "tag": "a", "export_desc": "qrst", "mem": { "type": 0, "addr": 11, "size": 2 } },
+      { "tag": "b", "export_desc": "uvwx", "mem": { "type": 1, "addr": 22, "size": 3 } }
     ]
   })";
   }
@@ -387,19 +387,18 @@ class MiniServer {
       return;
     }
     if (mem_mode_ == MiniSrvMode::kGetRemoteMemResp_ExportDescEmpty) {
-      json_str = R"({"result":0,"mem_descs":[{"tag":"a","export_desc":[],"mem":{"type":0,"addr":1,"size":1}}]})";
+      json_str = R"({"result":0,"mem_descs":[{"tag":"a","export_desc":"","mem":{"type":0,"addr":1,"size":1}}]})";
       return;
     }
     if (mem_mode_ == MiniSrvMode::kGetRemoteMemResp_DuplicateAddr) {
       json_str =
-          R"({"result":0,"mem_descs":[{"tag":"a","export_desc":[120,120],"mem":{"type":0,"addr":1,"size":1}},{"tag":"b","export_desc":[121,121],"mem":{"type":0,"addr":1,"size":1}}]})";
+          R"({"result":0,"mem_descs":[{"tag":"a","export_desc":"xx","mem":{"type":0,"addr":1,"size":1}},{"tag":"b","export_desc":"yy","mem":{"type":0,"addr":1,"size":1}}]})";
       return;
     }
     if (mem_mode_ == MiniSrvMode::kGetRemoteMemResp_MemImportFail) {
-      json_str = R"({"result":0,"mem_descs":[{"tag":"a","export_desc":[70,65,73,76],"mem":{"type":0,"addr":1,"size":1}}]})";
+      json_str = R"({"result":0,"mem_descs":[{"tag":"a","export_desc":"FAIL","mem":{"type":0,"addr":1,"size":1}}]})";
     }
   }
-
   bool HandleGetRemoteMemExceptionModes(int fd, CtrlMsgHeader &resp_hdr, CtrlMsgType &resp_type,
                                         std::string &json_str) {
     switch (mem_mode_) {
@@ -497,11 +496,11 @@ class MiniServer {
   MiniSrvMode mem_mode_{MiniSrvMode::kNormal};
 };
 
-static EndpointDesc MakeIdEp(uint32_t id) {
-  EndpointDesc ep{};
-  ep.protocol = COMM_PROTOCOL_UBC_CTP;
-  ep.commAddr.type = COMM_ADDR_TYPE_ID;
-  ep.commAddr.id = id;
+static EndPointInfo MakeIdEp(uint32_t id) {
+  EndPointInfo ep{};
+  ep.protocol = COMM_PROTOCOL_UB_CTP;
+  ep.addr.type = COMM_ADDR_TYPE_ID;
+  ep.addr.id = id;
   return ep;
 }
 
@@ -535,8 +534,8 @@ class HixlCSClientUT : public ::testing::Test {
   }
 
  protected:
-  EndpointDesc src_{};
-  EndpointDesc dst_{};
+  EndPointInfo src_{};
+  EndPointInfo dst_{};
   MiniServer server_;
   uint16_t port_{0};
   HixlCSClient client_;
@@ -628,7 +627,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailWithoutConnect) {
   StartServer(MiniSrvMode::kNormal, MiniSrvMode::kNormal);
   CreateClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -651,7 +650,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailNullListNum) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   EXPECT_NE(client_.GetRemoteMem(&remote, &tags, nullptr, kTimeOutOne), SUCCESS);
 }
@@ -661,7 +660,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemSuccessNormalWithTags) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -679,7 +678,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemSuccessNormalNoTagsOutParam) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   uint32_t num = kZero;
 
   EXPECT_NE(client_.GetRemoteMem(&remote, nullptr, &num, kTimeOutOne), SUCCESS);
@@ -690,7 +689,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemSuccessEmptyList) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = &gRemoteSentinel;
+  HcclMem *remote = &gRemoteSentinel;
   char **tags = gTagsSentinel;
   uint32_t num = kNumSentinel;
 
@@ -705,7 +704,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailBadMagic) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -718,7 +717,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailBadMsgType) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -730,7 +729,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailBadBodySizeTooSmall) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -742,7 +741,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailBadJson) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -754,7 +753,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailMissingFieldResult) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -766,7 +765,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailMissingFieldMemDescs) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -778,7 +777,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailResultNotSuccess) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -790,7 +789,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailExportDescEmptyTriggersImportCheck) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -805,7 +804,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailDuplicateAddrRecordMemoryConflict) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
   // 传入重复server地址时，不报错，跳过内存记录
@@ -817,12 +816,12 @@ TEST_F(HixlCSClientUT, GetRemoteMemSuccessTwiceCoversClearRemoteMemInfo) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote1 = nullptr;
+  HcclMem *remote1 = nullptr;
   char **tags1 = nullptr;
   uint32_t num1 = 0;
   ASSERT_EQ(client_.GetRemoteMem(&remote1, &tags1, &num1, kTimeOutOne), SUCCESS);
 
-  HcommMem *remote2 = nullptr;
+  HcclMem *remote2 = nullptr;
   char **tags2 = nullptr;
   uint32_t num2 = 0;
   ASSERT_EQ(client_.GetRemoteMem(&remote2, &tags2, &num2, kTimeOutOne), SUCCESS);
@@ -837,7 +836,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemTwiceAltMemResponse) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote1 = nullptr;
+  HcclMem *remote1 = nullptr;
   char **tags1 = nullptr;
   uint32_t num1 = 0;
   ASSERT_EQ(client_.GetRemoteMem(&remote1, &tags1, &num1, kTimeOutOne), SUCCESS);
@@ -846,7 +845,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemTwiceAltMemResponse) {
   // 第一次：flag addr=4096
   EXPECT_EQ(reinterpret_cast<uint64_t>(remote1[0].addr), 4096ULL);
 
-  HcommMem *remote2 = nullptr;
+  HcclMem *remote2 = nullptr;
   char **tags2 = nullptr;
   uint32_t num2 = kZero;
   ASSERT_EQ(client_.GetRemoteMem(&remote2, &tags2, &num2, kTimeOutOne), SUCCESS);
@@ -856,13 +855,13 @@ TEST_F(HixlCSClientUT, GetRemoteMemTwiceAltMemResponse) {
   EXPECT_EQ(reinterpret_cast<uint64_t>(remote2[0].addr), 8192ULL);
 }
 
-TEST_F(HixlCSClientUT, GetRemoteMemFailAfterDestroy) {
+TEST_F(HixlCSClientUT, GetRemoteMem_Fail_AfterDestroy) {
   StartServer(MiniSrvMode::kNormal, MiniSrvMode::kNormal);
   CreateClient();
   ConnectClient();
   ASSERT_EQ(client_.Destroy(), SUCCESS);
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
   EXPECT_NE(client_.GetRemoteMem(&remote, &tags, &num, kTimeOutOne), SUCCESS);
@@ -873,7 +872,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailMemImportFailedRollbackCovered) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -892,7 +891,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailTagCStringAllocFailedRollbackCovered) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = &gRemoteSentinel;
+  HcclMem *remote = &gRemoteSentinel;
   char **tags = gTagsSentinel;
   uint32_t num = kNumSentinel;
 
@@ -913,7 +912,7 @@ TEST_F(HixlCSClientUT, DestroySuccessIdempotent) {
   CreateClient();
   ConnectClient();
 
-  HcommMem *remote = nullptr;
+  HcclMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
   ASSERT_EQ(client_.GetRemoteMem(&remote, &tags, &num, kTimeOutOne), SUCCESS);

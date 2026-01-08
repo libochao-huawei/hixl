@@ -90,8 +90,8 @@ static Status CheckRespResultAndSetHandle(const CreateChannelResp &resp, uint64_
   return SUCCESS;
 }
 
-Status ConnMsgHandler::SendCreateChannelRequest(int32_t socket, const EndpointDesc &src_endpoint,
-                                                const EndpointDesc &dst_endpoint) {
+Status ConnMsgHandler::SendCreateChannelRequest(int32_t socket, const EndPointInfo &src_endpoint,
+                                                const EndPointInfo &dst_endpoint) {
   HIXL_EVENT("SendCreateChannelRequest start. socket: %d", socket);
   CtrlMsgHeader header{};
   header.magic = kMagicNumber;

@@ -136,11 +136,17 @@ HcclResult HcommEndPointCreate(const EndPointInfo *end_point, void **end_point_h
 
 HcclResult HcommEndPointDestroy(void *end_point_handle);
 
+HcclResult HcommMemImport(void *end_point_handle, const void *mem_desc, uint32_t desc_len, HcommBuf *out_buf);
+
+HcclResult HcommMemClose(void *endPointHandle, const HcommBuf *buf);
+
 HcclResult HcommChannelCreate(void **end_point_handle, CommEngine engine, HcommChannelDescNew *channel_desc_list,
                               uint32_t list_num, const void **mem_handle_list, uint32_t mem_handle_list_num,
                               ChannelHandle *channel_list);
 
 HcclResult HcommChannelDestroy(const ChannelHandle *channel_list, uint32_t list_num);
+
+HcclResult HcommChannelGetStatus(const ChannelHandle *channel_list, uint32_t list_num, int32_t *status_list);
 
 #ifdef __cplusplus
 }

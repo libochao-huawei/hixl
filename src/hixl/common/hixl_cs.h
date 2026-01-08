@@ -79,6 +79,45 @@ HixlStatus HixlCSServerUnregMem(HixlServerHandle server_handle, MemHandle mem_ha
  */
 HixlStatus HixlCSServerDestroy(HixlServerHandle server_handle);
 
+/**
+ * @brief 创建 Client 实例
+ * @param [in] server_ip 服务端的监听ip地址
+ * @param [in] server_port 服务端的监听端口号
+ * @param [in] src_endpoint 源端点
+ * @param [in] dst_endpoint 目标端点
+ * @param [out] client_handle 输出的客户端句柄
+ * @return 成功:SUCCESS, 失败:其它.
+ */
+HixlStatus HixlCSClientCreate(const char *server_ip, uint32_t server_port, const EndPointInfo *src_endpoint,
+                              const EndPointInfo *dst_endpoint, HixlClientHandle *client_handle);
+
+/**
+ * @brief 发起 Client 连接（同步建链入口）
+ * @param [in] client_handle 客户端句柄
+ * @param [in] timeout_ms   连接超时时间（ms）
+ * @return 成功:SUCCESS, 失败:其它.
+ */
+HixlStatus HixlCSClientConnectSync(HixlClientHandle client_handle, uint32_t timeout_ms);
+
+/**
+ * @brief 获取服务端共享内存信息
+ * @param [in] client_handle 客户端句柄
+ * @param [out] remote_mem_list 输出的服务端共享内存列表
+ * @param [out] mem_tag_list 输出的服务端共享内存标识列表
+ * @param [out] list_num 输出的共享内存实际数量
+ * @param [in] timeout_ms 请求的超时时间（ms）
+ * @return 成功:SUCCESS, 失败:其它.
+ */
+HixlStatus HixlCSClientGetRemoteMem(HixlClientHandle client_handle, HcclMem **remote_mem_list, char ***mem_tag_list,
+                                    uint32_t *list_num, uint32_t timeout_ms);
+
+/**
+ * @brief 销毁 Client 实例
+ * @param [in] client_handle 客户端句柄
+ * @return 成功:SUCCESS, 失败:其它.
+ */
+HixlStatus HixlCSClientDestroy(HixlClientHandle client_handle);
+
 #ifdef __cplusplus
 }
 #endif

@@ -132,7 +132,7 @@ Status ParseResultAndGetArray(const nlohmann::json &j, const nlohmann::json *&ar
   }
 }
 
-Status ParseMemObject(const nlohmann::json &j_mem, HcommMem &mem) {
+Status ParseMemObject(const nlohmann::json &j_mem, HcclMem &mem) {
   try {
     if (!j_mem.contains("type") || !j_mem.contains("addr") || !j_mem.contains("size")) {
       HIXL_LOGE(PARAM_INVALID, "[HixlClient] GetRemoteMemResp.mem missing 'type' / 'addr' / 'size'");
@@ -153,40 +153,27 @@ Status ParseMemObject(const nlohmann::json &j_mem, HcommMem &mem) {
   }
 }
 
-Status FillExportDescFromJsonField(const nlohmann::json &j_export, hixl::HixlMemDesc &desc)
-{
-  desc.export_desc = nullptr;
-  desc.export_len = 0U;
-  if (!j_export.is_array()) {
-    HIXL_LOGE(PARAM_INVALID, "[HixlClient] export_desc must be array");
-    return PARAM_INVALID;
-  }
-  const size_t n = j_export.size();
-  if (n == 0U) {
+Status FillExportDescFromString(const std::string &export_str, hixl::HixlMemDesc &desc) {
+  desc.export_len = static_cast<uint32_t>(export_str.size());
+  if (desc.export_len == 0U) {
+    desc.export_desc = nullptr;
     return SUCCESS;
   }
-  void *buf = std::malloc(n);
+
+  void *buf = std::malloc(desc.export_len);
   if (buf == nullptr) {
-    HIXL_LOGE(FAILED, "[HixlClient] malloc export_desc buffer failed, len=%zu", n);
+    HIXL_LOGE(FAILED, "[HixlClient] malloc export_desc buffer failed, len=%u", desc.export_len);
     return FAILED;
   }
-  uint8_t *dst = static_cast<uint8_t *>(buf);
-  for (size_t i = 0; i < n; ++i) {
-    if (!j_export[i].is_number_integer()) {
-      HIXL_LOGE(PARAM_INVALID, "[HixlClient] export_desc[%zu] is not integer", i);
-      std::free(buf);
-      return PARAM_INVALID;
-    }
-    const int v = j_export[i].get<int>();
-    if (v < 0 || v > 255) {
-      HIXL_LOGE(PARAM_INVALID, "[HixlClient] export_desc[%zu]=%d out of range [0,255]", i, v);
-      std::free(buf);
-      return PARAM_INVALID;
-    }
-    dst[i] = static_cast<uint8_t>(v);
+
+  errno_t rc = memcpy_s(buf, desc.export_len, export_str.data(), desc.export_len);
+  if (rc != EOK) {
+    HIXL_LOGE(FAILED, "[HixlClient] memcpy_s export_desc failed, rc=%d, len=%u", static_cast<int32_t>(rc), desc.export_len);
+    std::free(buf);
+    return FAILED;
   }
+
   desc.export_desc = buf;
-  desc.export_len = static_cast<uint32_t>(n);
   return SUCCESS;
 }
 
@@ -196,12 +183,13 @@ Status ParseOneMemDesc(const nlohmann::json &item, uint32_t idx, hixl::HixlMemDe
       HIXL_LOGE(PARAM_INVALID, "[HixlClient] GetRemoteMemResp.mem_descs[%u] missing 'tag' / 'export_desc' or 'mem'", idx);
       return PARAM_INVALID;
     }
-    HcommMem mem{};
+    HcclMem mem{};
     Status ret = ParseMemObject(item["mem"], mem);
     HIXL_CHK_STATUS_RET(ret);
     out.mem = mem;
     out.tag = item["tag"].get<std::string>();
-    return FillExportDescFromJsonField(item["export_desc"], out);
+    const std::string export_str = item["export_desc"].get<std::string>();
+    return FillExportDescFromString(export_str, out);
   } catch (const nlohmann::json::exception &e) {
     HIXL_LOGE(PARAM_INVALID, "[HixlClient] JSON error in ParseOneMemDesc[%u]: %s", idx, e.what());
     return PARAM_INVALID;
