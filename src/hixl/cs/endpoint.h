@@ -38,8 +38,10 @@ class Endpoint {
   Status ExportMem(std::vector<HixlMemDesc> &mem_descs);
 
   Status CreateChannel(const EndPointInfo &remote_endpoint, ChannelHandle &channel_handle);
+  Status GetChannelStatus(ChannelHandle channel_handle, int32_t *status_out);
   Status DestroyChannel(ChannelHandle channel_handle);
   Status GetMemDesc(MemHandle mem_handle, HixlMemDesc &desc);
+  Status MemImport(const void *mem_desc, uint32_t desc_len, HcommBuf &out_buf);
 
  private:
   std::mutex mutex_;

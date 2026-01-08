@@ -113,6 +113,15 @@ Status Endpoint::CreateChannel(const EndPointInfo &remote_endpoint, ChannelHandl
   return SUCCESS;
 }
 
+Status Endpoint::GetChannelStatus(ChannelHandle channel_handle, int32_t *status_out) {
+  HIXL_CHECK_NOTNULL(status_out);
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = channels_.find(channel_handle);
+  HIXL_CHK_BOOL_RET_STATUS(it != channels_.end(), PARAM_INVALID,
+                           "GetChannelStatus failed, channel not found, handle=%lu", channel_handle);
+  return it->second->GetStatus(channel_handle, status_out);
+}
+
 Status Endpoint::DestroyChannel(ChannelHandle channel_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto it = channels_.find(channel_handle);
@@ -124,6 +133,15 @@ Status Endpoint::DestroyChannel(ChannelHandle channel_handle) {
 
   channels_.erase(it);
   HIXL_LOGI("Endpoint::DestroyChannel success, handle=%lu", channel_handle);
+  return SUCCESS;
+}
+
+Status Endpoint::MemImport(const void *mem_desc, uint32_t desc_len, HcommBuf &out_buf) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHECK_NOTNULL(handle_);
+  HIXL_CHECK_NOTNULL(mem_desc);
+
+  HIXL_CHK_HCCL_RET(HcommMemImport(handle_, mem_desc, desc_len, &out_buf));
   return SUCCESS;
 }
 

@@ -51,6 +51,29 @@ HcclResult HcommEndPointDestroy(void *handle) {
   return HCCL_SUCCESS;
 }
 
+HcclResult HcommMemImport(void *end_point_handle, const void *mem_desc, uint32_t desc_len, HcommBuf *out_buf) {
+  (void)end_point_handle;
+  (void)desc_len;
+
+  if (mem_desc == nullptr || out_buf == nullptr || desc_len == 0) {
+    return HCCL_E_INTERNAL;
+  }
+
+  if (desc_len == 4 && std::memcmp(mem_desc, "FAIL", 4) == 0) {
+    return HCCL_E_INTERNAL;
+  }
+
+  out_buf->addr = const_cast<void *>(mem_desc);
+  out_buf->len = desc_len;
+  return HCCL_SUCCESS;
+}
+
+HcclResult HcommMemClose(void *endPointHandle, const HcommBuf *buf) {
+  (void)endPointHandle;
+  (void)buf;
+  return HCCL_SUCCESS;
+}
+
 HcclResult HcommChannelCreate(void **end_point_handle, CommEngine engine, HcommChannelDescNew *channel_desc_list,
                               uint32_t list_num, const void **mem_handle_list, uint32_t mem_handle_list_num,
                               ChannelHandle *channel_list) {
@@ -68,6 +91,13 @@ HcclResult HcommChannelCreate(void **end_point_handle, CommEngine engine, HcommC
 HcclResult HcommChannelDestroy(const ChannelHandle *channel_list, uint32_t list_num) {
   (void)channel_list;
   (void)list_num;
+  return HCCL_SUCCESS;
+}
+
+HcclResult HcommChannelGetStatus(const ChannelHandle *channel_list, uint32_t list_num, int32_t *status_list) {
+  (void)channel_list;
+  (void)list_num;
+  (void)status_list;
   return HCCL_SUCCESS;
 }
 
