@@ -12,11 +12,17 @@
 #include <cstdio>
 #include <thread>
 #include <iostream>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+
 #include "acl/acl.h"
 #include "llm_datadist/llm_datadist.h"
 
 using namespace llm_datadist;
 namespace {
+constexpr uint16_t kSocketListenPort = 16001;
 constexpr uint16_t kDecoderListenPort = 26001;
 constexpr uint16_t kPromptClusterId = 0;
 constexpr uint32_t kNumTensors = 4U;
@@ -134,6 +140,57 @@ int32_t PushCache(LlmDataDist &llm_datadist, int64_t cache_id) {
   return 0;
 }
 
+int32_t TransferDataBySocket(const char *remote_ip, const std::vector<int32_t> buffers) {
+  // 创建socket
+  int32_t client_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (client_fd == -1) {
+    std::cerr << "[ERROR] Create socket failed" << std::endl; 
+    return -1;
+  }
+
+  sockaddr_in server_addr{};
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_port = htons(kSocketListenPort);
+  if (inet_addr(remote_ip) == INADDR_NONE) {
+    std::cerr << "[ERROR] Invalid server ip: " << remote_ip << std::endl;
+  } else {
+    server_addr.sin_addr.s_addr = inet_addr(remote_ip);
+  }
+
+  // 连接服务器
+  uint16_t retry_times = 5;
+  uint16_t i = 0;
+  while (i < retry_times) {
+    auto ret = connect(client_fd, reinterpret_cast<sockaddr *>(&server_addr), sizeof(server_addr));
+    if (ret < 0) {
+      std::cout << "[WARNING] Connect to tcp server failed, retry_times: " << i << std::endl;
+      i++;
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    } else {
+      std::cout << "[INFO] Connect to tcp server success" << std::endl;
+      break;
+    }
+  }
+
+  if (i == retry_times) {
+    std::cerr << "[ERROR] Connect to tcp server failed" << std::endl;
+    close(client_fd);
+    return -1;
+  }
+
+  // 按vector发送数据
+  for (int32_t buffer_data : buffers) {
+    int32_t network_dtata = htobe32(buffer_data);
+    if (send(client_fd, &network_dtata, sizeof(int32_t), 0) < 0) {
+      std::cerr << "[ERROR] Send data to tcp server failed" << std::endl;
+      return -1;
+    }
+  }
+  std::cout << "[INFO] Send data to tcp server success" << std::endl;
+  close(client_fd);
+  return 0;
+}
+
 void Finalize(LlmDataDist &llm_datadist, int64_t cache_id, bool linked, const char *remote_ip,
               const std::vector<void *> buffers) {
   if (linked) {
@@ -173,15 +230,14 @@ int32_t RunPromptSample(const char *device_id, const char *local_ip, const char 
   cache_desc.shape = kTensorShape;
   std::vector<uint64_t> tensor_addrs;
   std::vector<void *> buffers;
+  std::vector<int32_t> host_buffer(kTensorSize / sizeof(int32_t));
+  std::iota(host_buffer.begin(), host_buffer.end(), 0);
   for (uint32_t i = 0U; i < kNumTensors; ++i) {
     int32_t *buffer = nullptr;
     CHECK_ACL(aclrtMalloc((void **)&buffer, kTensorSize, ACL_MEM_MALLOC_HUGE_ONLY));
 
     // init device buffer
-    std::vector<int32_t> host_buffer(kTensorSize / sizeof(int32_t));
-    std::iota(host_buffer.begin(), host_buffer.end(), 0);
     CHECK_ACL(aclrtMemcpy(buffer, kTensorSize, &host_buffer[0], kTensorSize, ACL_MEMCPY_HOST_TO_DEVICE));
-
     tensor_addrs.emplace_back(reinterpret_cast<uint64_t>(buffer));
     buffers.emplace_back(reinterpret_cast<void *>(buffer));
   }
@@ -202,6 +258,12 @@ int32_t RunPromptSample(const char *device_id, const char *local_ip, const char 
   // 等待decoder注册完成
   std::this_thread::sleep_for(std::chrono::seconds(kWaitTime));
 
+  // 通过socket传输buffer数据用于后续验证push结果正确性
+  if (TransferDataBySocket(remote_ip, host_buffer) != 0) {
+    Finalize(llm_datadist, cache_id, false, remote_ip, buffers);
+    return -1;
+  }
+
   // 4. 与decoder建链
   if (Link(llm_datadist, local_ip, remote_ip) != 0) {
     Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
@@ -217,7 +279,6 @@ int32_t RunPromptSample(const char *device_id, const char *local_ip, const char 
 
   // 6. 释放Cache与llmDataDist
   Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
-  printf("[INFO] Prompt Sample end\n");
   return 0;
 }
 
@@ -231,5 +292,6 @@ int main(int32_t argc, char **argv) {
   const auto remote_ip = argv[kArgIndexRemoteIp];
   printf("[INFO] device_id = %s, local_ip = %s, remote_ip = %s\n", device_id, local_ip, remote_ip);
   auto ret = RunPromptSample(device_id, local_ip, remote_ip);
+  printf("[INFO] Prompt Sample end\n");
   return ret;
 }

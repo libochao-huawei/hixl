@@ -59,6 +59,16 @@ def run_prompt_sample(datadist):
                            placement=Placement.DEVICE)
     tensor = torch.ones(BLOCKS_NUM, KV_SHAPE, dtype=torch.float).npu()
     tensor2 = torch.ones(BLOCKS_NUM, KV_SHAPE, dtype=torch.float).npu()
+    
+    # 先通过torch.distributed传输用于后续数据精度校验
+    raw_recv = torch.zeros(BLOCKS_NUM, KV_SHAPE, dtype=torch.float)
+    raw_recv2 = torch.zeros(BLOCKS_NUM, KV_SHAPE, dtype=torch.float)
+    dist.recv(raw_recv, src=DECODER_CLUSTER_ID)
+    dist.recv(raw_recv2, src=DECODER_CLUSTER_ID)
+    
+    logging.info(f'Data before decoder push, tensor={raw_recv}')
+    logging.info(f'Data before decoder push, tensor2={raw_recv2}')
+    
     addr = int(tensor.data_ptr())
     addr2 = int(tensor2.data_ptr())
     cache = cache_manager.register_blocks_cache(cache_desc, [addr, addr2], BlocksCacheKey(PROMPT_CLUSTER_ID, 0))
@@ -69,8 +79,8 @@ def run_prompt_sample(datadist):
     # 2. 等decoder pull blocks
     dist.barrier() # decoder push blocks end
 
-    logging.info(f'after decoder push, tensor={tensor.cpu()}')
-    logging.info(f'after decoder push, tensor2={tensor2.cpu()}')
+    logging.info(f'Data after decoder push, tensor={tensor.cpu()}')
+    logging.info(f'Data after decoder push, tensor2={tensor2.cpu()}')
 
     # 3. 解链
     cluster = LLMClusterInfo()
@@ -91,6 +101,11 @@ def run_decoder_sample(datadist, local_host_ip, remote_host_ip):
                            placement=Placement.DEVICE)
     tensor = torch.full((BLOCKS_NUM, KV_SHAPE), 0, dtype=torch.float).npu()
     tensor2 = torch.full((BLOCKS_NUM, KV_SHAPE), 0, dtype=torch.float).npu()
+    
+    # 先通过torch.distributed传输用于后续数据精度校验
+    dist.send(tensor=tensor.cpu(), dst=PROMPT_CLUSTER_ID)
+    dist.send(tensor=tensor2.cpu(), dst=PROMPT_CLUSTER_ID)
+    
     addr = int(tensor.data_ptr())
     addr2 = int(tensor2.data_ptr())
     cache = cache_manager.register_blocks_cache(cache_desc, [addr, addr2], BlocksCacheKey(DECODER_CLUSTER_ID, 0))
