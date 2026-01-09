@@ -16,6 +16,7 @@
 #include "hccl/hccl_types.h"
 #include "hixl/hixl_types.h"
 #include "hixl_cs.h"
+#include "hixl_inner_types.h"
 
 namespace hixl {
 template <typename _Tp, typename... _Args>
@@ -40,6 +41,12 @@ template <typename T, typename... Args>
 inline typename MakeUniq<T>::invalid_type MakeUnique(Args &&...) = delete;
 
 Status HcclError2Status(HcclResult ret);
+
+Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndPointInfo &endpoint);
+
+Status ParseIpAddress(const std::string &ip_str, CommAddr &addr);
+
+Status SerializeEndPointConfigList(const std::vector<EndPointConfig> &list, std::string &msg_str);
 }  // namespace hixl
 
 #endif  // CANN_HIXL_SRC_HIXL_COMMON_HIXL_UTILS_H_
