@@ -1,5 +1,5 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
+* Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 #include "common/hixl_checker.h"
 #include "hixl_mem_store.h"
 namespace hixl {
-Status HixlMemStore::RecordMemory(bool is_server, const void *addr, size_t size) {
+Status HixlMemStore::RecordMemory(bool is_server, const void *addr, size_t size) {  // 需要加线程锁
   std::lock_guard<std::mutex> lock(mutex_);
   MemoryRegion new_region(addr, size);
   if (is_server) {  // server侧内存注册

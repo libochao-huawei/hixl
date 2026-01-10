@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -10,32 +10,32 @@
 
 #include <cstdint>
 #include <cstring>
-#include <arpa/inet.h>
+#include <arpa/inet.h>  // for inet_pton
 #include "gtest/gtest.h"
 #include "hixl_cs_client.h"
 #include "hccl/hccl_types.h"
-#include "common/hccl_api.h"
+#include "common/hccl_api.h"  // 链接到桩
 #include "hixl_test.h"
 namespace hixl {
 
 // 初始化源endpoint和本地endpoint
 
-EndpointDesc MakeSrcEp() {
-  EndpointDesc ep{};
-  ep.loc.locType = ENDPOINT_LOC_TYPE_HOST;
-  ep.protocol = COMM_PROTOCOL_ROCE;      // 或 COMM_PROTOCOL_ROCE，按你们测试协议
-  ep.commAddr.type = COMM_ADDR_TYPE_IP_V4;
+EndPointInfo MakeSrcEp() {
+  EndPointInfo ep{};
+  ep.location = END_POINT_LOCATION_HOST;
+  ep.protocol = COMM_PROTOCOL_TCP;      // 或 COMM_PROTOCOL_ROCE，按你们测试协议
+  ep.addr.type = COMM_ADDR_TYPE_IP_V4;  // 如果你们有该枚举值
   // 填充 IPv4 地址到 in_addr
-  inet_pton(AF_INET, "127.0.0.1", &ep.commAddr.addr);
+  inet_pton(AF_INET, "127.0.0.1", &ep.addr.addr);
   return ep;
 }
 
-EndpointDesc MakeDstEp() {
-  EndpointDesc ep{};
-  ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;  // 或 HOST：取决于你们对端在设备还是主机
-  ep.protocol = COMM_PROTOCOL_ROCE;          // 与 src 协议一致
-  ep.commAddr.type = COMM_ADDR_TYPE_IP_V4;
-  inet_pton(AF_INET, "127.0.0.1", &ep.commAddr.addr);
+EndPointInfo MakeDstEp() {
+  EndPointInfo ep{};
+  ep.location = END_POINT_LOCATION_DEVICE;  // 或 HOST：取决于你们对端在设备还是主机
+  ep.protocol = COMM_PROTOCOL_TCP;          // 与 src 协议一致
+  ep.addr.type = COMM_ADDR_TYPE_IP_V4;
+  inet_pton(AF_INET, "127.0.0.1", &ep.addr.addr);
   return ep;
 }
 
@@ -69,14 +69,14 @@ uint32_t kClientBufAddr = 1;
 uint32_t kServerDataAddr = 2;
 uint64_t kTransFlagAddr = 1;
 struct ImportedRemote {
-  HcommMem* remote_mem_list = nullptr;
+  HcclMem* remote_mem_list = nullptr;
   char** tags_buf = nullptr;
   uint32_t list_num = 0;
 };
 // 封装：创建连接 + 导入远端内存
 void PrepareConnectionAndImport(hixl::HixlCSClient& cli, const char* server_ip, uint32_t port) {
-  EndpointDesc src = MakeSrcEp();
-  EndpointDesc dst = MakeDstEp();
+  EndPointInfo src = MakeSrcEp();
+  EndPointInfo dst = MakeDstEp();
   ASSERT_EQ(cli.Create(server_ip, port, &src, &dst), SUCCESS);
 
   std::vector<HixlMemDesc> descs;
@@ -97,17 +97,17 @@ class HixlCSClientFixture : public ::testing::Test {
 };
 
 
-TEST_F(HixlCSClientFixture, RegMemAndUnRegMem) {
+TEST_F(HixlCSClientFixture, RegMem_And_UnRegMem) {
   // 先创建本端 endpoint（Create 不依赖 socket 初始化以外的 HCCL）
   const char *server_ip = "127.0.0.1";
   uint32_t server_port = 12345;
-  EndpointDesc src = MakeSrcEp();
-  EndpointDesc dst = MakeDstEp();
+  EndPointInfo src = MakeSrcEp();
+  EndPointInfo dst = MakeDstEp();
   // 对齐实现：Create 要求 dst.protocol != RESERVED 才能用于后续 Connect，这里仅测试 RegMem 不调用 Connect
   EXPECT_EQ(cli.Create(server_ip, server_port, &src, &dst), SUCCESS);
 
   // 通过 RegMem 登记 client 侧内存（不能直接调用 mem_store_）
-  HcommMem mem{};
+  HcclMem mem{};
   mem.type = HCCL_MEM_TYPE_HOST;
   mem.addr = &kClientBufAddr;
   mem.size = kClientBufSizeBytes;
@@ -120,11 +120,11 @@ TEST_F(HixlCSClientFixture, RegMemAndUnRegMem) {
   EXPECT_EQ(cli.UnRegMem(handle), SUCCESS);
 }
 
-TEST_F(HixlCSClientFixture, ImportRemoteMemAndClearRemoteMemInfo) {
+TEST_F(HixlCSClientFixture, ImportRemoteMem_And_ClearRemoteMemInfo) {
   const char *server_ip = "127.0.0.1";
   uint32_t server_port = 22334;
-  EndpointDesc src = MakeSrcEp();
-  EndpointDesc dst = MakeDstEp();
+  EndPointInfo src = MakeSrcEp();
+  EndPointInfo dst = MakeDstEp();
   EXPECT_EQ(cli.Create(server_ip, server_port, &src, &dst), SUCCESS);
 
   // 构造两个远端内存描述并导入
@@ -133,7 +133,7 @@ TEST_F(HixlCSClientFixture, ImportRemoteMemAndClearRemoteMemInfo) {
       MakeRemoteDesc("_hixl_builtin_dev_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
   descs.push_back(MakeRemoteDesc("server_data", &kServerDataAddr, kBlockSizeBytes));
 
-  HcommMem *remote_mem_list = nullptr;
+  HcclMem *remote_mem_list = nullptr;
   char **tags_buf = nullptr;
   uint32_t list_num = 0;
   EXPECT_EQ(cli.ImportRemoteMem(descs, &remote_mem_list, &tags_buf, &list_num), SUCCESS);
@@ -149,29 +149,29 @@ TEST_F(HixlCSClientFixture, ImportRemoteMemAndClearRemoteMemInfo) {
   EXPECT_EQ(cli.ClearRemoteMemInfo(), SUCCESS);
 }
 
-TEST_F(HixlCSClientFixture, BatchPutSuccessWithStubbedHccl) {
+TEST_F(HixlCSClientFixture, BatchPut_Success_WithStubbedHccl) {
   const char *server_ip = "127.0.0.1";
   uint32_t port = 22335;
-  EndpointDesc src = MakeSrcEp();
-  EndpointDesc dst = MakeDstEp();
+  EndPointInfo src = MakeSrcEp();
+  EndPointInfo dst = MakeDstEp();
   EXPECT_EQ(cli.Create(server_ip, port, &src, &dst), SUCCESS);
   std::cout << "cli已创建" << std::endl;
 
   // 导入远端内存，包含完成标志与一个数据区
   std::vector<HixlMemDesc> descs;
   descs.push_back(
-      MakeRemoteDesc("_hixl_builtin_host_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
-  std::cout<<"_hixl_builtin_host_trans_flag的地址是"<<&kTransFlagAddr<<std::endl;
-  std::cout<<"_hixl_builtin_host_trans_flag的值是"<<kTransFlagAddr<<std::endl;
+      MakeRemoteDesc("_hixl_builtin_dev_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
+  std::cout<<"_hixl_builtin_dev_trans_flag的地址是"<<&kTransFlagAddr<<std::endl;
+  std::cout<<"_hixl_builtin_dev_trans_flag的值是"<<kTransFlagAddr<<std::endl;
   descs.push_back(MakeRemoteDesc("server_data", &kServerDataAddr, kBlockSizeBytes));
-  HcommMem *remote_mem_list = nullptr;
+  HcclMem *remote_mem_list = nullptr;
   char **tags_buf = nullptr;
 
   uint32_t list_num = 0;
   ASSERT_EQ(cli.ImportRemoteMem(descs, &remote_mem_list, &tags_buf, &list_num), SUCCESS);
   std::cout << "server远端内存已获取并记录" << std::endl;
   // 通过 RegMem 登记本地缓冲
-  HcommMem local{};
+  HcclMem local{};
   local.type = HCCL_MEM_TYPE_HOST;
   local.addr = &kClientBufAddr;
   local.size = kClientBufSizeBytes;
@@ -191,19 +191,26 @@ TEST_F(HixlCSClientFixture, BatchPutSuccessWithStubbedHccl) {
   // 首次检查通常为 NOT_READY（flag 还未被置 1）
   int32_t status = -1;//指定检查的初始状态值
   int32_t * status_out = &status;
+  Status st = cli.CheckStatus(task_flag, status_out);
   uint64_t* flag = task_flag->flag_address;
   std::cout<<"falg的值是："<<*flag<<std::endl;
-  Status st = cli.CheckStatus(task_flag, status_out);
-  EXPECT_EQ(st, SUCCESS);
+  EXPECT_TRUE(st == SUCCESS);
   EXPECT_EQ(*status_out, COMPLETED);
+  // 如果需要模拟完成，将查询地址处的原子值置 1，再次检查应返回 SUCCESS 且回收句柄
+  // if (*status_out == WAITING) {
+  //   uint64_t* flag = ch->flag_address;
+  //   *flag = uint64_t{1};//直接设置flag为已经完成1
+  //   st = cli.CheckStatus(ch, status_out);
+  //   EXPECT_EQ(*status_out, COMPLETED);
+  // }
 }
 
-TEST_F(HixlCSClientFixture, BatchGetSuccessWithStubbedHccl) {
+TEST_F(HixlCSClientFixture, BatchGet_Success_WithStubbedHccl) {
   const char *server_ip = "127.0.0.1";
   uint32_t port = 22336;
   PrepareConnectionAndImport(cli, server_ip, port);
   // 登记本地缓冲
-  HcommMem local{};
+  HcclMem local{};
   local.type = HCCL_MEM_TYPE_HOST;
   local.addr = &kClientBufAddr;
   local.size = kClientBufSizeBytes;
@@ -218,12 +225,17 @@ TEST_F(HixlCSClientFixture, BatchGetSuccessWithStubbedHccl) {
   EXPECT_EQ(cli.BatchTransfer(true, com_mem, &query_handle), SUCCESS);
   EXPECT_NE(query_handle, nullptr);
   auto *task_flag = static_cast<CompleteHandle *>(query_handle);
+  uint64_t* flag = task_flag->flag_address;
   int32_t status = -1;//指定检查的初始状态值
   int32_t * status_out = &status;
   EXPECT_EQ(cli.CheckStatus(task_flag, status_out), SUCCESS);
+  std::cout << "flag为1，读写任务已经完成" << std::endl;
+  //查询完成之后，检查flag是否被重置成0，且task_flag是否被释放
+  EXPECT_EQ(*flag, 0);
+  std::cout << "flag重置为0" << std::endl;
 }
 
-TEST_F(HixlCSClientFixture, BatchPutFailsOnUnrecordedMemory) {
+TEST_F(HixlCSClientFixture, BatchPut_Fails_On_UnrecordedMemory) {
   const char *server_ip = "127.0.0.1";
   uint32_t port = 22337;
   PrepareConnectionAndImport(cli, server_ip, port);
@@ -237,15 +249,15 @@ TEST_F(HixlCSClientFixture, BatchPutFailsOnUnrecordedMemory) {
   EXPECT_EQ(query_handle, nullptr);
 }
 
-TEST_F(HixlCSClientFixture, BatchPutFailsOnMultrecorded) {
+TEST_F(HixlCSClientFixture, BatchPut_Fails_On_Multrecorded) {
   const char *server_ip = "127.0.0.1";
   uint32_t port = 22337;
   PrepareConnectionAndImport(cli, server_ip, port);
-  HcommMem local = MakeMem(&kClientBufAddr, kClientBufSizeBytes, HCCL_MEM_TYPE_HOST);
+  HcclMem local = MakeMem(&kClientBufAddr, kClientBufSizeBytes, HCCL_MEM_TYPE_HOST);
   MemHandle local_handle = nullptr;
-  HcommMem local2 = MakeMem(&kClientBufAddr + size_t{100}, kClientBufSizeBytes2, HCCL_MEM_TYPE_HOST); //地址偏移4*100
+  HcclMem local2 = MakeMem(&kClientBufAddr + size_t{100}, kClientBufSizeBytes2, HCCL_MEM_TYPE_HOST); //地址偏移4*100
   MemHandle local_handle2 = nullptr;
-  HcommMem local3 = MakeMem(&kClientBufAddr + size_t{100}, kClientBufSizeBytes, HCCL_MEM_TYPE_HOST);//地址偏移4*100
+  HcclMem local3 = MakeMem(&kClientBufAddr + size_t{100}, kClientBufSizeBytes, HCCL_MEM_TYPE_HOST);//地址偏移4*100
   MemHandle local_handle3 = nullptr;
   ASSERT_EQ(cli.RegMem("client_buf", &local, &local_handle), SUCCESS);
   ASSERT_EQ(cli.RegMem("client_buf", &local2, &local_handle2), PARAM_INVALID);

@@ -10,6 +10,9 @@
 
 set(HIXL_TEST_FILES
         cs/test_hixl_cs_server.cc
+        cs/test_hixl_cs_api.cc
+        cs/hixl_mem_store_basic_ut.cc
+        cs/hixl_cs_client_basic_ut.cc
         cs/hixl_cs_client_ut.cc
         )
 

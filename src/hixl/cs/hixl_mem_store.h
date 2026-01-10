@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -8,19 +8,18 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CANN_HIXL_SRC_HIXL_CS_HIXL_MEM_STORE_H_
-#define CANN_HIXL_SRC_HIXL_CS_HIXL_MEM_STORE_H_
+#ifndef HIXL_MEM_STORE_H_
+#define HIXL_MEM_STORE_H_
 #include <cstdint>
 #include <mutex>
 #include "hixl/hixl_types.h"
 
 namespace hixl {
 struct MemoryRegion {
-  const void* addr = nullptr;  // 内存起始地址
-  size_t size = 0U;            // 内存区域大小
-
-  MemoryRegion() = default;
-  MemoryRegion(const void* a, size_t s) noexcept : addr(a), size(s) {}
+  const void *addr;   // 内存起始地址
+  size_t size;  // 内存区域大小
+  MemoryRegion() : addr(nullptr), size(0) {}
+  explicit MemoryRegion(const void *a, size_t s) : addr(a), size(s) {}
 };
 
 /**
@@ -65,8 +64,9 @@ class HixlMemStore {
   std::map<const void *, MemoryRegion> client_regions_;
   std::mutex mutex_;
 
+  // 禁用拷贝构造和赋值操作
   HixlMemStore(const HixlMemStore &) = delete;
   HixlMemStore &operator=(const HixlMemStore &) = delete;
 };
 }  // namespace hixl
-#endif  // CANN_HIXL_SRC_HIXL_CS_HIXL_MEM_STORE_H_
+#endif  // HCCL_MEM_STORE_H_

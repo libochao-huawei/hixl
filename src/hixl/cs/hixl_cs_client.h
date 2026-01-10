@@ -23,12 +23,30 @@
 #include "hixl/hixl_types.h"
 #include "endpoint.h"
 #include "channel.h"
+#include "hixl_mem_store.h"
 
 namespace hixl {
+struct CompleteHandle {
+  int32_t flag_index;
+  uint64_t *flag_address;
+};
+
+struct CommunicateMem {
+  uint32_t list_num;
+  void **dst_buf_list;
+  const void **src_buf_list;
+  uint64_t *len_list;
+};
+
+struct Buffers {
+  const void* remote;
+  const void* local;
+};
 
 struct ImportCtx {
   Endpoint *ep{nullptr};
   EndPointHandle ep_handle{nullptr};
+  HixlMemStore *store{nullptr};
   uint32_t num{0U};
   bool need_tag{false};
   std::vector<HcommBuf> imported;
@@ -40,8 +58,8 @@ struct ImportCtx {
 
 class HixlCSClient {
  public:
-  HixlCSClient() = default;
-  ~HixlCSClient() = default;
+  HixlCSClient();
+  ~HixlCSClient();
 
   Status Create(const char *server_ip, uint32_t server_port, const EndPointInfo *src_endpoint,
                 const EndPointInfo *dst_endpoint);
@@ -50,16 +68,32 @@ class HixlCSClient {
 
   Status GetRemoteMem(HcclMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num, uint32_t timeout_ms);
 
+  // 注册client的endpoint的内存信息到内存注册表中。
+  Status RegMem(const char *mem_tag, const HcclMem *mem, MemHandle *mem_handle);
+
+  // 通过已经建立好的channel，从用户提取的地址列表中，批量读取、写入server内存地址中的内容
+  Status BatchTransfer(bool is_get, const CommunicateMem &communicate_mem_param, void **queryhandle);
+
+  // 通过已经建立好的channel，检查批量读写的状态。
+  Status CheckStatus(CompleteHandle *queryhandle, int32_t *status);
+
+  // 注册client的endpoint的内存信息到内存注册表中。
+  Status UnRegMem(MemHandle mem_handle);
+
   Status Destroy();
 
  private:
   Status ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms);
+  int32_t AcquireFlagIndex();
+  Status ReleaseCompleteHandle(CompleteHandle *queryhandle);
   Status ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcclMem **remote_mem_list, char ***mem_tag_list,
                          uint32_t *list_num);
   void FillOutputParams(ImportCtx &ctx, HcclMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
   Status ClearRemoteMemInfo();
  private:
   std::mutex mutex_;
+  // 用于记录内存地址的分配情况
+  HixlMemStore mem_store_;
   std::string server_ip_;
   uint32_t server_port_{0U};
   EndpointPtr src_endpoint_;
@@ -67,6 +101,12 @@ class HixlCSClient {
   Channel client_channel_;
   ChannelHandle client_channel_handle_ = 0UL;
   uint64_t dst_endpoint_handle_{0U};
+  static constexpr size_t kFlagQueueSize = 4096;                  // 用于初始化队列和内存地址列表
+  uint64_t* flag_queue_ = nullptr; // 申请device侧的内存地址，方法在hixl仓中有提供
+  std::array<uint32_t, kFlagQueueSize> available_indices_;        // 不采用vector生成队列
+  size_t top_index_ = 0;                                           // 栈顶指针
+  std::mutex indices_mutex_;
+  std::array<CompleteHandle*, kFlagQueueSize> live_handles_; //用来记录读写生成的queryhandle
   int32_t socket_ = -1;
   std::map<std::string, HcclMem> tag_mem_descs_;
   std::vector<HcclMem> remote_mems_out_;

@@ -20,6 +20,7 @@
 #include "common/hixl_utils.h"
 #include "common/scope_guard.h"
 #include "common/ctrl_msg_plugin.h"
+#include "acl/acl.h"
 #include "conn_msg_handler.h"
 #include "mem_msg_handler.h"
 
@@ -29,6 +30,37 @@ constexpr uint32_t kFlagSizeBytes = 8;
 constexpr int32_t kDefaultChannelStatus = -1;
 constexpr uint32_t kWaitChannelPollIntervalMs = 1U;
 
+HixlCSClient::HixlCSClient() : mem_store_() {
+  void *tmp = nullptr;
+  rtError_t ret = aclrtMallocHost(&tmp, kFlagQueueSize * sizeof(uint64_t));
+  if (ret != ACL_SUCCESS) {
+    HIXL_LOGE(ACL_ERROR_UNINITIALIZE, "Failed to allocate address for flag_queue_, ret:%d", ret);
+  }
+  flag_queue_ = static_cast<uint64_t *>(tmp);
+  // 初始化 flag_queue_ 为 0
+  for (size_t i = 0; i < kFlagQueueSize; ++i) {
+    flag_queue_[i] = 0;
+    available_indices_[i] = static_cast<int32_t>(i);
+    live_handles_[i] = nullptr;
+  }
+  top_index_ = kFlagQueueSize;
+}
+HixlCSClient::~HixlCSClient() {
+  if (flag_queue_ != nullptr) {
+    rtError_t ret = rtFreeHost(flag_queue_);
+    if (ret != RT_ERROR_NONE) {
+      // 记录日志
+      HIXL_LOGE(ACL_ERROR_REPEAT_FINALIZE, "rtFreeHost flag_queue_ failed, ret:%d", ret);
+    }
+    flag_queue_ = nullptr;
+  }
+  for (size_t i = 0; i < kFlagQueueSize; ++i){
+    if (live_handles_[i] != nullptr) {
+      delete live_handles_[i];
+      live_handles_[i] = nullptr;
+    }
+  }
+}
 Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const EndPointInfo *src_endpoint,
                             const EndPointInfo *dst_endpoint) {
   HIXL_CHECK_NOTNULL(server_ip);
@@ -57,7 +89,151 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
   EndPointHandle endpoint_handle = src_endpoint_->GetHandle();
   HIXL_EVENT("[HixlClient] Create success. server=%s:%u, src_ep_handle=%p", server_ip_.c_str(), server_port_,
              endpoint_handle);
+
   return SUCCESS;
+}
+
+// 注册client的endpoint的内存信息到内存注册表中。mem是一个结构体，其中记录了内存类型、地址和大小。
+Status HixlCSClient::RegMem(const char *mem_tag, const HcclMem *mem, MemHandle *mem_handle) {
+  HIXL_CHECK_NOTNULL(mem);
+  auto check_result = mem_store_.CheckMemoryForRegister(false, mem->addr, mem->size);
+  if (check_result) {
+    HIXL_LOGE(PARAM_INVALID, "Memory registration failed. The provided memory has already been registered. Please check Mem, mem_adrr: %p, mem_size: %u.", mem->addr, mem->size);
+    return PARAM_INVALID;  // 补充日志打印信息
+  }
+  MemHandle ep_mem_handle = nullptr;
+  HIXL_CHK_STATUS_RET(src_endpoint_->RegisterMem(mem_tag, *mem, ep_mem_handle), "Failed to register mem.");
+  *mem_handle = ep_mem_handle;
+  mem_store_.RecordMemory(false, mem->addr, mem->size);  // 记录client侧给endpoint分配的内存信息
+  return SUCCESS;
+}
+
+// 获取列表中有效的flag，考虑多线程调用，加上线程锁
+int32_t HixlCSClient::AcquireFlagIndex() {
+  std::lock_guard<std::mutex> lock(indices_mutex_);
+  if (top_index_ == size_t{0}) {
+    return -1;
+  }
+  size_t idx = top_index_ - size_t{1};              // 无符号计算，避免隐式转换
+  top_index_ = idx;
+  return available_indices_[idx];
+}
+
+Status HixlCSClient::ReleaseCompleteHandle(CompleteHandle *queryhandle) {
+  HIXL_CHECK_NOTNULL(queryhandle);
+  std::lock_guard<std::mutex> lock(indices_mutex_);
+  if (top_index_ < kFlagQueueSize) {
+    size_t idx = top_index_ + size_t{1};              // 无符号计算，避免隐式转换
+    top_index_ = idx;
+    available_indices_[idx] = queryhandle->flag_index; // 回收索引
+    live_handles_[queryhandle->flag_index] = nullptr;
+  }
+  delete queryhandle;
+  return SUCCESS;
+}
+
+static inline Buffers SelectBuffers(bool is_get, const void *src, const void *dst) {
+  if (is_get) {
+    return {src, dst};
+  } else {
+    return {dst, src};
+  }
+}
+// 通过已经建立好的channel，从用户提取的地址列表中，批量读取server内存地址中的内容
+Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicate_mem_param, void **queryhandle) {
+  // 先校验用户提供的地址的有效性
+  for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
+    Buffers buffer =
+        SelectBuffers(is_get, communicate_mem_param.src_buf_list[i], communicate_mem_param.dst_buf_list[i]);
+    Status check_result =
+        mem_store_.ValidateMemoryAccess(buffer.remote, communicate_mem_param.len_list[i], buffer.local);
+    if (check_result != SUCCESS) {
+      HIXL_LOGE(PARAM_INVALID,
+                "This memory is not registered and cannot be read from or written to. "
+                "Please check remote_buf:%p, local_buf:%p, buf_len:%u",
+                buffer.remote, buffer.local, communicate_mem_param.len_list[i]);
+      return PARAM_INVALID;
+    }
+  }
+
+  if (is_get) {
+    // 批量提交读任务
+    for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
+      HcommReadNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i], const_cast<void *>(communicate_mem_param.src_buf_list[i]),
+                   communicate_mem_param.len_list[i]);  // HcommReadNbi 没有返回值
+    }
+  }
+  else {
+    // 批量提交写任务
+    for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
+      HcommWriteNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i], const_cast<void *>(communicate_mem_param.src_buf_list[i]),
+                    communicate_mem_param.len_list[i]);  // HcommWriteNbi 没有返回值
+    }
+  }
+  // 创建内存隔断，等到通道上所有的读任务执行结束后才会接着执行之后创建的读写任务
+  HcommChannelFence(client_channel_handle_);
+
+  int32_t flag_index = AcquireFlagIndex();
+  if (flag_index == -1) {
+    HIXL_LOGE(PARAM_INVALID, "There are a large number of transfer tasks with no query results, making it impossible to create new transfer tasks.");
+    return PARAM_INVALID;
+  }
+  uint64_t *flag_addr = &flag_queue_[flag_index];
+  HcommReadNbi(client_channel_handle_, flag_addr, tag_mem_descs_["_hixl_builtin_dev_trans_flag"].addr, kFlagSizeBytes);
+  CompleteHandle* query_mem_handle = new (std::nothrow) CompleteHandle();
+  if (query_mem_handle != nullptr ) {
+    query_mem_handle->flag_index = flag_index;
+    query_mem_handle->flag_address = flag_addr;
+    // 需要先创建queryhandle实体，之后再传给指针。
+    *queryhandle = query_mem_handle;
+    live_handles_[flag_index] = query_mem_handle;
+  }
+  else {
+    HIXL_LOGE(PARAM_INVALID, "Memory allocation failed; unable to generate query handle.");
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
+
+// 通过已经建立好的channel，检查批量读写的状态。
+Status HixlCSClient::CheckStatus(CompleteHandle *queryhandle, int32_t *status) {
+  HIXL_CHECK_NOTNULL(queryhandle);
+  // 检验queryhandle中的序号是否合规
+  if (queryhandle->flag_index < 0 ||
+      queryhandle->flag_index >= static_cast<int32_t>(kFlagQueueSize)) {  // Todo:格式转化
+    HIXL_LOGE(PARAM_INVALID, "The value of queryhandle->flag_index is outside the valid verification range; please check the queryhandle. queryhandle->flag_index：%d", queryhandle->flag_index);
+    return PARAM_INVALID;
+  }
+  // 通过读取queryhandle中地址的值，来判断任务的完成状态
+  uint64_t* atomic_flag = queryhandle->flag_address;  //
+
+  if (*atomic_flag == 1ULL) {
+    // 改成直接读地址
+    // 查到flag变成1之后，就把其重置为0，之后告知用户读写任务已经完成。
+    *atomic_flag = 0ULL;
+    *status = BatchTransferStatus::COMPLETED;
+    HIXL_LOGI("The current transmission task has been completed.");
+    return ReleaseCompleteHandle(queryhandle);  // 释放内存并回收索引
+  }
+  *status = BatchTransferStatus::WAITING;
+  HIXL_LOGI("The current transmission task has not been completed.");
+  return SUCCESS;  // 需要新加这个状态码，用于表示任务尚未完成
+}
+
+// 注销client的endpoint的内存信息。
+Status HixlCSClient::UnRegMem(MemHandle mem_handle) {
+  HIXL_CHECK_NOTNULL(mem_handle);
+  HixlMemDesc desc;
+  Status query_status = src_endpoint_->GetMemDesc(mem_handle, desc);
+  if (query_status != SUCCESS) {
+    return PARAM_INVALID;
+  }
+  Status result = src_endpoint_->DeregisterMem(mem_handle);
+  if (result == SUCCESS) {
+    mem_store_.UnrecordMemory(false, desc.mem.addr);  // 删掉记录中client侧给endpoint分配的内存信息
+    return SUCCESS;
+  }
+  return PARAM_INVALID;
 }
 
 Status HixlCSClient::Connect(uint32_t timeout_ms) {
@@ -216,6 +392,28 @@ void CloseImportedBufs(EndPointHandle ep_handle, std::vector<HcommBuf> &bufs) {
   bufs.clear();
 }
 
+void UnrecordAddrs(HixlMemStore &store, std::vector<void*> &addrs) {
+  for (auto *addr : addrs) {
+    if (addr == nullptr) {
+      continue;
+    }
+
+    const Status ret = store.UnrecordMemory(true, addr);
+    if (ret != SUCCESS) {
+      HIXL_LOGW("[HixlClient] UnrecordMemory failed. addr=%p ret=%u", addr, static_cast<uint32_t>(ret));
+    }
+  }
+  addrs.clear();
+}
+
+// void RollbackImport(ImportCtx &ctx) {
+//   HIXL_LOGW("[HixlClient] RollbackImport triggered. Cleaning up %zu imported bufs.", ctx.imported.size());
+//   if (ctx.store != nullptr) {
+//     UnrecordAddrs(*ctx.store, ctx.recorded_addrs);
+//   }
+//   CloseImportedBufs(ctx.ep_handle, ctx.imported);
+// }
+
 Status ImportOneDesc(ImportCtx &ctx, uint32_t idx, HixlMemDesc &desc) {
   HcommBuf buf{};
   Status ret = ctx.ep->MemImport(desc.export_desc, desc.export_len, buf);
@@ -232,7 +430,15 @@ Status ImportOneDesc(ImportCtx &ctx, uint32_t idx, HixlMemDesc &desc) {
   ctx.mems.emplace_back(mem);
   ctx.tag_mem_map[desc.tag] = mem;
   HIXL_LOGD("[HixlClient] Imported mem[%u]: tag='%s', addr=%p, size=%llu", idx, desc.tag.c_str(), mem.addr, mem.size);
-
+  ret = ctx.store->RecordMemory(true, mem.addr, static_cast<size_t>(mem.size));
+  if (ret == SUCCESS) {
+    ctx.recorded_addrs.emplace_back(mem.addr);
+  } else {
+    HIXL_LOGE(ret,
+              "[HixlClient] RecordMemory(server) failed! This memory may have been registered. idx=%u, tag=%s, addr=%p, size=%llu",
+              idx, desc.tag.c_str(), mem.addr, mem.size);
+    return ret;
+  }
   return AppendTagStorage(ctx.tag_storage, desc.tag);
 }
 
@@ -285,7 +491,7 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list,
   ImportCtx ctx;
   ctx.ep = src_endpoint_.get();
   ctx.ep_handle = ep_handle;
-
+  ctx.store = &mem_store_;
   ctx.num = *list_num;
   ctx.imported.reserve(ctx.num);
   ctx.recorded_addrs.reserve(ctx.num);
@@ -295,6 +501,7 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list,
   if (ret != SUCCESS) {
     HIXL_LOGW("[HixlClient] RollbackImport triggered. Cleaning up %zu imported bufs.", ctx.imported.size());
     CloseImportedBufs(ctx.ep_handle, ctx.imported);
+    // RollbackImport(ctx);
     return ret;
   }
   FillOutputParams(ctx, remote_mem_list, mem_tag_list, list_num);
@@ -317,7 +524,9 @@ Status HixlCSClient::ClearRemoteMemInfo() {
       imported_remote_bufs_.clear();
     }
   }
-
+  if (!recorded_remote_addrs_.empty()) {
+    UnrecordAddrs(mem_store_, recorded_remote_addrs_);
+  }
   tag_mem_descs_.clear();
   remote_mems_out_.clear();
   remote_tag_ptrs_.clear();

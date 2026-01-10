@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -21,42 +21,42 @@
 
 using json = nlohmann::json;
 
-void from_json(const json &j, EndpointLocType &l) {
+void from_json(const json& j, EndPointLocation& l) {
   std::string s = j.get<std::string>();
   if (s == "host") {
-    l = ENDPOINT_LOC_TYPE_HOST;
+    l = END_POINT_LOCATION_HOST;
   } else {
-    l = ENDPOINT_LOC_TYPE_DEVICE;
+    l = END_POINT_LOCATION_DEVICE;
   }
 }
 
-void from_json(const json &j, CommProtocol &p) {
+void from_json(const json& j, CommProtocol& p) {
   std::string s = j.get<std::string>();
   if (s == "hccs") {
     p = COMM_PROTOCOL_HCCS;
   } else if (s == "roce") {
     p = COMM_PROTOCOL_ROCE;
   } else if (s == "UB_CTP") {
-    p = COMM_PROTOCOL_UBC_CTP;
+    p = COMM_PROTOCOL_UB_CTP;
   } else if (s == "UB_TP") {
-    p = COMM_PROTOCOL_UBC_TP;
+    p = COMM_PROTOCOL_UB_TP;
   } else {
     p = COMM_PROTOCOL_RESERVED;
   }
 }
 
-void from_json(const json &j, EndpointDesc &info) {
-  j.at("location").get_to(info.loc.locType);
+void from_json(const json& j, EndPointInfo& info) {
+  j.at("location").get_to(info.location);
   j.at("protocol").get_to(info.protocol);
   std::string addr;
   j.at("addr").get_to(addr);
   if (info.protocol == COMM_PROTOCOL_ROCE) {
-    if (inet_pton(AF_INET, addr.c_str(), &info.commAddr.addr) == 1) {
-      info.commAddr.type = COMM_ADDR_TYPE_IP_V4;
-    } else if (inet_pton(AF_INET6, addr.c_str(), &info.commAddr.addr6) == 1) {
-      info.commAddr.type = COMM_ADDR_TYPE_IP_V6;
+    if (inet_pton(AF_INET, addr.c_str(), &info.addr.addr) == 1) {
+      info.addr.type = COMM_ADDR_TYPE_IP_V4;
+    } else if (inet_pton(AF_INET6, addr.c_str(), &info.addr.addr6) == 1) {
+      info.addr.type = COMM_ADDR_TYPE_IP_V6;
     } else {
-      info.commAddr.type = COMM_ADDR_TYPE_RESERVED;
+      info.addr.type = COMM_ADDR_TYPE_RESERVED;
     }
   }
 }
@@ -81,7 +81,7 @@ constexpr int32_t kBackLog = 1024;
 constexpr const char *kServerMemTagName = "server_mem";
 constexpr const int32_t kStatus = 0;
 
-#define CHECK_ACL_RETURN(x)                                                           \
+#define CHECK_ACL_RETURN(x)                                                                  \
   do {                                                                                \
     aclError __ret = x;                                                               \
     if (__ret != ACL_ERROR_NONE) {                                                    \
@@ -101,10 +101,10 @@ struct Args {
   std::string remote_comm_res;
 };
 
-int32_t InitEndPointInfo(const std::string &comm_res, EndpointDesc &ep) {
+int32_t InitEndPointInfo(const std::string &comm_res, EndPointInfo &ep) {
   try {
-    ep = json::parse(comm_res).get<EndpointDesc>();
-  } catch (const std::exception &e) {
+    ep = json::parse(comm_res).get<EndPointInfo>();
+  } catch (const std::exception& e) {
     (void)printf("Failed to parse json:%s\n", e.what());
     return -1;
   }
@@ -112,16 +112,16 @@ int32_t InitEndPointInfo(const std::string &comm_res, EndpointDesc &ep) {
 }
 
 int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std::string &transfer_op) {
-  HcommMem *remote_mem_list = nullptr;
+  HcclMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
-  auto ret =
-      HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
+  auto ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list,
+                                      &list_num, kClientConnectTimeoutMs);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientGetRemoteMem failed, ret = %u\n", ret);
     return -1;
   }
-  std::map<std::string, HcommMem> server_mems;
+  std::map<std::string, HcclMem> server_mems;
   for (uint32_t i = 0; i < list_num; ++i) {
     server_mems[mem_tag_list[i]] = remote_mem_list[i];
   }
@@ -141,25 +141,24 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
     void *complete_handle = nullptr;
     const auto start = std::chrono::steady_clock::now();
     if (transfer_op == "write") {
-      ret =
-          HixlCSClientBatchPut(client_handle, trans_num, &remote_addrs[0], &local_addrs[0], &lens[0], &complete_handle);
+      ret = HixlCSClientBatchput(client_handle, trans_num, &remote_addrs[0],
+                                 &local_addrs[0], &lens[0], &complete_handle);
     } else {
-      ret =
-          HixlCSClientBatchGet(client_handle, trans_num, &remote_addrs[0], &local_addrs[0], &lens[0], &complete_handle);
+      ret = HixlCSClientBatchget(client_handle, trans_num, &remote_addrs[0],
+                                 &local_addrs[0], &lens[0], &complete_handle);
     }
     if (ret != HIXL_SUCCESS) {
-      (void)printf("[ERROR] HixlCSClientBatchPut/HixlCSClientBatchGet failed, ret = %u\n", ret);
+      (void)printf("[ERROR] HixlCSClientBatchput/HixlCSClientBatchget failed, ret = %u\n", ret);
       return -1;
     }
     int32_t status = kStatus;
     while (true) {
       ret = HixlCSClientQueryCompleteStatus(client_handle, complete_handle, &status);
-      if (status == BatchTransferStatus::COMPLETED) {
+      if (ret == HIXL_SUCCESS) {
         break;
-      } else if (status == BatchTransferStatus::WAITING) {
+      } else if (ret == HIXL_NOT_READY) {
         continue;
-      }
-      if (ret != HIXL_SUCCESS) {
+      } else {
         (void)printf("[ERROR] HixlCSClientQueryCompleteStatus failed, ret = %u\n", ret);
         return -1;
       }
@@ -214,9 +213,10 @@ int32_t RunClient(const Args &args) {
   }
 
   // 1. 初始化
-  EndpointDesc local_ep;
-  EndpointDesc remote_ep;
-  if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 || InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
+  EndPointInfo local_ep;
+  EndPointInfo remote_ep;
+  if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 ||
+      InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
     (void)printf("[ERROR] Initialize EndPoint list failed\n");
     return -1;
   }
@@ -239,7 +239,7 @@ int32_t RunClient(const Args &args) {
 
   // 3. 注册内存地址
   MemHandle mem_handle = nullptr;
-  HcommMem mem{};
+  HcclMem mem{};
   aclError acl_ret = ACL_ERROR_NONE;
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
   if (is_host) {
@@ -276,7 +276,7 @@ int32_t RunClient(const Args &args) {
 int32_t RunServer(const Args &args) {
   (void)printf("[INFO] server start\n");
   // 1. 初始化
-  EndpointDesc ep;
+  EndPointInfo ep;
   if (InitEndPointInfo(args.local_comm_res, ep) != 0) {
     (void)printf("[ERROR] Initialize EndPoint list failed\n");
     return -1;
@@ -286,7 +286,8 @@ int32_t RunServer(const Args &args) {
   std::string ip = args.local_engine.substr(0, args.local_engine.find(':'));
   int32_t port = std::stoi(args.local_engine.substr(args.local_engine.find(':') + 1));
   HixlServerConfig config{};
-  auto ret = HixlCSServerCreate(ip.c_str(), static_cast<uint32_t>(port), &ep, 1U, &config, &server_handle);
+  auto ret = HixlCSServerCreate(ip.c_str(), static_cast<uint32_t>(port), &ep, 1U,
+                                &config, &server_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSServerCreate failed, ret = %u\n", ret);
     return -1;
@@ -302,13 +303,13 @@ int32_t RunServer(const Args &args) {
 
   // 2. 注册内存地址
   MemHandle mem_handle = nullptr;
-  HcommMem mem{};
+  HcclMem mem{};
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
   aclError acl_ret = ACL_ERROR_NONE;
-  if (is_host) {
+  if (is_host){
     acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize);
     mem.type = HCCL_MEM_TYPE_HOST;
-  } else {
+  } else{
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
     mem.type = HCCL_MEM_TYPE_DEVICE;
   }
@@ -359,17 +360,13 @@ int32_t main(int32_t argc, char **argv) {
     args.local_comm_res = argv[kArgIndexLocalCommRes];
     args.remote_comm_res = argv[kArgIndexRemoteCommRes];
     is_client = (args.remote_engine.find(':') != std::string::npos);
-    (void)printf(
-        "[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, "
-        "transfer_op = %s, local_comm_res = %s, remote_comm_res = %s\n",
-        device_id_str.c_str(), args.local_engine.c_str(), args.remote_engine.c_str(), tcp_port_str.c_str(),
-        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.local_comm_res.c_str(),
-        args.remote_comm_res.c_str());
+    (void)printf("[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, "
+           "transfer_op = %s, local_comm_res = %s, remote_comm_res = %s\n", 
+            device_id_str.c_str(), args.local_engine.c_str(), args.remote_engine.c_str(), tcp_port_str.c_str(), 
+            args.transfer_mode.c_str(), args.transfer_op.c_str(), args.local_comm_res.c_str(), args.remote_comm_res.c_str());
   } else {
-    (void)printf(
-        "[ERROR] Expect 8 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, "
-        "transfer_op, local_comm_res, remote_comm_res), but got %d\n",
-        argc - 1);
+    (void)printf("[ERROR] Expect 8 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, "
+           "transfer_op, local_comm_res, remote_comm_res), but got %d\n", argc - 1);
     return -1;
   }
   args.device_id = std::stoi(device_id_str);
@@ -381,8 +378,8 @@ int32_t main(int32_t argc, char **argv) {
   args.tcp_port = static_cast<uint16_t>(input_tcp_port);
   CHECK_ACL_RETURN(aclrtSetDevice(args.device_id));
 
-  if (args.transfer_mode != "d2d" && args.transfer_mode != "h2d" && args.transfer_mode != "d2h" &&
-      args.transfer_mode != "h2h") {
+  if (args.transfer_mode != "d2d" && args.transfer_mode != "h2d" &&
+      args.transfer_mode != "d2h" && args.transfer_mode != "h2h"){
     (void)printf("[ERROR] Invalid value for transfer_mode: %s\n", args.transfer_mode.c_str());
     return -1;
   }
