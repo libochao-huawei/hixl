@@ -11,6 +11,8 @@
 #include <cstring>
 #include "hccl_api.h"
 
+#include <securec.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -99,6 +101,33 @@ HcclResult HcommChannelGetStatus(const ChannelHandle *channel_list, uint32_t lis
   (void)list_num;
   (void)status_list;
   return HCCL_SUCCESS;
+}
+
+void HcommChannelFence(ChannelHandle channel) {
+  (void)channel;
+}
+
+void HcommWriteNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
+  (void)channel;
+  if (len == 0) {
+    return;
+  }
+  if (dst == nullptr || src == nullptr) {
+    return;
+  }
+  memcpy_s(dst, len, src, len);
+
+}
+
+void HcommReadNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
+  (void)channel;
+  if (len == 0) {
+    return;
+  }
+  if (dst == nullptr || src == nullptr) {
+    return;
+  }
+  memcpy_s(dst, len, src, len);
 }
 
 #ifdef __cplusplus

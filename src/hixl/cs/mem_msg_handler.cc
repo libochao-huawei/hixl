@@ -187,11 +187,41 @@ Status ParseOneMemDesc(const nlohmann::json &item, uint32_t idx, hixl::HixlMemDe
     Status ret = ParseMemObject(item["mem"], mem);
     HIXL_CHK_STATUS_RET(ret);
     out.mem = mem;
+    // 解析 tag
+    if (!item["tag"].is_string()) {
+      HIXL_LOGE(PARAM_INVALID, "[HixlClient] mem_descs[%u].tag not string", idx);
+      return PARAM_INVALID;
+    }
     out.tag = item["tag"].get<std::string>();
-    const std::string export_str = item["export_desc"].get<std::string>();
+
+    // 解析 export_desc：既支持字符串也支持字节数组
+    std::string export_str;
+    const auto &exp = item["export_desc"];
+    if (exp.is_string()) {
+      export_str = exp.get<std::string>();
+    } else if (exp.is_array()) {
+      export_str.reserve(exp.size());
+      for (const auto &v : exp) {
+        if (!v.is_number_unsigned()) {
+          HIXL_LOGE(PARAM_INVALID, "[HixlClient] mem_descs[%u].export_desc has non-unsigned element", idx);
+          return PARAM_INVALID;
+        }
+        uint64_t x = v.get<uint64_t>();
+        if (x > 255) {
+          HIXL_LOGE(PARAM_INVALID, "[HixlClient] mem_descs[%u].export_desc element >255", idx);
+          return PARAM_INVALID;
+        }
+        export_str.push_back(static_cast<char>(static_cast<unsigned char>(x)));
+      }
+    } else {
+      HIXL_LOGE(PARAM_INVALID, "[HixlClient] mem_descs[%u].export_desc type invalid", idx);
+      return PARAM_INVALID;
+    }
+    out.tag = item["tag"].get<std::string>();
     return FillExportDescFromString(export_str, out);
   } catch (const nlohmann::json::exception &e) {
-    HIXL_LOGE(PARAM_INVALID, "[HixlClient] JSON error in ParseOneMemDesc[%u]: %s", idx, e.what());
+    HIXL_LOGE(PARAM_INVALID, "[HixlClient] JSON error in ParseOneMemDesc[%u]: %s, itme_value is:%s. ", idx, e.what(), item.dump(2).c_str());
+
     return PARAM_INVALID;
   } catch (...) {
     HIXL_LOGE(FAILED, "[HixlClient] Unknown error in ParseOneMemDesc[%u]", idx);

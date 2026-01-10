@@ -79,6 +79,62 @@ HixlStatus HixlCSClientCreate(const char *server_ip, uint32_t server_port, const
   return HIXL_SUCCESS;
 }
 
+HixlStatus HixlCSClientRegMem(HixlClientHandle client_handle, const char *mem_tag, const HcclMem *mem, void **mem_handle) {
+  HIXL_CHECK_NOTNULL(client_handle);
+  HIXL_CHECK_NOTNULL(mem);
+  auto client = static_cast<hixl::HixlCSClient *>(client_handle);
+  const auto ret = client->RegMem(mem_tag, mem, mem_handle);
+  HIXL_CHK_STATUS_RET(ret, "HixlCSClientRegMem failed, mem_tag: %s, mem_adrr: %p, mem_size: %u.", mem_tag, mem->addr, mem->size);
+  return HIXL_SUCCESS;
+}
+
+HixlStatus HixlCSClientUnregMem(HixlClientHandle client_handle, void *mem_handle) {
+  HIXL_CHECK_NOTNULL(client_handle);
+  auto client = static_cast<hixl::HixlCSClient *>(client_handle);
+  const auto ret = client->UnRegMem(mem_handle);
+  HIXL_CHK_STATUS_RET(ret, "HixlCSClientUnregMem failed");
+  return HIXL_SUCCESS;
+}
+
+HixlStatus HixlCSClientBatchPut(HixlClientHandle client_handle, uint32_t list_num, void **remote_buf_list,
+                                const void **local_buf_list, uint64_t *len_list, void **complete_handle) {
+  HIXL_CHECK_NOTNULL(client_handle);
+  HIXL_CHECK_NOTNULL(remote_buf_list);
+  HIXL_CHECK_NOTNULL(local_buf_list);
+  HIXL_CHECK_NOTNULL(len_list);
+  auto client = static_cast<hixl::HixlCSClient *>(client_handle);
+  hixl::CommunicateMem com_mem{list_num, remote_buf_list, local_buf_list, len_list};
+  const auto ret = client->BatchTransfer(false, com_mem, complete_handle);
+  HIXL_CHK_STATUS_RET(ret,
+                      "HixlCSClientBatchPut failed, list_num:%u, remote_buf_list=%p, local_buf_list=%p, len_list=%p",
+                      list_num, (void *)remote_buf_list, (void *)local_buf_list, (void *)len_list);
+  return HIXL_SUCCESS;
+}
+
+HixlStatus HixlCSClientBatchGet(HixlClientHandle client_handle, uint32_t list_num, void **local_buf_list,
+                                const void **remote_buf_list, uint64_t *len_list, void **complete_handle) {
+  HIXL_CHECK_NOTNULL(client_handle);
+  HIXL_CHECK_NOTNULL(remote_buf_list);
+  HIXL_CHECK_NOTNULL(local_buf_list);
+  HIXL_CHECK_NOTNULL(len_list);
+  auto client = static_cast<hixl::HixlCSClient *>(client_handle);
+  hixl::CommunicateMem com_mem{list_num, local_buf_list, remote_buf_list, len_list};
+  const auto ret = client->BatchTransfer(true, com_mem, complete_handle);
+  HIXL_CHK_STATUS_RET(ret,
+                      "HixlCSClientBatchGet failed, list_num:%u, remote_buf_list=%p, local_buf_list=%p, len_list=%p",
+                      list_num, (void *)remote_buf_list, (void *)local_buf_list, (void *)len_list);
+  return HIXL_SUCCESS;
+}
+
+HixlStatus HixlCSClientQueryCompleteStatus(HixlClientHandle client_handle, void *complete_handle, int32_t *status) {
+  HIXL_CHECK_NOTNULL(client_handle);
+  HIXL_CHECK_NOTNULL(complete_handle);
+  auto client = static_cast<hixl::HixlCSClient *>(client_handle);
+  const auto ret = client->CheckStatus(static_cast<hixl::CompleteHandle *>(complete_handle), status);
+  HIXL_CHK_STATUS_RET(ret, "HixlCSClientQueryCompleteStatus failed");
+  return HIXL_SUCCESS;
+}
+
 HixlStatus HixlCSClientConnectSync(HixlClientHandle client_handle, uint32_t timeout_ms) {
   HIXL_CHECK_NOTNULL(client_handle);
   auto *client = reinterpret_cast<hixl::HixlCSClient *>(client_handle);

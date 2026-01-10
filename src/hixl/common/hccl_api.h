@@ -148,6 +148,11 @@ HcclResult HcommChannelDestroy(const ChannelHandle *channel_list, uint32_t list_
 
 HcclResult HcommChannelGetStatus(const ChannelHandle *channel_list, uint32_t list_num, int32_t *status_list);
 
+void HcommReadNbi(ChannelHandle channel, void *dst, void *src, uint64_t len);
+
+void HcommWriteNbi(ChannelHandle channel, void *dst, void *src, uint64_t len);
+
+void HcommChannelFence(ChannelHandle channel);
 #ifdef __cplusplus
 }
 #endif

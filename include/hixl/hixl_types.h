@@ -73,6 +73,11 @@ enum class TransferStatus {
   FAILED
 };
 
+enum BatchTransferStatus : int32_t {
+  WAITING = 0,
+  COMPLETED = 1
+};
+
 struct TransferArgs{
   uint8_t reserved[128] = {};
 };
