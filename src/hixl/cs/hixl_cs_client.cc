@@ -406,14 +406,6 @@ void UnrecordAddrs(HixlMemStore &store, std::vector<void*> &addrs) {
   addrs.clear();
 }
 
-// void RollbackImport(ImportCtx &ctx) {
-//   HIXL_LOGW("[HixlClient] RollbackImport triggered. Cleaning up %zu imported bufs.", ctx.imported.size());
-//   if (ctx.store != nullptr) {
-//     UnrecordAddrs(*ctx.store, ctx.recorded_addrs);
-//   }
-//   CloseImportedBufs(ctx.ep_handle, ctx.imported);
-// }
-
 Status ImportOneDesc(ImportCtx &ctx, uint32_t idx, HixlMemDesc &desc) {
   HcommBuf buf{};
   Status ret = ctx.ep->MemImport(desc.export_desc, desc.export_len, buf);
@@ -501,7 +493,6 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list,
   if (ret != SUCCESS) {
     HIXL_LOGW("[HixlClient] RollbackImport triggered. Cleaning up %zu imported bufs.", ctx.imported.size());
     CloseImportedBufs(ctx.ep_handle, ctx.imported);
-    // RollbackImport(ctx);
     return ret;
   }
   FillOutputParams(ctx, remote_mem_list, mem_tag_list, list_num);

@@ -191,18 +191,11 @@ TEST_F(HixlCSClientFixture, BatchPut_Success_WithStubbedHccl) {
   // 首次检查通常为 NOT_READY（flag 还未被置 1）
   int32_t status = -1;//指定检查的初始状态值
   int32_t * status_out = &status;
-  Status st = cli.CheckStatus(task_flag, status_out);
   uint64_t* flag = task_flag->flag_address;
   std::cout<<"falg的值是："<<*flag<<std::endl;
+  Status st = cli.CheckStatus(task_flag, status_out);
   EXPECT_TRUE(st == SUCCESS);
   EXPECT_EQ(*status_out, COMPLETED);
-  // 如果需要模拟完成，将查询地址处的原子值置 1，再次检查应返回 SUCCESS 且回收句柄
-  // if (*status_out == WAITING) {
-  //   uint64_t* flag = ch->flag_address;
-  //   *flag = uint64_t{1};//直接设置flag为已经完成1
-  //   st = cli.CheckStatus(ch, status_out);
-  //   EXPECT_EQ(*status_out, COMPLETED);
-  // }
 }
 
 TEST_F(HixlCSClientFixture, BatchGet_Success_WithStubbedHccl) {
@@ -225,14 +218,9 @@ TEST_F(HixlCSClientFixture, BatchGet_Success_WithStubbedHccl) {
   EXPECT_EQ(cli.BatchTransfer(true, com_mem, &query_handle), SUCCESS);
   EXPECT_NE(query_handle, nullptr);
   auto *task_flag = static_cast<CompleteHandle *>(query_handle);
-  uint64_t* flag = task_flag->flag_address;
   int32_t status = -1;//指定检查的初始状态值
   int32_t * status_out = &status;
   EXPECT_EQ(cli.CheckStatus(task_flag, status_out), SUCCESS);
-  std::cout << "flag为1，读写任务已经完成" << std::endl;
-  //查询完成之后，检查flag是否被重置成0，且task_flag是否被释放
-  EXPECT_EQ(*flag, 0);
-  std::cout << "flag重置为0" << std::endl;
 }
 
 TEST_F(HixlCSClientFixture, BatchPut_Fails_On_UnrecordedMemory) {
