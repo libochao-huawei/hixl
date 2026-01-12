@@ -24,18 +24,16 @@
 #include "common/scope_guard.h"
 #include "common/thread_pool.h"
 
+namespace hixl {
 namespace {
 constexpr uint64_t kMaxRecvRespBodySize = static_cast<uint64_t>(4ULL * 1024ULL * 1024ULL);  // 4MB 示例上限
-constexpr uint32_t kCtrlMsgPluginConnectTimeoutMs = 10000U;
+constexpr uint32_t kCtrlMsgPluginTimeoutMs = 10000U;
 constexpr uint32_t kMaxUbCsClientNum = 4U;
 constexpr const char *kProtocolRoce = "roce";
 constexpr const char *kProtocolUbCtp = "ub_ctp";
 constexpr const char *kProtocolUbTp = "ub_tp";
 constexpr const char *kPlacementDevice = "device";
 constexpr const char *kPlacementHost = "host";
-}  // namespace
-
-namespace hixl {
 
 const char *CommTypeToString(CommType type) {
   switch (type) {
@@ -57,8 +55,8 @@ const char *CommTypeToString(CommType type) {
 }
 
 // 自定义查找函数
-std::map<MatchKey, EndPointConfig>::const_iterator find_matching_key(const std::map<MatchKey, EndPointConfig> &map,
-                                                                     const MatchKey &query_key) {
+std::map<MatchKey, EndPointConfig>::const_iterator FindMatchingKey(const std::map<MatchKey, EndPointConfig> &map,
+                                                                   const MatchKey &query_key) {
   for (auto it = map.begin(); it != map.end(); ++it) {
     if (it->first.matches(query_key)) {
       return it;  // 找到第一个匹配的 key
@@ -66,6 +64,7 @@ std::map<MatchKey, EndPointConfig>::const_iterator find_matching_key(const std::
   }
   return map.end();  // 未找到
 }
+}  // namespace
 
 Status HixlClient::Initialize(const std::vector<EndPointConfig> &local_endpoint_list) {
   // 创建socket，与server建链，发送请求，获取remote_endpoint_list
@@ -73,7 +72,7 @@ Status HixlClient::Initialize(const std::vector<EndPointConfig> &local_endpoint_
   CtrlMsgPlugin::Initialize();
   {
     int32_t socket = -1;
-    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip_, server_port_, socket, kCtrlMsgPluginConnectTimeoutMs),
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip_, server_port_, socket, kCtrlMsgPluginTimeoutMs),
                         "Connect socket failed");
     ScopeGuard socket_guard([&socket]() {
       if (socket != -1) {
@@ -107,7 +106,7 @@ Status HixlClient::SendEndPointInfoReq(int32_t fd, CtrlMsgType msg_type) {
 Status HixlClient::RecvEndPointInfoResp(int32_t fd, std::vector<EndPointConfig> &remote_endpoint_list) {
   CtrlMsgHeader header{};
   HIXL_LOGI("Receiving header from fd=%d", fd);
-  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, &header, static_cast<uint32_t>(sizeof(header))));
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, &header, static_cast<uint32_t>(sizeof(header)), kCtrlMsgPluginTimeoutMs));
   HIXL_CHK_BOOL_RET_STATUS(header.magic == kMagicNumber, PARAM_INVALID,
                            "Invalid magic for HixlClient RecvEndPointInfoResp, expect:0x%X, actual:0x%X", kMagicNumber,
                            header.magic);
@@ -121,7 +120,7 @@ Status HixlClient::RecvEndPointInfoResp(int32_t fd, std::vector<EndPointConfig> 
   HIXL_EVENT("[HixlClient] RecvEndPointInfoResp: receiving remote_endpoint_list body (%" PRIu64
              " bytes) from fd=%d begin",
              body_size, fd);
-  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, body.data(), static_cast<uint32_t>(body_size)));
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, body.data(), static_cast<uint32_t>(body_size), kCtrlMsgPluginTimeoutMs));
   HIXL_EVENT("[HixlClient] RecvEndPointInfoResp: receiving remote_endpoint_list body (%" PRIu64
              " bytes) from fd=%d success",
              body_size, fd);
@@ -265,7 +264,7 @@ Status HixlClient::TryMatchUbEndpoints(const EndPointConfig &local_endpoint,
   for (const auto &placement : {kPlacementDevice, kPlacementHost}) {
     MatchKey key = {local_endpoint.comm_id, local_endpoint.plane, placement};
     HIXL_LOGI("TryMatchUbEndpoints: key:%s", key.ToString().c_str());
-    auto it = find_matching_key(peer_match_endpoints, key);
+    auto it = FindMatchingKey(peer_match_endpoints, key);
     if (it != peer_match_endpoints.end()) {
       HIXL_LOGI("Found matched endpoint, remote_endpoint:%s", it->second.ToString().c_str());
       CommType type = ParseCommType(local_endpoint.placement, it->second.placement);
@@ -332,11 +331,8 @@ Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {
         HIXL_CHK_STATUS_RET((*seg_it)->AddRange(mem.addr, mem.len), "Failed to add range to local_segments_");
       } else {
         auto new_segment = MakeShared<Segment>(type);
-        if (new_segment == nullptr) {
-          HIXL_LOGE(FAILED, "Failed to create new segment for type:%s",
-                    (type == MemType::MEM_DEVICE) ? "DEVICE" : "HOST");
-          return FAILED;
-        }
+        HIXL_CHK_BOOL_RET_STATUS(new_segment != nullptr, FAILED, "Failed to create new segment for type:%s",
+                                 (type == MemType::MEM_DEVICE) ? "DEVICE" : "HOST");
         HIXL_CHK_STATUS_RET(new_segment->AddRange(mem.addr, mem.len), "Failed to add range to local_segments_");
         local_segments_.push_back(new_segment);
       }
@@ -436,11 +432,8 @@ Status HixlClient::ProcessRemoteMem(uint32_t timeout_ms) {
             "Failed to add range to remote_segments_");
       } else {
         auto new_segment = MakeShared<Segment>(type);
-        if (new_segment == nullptr) {
-          HIXL_LOGE(FAILED, "Failed to create new segment for type:%s",
-                    (type == MemType::MEM_DEVICE) ? "DEVICE" : "HOST");
-          return FAILED;
-        }
+        HIXL_CHK_BOOL_RET_STATUS(new_segment != nullptr, FAILED, "Failed to create new segment for type:%s",
+                                 (type == MemType::MEM_DEVICE) ? "DEVICE" : "HOST");
         HIXL_CHK_STATUS_RET(
             new_segment->AddRange(reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size),
             "Failed to add range to remote_segments_");
@@ -620,22 +613,24 @@ Status HixlClient::BatchTransfer(const std::vector<TransferOpDesc> &op_descs, Tr
     }
     uint32_t list_num = op_descs.size();
     std::vector<void *> remote_buff_list(list_num);
-    std::vector<const void *> local_buff_list(list_num);
+    std::vector<void *> local_buff_list(list_num);
     std::vector<uint64_t> len_list(list_num);
     for (size_t i = 0; i < op_descs.size(); i++) {
       remote_buff_list[i] = reinterpret_cast<void *>(op_descs[i].remote_addr);
-      local_buff_list[i] = reinterpret_cast<const void *>(op_descs[i].local_addr);
+      local_buff_list[i] = reinterpret_cast<void *>(op_descs[i].local_addr);
       len_list[i] = op_descs[i].len;
     }
     void *complete_handle = nullptr;
     if (operation == WRITE) {
-      HIXL_CHK_STATUS_RET(HixlCSClientBatchput(handle, list_num, remote_buff_list.data(), local_buff_list.data(),
-                                               len_list.data(), &complete_handle),
-                          "HixlClient BatchPut failed");
+      HIXL_CHK_STATUS_RET(
+          HixlCSClientBatchPut(handle, list_num, remote_buff_list.data(),
+                               const_cast<const void **>(local_buff_list.data()), len_list.data(), &complete_handle),
+          "HixlClient BatchPut failed");
     } else {
-      HIXL_CHK_STATUS_RET(HixlCSClientBatchget(handle, list_num, remote_buff_list.data(), local_buff_list.data(),
-                                               len_list.data(), &complete_handle),
-                          "HixlClient BatchGet failed");
+      HIXL_CHK_STATUS_RET(
+          HixlCSClientBatchGet(handle, list_num, local_buff_list.data(),
+                               const_cast<const void **>(remote_buff_list.data()), len_list.data(), &complete_handle),
+          "HixlClient BatchGet failed");
     }
     TransferCompleteInfo complete_info{type, complete_handle};
     complete_handle_list.push_back(complete_info);
@@ -691,9 +686,9 @@ Status HixlClient::GetTransferStatus(const TransferReq &req, TransferStatus &sta
       complete_handles_.erase(req);
       return ret;
     }
-    if (query_status == 0) {
+    if (query_status == BatchTransferStatus::COMPLETED) {
       continue;
-    } else if (query_status == 1) {
+    } else if (query_status == BatchTransferStatus::WAITING) {
       all_complete = false;
     }
   }
@@ -747,7 +742,7 @@ Status HixlClient::TransferSync(const std::vector<TransferOpDesc> &op_descs, Tra
         HIXL_CHK_STATUS_RET(HixlCSClientQueryCompleteStatus(client_handles_[type], complete_handle, &query_status),
                             "HixlClient QueryCompleteStatus failed");
       }
-      if (query_status == 1) {
+      if (query_status == BatchTransferStatus::WAITING) {
         // 传输未完成，保存到剩余列表
         remaining_handles.push_back(type_with_complete_handle);
         all_complete = false;

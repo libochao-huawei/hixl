@@ -75,7 +75,7 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
   std::vector<std::string> segments = Split(eid_str, ':');
   // 检查是否有8个段
   if (segments.size() != 8) {
-    HIXL_LOGE(PARAM_INVALID, "Invalid EID address format: %s. Expected 8 segments separated by colons.",
+    HIXL_LOGE(PARAM_INVALID, "Invalid EID format: %s. Expected 8 segments separated by colons.",
               eid_str.c_str());
     return PARAM_INVALID;
   }
@@ -86,13 +86,13 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
     // 检查每个段的长度
     if (segment.length() < 1 || segment.length() > 4) {
       HIXL_LOGE(PARAM_INVALID,
-                "Invalid segment %zu in EID address: %s. Segment length must be between 1 and 4 characters.", i,
+                "Invalid segment %zu in EID: %s. Segment length must be between 1 and 4 characters.", i,
                 segment.c_str());
       return PARAM_INVALID;
     }
     // 检查段是否只包含十六进制字符
     if (!std::all_of(segment.begin(), segment.end(), [](unsigned char c) { return std::isxdigit(c); })) {
-      HIXL_LOGE(PARAM_INVALID, "Invalid segment %zu in EID address: %s. Only hexadecimal characters are allowed.", i,
+      HIXL_LOGE(PARAM_INVALID, "Invalid segment %zu in EID: %s. Only hexadecimal characters are allowed.", i,
                 segment.c_str());
       return PARAM_INVALID;
     }
@@ -101,16 +101,16 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
     try {
       unsigned long value = std::stoul(segment, nullptr, 16);
       if (value > UINT16_MAX) {
-        HIXL_LOGE(PARAM_INVALID, "Invalid segment %zu in EID address: %s. Maximum value is 0xFFFF.", i,
+        HIXL_LOGE(PARAM_INVALID, "Invalid segment %zu in EID: %s. Maximum value is 0xFFFF.", i,
                   segment.c_str());
         return PARAM_INVALID;
       }
       segment_value = static_cast<uint16_t>(value);
     } catch (const std::invalid_argument &) {
-      HIXL_LOGE(PARAM_INVALID, "Failed to convert segment %zu of EID address: %s to integer.", i, segment.c_str());
+      HIXL_LOGE(PARAM_INVALID, "Failed to convert segment %zu of EID: %s to integer.", i, segment.c_str());
       return PARAM_INVALID;
     } catch (const std::out_of_range &) {
-      HIXL_LOGE(PARAM_INVALID, "Segment %zu of EID address: %s is out of range.", i, segment.c_str());
+      HIXL_LOGE(PARAM_INVALID, "Segment %zu of EID: %s is out of range.", i, segment.c_str());
       return PARAM_INVALID;
     }
     // 存储到eid数组中

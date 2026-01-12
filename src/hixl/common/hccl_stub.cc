@@ -9,6 +9,7 @@
  */
 
 #include <cstring>
+#include <thread>
 #include "hccl_api.h"
 #include "securec.h"
 
@@ -18,8 +19,8 @@ extern "C" {
 
 HcclResult HcommMemReg(void *handle, HcclMem mem, void **mem_handle) {
   static int32_t mem_num_stub = 1;
-  (void) handle;
-  (void) mem;
+  (void)handle;
+  (void)mem;
   *mem_handle = reinterpret_cast<void *>(mem_num_stub++);
   return HCCL_SUCCESS;
 }
@@ -106,25 +107,27 @@ void HcommChannelFence(ChannelHandle channel) {
   (void)channel;
 }
 
-void HcommWriteNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
-  (void)channel;
+static void CheckParam(void *dst, void *src, uint64_t len) {
   if (len == 0) {
     return;
   }
   if (dst == nullptr || src == nullptr) {
     return;
   }
+}
+
+void HcommWriteNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
+  (void)channel;
+  CheckParam(dst, src, len);
+  // 增加延迟，模拟真实的异步读操作
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
   memcpy_s(dst, len, src, len);
 }
 
 void HcommReadNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
   (void)channel;
-  if (len == 0) {
-    return;
-  }
-  if (dst == nullptr || src == nullptr) {
-    return;
-  }
+  CheckParam(dst, src, len);
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
   memcpy_s(dst, len, src, len);
 }
 
