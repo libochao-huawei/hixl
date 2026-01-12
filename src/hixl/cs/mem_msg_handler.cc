@@ -193,7 +193,7 @@ static Status BuildExportString(const nlohmann::json& exp, std::string& export_s
       return PARAM_INVALID;
     }
     uint64_t x = v.get<uint64_t>();
-    if (x > 255) {
+    if (x > 255) { // 限制mem_descs数组中元素个数不超过255
       HIXL_LOGE(PARAM_INVALID, "[HixlClient] mem_descs[%u].export_desc element >255", idx);
       return PARAM_INVALID;
     }

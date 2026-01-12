@@ -61,6 +61,8 @@ class HixlCSClient {
   HixlCSClient();
   ~HixlCSClient();
 
+  Status InitFlagQueue() noexcept;
+
   Status Create(const char *server_ip, uint32_t server_port, const EndPointInfo *src_endpoint,
                 const EndPointInfo *dst_endpoint);
 
@@ -102,11 +104,11 @@ class HixlCSClient {
   ChannelHandle client_channel_handle_ = 0UL;
   uint64_t dst_endpoint_handle_{0U};
   static constexpr size_t kFlagQueueSize = 4096;                  // 用于初始化队列和内存地址列表
-  uint64_t* flag_queue_ = nullptr; // 申请device侧的内存地址，方法在hixl仓中有提供
-  std::array<uint32_t, kFlagQueueSize> available_indices_;        // 不采用vector生成队列
+  uint64_t* flag_queue_ = nullptr;
+  std::array<uint32_t, kFlagQueueSize> available_indices_{};
   size_t top_index_ = 0;                                           // 栈顶指针
   std::mutex indices_mutex_;
-  std::array<CompleteHandle*, kFlagQueueSize> live_handles_; //用来记录读写生成的queryhandle
+  std::array<CompleteHandle*, kFlagQueueSize> live_handles_{}; // 用来记录读写生成的queryhandle
   int32_t socket_ = -1;
   std::map<std::string, HcclMem> tag_mem_descs_;
   std::vector<HcclMem> remote_mems_out_;
@@ -115,7 +117,6 @@ class HixlCSClient {
   std::vector<void*> recorded_remote_addrs_;
   std::vector<HcommBuf> imported_remote_bufs_;
 };
-
 }  // namespace hixl
 
 #endif  // CANN_HIXL_SRC_HIXL_CS_HIXL_CS_CLIENT_H_

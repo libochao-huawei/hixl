@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -10,11 +10,11 @@
 
 #include <cstdint>
 #include <cstring>
-#include <arpa/inet.h>  // for inet_pton
+#include <arpa/inet.h>
 #include "gtest/gtest.h"
 #include "hixl_cs_client.h"
 #include "hccl/hccl_types.h"
-#include "common/hccl_api.h"  // 链接到桩
+#include "common/hccl_api.h"
 #include "hixl_test.h"
 namespace hixl {
 
@@ -24,7 +24,7 @@ EndPointInfo MakeSrcEp() {
   EndPointInfo ep{};
   ep.location = END_POINT_LOCATION_HOST;
   ep.protocol = COMM_PROTOCOL_TCP;      // 或 COMM_PROTOCOL_ROCE，按你们测试协议
-  ep.addr.type = COMM_ADDR_TYPE_IP_V4;  // 如果你们有该枚举值
+  ep.addr.type = COMM_ADDR_TYPE_IP_V4;
   // 填充 IPv4 地址到 in_addr
   inet_pton(AF_INET, "127.0.0.1", &ep.addr.addr);
   return ep;
@@ -194,7 +194,7 @@ TEST_F(HixlCSClientFixture, BatchPut_Success_WithStubbedHccl) {
   uint64_t* flag = task_flag->flag_address;
   std::cout<<"falg的值是："<<*flag<<std::endl;
   Status st = cli.CheckStatus(task_flag, status_out);
-  EXPECT_TRUE(st == SUCCESS);
+  EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(*status_out, COMPLETED);
 }
 
