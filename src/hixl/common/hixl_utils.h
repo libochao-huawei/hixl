@@ -53,9 +53,13 @@ static hixl::Status ToNumber(const std::string &num_str, T &value) {
 
 Status HcclError2Status(HcclResult ret);
 
+std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char_t delim);
+
 Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndPointInfo &endpoint);
 
 Status ParseIpAddress(const std::string &ip_str, CommAddr &addr);
+
+Status ParseEidAddress(const std::string &eid_str, CommAddr &addr);
 
 Status SerializeEndPointConfigList(const std::vector<EndPointConfig> &list, std::string &msg_str);
 

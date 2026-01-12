@@ -43,13 +43,16 @@ enum CommAddrType {
   COMM_ADDR_TYPE_RESERVED = -1,
   COMM_ADDR_TYPE_IP_V4 = 0,
   COMM_ADDR_TYPE_IP_V6 = 1,
-  COMM_ADDR_TYPE_ID = 2
+  COMM_ADDR_TYPE_ID = 2,
+  COMM_ADDR_TYPE_EID = 3
 };
 
+constexpr uint32_t COMM_ADDR_EID_LEN = 16;
 struct CommAddr {
   CommAddrType type;
   union {
     uint32_t id;
+    uint8_t eid[COMM_ADDR_EID_LEN];
     struct in_addr addr;
     struct in6_addr addr6;
   };
@@ -72,9 +75,7 @@ inline bool operator == (const EndPointInfo& lhs, const EndPointInfo& rhs) {
     return false;
   }
 
-  if (lhs.protocol == COMM_PROTOCOL_UB_CTP ||
-      lhs.protocol == COMM_PROTOCOL_UB_TP ||
-      lhs.protocol == COMM_PROTOCOL_HCCS) {
+  if (lhs.protocol == COMM_PROTOCOL_HCCS) {
     return lhs.addr.id == rhs.addr.id;
   }
   return true;

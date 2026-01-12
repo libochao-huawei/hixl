@@ -1,5 +1,5 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -23,6 +23,29 @@ struct EndPointConfig {
   std::string plane;
   std::string dst_eid;
   std::string net_instance_id;
+
+  std::string ToString() const {
+    return "EndPointConfig{"
+           "protocol=\"" +
+           protocol +
+           "\", "
+           "comm_id=\"" +
+           comm_id +
+           "\", "
+           "placement=\"" +
+           placement +
+           "\", "
+           "plane=\"" +
+           plane +
+           "\", "
+           "dst_eid=\"" +
+           dst_eid +
+           "\", "
+           "net_instance_id=\"" +
+           net_instance_id +
+           "\""
+           "}";
+  }
 };
 
 struct MemInfo {
@@ -30,5 +53,5 @@ struct MemInfo {
   MemDesc mem;
   MemType type;
 };
-}
+}  // namespace hixl
 #endif  // CANN_HIXL_SRC_HIXL_COMMON_HIXL_INNER_TYPES_H_

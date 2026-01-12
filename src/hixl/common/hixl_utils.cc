@@ -9,8 +9,8 @@
  */
 
 #include "hixl_utils.h"
-#include <securec.h>
 #include <arpa/inet.h>
+#include "securec.h"
 #include "nlohmann/json.hpp"
 #include "hixl_log.h"
 #include "hixl_checker.h"
@@ -28,6 +28,26 @@ Status HcclError2Status(HcclResult ret) {
     return it->second;
   }
   return FAILED;
+}
+
+std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char_t delim) {
+  std::vector<std::string, std::allocator<std::string>> elems;
+  if (str.empty()) {
+    (void)elems.emplace_back("");
+    return elems;
+  }
+
+  std::stringstream ss(str);
+  std::string item;
+  while (getline(ss, item, delim)) {
+    (void)elems.push_back(item);
+  }
+
+  const auto str_size = str.size();
+  if ((str_size > 0U) && (str[str_size - 1U] == delim)) {
+    (void)elems.emplace_back("");
+  }
+  return elems;
 }
 
 Status ParseIpAddress(const std::string &ip_str, CommAddr &addr) {
@@ -49,6 +69,57 @@ Status ParseIpAddress(const std::string &ip_str, CommAddr &addr) {
 
   HIXL_LOGE(PARAM_INVALID, "Invalid IP address: %s", ip_str.c_str());
   return PARAM_INVALID;
+}
+
+Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
+  std::vector<std::string> segments = Split(eid_str, ':');
+  // 检查是否有8个段
+  if (segments.size() != 8) {
+    HIXL_LOGE(PARAM_INVALID, "Invalid EID address format: %s. Expected 8 segments separated by colons.",
+              eid_str.c_str());
+    return PARAM_INVALID;
+  }
+
+  (void)memset_s(addr.eid, COMM_ADDR_EID_LEN, 0, COMM_ADDR_EID_LEN);
+  for (size_t i = 0; i < segments.size(); ++i) {
+    const std::string &segment = segments[i];
+    // 检查每个段的长度
+    if (segment.length() < 1 || segment.length() > 4) {
+      HIXL_LOGE(PARAM_INVALID,
+                "Invalid segment %zu in EID address: %s. Segment length must be between 1 and 4 characters.", i,
+                segment.c_str());
+      return PARAM_INVALID;
+    }
+    // 检查段是否只包含十六进制字符
+    if (!std::all_of(segment.begin(), segment.end(), [](unsigned char c) { return std::isxdigit(c); })) {
+      HIXL_LOGE(PARAM_INVALID, "Invalid segment %zu in EID address: %s. Only hexadecimal characters are allowed.", i,
+                segment.c_str());
+      return PARAM_INVALID;
+    }
+    // 将十六进制字符串转换为16位无符号整数
+    uint16_t segment_value;
+    try {
+      unsigned long value = std::stoul(segment, nullptr, 16);
+      if (value > UINT16_MAX) {
+        HIXL_LOGE(PARAM_INVALID, "Invalid segment %zu in EID address: %s. Maximum value is 0xFFFF.", i,
+                  segment.c_str());
+        return PARAM_INVALID;
+      }
+      segment_value = static_cast<uint16_t>(value);
+    } catch (const std::invalid_argument &) {
+      HIXL_LOGE(PARAM_INVALID, "Failed to convert segment %zu of EID address: %s to integer.", i, segment.c_str());
+      return PARAM_INVALID;
+    } catch (const std::out_of_range &) {
+      HIXL_LOGE(PARAM_INVALID, "Segment %zu of EID address: %s is out of range.", i, segment.c_str());
+      return PARAM_INVALID;
+    }
+    // 存储到eid数组中
+    size_t index = i * 2;
+    addr.eid[index] = static_cast<uint8_t>(segment_value >> 8);
+    addr.eid[index + 1] = static_cast<uint8_t>(segment_value & 0xFF);
+  }
+  addr.type = COMM_ADDR_TYPE_EID;
+  return SUCCESS;
 }
 
 Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndPointInfo &endpoint) {
@@ -80,9 +151,12 @@ Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndPointInfo
   // 处理ROCE协议的comm_id
   if (endpoint_config.protocol == "roce") {
     HIXL_CHK_STATUS_RET(ParseIpAddress(endpoint_config.comm_id, endpoint.addr), "ParseIpAddress failed");
-    return SUCCESS;
   }
-  HIXL_LOGW("Unsupported protocol: %s", endpoint_config.protocol.c_str());
+
+  // 处理UB协议的comm_id
+  if (endpoint_config.protocol == "ub_ctp" || endpoint_config.protocol == "ub_tp") {
+    HIXL_CHK_STATUS_RET(ParseEidAddress(endpoint_config.comm_id, endpoint.addr), "ParseEidAddress failed");
+  }
   return SUCCESS;
 }
 
@@ -101,9 +175,7 @@ Status SerializeEndPointConfigList(const std::vector<EndPointConfig> &list, std:
     }
     msg_str = j.dump();
   } catch (const nlohmann::json::exception &e) {
-    HIXL_LOGE(PARAM_INVALID,
-              "Failed to dump endpoint list, exception:%s",
-              e.what());
+    HIXL_LOGE(PARAM_INVALID, "Failed to dump endpoint list, exception:%s", e.what());
     return PARAM_INVALID;
   }
   return SUCCESS;
