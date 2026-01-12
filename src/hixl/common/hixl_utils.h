@@ -53,7 +53,7 @@ static hixl::Status ToNumber(const std::string &num_str, T &value) {
 
 Status HcclError2Status(HcclResult ret);
 
-std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char_t delim);
+std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char delim);
 
 Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndPointInfo &endpoint);
 
