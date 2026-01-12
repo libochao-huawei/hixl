@@ -33,6 +33,11 @@ struct HixlServerConfig {
   uint8_t reserved[128] = {};
 };
 
+enum BatchTransferStatus : int32_t {
+  WAITING = 0,
+  COMPLETED = 1
+};
+
 /**
  * @brief 创建Server
  * @param [in] ip server的host侧ip地址

@@ -10,8 +10,7 @@
 
 #include <cstring>
 #include "hccl_api.h"
-
-#include <securec.h>
+#include "securec.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -116,7 +115,6 @@ void HcommWriteNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
     return;
   }
   memcpy_s(dst, len, src, len);
-
 }
 
 void HcommReadNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
