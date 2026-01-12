@@ -14,13 +14,12 @@
 #include <thread>
 #include <atomic>
 #include <chrono>
-#include <fstream>
-#include <cstdio>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "engine/hixl_client.h"
 #include "common/hixl_inner_types.h"
 #include "common/hixl_utils.h"
+#include "cs/hixl_cs_client.h"
 #include "common/hixl_cs.h"
 #include "depends/runtime/src/runtime_stub.h"
 #include "common/hixl_utils.h"
@@ -32,8 +31,8 @@ using namespace ::testing;
 namespace hixl {
 static constexpr uint32_t kServerPort = 16001;
 static constexpr uint32_t kDefaultTimeoutMs = 5000;
-static constexpr uint32_t kShortMs = 1;
-static constexpr uint32_t kMilliSeconds1 = 1;
+static constexpr uint32_t kShortTimeoutMs = 10;
+static constexpr uint32_t kMilliSeconds10 = 10;
 static constexpr uint32_t kSleepMs = 10;
 static constexpr uint32_t kSleepLongTimeMs = 30000;
 static constexpr uint32_t kMemNum = 100U;
@@ -55,16 +54,16 @@ enum class MockHixlServerMode : uint32_t {
   kGetEndPointInfoResp_MissingField,
 };
 // server 内存信息
-static HcommMem default_remote_mem_list[] = {{HCCL_MEM_TYPE_HOST, &kRemoteMems[0], sizeof(uint32_t)},
+static HcclMem default_remote_mem_list[] = {{HCCL_MEM_TYPE_HOST, &kRemoteMems[0], sizeof(uint32_t)},
                                             {HCCL_MEM_TYPE_DEVICE, &kRemoteMems[2], sizeof(uint32_t)}};
-static HcommMem remote_mem_list_4ub[] = {{HCCL_MEM_TYPE_HOST, &kRemoteMems[0], sizeof(uint32_t)},
+static HcclMem remote_mem_list_4ub[] = {{HCCL_MEM_TYPE_HOST, &kRemoteMems[0], sizeof(uint32_t)},
                                         {HCCL_MEM_TYPE_DEVICE, &kRemoteMems[2], sizeof(uint32_t)},
                                         {HCCL_MEM_TYPE_HOST, &kRemoteMems[4], sizeof(uint32_t)},
                                         {HCCL_MEM_TYPE_DEVICE, &kRemoteMems[6], sizeof(uint32_t)}};
 // client 内存信息
-static HcommMem default_local_mem_list[] = {{HCCL_MEM_TYPE_HOST, &kLocalMems[0], sizeof(uint32_t)},
+static HcclMem default_local_mem_list[] = {{HCCL_MEM_TYPE_HOST, &kLocalMems[0], sizeof(uint32_t)},
                                            {HCCL_MEM_TYPE_DEVICE, &kLocalMems[2], sizeof(uint32_t)}};
-static HcommMem local_mem_list_4ub[] = {{HCCL_MEM_TYPE_DEVICE, &kLocalMems[0], sizeof(uint32_t)},
+static HcclMem local_mem_list_4ub[] = {{HCCL_MEM_TYPE_DEVICE, &kLocalMems[0], sizeof(uint32_t)},
                                        {HCCL_MEM_TYPE_DEVICE, &kLocalMems[2], sizeof(uint32_t)},
                                        {HCCL_MEM_TYPE_HOST, &kLocalMems[4], sizeof(uint32_t)},
                                        {HCCL_MEM_TYPE_HOST, &kLocalMems[6], sizeof(uint32_t)}};
@@ -81,9 +80,9 @@ class MockHixlServer {
 
   Status CreateServer(const std::vector<EndPointConfig> &remote_endpoint_list) {
     HixlServerConfig config{};
-    std::vector<EndpointDesc> endpointInfoList;
+    std::vector<EndPointInfo> endpointInfoList;
     for (const auto &ep : remote_endpoint_list) {
-      EndpointDesc endpointInfo;
+      EndPointInfo endpointInfo;
       ConvertToEndPointInfo(ep, endpointInfo);
       endpointInfoList.push_back(endpointInfo);
     }
@@ -97,7 +96,7 @@ class MockHixlServer {
     return SUCCESS;
   }
 
-  void RegMem(HcommMem *mem_list, size_t size) {
+  void RegMem(HcclMem *mem_list, size_t size) {
     for (size_t i = 0; i < size; ++i) {
       MemHandle mem_handle = nullptr;
       HixlStatus ret = HixlCSServerRegMem(server_handle_, std::to_string(i).c_str(), &mem_list[i], &mem_handle);
@@ -161,18 +160,6 @@ class MockHixlServer {
   int32_t conn_fd_ = -1;
   MockHixlServerMode mode_;
 
-  // JSON字符串常量
-  static const std::string kErrorJson;
-  static const std::string kRoceEndpointJson;
-  static const std::string kUbCtpHostEndpointJson;
-  static const std::string kUbCtpDeviceEndpointJson;
-  static const std::string kUbCtpPlaneAEndpointJson;
-  static const std::string kUbTpPlaneBEndpointJson;
-  static const std::string k2UbJson;
-  static const std::string k4UbJson;
-  static const std::string kNotArrayJson;
-  static const std::string kMissingFieldJson;
-
   // 通用响应发送方法
   void SendResponseImpl(uint32_t magic, CtrlMsgType msg_type, size_t body_size, const std::string &json_content) {
     // 发送头部
@@ -189,6 +176,95 @@ class MockHixlServer {
   }
 
   void SendResponse() {
+    const std::string kErrorJson = R"({ invalid json )";
+    const std::string k2UbJson = R"([
+        {
+          "protocol": "roce",
+          "comm_id": "127.0.0.1",
+          "dst_eid": "",
+          "plane": "",
+          "placement": "device",
+          "net_instance_id": "superpod1-1"
+        },
+        {
+          "protocol": "ub_ctp",
+          "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0463",
+          "dst_eid" : "0000:0000:0000:0000:0000:0000:c0a8:0563",
+          "plane": "",
+          "placement" : "host",
+          "net_instance_id" : "superpod1-1"
+        },
+        {
+          "protocol": "ub_ctp",
+          "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0663",
+          "dst_eid" : "0000:0000:0000:0000:0000:0000:c0a8:0763",
+          "plane": "",
+          "placement" : "device",
+          "net_instance_id" : "superpod1-1"
+        }
+      ])";
+    const std::string k4UbJson = R"([
+        {
+          "protocol": "roce",
+          "comm_id": "127.0.0.1",
+          "dst_eid": "",
+          "plane": "",
+          "placement": "device",
+          "net_instance_id": "superpod1-1"
+        },
+        {
+          "protocol": "ub_ctp",
+          "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0463",
+          "dst_eid" : "0000:0000:0000:0000:0000:0000:c0a8:0563",
+          "plane": "",
+          "placement" : "host",
+          "net_instance_id" : "superpod1-1"
+        },
+        {
+          "protocol": "ub_ctp",
+          "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0663",
+          "dst_eid" : "0000:0000:0000:0000:0000:0000:c0a8:0763",
+          "plane": "",
+          "placement" : "device",
+          "net_instance_id" : "superpod1-1"
+        },
+        {
+          "protocol": "ub_ctp",
+          "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0063",
+          "dst_eid": "",
+          "plane" : "plane-a",
+          "placement" : "device",
+          "net_instance_id" : "superpod1-1"
+        },
+        {
+          "protocol": "ub_tp",
+          "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0163",
+          "dst_eid": "",
+          "plane" : "plane-b",
+          "placement" : "host",
+          "net_instance_id" : "superpod1-1"
+        }
+      ])";
+    const std::string kNotArrayJson = R"(
+        {
+          "protocol": "roce",
+          "comm_id": "127.0.0.1",
+          "dst_eid": "",
+          "plane": "",
+          "placement": "device",
+          "net_instance_id": "superpod1-1"
+        }
+      )";
+    const std::string kMissingFieldJson = R"([
+        {
+          "comm_id": "127.0.0.1",
+          "dst_eid": "",
+          "plane": "",
+          "placement": "device",
+          "net_instance_id": "superpod1-1"
+        }
+      ])";
+
     switch (mode_) {
       case MockHixlServerMode::k4UbNormal:
         SendResponseImpl(kMagicNumber, CtrlMsgType::kGetEndPointInfoResp, sizeof(CtrlMsgType) + k4UbJson.size(),
@@ -228,101 +304,16 @@ class MockHixlServer {
   }
 };
 
-const std::string MockHixlServer::kErrorJson = R"({ invalid json )";
-const std::string MockHixlServer::kRoceEndpointJson = R"({
-      "protocol": "roce",
-      "comm_id": "127.0.0.1",
-      "dst_eid": "",
-      "plane": "",
-      "placement": "device",
-      "net_instance_id": "superpod1-1"
-    })";
-
-const std::string MockHixlServer::kUbCtpHostEndpointJson = R"({
-      "protocol": "ub_ctp",
-      "comm_id": "000000000000000000000000c0a80463",
-      "dst_eid" : "000000000000000000000000c0a80563",
-      "plane": "",
-      "placement" : "host",
-      "net_instance_id" : "superpod1-1"
-    })";
-
-const std::string MockHixlServer::kUbCtpDeviceEndpointJson = R"({
-      "protocol": "ub_ctp",
-      "comm_id": "000000000000000000000000c0a80663",
-      "dst_eid" : "000000000000000000000000c0a80763",
-      "plane": "",
-      "placement" : "device",
-      "net_instance_id" : "superpod1-1"
-    })";
-
-const std::string MockHixlServer::kUbCtpPlaneAEndpointJson = R"({
-      "protocol": "ub_ctp",
-      "comm_id": "000000000000000000000000c0a80063",
-      "dst_eid": "",
-      "plane" : "plane-a",
-      "placement" : "device",
-      "net_instance_id" : "superpod1-1"
-    })";
-
-const std::string MockHixlServer::kUbTpPlaneBEndpointJson = R"({
-      "protocol": "ub_tp",
-      "comm_id": "000000000000000000000000c0a80163",
-      "dst_eid": "",
-      "plane" : "plane-b",
-      "placement" : "host",
-      "net_instance_id" : "superpod1-1"
-    })";
-
-// 使用原始字符串字面量构建k2UbJson和k4UbJson
-const std::string MockHixlServer::k2UbJson =
-    R"([)" + kRoceEndpointJson + R"(,)" + kUbCtpHostEndpointJson + R"(,)" + kUbCtpDeviceEndpointJson + R"(])";
-
-const std::string MockHixlServer::k4UbJson = R"([)" + kRoceEndpointJson + R"(,)" + kUbCtpHostEndpointJson + R"(,)" +
-                                             kUbCtpDeviceEndpointJson + R"(,)" + kUbCtpPlaneAEndpointJson + R"(,)" +
-                                             kUbTpPlaneBEndpointJson + R"(])";
-const std::string MockHixlServer::kNotArrayJson = R"(
-    {
-      "protocol": "roce",
-      "comm_id": "127.0.0.1",
-      "dst_eid": "",
-      "plane": "",
-      "placement": "device",
-      "net_instance_id": "superpod1-1"
-    }
-  )";
-const std::string MockHixlServer::kMissingFieldJson = R"([
-    {
-      "comm_id": "127.0.0.1",
-      "dst_eid": "",
-      "plane": "",
-      "placement": "device",
-      "net_instance_id": "superpod1-1"
-    }
-  ])";
-
 class HixlClientUTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    // [新增] 打开 Stub 的特殊开关
-    setenv("HIXL_UT_UB_FLAG_HACK", "1", 1);
-    // [新增] 1. 创建一个空的 dummy json 文件，专门为了过 realpath 的检查
-    std::ofstream outfile("scatter_hixl_kernel.json");
-    if (outfile.is_open()) {
-      outfile << "{}" << std::endl;
-      outfile.close();
-    }
     server_ = MakeUnique<MockHixlServer>();
     client_ = MakeUnique<HixlClient>("127.0.0.1", kServerPort);
   }
 
   void TearDown() override {
-    // [新增] 关闭开关，确保不影响后续运行的其他测试用例
-    unsetenv("HIXL_UT_UB_FLAG_HACK");
     client_->Finalize();
     server_->DestroyServerAndUnreg();
-    // [新增] 2. 测试结束后清理掉这个临时文件，保持环境干净
-    remove("libcann_hixl_kernel.json");
   }
 
   void StartServer(MockHixlServerMode mode) {
@@ -365,8 +356,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbHostLocalEp1() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "000000000000000000000000c0a80563";
-    ep.dst_eid = "000000000000000000000000c0a80463";
+    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0563";
+    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0463";
     ep.placement = "host";
     ep.net_instance_id = "superpod1-1";
     return ep;
@@ -375,8 +366,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbHostRemoteEp1() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "000000000000000000000000c0a80463";
-    ep.dst_eid = "000000000000000000000000c0a80563";
+    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0463";
+    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0563";
     ep.placement = "host";
     ep.net_instance_id = "superpod1-1";
     return ep;
@@ -385,8 +376,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbHostLocalEp2() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "000000000000000000000000c0a80763";
-    ep.dst_eid = "000000000000000000000000c0a80663";
+    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0763";
+    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0663";
     ep.placement = "host";
     ep.net_instance_id = "superpod1-1";
     return ep;
@@ -395,8 +386,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDeviceRemoteEp2() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "000000000000000000000000c0a80663";
-    ep.dst_eid = "000000000000000000000000c0a80763";
+    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0663";
+    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0763";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
     return ep;
@@ -405,7 +396,7 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDeviceLocalEp3() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "000000000000000000000000c0a80363";
+    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0363";
     ep.plane = "plane-a";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
@@ -415,7 +406,7 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDeviceRemoteEp3() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "000000000000000000000000c0a80063";
+    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0063";
     ep.plane = "plane-a";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
@@ -425,7 +416,7 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDeviceLocalEp4() {
     EndPointConfig ep{};
     ep.protocol = "ub_tp";
-    ep.comm_id = "000000000000000000000000c0a80263";
+    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0263";
     ep.plane = "plane-b";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
@@ -435,7 +426,7 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbHostRemoteEp4() {
     EndPointConfig ep{};
     ep.protocol = "ub_tp";
-    ep.comm_id = "000000000000000000000000c0a80163";
+    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0163";
     ep.plane = "plane-b";
     ep.placement = "host";
     ep.net_instance_id = "superpod1-1";
@@ -445,8 +436,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDiffNetLocalEp1() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "000000000000000000000000c0a80563";
-    ep.dst_eid = "000000000000000000000000c0a80463";
+    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0563";
+    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0463";
     ep.placement = "host";
     ep.net_instance_id = "superpod2-2";
     return ep;
@@ -455,8 +446,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDiffNetLocalEp2() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "000000000000000000000000c0a80763";
-    ep.dst_eid = "000000000000000000000000c0a80663";
+    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0763";
+    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0663";
     ep.placement = "host";
     ep.net_instance_id = "superpod2-2";
     return ep;
@@ -543,63 +534,6 @@ class HixlClientUTest : public ::testing::Test {
     EXPECT_EQ(st, SUCCESS);
     server_->DestroyServerAndUnreg();
   }
-
-  void SetupTransferTest(bool use_4ub = false) {
-  if (use_4ub) {
-    StartServerReg4Ub(MockHixlServerMode::k4UbNormal);
-  } else {
-    StartServer(MockHixlServerMode::k4UbNormal);
-  }
-  
-  std::vector<EndPointConfig> local_endpoint_list;
-  if (use_4ub) {
-    local_endpoint_list.push_back(MakeRoceHostLocalEp());
-    local_endpoint_list.push_back(MakeUbHostLocalEp1());
-    local_endpoint_list.push_back(MakeUbHostLocalEp2());
-    local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
-    local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
-  } else {
-    local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
-  }
-  
-  Status st = client_->Initialize(local_endpoint_list);
-  EXPECT_EQ(st, SUCCESS);
-  
-  st = client_->SetLocalMemInfo(use_4ub ? Make4UbMemInfoList() : MakeMemInfoList());
-  EXPECT_EQ(st, SUCCESS);
-  
-  st = client_->Connect(kDefaultTimeoutMs);
-  EXPECT_EQ(st, SUCCESS);
-}
-
-// 创建单个传输操作
-TransferOpDesc CreateTransferOp(uint32_t index = 0, uint32_t *local_mem = &kLocalMems[0], 
-                                uint32_t *remote_mem = &kRemoteMems[0]) {
-  TransferOpDesc op_desc;
-  op_desc.local_addr = reinterpret_cast<uintptr_t>(local_mem + index);
-  op_desc.remote_addr = reinterpret_cast<uintptr_t>(remote_mem + index);
-  op_desc.len = sizeof(uint32_t);
-  return op_desc;
-}
-
-// 创建多个传输操作
-std::vector<TransferOpDesc> CreateTransferOps(size_t count = 1, uint32_t *local_mem = &kLocalMems[0], 
-                                             uint32_t *remote_mem = &kRemoteMems[0]) {
-  std::vector<TransferOpDesc> op_descs;
-  for (size_t i = 0; i < count; ++i) {
-    op_descs.push_back(CreateTransferOp(i * 2, local_mem, remote_mem));
-  }
-  return op_descs;
-}
-
-// 创建异步传输请求
-TransferReq CreateAsyncTransfer(const std::vector<TransferOpDesc> &op_descs, TransferOp operation) {
-  TransferReq req = nullptr;
-  Status st = client_->TransferAsync(op_descs, operation, req);
-  EXPECT_EQ(st, SUCCESS);
-  EXPECT_NE(req, nullptr);
-  return req;
-}
 };
 
 // Initialize 接口测试：正常场景 创建 ub 链路4条
@@ -773,12 +707,28 @@ TEST_F(HixlClientUTest, ConnectNotInitializedTest) {
 
 // TransferSync 接口测试：正常场景 - roce
 TEST_F(HixlClientUTest, TransferSyncSuccessTest) {
-  SetupTransferTest();
-  auto op_descs = CreateTransferOps();
-  Status st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
+  StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
+  std::vector<EndPointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 获取内存信息
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 Connect 方法
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 TransferSync 方法
+  std::vector<TransferOpDesc> op_descs;
+  TransferOpDesc op_desc;
+  op_desc.local_addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
+  op_desc.remote_addr = reinterpret_cast<uintptr_t>(&kRemoteMems[0]);
+  op_desc.len = sizeof(uint32_t);
+  op_descs.push_back(op_desc);
+  st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
   std::cout << kRemoteMems[0] << std::endl;
-  
   st = client_->TransferSync(op_descs, READ, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
   std::cout << kLocalMems[0] << std::endl;
@@ -786,24 +736,54 @@ TEST_F(HixlClientUTest, TransferSyncSuccessTest) {
 
 // TransferSync 接口测试：正常场景 - 4ub传输
 TEST_F(HixlClientUTest, TransferSync4UbSuccessTest) {
-  SetupTransferTest(true);
-  auto op_descs = CreateTransferOps(list_num_4ub);
-  Status st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
+  StartServerReg4Ub(MockHixlServerMode::k4UbNormal);
+  // 初始化4条ub链路
+  std::vector<EndPointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceHostLocalEp());
+  local_endpoint_list.push_back(MakeUbHostLocalEp1());
+  local_endpoint_list.push_back(MakeUbHostLocalEp2());
+  local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
+  local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 设置内存信息
+  st = client_->SetLocalMemInfo(Make4UbMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 连接服务器
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  // 准备传输操作
+  std::vector<TransferOpDesc> op_descs;
+  for (uint32_t i = 0; i < list_num_4ub; i++) {
+    TransferOpDesc op_desc;
+    op_desc.local_addr = reinterpret_cast<uintptr_t>(&kLocalMems[i * 2]);
+    op_desc.remote_addr = reinterpret_cast<uintptr_t>(&kRemoteMems[i * 2]);
+    op_desc.len = sizeof(uint32_t);
+    op_descs.push_back(op_desc);
+  }
+  // 执行同步传输
+  st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
 }
 
 // TransferSync 接口测试：异常场景 - 未建链
 TEST_F(HixlClientUTest, TransferSyncNoConnectTest) {
   StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
   std::vector<EndPointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
   Status st = client_->Initialize(local_endpoint_list);
   EXPECT_EQ(st, SUCCESS);
-  
+  // 获取内存信息
   st = client_->SetLocalMemInfo(MakeMemInfoList());
   EXPECT_EQ(st, SUCCESS);
-  
-  auto op_descs = CreateTransferOps();
+  // 调用 TransferSync 方法
+  std::vector<TransferOpDesc> op_descs;
+  TransferOpDesc op_desc;
+  op_desc.local_addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
+  op_desc.remote_addr = reinterpret_cast<uintptr_t>(&kRemoteMems[0]);
+  op_desc.len = sizeof(uint32_t);
+  op_descs.push_back(op_desc);
   st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
   EXPECT_EQ(st, NOT_CONNECTED);
 }
@@ -811,68 +791,133 @@ TEST_F(HixlClientUTest, TransferSyncNoConnectTest) {
 // TransferSync 接口测试：异常场景 - 未SetLocalMemInfo
 TEST_F(HixlClientUTest, TransferSyncNoSetLocalMemInfoTest) {
   StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
   std::vector<EndPointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
   Status st = client_->Initialize(local_endpoint_list);
   EXPECT_EQ(st, SUCCESS);
-  
+  // 调用 Connect 方法
   st = client_->Connect(kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
-  
-  auto op_descs = CreateTransferOps();
+  // 调用 TransferSync 方法
+  std::vector<TransferOpDesc> op_descs;
+  TransferOpDesc op_desc;
+  op_desc.local_addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
+  op_desc.remote_addr = reinterpret_cast<uintptr_t>(&kRemoteMems[0]);
+  op_desc.len = sizeof(uint32_t);
+  op_descs.push_back(op_desc);
   st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
   EXPECT_EQ(st, PARAM_INVALID);
 }
 
 // TransferSync 接口测试：异常场景 - 空的op_descs列表
 TEST_F(HixlClientUTest, TransferSyncEmptyOpDescsTest) {
-  SetupTransferTest();
+  StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
+  std::vector<EndPointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 设置内存信息
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 连接服务器
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  // 空的操作列表
   std::vector<TransferOpDesc> op_descs;
-  Status st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
+  // 执行同步传输
+  st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
   EXPECT_EQ(st, PARAM_INVALID);
 }
 
 // TransferSync 接口测试：异常场景 - 内存未注册
 TEST_F(HixlClientUTest, TransferSyncMemMismatchTest) {
-  SetupTransferTest();
+  StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
+  std::vector<EndPointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 获取内存信息
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 Connect 方法
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 TransferSync 方法
   std::vector<TransferOpDesc> op_descs1;
+  TransferOpDesc op_desc;
   uint32_t tmp = 10;
-  auto op_desc = CreateTransferOp(0, &tmp, &kRemoteMems[0]);
+  op_desc.local_addr = reinterpret_cast<uintptr_t>(&tmp);
+  op_desc.remote_addr = reinterpret_cast<uintptr_t>(&kRemoteMems[0]);
+  op_desc.len = sizeof(uint32_t);
   op_descs1.push_back(op_desc);
-  
-  Status st = client_->TransferSync(op_descs1, WRITE, kDefaultTimeoutMs);
+  st = client_->TransferSync(op_descs1, WRITE, kDefaultTimeoutMs);
   EXPECT_EQ(st, PARAM_INVALID);
 
   std::vector<TransferOpDesc> op_descs2;
-  op_desc = CreateTransferOp(0, &kLocalMems[0], &tmp);
+  op_desc.local_addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
+  op_desc.remote_addr = reinterpret_cast<uintptr_t>(&tmp);
+  op_desc.len = sizeof(uint32_t);
   op_descs2.push_back(op_desc);
-  
   st = client_->TransferSync(op_descs2, READ, kDefaultTimeoutMs);
   EXPECT_EQ(st, PARAM_INVALID);
 }
 
 // TransferSync 接口测试：异常场景 - 传输超时
 TEST_F(HixlClientUTest, TransferSyncTimeoutTest) {
-  SetupTransferTest();
-  
-  auto op_descs = CreateTransferOps();
-  Status st = client_->TransferSync(op_descs, WRITE, kShortMs);
+  StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
+  std::vector<EndPointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 获取内存信息
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 Connect 方法
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 TransferSync 方法
+  std::vector<TransferOpDesc> op_descs;
+  TransferOpDesc op_desc;
+  op_desc.local_addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
+  op_desc.remote_addr = reinterpret_cast<uintptr_t>(&kRemoteMems[0]);
+  op_desc.len = sizeof(uint32_t);
+  op_descs.push_back(op_desc);
+  st = client_->TransferSync(op_descs, WRITE, kShortTimeoutMs);
   EXPECT_EQ(st, TIMEOUT);
 }
 
 // TransferSync 接口测试：异常场景 - Finalize中断
 TEST_F(HixlClientUTest, TransferSyncFinalizeInterruptTest) {
-  SetupTransferTest();
-  auto op_descs = CreateTransferOps();
+  StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
+  std::vector<EndPointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 设置内存信息
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 连接服务器
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  // 准备传输操作
+  std::vector<TransferOpDesc> op_descs;
+  TransferOpDesc op_desc;
+  op_desc.local_addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
+  op_desc.remote_addr = reinterpret_cast<uintptr_t>(&kRemoteMems[0]);
+  op_desc.len = sizeof(uint32_t);
+  op_descs.push_back(op_desc);
 
   // 创建线程执行TransferSync
   std::atomic<Status> transfer_status = SUCCESS;
-  std::thread transfer_thread([&]() { 
-    transfer_status = client_->TransferSync(op_descs, WRITE, kSleepLongTimeMs); 
-  });
+  std::thread transfer_thread([&]() { transfer_status = client_->TransferSync(op_descs, WRITE, kSleepLongTimeMs); });
 
   // 等待一段时间确保TransferSync开始执行
-  std::this_thread::sleep_for(std::chrono::milliseconds(kShortMs));
+  std::this_thread::sleep_for(std::chrono::milliseconds(kMilliSeconds10));
 
   // 调用Finalize中断传输
   client_->Finalize();
@@ -888,18 +933,67 @@ TEST_F(HixlClientUTest, TransferSyncFinalizeInterruptTest) {
 
 // TransferAsync 接口测试：正常场景
 TEST_F(HixlClientUTest, TransferAsyncSuccessTest) {
-  SetupTransferTest();
-  auto op_descs = CreateTransferOps();
-  CreateAsyncTransfer(op_descs, WRITE);
+  StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
+  std::vector<EndPointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 获取内存信息
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 Connect 方法
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 TransferAsync 方法
+  std::vector<TransferOpDesc> op_descs;
+  TransferOpDesc op_desc;
+  op_desc.local_addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
+  op_desc.remote_addr = reinterpret_cast<uintptr_t>(&kRemoteMems[0]);
+  op_desc.len = sizeof(uint32_t);
+  op_descs.push_back(op_desc);
+  TransferReq req = nullptr;
+  st = client_->TransferAsync(op_descs, WRITE, req);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_NE(req, nullptr);
 }
 
 // GetTransferStatus 接口测试：正常场景 - WAITING 和 COMPLETED
 TEST_F(HixlClientUTest, GetTransferStatusSuccessTest) {
-  SetupTransferTest();
-  auto op_descs = CreateTransferOps();
-  auto req = CreateAsyncTransfer(op_descs, WRITE);
+  StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
+  std::vector<EndPointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 获取内存信息
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 Connect 方法
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 TransferAsync 方法
+  std::vector<TransferOpDesc> op_descs;
+  TransferOpDesc op_desc;
+  op_desc.local_addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
+  op_desc.remote_addr = reinterpret_cast<uintptr_t>(&kRemoteMems[0]);
+  op_desc.len = sizeof(uint32_t);
+  op_descs.push_back(op_desc);
+  TransferReq req = nullptr;
+  st = client_->TransferAsync(op_descs, WRITE, req);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_NE(req, nullptr);
+  // 调用 GetTransferStatus 方法
   TransferStatus status = TransferStatus::TIMEOUT;
-  Status st = client_->GetTransferStatus(req, status);
+  st = client_->GetTransferStatus(req, status);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_TRUE(status == TransferStatus::WAITING);
+  std::cout << "TransferStatus: " << static_cast<int>(status) << std::endl;
+
+  auto *query_handle = static_cast<CompleteHandle *>(req);
+  uint64_t *flag = query_handle->flag_address;
+  *flag = uint64_t{1};  // 手动修改标志位为1, 模拟传输完成
+  st = client_->GetTransferStatus(req, status);
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(status, TransferStatus::COMPLETED);
   std::cout << "TransferStatus: " << static_cast<int>(status) << std::endl;
@@ -907,22 +1001,88 @@ TEST_F(HixlClientUTest, GetTransferStatusSuccessTest) {
 
 // GetTransferStatus 接口测试：异常场景 - 未传输
 TEST_F(HixlClientUTest, GetTransferStatusNoTransferTest) {
-  SetupTransferTest();
+  StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
+  std::vector<EndPointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 获取内存信息
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 Connect 方法
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 GetTransferStatus 方法
   TransferReq req = nullptr;
   TransferStatus status;
-  Status st = client_->GetTransferStatus(req, status);
+  st = client_->GetTransferStatus(req, status);
   EXPECT_EQ(st, FAILED);
 }
 
 // GetTransferStatus 接口测试：异常场景 - req不对
 TEST_F(HixlClientUTest, GetTransferStatusReqInvalidTest) {
-  SetupTransferTest();
-  auto op_descs = CreateTransferOps();
-  auto req = CreateAsyncTransfer(op_descs, WRITE);
+  StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
+  std::vector<EndPointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 获取内存信息
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 Connect 方法
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 TransferAsync 方法
+  std::vector<TransferOpDesc> op_descs;
+  TransferOpDesc op_desc;
+  op_desc.local_addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
+  op_desc.remote_addr = reinterpret_cast<uintptr_t>(&kRemoteMems[0]);
+  op_desc.len = sizeof(uint32_t);
+  op_descs.push_back(op_desc);
+  TransferReq req = nullptr;
+  st = client_->TransferAsync(op_descs, WRITE, req);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_NE(req, nullptr);
+  // 调用 GetTransferStatus 方法
   TransferStatus status = TransferStatus::TIMEOUT;
-  Status st = client_->GetTransferStatus(static_cast<void *>(static_cast<char *>(req) + 1), status);
+  st = client_->GetTransferStatus(static_cast<void *>(static_cast<char *>(req) + 1), status);
   EXPECT_EQ(st, PARAM_INVALID);
   std::cout << "TransferStatus: " << static_cast<int>(status) << std::endl;
+  st = client_->Finalize();
+  EXPECT_EQ(st, SUCCESS);
+  server_->DestroyServerAndUnreg();
+}
+
+// client 挂了，server 还在，强制建链测试
+TEST_F(HixlClientUTest, ClientCrashTest) {
+  StartServer(MockHixlServerMode::k4UbNormal);
+  // 初始化 roce 链路
+  std::vector<EndPointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 获取内存信息
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 调用 Connect 方法
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+
+  // 模拟client崩溃
+  client_.reset();
+  // 创建新的客户端实例，模拟客户端重启
+  client_ = MakeUnique<HixlClient>("127.0.0.1", kServerPort);
+  // 重新初始化客户端
+  st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  // 重新获取内存信息
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  // 强制建链测试
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
 }
 
 // Segment::AddRange 函数测试：正常场景 - 添加单个内存范围
