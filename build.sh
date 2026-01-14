@@ -66,12 +66,24 @@ checkopts() {
   ENABLE_BENCHMARKS=OFF
   ENABLE_ASAN=OFF
   ENABLE_GCOV=OFF
+  ENABLE_SIGN=OFF
+  CUSTOM_SIGN_SCRIPT="${BASEPATH}/scripts/sign/community_sign_build.py"
+  # 黄区的签名脚本
+  # CUSTOM_SIGN_SCRIPT="${BASEPATH}/../vendor/hisi/build/scripts/sign_and_add_header.sh"
+  VERSION_INFO="8.5.0"
 
   # Process the options
-  parsed_args=$(getopt -a -o j:hv -l help,verbose,pkg,examples,cann_3rd_lib_path:,cann-3rd-lib-path:,output_path:,output-path:,build_type:,build-type:,asan,cov -- "$@") || {
+  parsed_args=$(getopt -a -o j:hv -l help,verbose,pkg,examples,cann_3rd_lib_path:,cann-3rd-lib-path:,output_path:,output-path:,build_type:,build-type:,sign-script:,sign_script:,asan,cov,enable_sign,enable-sign -- "$@") || {
     usage
     exit 1
   }
+
+  if [[ -n "${ASCEND_HOME_PATH}" ]] && [[ -d "${ASCEND_HOME_PATH}/toolkit/toolchain/hcc" ]]; then
+    echo "env exists ASCEND_HOME_PATH : ${ASCEND_HOME_PATH}"
+    export TOOLCHAIN_DIR=${ASCEND_HOME_PATH}/toolkit/toolchain/hcc
+  else
+    echo "env ASCEND_HOME_PATH not exists: ${ASCEND_HOME_PATH}"
+  fi
 
   eval set -- "$parsed_args"
 
@@ -109,6 +121,14 @@ checkopts() {
         shift
         ENABLE_EXAMPLES=ON
         ENABLE_BENCHMARKS=ON
+        ;;
+      --enable-sign | --enable_sign)
+        ENABLE_SIGN=ON
+        shift
+        ;;
+      --sign-script | --sign-script)
+        CUSTOM_SIGN_SCRIPT="$(realpath $2)"
+        shift 2
         ;;
       --)
         shift
@@ -149,6 +169,9 @@ build() {
         -D ENABLE_BENCHMARKS=${ENABLE_BENCHMARKS} \
         -D ENABLE_ASAN=${ENABLE_ASAN} \
         -D ENABLE_GCOV=${ENABLE_GCOV} \
+        -D ENABLE_SIGN=${ENABLE_SIGN} \
+        -D CUSTOM_SIGN_SCRIPT=${CUSTOM_SIGN_SCRIPT} \
+        -D VERSION_INFO=${VERSION_INFO} \
         ${CANN_3RD_LIB_PATH:+-D CANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}} \
         ..
 

@@ -100,6 +100,11 @@ install(DIRECTORY ${hixl_include}/
 install(TARGETS llm_datadist
         LIBRARY DESTINATION hixl/lib)
 
+install(FILES
+  ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_hixl.tar.gz
+  DESTINATION hixl
+)
+
 # ============= CPack =============
 set(CPACK_PACKAGE_NAME "${PROJECT_NAME}")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")

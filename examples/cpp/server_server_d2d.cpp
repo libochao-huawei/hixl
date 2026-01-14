@@ -11,6 +11,7 @@
 #include <numeric>
 #include <cstdio>
 #include <thread>
+#include <chrono>
 #include <iostream>
 #include <fstream>
 #include <string.h>
@@ -217,6 +218,7 @@ int main(int32_t argc, char **argv) {
   }
   int32_t device = std::stoi(device_id);
   CHECK_ACL(aclrtSetDevice(device));
+  std::this_thread::sleep_for(std::chrono::seconds(600));
   int32_t ret = Run(local_engine.c_str(), remote_engine.c_str());
   CHECK_ACL(aclrtResetDevice(device));
   return ret;
