@@ -63,8 +63,7 @@ if(DEFINED ENV{TOOLCHAIN_DIR})
     ExternalProject_Add(device
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake/device
         BINARY_DIR ${CMAKE_BINARY_DIR}/device_build
-        CMAKE_ARGS
-            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        CMAKE_ARGS  
             -DTOOLCHAIN_DIR=${TOOLCHAIN_DIR}
             -DCMAKE_INSTALL_PREFIX=${CHILD_INSTALL_DIR}
             -DCMAKE_TOOLCHAIN_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/aarch64-hcc-toolchain.cmake
@@ -75,7 +74,6 @@ if(DEFINED ENV{TOOLCHAIN_DIR})
             -DENABLE_SIGN=${ENABLE_SIGN}
             -DCUSTOM_SIGN_SCRIPT=${CUSTOM_SIGN_SCRIPT}
             -DVERSION_INFO=${VERSION_INFO}
-            -DAARCH_PREFIX=${AARCH_PREFIX}
         BUILD_ALWAYS TRUE
     )
     list(APPEND NPU_DEPENDENCIES device)
