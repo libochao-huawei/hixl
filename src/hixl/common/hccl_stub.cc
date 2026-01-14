@@ -115,6 +115,14 @@ static void CheckParam(void *dst, void *src, uint64_t len) {
     return;
   }
 }
+static void CheckParamConst(void *dst, const void *src, uint64_t len) {
+if (len == 0) {
+  return;
+}
+if (dst == nullptr || src == nullptr) {
+  return;
+}
+}
 
 void HcommWriteNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
   (void)channel;
@@ -129,6 +137,25 @@ void HcommReadNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
   CheckParam(dst, src, len);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   memcpy_s(dst, len, src, len);
+}
+
+int32_t HcommWriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len) {
+  (void)thread;
+  (void)channel;
+  CheckParamConst(dst, src, len);
+  // 增加延迟，模拟真实的异步读操作
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  memcpy_s(dst, len, src, len);
+  return 0ULL;
+}
+
+int32_t HcommReadOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len) {
+  (void)thread;
+  (void)channel;
+  CheckParamConst(dst, src, len);
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  memcpy_s(dst, len, src, len);
+  return 0ULL;
 }
 
 #ifdef __cplusplus
