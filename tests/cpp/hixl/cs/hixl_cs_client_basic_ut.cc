@@ -97,7 +97,7 @@ class HixlCSClientFixture : public ::testing::Test {
 };
 
 
-TEST_F(HixlCSClientFixture, RegMem_And_UnRegMem) {
+TEST_F(HixlCSClientFixture, RegMemAndUnRegMem) {
   // 先创建本端 endpoint（Create 不依赖 socket 初始化以外的 HCCL）
   const char *server_ip = "127.0.0.1";
   uint32_t server_port = 12345;
@@ -120,7 +120,7 @@ TEST_F(HixlCSClientFixture, RegMem_And_UnRegMem) {
   EXPECT_EQ(cli.UnRegMem(handle), SUCCESS);
 }
 
-TEST_F(HixlCSClientFixture, ImportRemoteMem_And_ClearRemoteMemInfo) {
+TEST_F(HixlCSClientFixture, ImportRemoteMemAndClearRemoteMemInfo) {
   const char *server_ip = "127.0.0.1";
   uint32_t server_port = 22334;
   EndPointInfo src = MakeSrcEp();
@@ -149,7 +149,7 @@ TEST_F(HixlCSClientFixture, ImportRemoteMem_And_ClearRemoteMemInfo) {
   EXPECT_EQ(cli.ClearRemoteMemInfo(), SUCCESS);
 }
 
-TEST_F(HixlCSClientFixture, BatchPut_Success_WithStubbedHccl) {
+TEST_F(HixlCSClientFixture, BatchPutSuccessWithStubbedHccl) {
   const char *server_ip = "127.0.0.1";
   uint32_t port = 22335;
   EndPointInfo src = MakeSrcEp();
@@ -198,7 +198,7 @@ TEST_F(HixlCSClientFixture, BatchPut_Success_WithStubbedHccl) {
   EXPECT_EQ(*status_out, COMPLETED);
 }
 
-TEST_F(HixlCSClientFixture, BatchGet_Success_WithStubbedHccl) {
+TEST_F(HixlCSClientFixture, BatchGetSuccessWithStubbedHccl) {
   const char *server_ip = "127.0.0.1";
   uint32_t port = 22336;
   PrepareConnectionAndImport(cli, server_ip, port);
@@ -223,7 +223,7 @@ TEST_F(HixlCSClientFixture, BatchGet_Success_WithStubbedHccl) {
   EXPECT_EQ(cli.CheckStatus(task_flag, status_out), SUCCESS);
 }
 
-TEST_F(HixlCSClientFixture, BatchPut_Fails_On_UnrecordedMemory) {
+TEST_F(HixlCSClientFixture, BatchPutFailsOnUnrecordedMemory) {
   const char *server_ip = "127.0.0.1";
   uint32_t port = 22337;
   PrepareConnectionAndImport(cli, server_ip, port);
@@ -237,7 +237,7 @@ TEST_F(HixlCSClientFixture, BatchPut_Fails_On_UnrecordedMemory) {
   EXPECT_EQ(query_handle, nullptr);
 }
 
-TEST_F(HixlCSClientFixture, BatchPut_Fails_On_Multrecorded) {
+TEST_F(HixlCSClientFixture, BatchPutFailsOnMultrecorded) {
   const char *server_ip = "127.0.0.1";
   uint32_t port = 22337;
   PrepareConnectionAndImport(cli, server_ip, port);

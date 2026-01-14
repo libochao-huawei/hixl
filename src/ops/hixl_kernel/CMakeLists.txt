@@ -11,8 +11,8 @@
 set(INCLUDE_LIST
         ${HIXL_DIR}/src/hixl
         ${HIXL_DIR}/include
-        ${ASCEND_CANN_PACKAGE_PATH}/${AARCH_PREFIX}-linux/pkg_inc/base
-        ${ASCEND_CANN_PACKAGE_PATH}/${AARCH_PREFIX}-linux/include
+        ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/pkg_inc/base
+        ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/include
 )
 add_library(hixl_kernel SHARED
         kernel_launch.cc
@@ -24,8 +24,7 @@ target_include_directories(hixl_kernel PRIVATE
 
 target_compile_options(hixl_kernel PRIVATE
         $<$<CONFIG:Debug>:-g>
-        $<$<CONFIG:Debug>:-O0>
-        $<$<CONFIG:Release>:-O3>
+        -O3
         -fstack-protector-all
 )
 
@@ -57,5 +56,5 @@ add_dependencies(hixl_kernel aicpu_kernel_json)
 
 install(FILES
         ${CMAKE_CURRENT_BINARY_DIR}/libscatter_hixl_kernel.json
-        DESTINATION hixl/aicpu_kernel OPTIONAL
+        DESTINATION hixl OPTIONAL
 )

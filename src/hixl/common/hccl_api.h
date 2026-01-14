@@ -24,6 +24,7 @@ using MemHandle = void *;
 using FdHandle = void *;
 using EndPointHandle = void *;
 using ChannelHandle = uint64_t;
+using ThreadHandle = uint64_t;
 
 struct HixlBuf {
   void *addr;
@@ -152,6 +153,10 @@ HcclResult HcommChannelGetStatus(const ChannelHandle *channel_list, uint32_t lis
 void HcommReadNbi(ChannelHandle channel, void *dst, void *src, uint64_t len);
 
 void HcommWriteNbi(ChannelHandle channel, void *dst, void *src, uint64_t len);
+
+int32_t HcommWriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len);
+
+int32_t HcommReadOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len);
 
 void HcommChannelFence(ChannelHandle channel);
 #ifdef __cplusplus
