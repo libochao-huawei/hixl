@@ -13,6 +13,7 @@
 #include <queue>
 #include "securec.h"
 #include "mmpa/mmpa_api.h"
+#include "acl/acl_rt.h"
 #include "runtime_stub.h"
 #include "runtime/rt.h"
 #include "runtime/base.h"
@@ -189,6 +190,21 @@ rtError_t RuntimeStub::rtMemcpyEx(void *dst, uint64_t dest_max, const void *src,
 
 rtError_t RuntimeStub::rtMemcpyAsync(void *dst, uint64_t dest_max, const void *src, uint64_t count, rtMemcpyKind_t kind,
                                      rtStream_t stream) {
+  const char* env_hack = std::getenv("HIXL_UT_UB_FLAG_HACK");
+  if (env_hack != nullptr && dst != nullptr && count == sizeof(uint64_t)) {
+    uint64_t done_flag = 1;
+
+    // 防止溢出
+    uint64_t safe_len = (dest_max < sizeof(uint64_t)) ? dest_max : sizeof(uint64_t);
+
+    // 强制写入 1
+    memcpy_s(dst, safe_len, &done_flag, safe_len);
+
+    // 打印日志以便确认生效
+    printf(">>> [RUNTIME STUB HACK] rtMemcpyAsync Forced Flag=1 to dst=%p\n", dst);
+
+    return RT_ERROR_NONE;
+  }
   const char *const kEnvRecordPath = "MOCK_MEMCPY_HUGE";
   char record_path[MMPA_MAX_PATH] = {};
   int32_t ret = mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
@@ -540,6 +556,17 @@ rtError_t RuntimeStub::rtGetDevice(int32_t *deviceId) {
   return RT_ERROR_NONE;
 }
 
+rtError_t RuntimeStub::rtGetDevResAddress(const rtDevResInfo *resInfo, rtDevResAddrInfo *addrInfo) {
+  (void)resInfo;
+  if (addrInfo == nullptr || addrInfo->len == nullptr) {
+    return RT_ERROR_NONE;
+  }
+  // stub: 用一个静态地址当做“device addr”
+  static uint64_t g_dummy_dev_mem = 0ULL;
+  addrInfo->resAddress = &g_dummy_dev_mem;
+  *(addrInfo->len) = static_cast<uint32_t>(sizeof(g_dummy_dev_mem));
+  return RT_ERROR_NONE;
+}
 } // namespace llm
 
 #ifdef __cplusplus
@@ -2017,6 +2044,10 @@ rtError_t rtMemImportFromShareableHandleV2(const void *shareableHandle, rtMemSha
                                            int32_t deviceId, rtDrvMemHandle *handle) {
   return llm::RuntimeStub::GetInstance()->rtMemImportFromShareableHandleV2(shareableHandle, type, flags, deviceId,
                                                                            handle);
+}
+
+rtError_t rtGetDevResAddress(const rtDevResInfo *resInfo, rtDevResAddrInfo *addrInfo) {
+  return llm::RuntimeStub::GetInstance()->rtGetDevResAddress(resInfo, addrInfo);
 }
 
 #ifdef __cplusplus

@@ -24,11 +24,57 @@
 #include "endpoint.h"
 #include "channel.h"
 #include "hixl_mem_store.h"
+#include "complete_pool.h"
+
 
 namespace hixl {
+
+namespace {
+constexpr uint32_t kUbThreadNum = 1U;
+constexpr uint32_t kUbNotifyNumPerThread = 1U;
+constexpr CommEngine kUbEngine = CommEngine::COMM_ENGINE_AICPU;
+
+CompletePool g_complete_pool;  // 进程级共享池：Create ref++，Destroy ref--
+}  // namespace
+
 struct CompleteHandle {
+  uint32_t magic;
   int32_t flag_index;
   uint64_t *flag_address;
+};
+
+enum class UbOpType : uint32_t {
+  kGet = 0U,
+  kPut = 1U,
+};
+
+struct UbBatchKernelArgs {
+  ThreadHandle thread;
+  ChannelHandle channel;
+  void *dev_flag;         // device 地址（notify 映射得到）
+  uint32_t list_num;
+  UbOpType op;
+};
+
+struct UbBatchArgs {
+  uint32_t is_get;      // 1=get, 0=put
+  uint32_t list_num;
+  uint64_t thread;      // thread handle（下游需要）
+  uint64_t channel;     // channel handle（下游需要）
+  uint64_t local_buf_list;   // client 侧地址数组
+  uint64_t remote_buf_list;  // server 侧地址数组
+  uint64_t len_list;         // 长度数组
+  void *remote_flag;  // server builtin flag addr（你要的 tag_mem_descs_[...].addr）
+  uint64_t local_flag;   // device local flag addr（notify addr）
+  uint32_t flag_size;    // sizeof(flag)
+  uint32_t reserved;
+};
+
+struct UbCompleteHandle {
+  uint32_t magic;
+  uint32_t reserved;
+  CompletePool::SlotHandle slot;
+  UbBatchArgs args;
 };
 
 struct CommunicateMem {
@@ -77,7 +123,7 @@ class HixlCSClient {
   Status BatchTransfer(bool is_get, const CommunicateMem &communicate_mem_param, void **queryhandle);
 
   // 通过已经建立好的channel，检查批量读写的状态。
-  Status CheckStatus(CompleteHandle *queryhandle, int32_t *status);
+  Status CheckStatus(void *queryhandle, int32_t *status);
 
   // 注册client的endpoint的内存信息到内存注册表中。
   Status UnRegMem(MemHandle mem_handle);
@@ -88,6 +134,14 @@ class HixlCSClient {
   Status ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms);
   int32_t AcquireFlagIndex();
   Status ReleaseCompleteHandle(CompleteHandle *queryhandle);
+  Status ReleaseUbCompleteHandle(UbCompleteHandle *ub_handle);
+  Status CheckStatusHost(CompleteHandle *queryhandle, int32_t *status);
+  Status CheckStatusDevice(UbCompleteHandle *queryhandle, int32_t *status);
+  Status BatchTransferHost(bool is_get, const CommunicateMem& p, void** queryhandle);
+  Status BatchTransferDevice(bool is_get, const CommunicateMem& p, void** queryhandle);
+  Status EnsureUbRemoteFlagInitedLocked();
+  Status EnsureUbKernelLoadedLocked();
+  const void *UbGetKernelStubFunc(bool is_get) const;
   Status ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcclMem **remote_mem_list, char ***mem_tag_list,
                          uint32_t *list_num);
   void FillOutputParams(ImportCtx &ctx, HcclMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
@@ -116,6 +170,18 @@ class HixlCSClient {
   std::vector<char*> remote_tag_ptrs_;
   std::vector<void*> recorded_remote_addrs_;
   std::vector<HcommBuf> imported_remote_bufs_;
+  bool is_device_ {false};
+  int32_t ub_device_id_ {-1};
+  std::mutex ub_mu_;
+  bool ub_remote_flag_inited_ {false};
+  void *ub_remote_flag_addr_ {nullptr};   // server 侧地址（远端地址）
+  uint64_t ub_remote_flag_size_ {0ULL};   // 至少 8
+  // UB kernel load cache
+  bool ub_kernel_loaded_ {false};
+  aclrtBinHandle ub_kernel_handle_ {nullptr};
+  const void *ub_stub_get_ {nullptr};
+  const void *ub_stub_put_ {nullptr};
+
 };
 }  // namespace hixl
 

@@ -351,6 +351,8 @@ class RuntimeStub {
     return RT_ERROR_NONE;
   }
 
+  virtual rtError_t rtGetDevResAddress(const rtDevResInfo *resInfo, rtDevResAddrInfo *addrInfo);
+
  private:
   static std::mutex mutex_;
   static std::shared_ptr<RuntimeStub> instance_;

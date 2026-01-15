@@ -31,6 +31,7 @@ namespace hixl {
 static constexpr uint32_t kPort = 16000;
 static constexpr uint32_t kEpAddrId0 = 1U;
 static constexpr uint32_t kEpAddrId1 = 2U;
+static constexpr uint32_t kEpAddrId2 = 3U;
 static constexpr uint32_t kMemNum = 100U;
 static constexpr uint32_t kBackLog = 1024U;
 static constexpr uint32_t kRecvTimeoutMs = 1000U;
@@ -46,16 +47,24 @@ class HixlCSTest : public ::testing::Test {
   // 在测试类中设置一些准备工作，如果需要的话
   void SetUp() override {
     EndPointInfo ep0{};
+    ep0.location = END_POINT_LOCATION_HOST;
     ep0.protocol = COMM_PROTOCOL_UB_CTP;
     ep0.addr.type = COMM_ADDR_TYPE_ID;
     ep0.addr.id = kEpAddrId0;
     EndPointInfo ep1{};
+    ep1.location = END_POINT_LOCATION_HOST;
     ep1.protocol = COMM_PROTOCOL_UB_CTP;
     ep1.addr.type = COMM_ADDR_TYPE_ID;
     ep1.addr.id = kEpAddrId1;
+    EndPointInfo ep_dev{};
+    ep_dev.location = END_POINT_LOCATION_DEVICE;
+    ep_dev.protocol = COMM_PROTOCOL_UB_TP;
+    ep_dev.addr.type = COMM_ADDR_TYPE_ID;
+    ep_dev.addr.id = kEpAddrId2;
 
     default_eps.emplace_back(ep0);
     default_eps.emplace_back(ep1);
+    default_eps.emplace_back(ep_dev);
   }
   // 在测试类中进行清理工作，如果需要的话
   void TearDown() override {

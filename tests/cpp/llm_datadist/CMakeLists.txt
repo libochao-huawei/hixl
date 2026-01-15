@@ -93,7 +93,9 @@ target_link_libraries(llm_datadist_test
         GTest::gtest GTest::gtest_main
         GTest::gmock
         -Wl,--no-as-need
-        error_manager_stub)
+        error_manager_stub
+        ascendcl
+)
 
 include(CTest)
 enable_testing()

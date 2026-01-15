@@ -11,6 +11,8 @@
 #ifndef INC_EXTERNAL_ACL_ACL_RT_STUB_H_
 #define INC_EXTERNAL_ACL_ACL_RT_STUB_H_
 
+#include "../../../../../../Ascend/ascend-toolkit/latest/include/acl/acl_base_rt.h"
+
 #include <stdint.h>
 #include <stddef.h>
 #include <vector>
@@ -86,6 +88,10 @@ public:
   virtual aclError aclrtGetSocVersion(char *version, const uint32_t maxLen);
   virtual aclError aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value);
   virtual aclError aclrtGetDevicePhyIdByIndex(uint32_t devIndex, uint32_t *phyId);
+  virtual aclError aclrtCreateContext(aclrtContext *context, int32_t deviceId);
+  virtual aclError aclrtDestroyContext(aclrtContext context);
+  virtual aclError aclrtBinaryLoadFromFile(const char *fileName, aclrtBinaryLoadOptions *options, void **handle);
+  virtual aclError aclrtBinaryGetFunction(const aclrtBinHandle binHandle, const char *funcName, void **funcPtr);
 
 private:
   static std::mutex mutex_;

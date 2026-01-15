@@ -412,6 +412,40 @@ aclError AclRuntimeStub::aclrtGetDevicePhyIdByIndex(uint32_t devIndex, uint32_t 
   *phyId = devIndex;
   return ACL_ERROR_NONE;
 }
+
+aclError AclRuntimeStub::aclrtCreateContext(aclrtContext *context, int32_t deviceId) {
+  (void)deviceId;
+  if (context == nullptr) {
+    return ACL_ERROR_INVALID_PARAM;
+  }
+  *context = reinterpret_cast<aclrtContext>(0x1);
+  return ACL_SUCCESS;
+}
+
+aclError AclRuntimeStub::aclrtDestroyContext(aclrtContext context) {
+  (void)context;
+  return ACL_SUCCESS;
+}
+
+aclError AclRuntimeStub::aclrtBinaryLoadFromFile(const char *fileName, aclrtBinaryLoadOptions *options, void **handle) {
+  (void)fileName;
+  (void) options;
+  if (handle == nullptr) {
+    return ACL_ERROR_INVALID_PARAM;
+  }
+  *handle = reinterpret_cast<void *>(0x3);
+  return ACL_SUCCESS;
+}
+
+aclError AclRuntimeStub::aclrtBinaryGetFunction(const aclrtBinHandle binHandle, const char *funcName, void **funcPtr) {
+  (void)binHandle;
+  (void)funcName;
+  if (funcPtr != nullptr) {
+    static int dummy_func_addr = 0;
+    *funcPtr = (void*)&dummy_func_addr;
+  }
+  return ACL_SUCCESS;
+}
 }
 
 #ifdef __cplusplus
@@ -561,6 +595,21 @@ aclError aclrtGetDevicePhyIdByIndex(uint32_t devIndex, uint32_t *phyId) {
   return llm::AclRuntimeStub::GetInstance()->aclrtGetDevicePhyIdByIndex(devIndex, phyId);
 }
 
+aclError aclrtCreateContext(aclrtContext *context, int32_t deviceId) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtCreateContext(context, deviceId);
+}
+
+aclError aclrtDestroyContext(aclrtContext context) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtDestroyContext(context);
+}
+
+aclError aclrtBinaryLoadFromFile(const char *fileName, aclrtBinaryLoadOptions *options, void **handle) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtBinaryLoadFromFile(fileName, options, handle);
+}
+
+aclError aclrtBinaryGetFunction(const aclrtBinHandle binHandle, const char *funcName, void **funcPtr) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtBinaryGetFunction(binHandle, funcName, funcPtr);
+}
 #ifdef __cplusplus
 }
 #endif
