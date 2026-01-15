@@ -56,5 +56,5 @@ add_dependencies(hixl_kernel aicpu_kernel_json)
 
 install(FILES
         ${CMAKE_CURRENT_BINARY_DIR}/libscatter_hixl_kernel.json
-        DESTINATION hixl OPTIONAL
+        DESTINATION hixl/aicpu_kernel OPTIONAL
 )

@@ -101,8 +101,13 @@ install(TARGETS llm_datadist
         LIBRARY DESTINATION hixl/lib)
 
 install(FILES
-  ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_hixl.tar.gz
-  DESTINATION hixl
+  ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_kernel/aicpu_hixl.tar.gz
+  DESTINATION hixl/aicpu_kernel
+)
+
+install(FILES
+  ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_kernel/libscatter_hixl_kernel.json
+  DESTINATION hixl/aicpu_kernel
 )
 
 # ============= CPack =============
