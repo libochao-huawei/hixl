@@ -53,5 +53,5 @@ sign_file(
 
 install(FILES
   ${aicpu_hixl_sign_file}
-  DESTINATION hixl
+  DESTINATION hixl/aicpu_kernel
 )
