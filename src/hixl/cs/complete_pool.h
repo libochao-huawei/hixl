@@ -1,12 +1,3 @@
-/**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
 #ifndef CANN_HIXL_SRC_HIXL_COMMON_COMPLETE_POOL_H_
 #define CANN_HIXL_SRC_HIXL_COMMON_COMPLETE_POOL_H_
 
@@ -17,8 +8,7 @@
 
 #include "acl/acl.h"
 #include "runtime/runtime/rt.h"
-#include "common/hixl_cs.h"
-#include "common/hixl_checker.h"
+#include "common/hccl_api.h"
 
 namespace hixl {
 
@@ -29,13 +19,13 @@ class CompletePool {
   static constexpr uint32_t kMaxSlots = 128U;
 
   struct SlotHandle {
-    uint32_t slot_index;
+    uint32_t slotIndex;
     aclrtContext ctx;
     aclrtStream stream;
     ThreadHandle thread;
     rtNotify_t notify;
-    void *host_flag;    // pinned host
-    void *notify_addr;  // device addr (notify record address)
+    uint64_t *hostFlag;     // pinned host
+    uint64_t devFlagAddr;   // device addr
   };
 
   CompletePool();
@@ -44,86 +34,69 @@ class CompletePool {
   CompletePool(const CompletePool &) = delete;
   CompletePool &operator=(const CompletePool &) = delete;
 
-  Status AddRefAndInitIfNeeded(int32_t device_id, CommEngine engine, uint32_t thread_num,
-                               uint32_t notify_num_per_thread, Endpoint *endpoint);
+  HcclResult AddRefAndInitIfNeeded(int32_t deviceId,
+                                  CommEngine engine,
+                                  uint32_t threadNum,
+                                  uint32_t notifyNumPerThread,
+                                  Endpoint *endpoint);
 
   void ReleaseRefAndDeinitIfNeeded();
 
-  Status Acquire(SlotHandle *handle);
-  void Release(uint32_t slot_index);
+  HcclResult Acquire(SlotHandle *handle);
+  void Release(uint32_t slotIndex);
 
   bool IsComplete(const SlotHandle &handle) const;
   void ResetHostFlag(const SlotHandle &handle) const;
   uint32_t GetInUseCount() const;
-
  private:
   struct Slot {
-    bool in_use;
+    bool inUse;
     aclrtContext ctx;
     aclrtStream stream;
     ThreadHandle thread;
     rtNotify_t notify;
 
-    void *notify_addr;
-    void *host_flag;
-    MemHandle notify_mem_handle;
+    uint64_t devFlagAddr;
+    uint64_t *hostFlag;          // pinned host memory
+    MemHandle notifyMemHandle;
 
-    std::array<char, 64> notify_tag;
+    std::array<char, 64> notifyTag;
   };
 
- private:
-  bool IsInitedParamsSame(int32_t device_id, CommEngine engine, uint32_t thread_num,
-                          uint32_t notify_num_per_thread) const;
-
-  void SaveInitParams(int32_t device_id, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread,
-                      Endpoint *endpoint);
-
-  void ResetInitParamsLocked();
-  void InitFreeListLocked();
-
-  Status GetCurrentAclContext(aclrtContext *old_ctx) const;
-  void RestoreAclContext(aclrtContext old_ctx) const;
-
-  Status InitOneSlotLocked(Slot &slot, uint32_t slot_index, int32_t device_id, CommEngine engine, uint32_t thread_num,
-                           uint32_t notify_num_per_thread);
-
-  Status SwitchDeviceAndNeedRestore(int32_t target_device_id, int32_t *old_device_id, bool *need_restore) const;
-
-  Status EnsureNotifyRecordLocked(Slot &slot, uint32_t slot_index, int32_t device_id);
-
-  void ResetNotifyResourcesLocked(Slot &slot);
-  Status CreateNotifyLocked(Slot &slot, int32_t device_id, uint32_t *notify_id);
-  Status GetNotifyAddrLocked(uint32_t notify_id, void **notify_addr) const;
-  Status BuildNotifyTagLocked(uint32_t slot_index, std::array<char, 64> *tag) const;
-  Status RegisterNotifyMemLocked(Slot &slot, const char *tag, void *notify_addr);
-
-  Status InitAllSlotsLocked(int32_t device_id, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread);
+  HcclResult InitAllSlotsLocked(int32_t deviceId,
+                               CommEngine engine,
+                               uint32_t threadNum,
+                               uint32_t notifyNumPerThread);
 
   void DeinitAllSlotsLocked();
 
-  Status EnsureContextLocked(Slot &slot, int32_t device_id);
-  Status EnsureStreamLocked(Slot &slot);
-  Status EnsureThreadLocked(Slot &slot, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread);
+  HcclResult EnsureContextLocked(Slot &slot, int32_t deviceId);
+  HcclResult EnsureStreamLocked(Slot &slot);
+  HcclResult EnsureThreadLocked(Slot &slot,
+                               CommEngine engine,
+                               uint32_t threadNum,
+                               uint32_t notifyNumPerThread);
 
-  Status EnsurePinnedHostFlagLocked(Slot &slot);
+  HcclResult EnsureNotifyAndDevFlagLocked(Slot &slot, uint32_t slot_index, int32_t deviceId);
+
+  HcclResult EnsurePinnedHostFlagLocked(Slot &slot);
+
   void DestroySlotLocked(Slot &slot);
 
  private:
   mutable std::mutex mu_;
-  uint32_t ref_cnt_;
+  uint32_t refCnt_;
   bool inited_;
-  std::vector<uint32_t> free_list_;
+  std::vector<uint32_t> freeList_;
   std::array<Slot, kMaxSlots> slots_;
 
   Endpoint *endpoint_;
 
-  int32_t init_device_id_;
-  CommEngine init_engine_;
-  uint32_t init_thread_num_;
-  uint32_t init_notify_num_per_thread_;
+  int32_t initDeviceId_;
+  CommEngine initEngine_;
+  uint32_t initThreadNum_;
+  uint32_t initNotifyNumPerThread_;
 };
-
-CompletePool &GetCompletePool();
 
 }  // namespace hixl
 

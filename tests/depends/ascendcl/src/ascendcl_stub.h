@@ -93,22 +93,7 @@ public:
   virtual aclError aclrtGetMemInfo(aclrtMemAttr attr, size_t *free_size, size_t *total);
   virtual const char* aclrtGetSocName();
   virtual aclError aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value);
-  virtual aclError aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, int32_t *const phyDevId);
-  virtual aclError aclrtMemcpyBatch(void **dsts, size_t *destMax, void **srcs, size_t *sizes, size_t numBatches,
-                                    aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs, size_t *failIndex);
-
-  virtual aclError aclrtReserveMemAddress(void** devPtr, size_t size, size_t alignment, void *devAddr, uint64_t flags);
-  virtual aclError aclrtReleaseMemAddress(void* devPtr);
-  virtual aclError aclrtMapMem(void* devPtr, size_t size, size_t offset, aclrtDrvMemHandle handle, uint64_t flags);
-  virtual aclError aclrtUnmapMem(void* devPtr);
-  virtual aclError aclrtMemRetainAllocationHandle(void *devPtr, aclrtDrvMemHandle *handle);
-  virtual aclError aclrtPointerGetAttributes(const void *ptr, aclrtPtrAttributes *attributes);
-  virtual aclError aclrtMemExportToShareableHandleV2(aclrtDrvMemHandle handle, uint64_t flags, aclrtMemSharedHandleType type,
-                                                   void *shareableHandle);
-  virtual aclError aclrtMemImportFromShareableHandleV2(void *shareableHandle, aclrtMemSharedHandleType type,
-                                                     uint64_t flags, aclrtDrvMemHandle *handle);
-  virtual aclError aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop, uint64_t flags);
-  virtual aclError aclrtFreePhysical(aclrtDrvMemHandle handle);
+  virtual aclError aclrtGetDevicePhyIdByIndex(uint32_t devIndex, uint32_t *phyId);
   virtual aclError aclrtCreateContext(aclrtContext *context, int32_t deviceId);
   virtual aclError aclrtDestroyContext(aclrtContext context);
   virtual aclError aclrtBinaryLoadFromFile(const char *fileName, aclrtBinaryLoadOptions *options, void **handle);

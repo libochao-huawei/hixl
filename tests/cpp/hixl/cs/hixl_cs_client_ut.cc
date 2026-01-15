@@ -363,9 +363,9 @@ class MiniServer {
     return R"({
     "result": 0,
     "mem_descs": [
-      { "tag": "_hixl_builtin_dev_trans_flag", "export_desc": "abcd", "mem": { "type": 0, "addr": 4096, "size": 8 } },
-      { "tag": "a", "export_desc": "efgh", "mem": { "type": 0, "addr": 1, "size": 1 } },
-      { "tag": "b", "export_desc": "ijkl", "mem": { "type": 1, "addr": 2, "size": 1 } }
+      { "tag": "_hixl_builtin_dev_trans_flag", "export_desc": [97,98,99,100], "mem": { "type": 0, "addr": 4096, "size": 8 } },
+      { "tag": "a", "export_desc": [101,102,103,104], "mem": { "type": 0, "addr": 1, "size": 1 } },
+      { "tag": "b", "export_desc": [105,106,107,108], "mem": { "type": 1, "addr": 2, "size": 1 } }
     ]
   })";
   }
@@ -374,9 +374,9 @@ class MiniServer {
     return R"({
     "result": 0,
     "mem_descs": [
-      { "tag": "_hixl_builtin_dev_trans_flag", "export_desc": "mnop", "mem": { "type": 0, "addr": 8192, "size": 8 } },
-      { "tag": "a", "export_desc": "qrst", "mem": { "type": 0, "addr": 11, "size": 2 } },
-      { "tag": "b", "export_desc": "uvwx", "mem": { "type": 1, "addr": 22, "size": 3 } }
+      { "tag": "_hixl_builtin_dev_trans_flag", "export_desc": [109,110,111,112], "mem": { "type": 0, "addr": 8192, "size": 8 } },
+      { "tag": "a", "export_desc": [113,114,115,116], "mem": { "type": 0, "addr": 11, "size": 2 } },
+      { "tag": "b", "export_desc": [117,118,119,120], "mem": { "type": 1, "addr": 22, "size": 3 } }
     ]
   })";
   }
@@ -387,18 +387,19 @@ class MiniServer {
       return;
     }
     if (mem_mode_ == MiniSrvMode::kGetRemoteMemResp_ExportDescEmpty) {
-      json_str = R"({"result":0,"mem_descs":[{"tag":"a","export_desc":"","mem":{"type":0,"addr":1,"size":1}}]})";
+      json_str = R"({"result":0,"mem_descs":[{"tag":"a","export_desc":[],"mem":{"type":0,"addr":1,"size":1}}]})";
       return;
     }
     if (mem_mode_ == MiniSrvMode::kGetRemoteMemResp_DuplicateAddr) {
       json_str =
-          R"({"result":0,"mem_descs":[{"tag":"a","export_desc":"xx","mem":{"type":0,"addr":1,"size":1}},{"tag":"b","export_desc":"yy","mem":{"type":0,"addr":1,"size":1}}]})";
+          R"({"result":0,"mem_descs":[{"tag":"a","export_desc":[120,120],"mem":{"type":0,"addr":1,"size":1}},{"tag":"b","export_desc":[121,121],"mem":{"type":0,"addr":1,"size":1}}]})";
       return;
     }
     if (mem_mode_ == MiniSrvMode::kGetRemoteMemResp_MemImportFail) {
-      json_str = R"({"result":0,"mem_descs":[{"tag":"a","export_desc":"FAIL","mem":{"type":0,"addr":1,"size":1}}]})";
+      json_str = R"({"result":0,"mem_descs":[{"tag":"a","export_desc":[70,65,73,76],"mem":{"type":0,"addr":1,"size":1}}]})";
     }
   }
+
   bool HandleGetRemoteMemExceptionModes(int fd, CtrlMsgHeader &resp_hdr, CtrlMsgType &resp_type,
                                         std::string &json_str) {
     switch (mem_mode_) {
@@ -855,7 +856,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemTwiceAltMemResponse) {
   EXPECT_EQ(reinterpret_cast<uint64_t>(remote2[0].addr), 8192ULL);
 }
 
-TEST_F(HixlCSClientUT, GetRemoteMem_Fail_AfterDestroy) {
+TEST_F(HixlCSClientUT, GetRemoteMemFailAfterDestroy) {
   StartServer(MiniSrvMode::kNormal, MiniSrvMode::kNormal);
   CreateClient();
   ConnectClient();

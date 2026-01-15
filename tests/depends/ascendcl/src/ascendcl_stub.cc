@@ -469,40 +469,6 @@ aclError AclRuntimeStub::aclrtMapMem(void* devPtr, size_t size, size_t offset, a
   return ACL_ERROR_NONE;
 }
 
-aclError AclRuntimeStub::aclrtUnmapMem(void* devPtr) {
-  return ACL_ERROR_NONE;
-}
-
-aclError AclRuntimeStub::aclrtMemRetainAllocationHandle(void *devPtr, aclrtDrvMemHandle *handle) {
-  return ACL_ERROR_NONE;
-}
-
-aclError AclRuntimeStub::aclrtPointerGetAttributes(const void *ptr, aclrtPtrAttributes *attributes) {
-  attributes->location.type = ACL_MEM_LOCATION_TYPE_DEVICE;
-  return ACL_ERROR_NONE;
-}
-
-aclError AclRuntimeStub::aclrtMemExportToShareableHandleV2(aclrtDrvMemHandle handle, uint64_t flags,
-                                                          aclrtMemSharedHandleType type, void *shareableHandle) {
-  return ACL_ERROR_NONE;
-}
-
-aclError AclRuntimeStub::aclrtMemImportFromShareableHandleV2(void *shareableHandle, aclrtMemSharedHandleType type,
-                                                    uint64_t flags, aclrtDrvMemHandle *handle) {
-  *handle = (aclrtDrvMemHandle) new uint8_t[8];
-  return ACL_ERROR_NONE;
-}
-
-aclError AclRuntimeStub::aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop, uint64_t flags) {
-  *handle = (aclrtDrvMemHandle) new uint8_t[8];
-  return ACL_ERROR_NONE;
-}
-
-aclError AclRuntimeStub::aclrtFreePhysical(aclrtDrvMemHandle handle) {
-  delete[] (uint8_t *)handle;
-  return ACL_ERROR_NONE;
-}
-
 aclError AclRuntimeStub::aclrtCreateContext(aclrtContext *context, int32_t deviceId) {
   (void)deviceId;
   if (context == nullptr) {
@@ -695,56 +661,6 @@ aclError aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value
 
 aclError aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, int32_t *const phyDevId) {
   return llm::AclRuntimeStub::GetInstance()->aclrtGetPhyDevIdByLogicDevId(logicDevId, phyDevId);
-}
-
-aclError aclrtMemcpyBatch(void **dsts, size_t *destMax, void **srcs, size_t *sizes, size_t numBatches,
-                          aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs, size_t *failIndex)
-{
-  return llm::AclRuntimeStub::GetInstance()->aclrtMemcpyBatch(dsts, destMax, srcs, sizes, numBatches,
-                                                              attrs, attrsIndexex, numAttrs, failIndex);
-}
-
-aclError aclrtReserveMemAddress(void** devPtr, size_t size, size_t alignment, void *devAddr, uint64_t flags) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtReserveMemAddress(devPtr, size, alignment, devAddr, flags);
-}
-
-aclError aclrtReleaseMemAddress(void* devPtr) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtReleaseMemAddress(devPtr);
-}
-
-aclError aclrtMapMem(void* devPtr, size_t size, size_t offset, aclrtDrvMemHandle handle, uint64_t flags) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtMapMem(devPtr, size, offset, handle, flags);
-}
-
-aclError aclrtUnmapMem(void* devPtr) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtUnmapMem(devPtr);
-}
-
-aclError aclrtMemRetainAllocationHandle(void *devPtr, aclrtDrvMemHandle *handle) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtMemRetainAllocationHandle(devPtr, handle);
-}
-
-aclError aclrtPointerGetAttributes(const void *ptr, aclrtPtrAttributes *attributes) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtPointerGetAttributes(ptr, attributes);
-}
-
-aclError aclrtMemExportToShareableHandleV2(aclrtDrvMemHandle handle, uint64_t flags, aclrtMemSharedHandleType type,
-                                          void *shareableHandle) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtMemExportToShareableHandleV2(handle, flags, type, shareableHandle);  
-}
-
-aclError aclrtMemImportFromShareableHandleV2(void *shareableHandle, aclrtMemSharedHandleType type,
-                                             uint64_t flags, aclrtDrvMemHandle *handle) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtMemImportFromShareableHandleV2(shareableHandle, type,
-                                                              flags, handle);  
-}
-
-aclError aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop, uint64_t flags) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtMallocPhysical(handle, size, prop, flags);  
-}
-
-aclError aclrtFreePhysical(aclrtDrvMemHandle handle) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtFreePhysical(handle);  
 }
 
 aclError aclrtCreateContext(aclrtContext *context, int32_t deviceId) {

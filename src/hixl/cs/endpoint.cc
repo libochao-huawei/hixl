@@ -99,7 +99,16 @@ Status Endpoint::ExportMem(std::vector<HixlMemDesc> &mem_descs) {
 Status Endpoint::CreateChannel(const EndPointInfo &remote_endpoint, ChannelHandle &channel_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[channel] CreateChannel called before Initialize");
-  CommEngine engine = CommEngine::COMM_ENGINE_HOSTCPU;
+  CommEngine engine = CommEngine::COMM_ENGINE_RESERVED;
+  if (endpoint_.location == EndPointLocation::END_POINT_LOCATION_HOST) {
+    engine = CommEngine::COMM_ENGINE_HOSTCPU;
+  } else if (endpoint_.location == EndPointLocation::END_POINT_LOCATION_DEVICE) {
+    engine = CommEngine::COMM_ENGINE_AICPU;
+  } else {
+    HIXL_LOGE(PARAM_INVALID, "[channel] invalid endpoint location=%d",
+              static_cast<int32_t>(endpoint_.location));
+    return PARAM_INVALID;
+  }
   HcommChannelDescNew ch_desc{};
   ch_desc.remoteEndPoint = remote_endpoint;
   ch_desc.notifyNum = 1U;

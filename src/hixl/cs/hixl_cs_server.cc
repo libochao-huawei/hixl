@@ -27,21 +27,56 @@ namespace hixl {
 namespace {
 constexpr int32_t kMaxEventsNum = 128;  // epoll_wait并发处理事件数量，减少epoll系统调用
 constexpr int32_t kEpollWaitTimeInMillis = 100;  // epoll_wait等待超时时间
-constexpr const char *kTransFinishedFlagName = "_hixl_builtin_dev_trans_flag";  // client用于感知收发完成的标识
+constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";// client用于感知收发完成的标识
+constexpr const char *kTransFlagNameDevice = "_hixl_builtin_dev_trans_flag";// client用于感知收发完成的标识
 }  // namespace
 
 Status HixlCSServer::InitTransFinishedFlag() {
-  HIXL_CHK_RT_RET(
-      rtMalloc(&trans_flag_, sizeof(int64_t), RT_MEMORY_HBM | RT_MEMORY_POLICY_HUGE_PAGE_ONLY, HIXL_MODULE_NAME));
-  int64_t trans_finished_flag = 1;
-  HIXL_CHK_RT_RET(
-      rtMemcpy(trans_flag_, sizeof(int64_t), &trans_finished_flag, sizeof(int64_t), RT_MEMCPY_HOST_TO_DEVICE));
-  HcclMem mem{};
-  mem.type = HCCL_MEM_TYPE_DEVICE;
-  mem.addr = trans_flag_;
-  mem.size = sizeof(int64_t);
-  HIXL_CHK_STATUS_RET(RegisterMem(kTransFinishedFlagName, &mem, &trans_flag_handle_),
-                      "Failed to reg trans finished flag");
+  bool has_host_ep = false;
+  bool has_device_ep = false;
+  auto all_handles = endpoint_store_.GetAllEndpointHandles();
+  for (auto handle : all_handles) {
+    auto endpoint = endpoint_store_.GetEndpoint(handle);
+    if (endpoint) {
+      if (endpoint->GetEndpoint().location == END_POINT_LOCATION_HOST) {
+        has_host_ep = true;
+      } else if (endpoint->GetEndpoint().location == END_POINT_LOCATION_DEVICE) {
+        has_device_ep = true;
+      }
+    }
+  }
+  if (has_host_ep) {
+    void* host_flag = nullptr;
+    HIXL_CHK_RT_RET(rtMalloc(&host_flag, sizeof(int64_t), RT_MEMORY_HOST, HIXL_MODULE_NAME));
+    *static_cast<int64_t*>(host_flag) = 1;
+    HcclMem mem{};
+    mem.type = HCCL_MEM_TYPE_HOST;
+    mem.addr = host_flag;
+    mem.size = sizeof(int64_t);
+    MemHandle handle = nullptr;
+    HIXL_CHK_STATUS_RET(RegisterMem(kTransFlagNameHost, &mem, &handle),
+                        "Failed to reg HOST trans finished flag");
+
+    host_trans_flag_ = host_flag;
+    host_trans_flag_handle_ = handle;
+  }
+  if (has_device_ep) {
+    void* dev_flag = nullptr;
+    HIXL_CHK_RT_RET(rtMalloc(&dev_flag, sizeof(int64_t),
+                             RT_MEMORY_HBM | RT_MEMORY_POLICY_HUGE_PAGE_ONLY, HIXL_MODULE_NAME));
+    int64_t val = 1;
+    HIXL_CHK_RT_RET(rtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), RT_MEMCPY_HOST_TO_DEVICE));
+    HcclMem mem{};
+    mem.type = HCCL_MEM_TYPE_DEVICE;
+    mem.addr = dev_flag;
+    mem.size = sizeof(int64_t);
+
+    MemHandle handle = nullptr;
+    HIXL_CHK_STATUS_RET(RegisterMem(kTransFlagNameDevice, &mem, &handle),
+                        "Failed to reg DEVICE trans finished flag");
+    dev_trans_flag_ = dev_flag;
+    dev_trans_flag_handle_ = handle;
+  }
   return SUCCESS;
 }
 
@@ -89,6 +124,20 @@ Status HixlCSServer::Finalize() {
     }
     trans_flag_ = nullptr;
   }
+  if (host_trans_flag_ != nullptr) {
+    auto rt_ret = rtFree(host_trans_flag_);
+    if (rt_ret != RT_ERROR_NONE) {
+      HIXL_LOGE(FAILED, "Failed to free HOST trans finished flag, ret:%d", rt_ret);
+    }
+    host_trans_flag_ = nullptr;
+  }
+  if (dev_trans_flag_ != nullptr) {
+    auto rt_ret = rtFree(dev_trans_flag_);
+    if (rt_ret != RT_ERROR_NONE) {
+      HIXL_LOGE(FAILED, "Failed to free DEVICE trans finished flag, ret:%d", rt_ret);
+    }
+    dev_trans_flag_ = nullptr;
+  }
 
   if (listen_fd_ != -1) {
     (void)close(listen_fd_);
@@ -126,6 +175,7 @@ Status HixlCSServer::RegisterMem(const char *mem_tag, const HcclMem *mem, MemHan
   reg_mems_[ep_mem_infos[0].mem_handle] = std::move(ep_mem_infos);
   return SUCCESS;
 }
+
 
 Status HixlCSServer::DeregisterMem(MemHandle mem_handle) {
   HIXL_EVENT("[HixlServer] deregister mem start, handle:%p", mem_handle);

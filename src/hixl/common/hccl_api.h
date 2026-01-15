@@ -24,8 +24,7 @@ using MemHandle = void *;
 using FdHandle = void *;
 using EndPointHandle = void *;
 using ChannelHandle = uint64_t;
-using ThreadHandle = uint64_t;
-
+using ThreadHandle = void *;
 struct HixlBuf {
   void *addr;
   uint64_t len;
@@ -84,7 +83,13 @@ inline bool operator == (const EndPointInfo& lhs, const EndPointInfo& rhs) {
 
 enum CommEngine {
   COMM_ENGINE_RESERVED = -1,
-  COMM_ENGINE_HOSTCPU = 0
+  COMM_ENGINE_HOSTCPU = 0,
+  COMM_ENGINE_CPU = 1,
+  COMM_ENGINE_CPU_TS = 2,
+  COMM_ENGINE_AICPU = 3,
+  COMM_ENGINE_AICPU_TS = 4,
+  COMM_ENGINE_AIV = 5,
+  COMM_ENGINE_CCU = 6
   };
 
 struct HccsAttr {
@@ -159,6 +164,9 @@ int32_t HcommWriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst
 int32_t HcommReadOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len);
 
 void HcommChannelFence(ChannelHandle channel);
+
+HcclResult HcommThreadAlloc(CommEngine engine, uint32_t threadNum, uint32_t notifyNumPerThread, ThreadHandle *thread);
+HcclResult HcommThreadFree(ThreadHandle thread);
 #ifdef __cplusplus
 }
 #endif

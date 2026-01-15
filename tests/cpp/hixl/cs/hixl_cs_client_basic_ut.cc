@@ -160,9 +160,9 @@ TEST_F(HixlCSClientFixture, BatchPutSuccessWithStubbedHccl) {
   // 导入远端内存，包含完成标志与一个数据区
   std::vector<HixlMemDesc> descs;
   descs.push_back(
-      MakeRemoteDesc("_hixl_builtin_dev_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
-  std::cout<<"_hixl_builtin_dev_trans_flag的地址是"<<&kTransFlagAddr<<std::endl;
-  std::cout<<"_hixl_builtin_dev_trans_flag的值是"<<kTransFlagAddr<<std::endl;
+      MakeRemoteDesc("_hixl_builtin_host_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
+  std::cout<<"_hixl_builtin_host_trans_flag的地址是"<<&kTransFlagAddr<<std::endl;
+  std::cout<<"_hixl_builtin_host_trans_flag的值是"<<kTransFlagAddr<<std::endl;
   descs.push_back(MakeRemoteDesc("server_data", &kServerDataAddr, kBlockSizeBytes));
   HcclMem *remote_mem_list = nullptr;
   char **tags_buf = nullptr;

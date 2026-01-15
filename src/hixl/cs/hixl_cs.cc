@@ -129,8 +129,9 @@ HixlStatus HixlCSClientBatchGet(HixlClientHandle client_handle, uint32_t list_nu
 HixlStatus HixlCSClientQueryCompleteStatus(HixlClientHandle client_handle, void *complete_handle, int32_t *status) {
   HIXL_CHECK_NOTNULL(client_handle);
   HIXL_CHECK_NOTNULL(complete_handle);
+  HIXL_CHECK_NOTNULL(status);
   auto client = static_cast<hixl::HixlCSClient *>(client_handle);
-  const auto ret = client->CheckStatus(static_cast<hixl::CompleteHandle *>(complete_handle), status);
+  const auto ret = client->CheckStatus(complete_handle, status);
   HIXL_CHK_STATUS_RET(ret, "HixlCSClientQueryCompleteStatus failed");
   return HIXL_SUCCESS;
 }
