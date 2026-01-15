@@ -11,8 +11,8 @@
 set(INCLUDE_LIST
         ${HIXL_DIR}/src/hixl
         ${HIXL_DIR}/include
-        ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/pkg_inc/base
-        ${ASCEND_CANN_PACKAGE_PATH}/x86_64-linux/include
+        ${ASCEND_CANN_PACKAGE_PATH}/${AARCH_PREFIX}-linux/pkg_inc/base
+        ${ASCEND_CANN_PACKAGE_PATH}/${AARCH_PREFIX}-linux/include
 )
 add_library(hixl_kernel SHARED
         kernel_launch.cc
