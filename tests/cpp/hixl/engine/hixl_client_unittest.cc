@@ -81,9 +81,9 @@ class MockHixlServer {
 
   Status CreateServer(const std::vector<EndPointConfig> &remote_endpoint_list) {
     HixlServerConfig config{};
-    std::vector<EndPointInfo> endpointInfoList;
+    std::vector<EndPointDesc> endpointInfoList;
     for (const auto &ep : remote_endpoint_list) {
-      EndPointInfo endpointInfo;
+      EndPointDesc endpointInfo;
       ConvertToEndPointInfo(ep, endpointInfo);
       endpointInfoList.push_back(endpointInfo);
     }

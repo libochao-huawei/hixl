@@ -99,13 +99,13 @@ HixlCSClient::~HixlCSClient() {
 }
 
 namespace {
-static inline bool IsDeviceEndpoint(const EndPointInfo &ep) {
-  return (ep.location == END_POINT_LOCATION_DEVICE);
+static inline bool IsDeviceEndpoint(const EndPointDesc &ep) {
+  return (ep.loc.locType == END_POINT_LOCATION_DEVICE);
 }
 }
 
-Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const EndPointInfo *src_endpoint,
-                            const EndPointInfo *dst_endpoint) {
+Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const EndPointDesc *src_endpoint,
+                            const EndPointDesc *dst_endpoint) {
   HIXL_CHECK_NOTNULL(server_ip);
   HIXL_CHECK_NOTNULL(src_endpoint);
   HIXL_CHECK_NOTNULL(dst_endpoint);
@@ -113,8 +113,8 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
              "Src[Loc:%d, Proto:%d, Type:%d, Val:0x%x], "
              "Dst[Loc:%d, Proto:%d, Type:%d, Val:0x%x]",
              server_ip, server_port,
-             src_endpoint->location, src_endpoint->protocol, src_endpoint->addr.type, src_endpoint->addr.id,
-             dst_endpoint->location, dst_endpoint->protocol, dst_endpoint->addr.type, dst_endpoint->addr.id);
+             src_endpoint->loc, src_endpoint->protocol, src_endpoint->addr.type, src_endpoint->addr.id,
+             dst_endpoint->loc, dst_endpoint->protocol, dst_endpoint->addr.type, dst_endpoint->addr.id);
   std::lock_guard<std::mutex> lock(mutex_);
   server_ip_ = server_ip;
   server_port_ = server_port;
@@ -124,7 +124,7 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
   HIXL_CHK_STATUS_RET(ret,
                       "[HixlClient] Failed to initialize src endpoint. "
                       "Check Config: [Loc:%d, Proto:%d, AddrVal:0x%x]",
-                      src_endpoint->location, src_endpoint->protocol, src_endpoint->addr.id);
+                      src_endpoint->loc, src_endpoint->protocol, src_endpoint->addr.id);
   HIXL_LOGI("[HixlClient] src_endpoint initialized. ep_handle=%p", src_endpoint_->GetHandle());
   dst_endpoint_ = *dst_endpoint;
   CtrlMsgPlugin::Initialize();
@@ -137,7 +137,7 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
     HIXL_LOGE(init_ret, "[HixlClient] Failed to initialize flag queue.");
     return init_ret;
   }
-  const EndPointInfo &src_ep = src_endpoint_->GetEndpoint();
+  const EndPointDesc &src_ep = src_endpoint_->GetEndpoint();
   is_device_ = IsDeviceEndpoint(src_ep);
   if (is_device_) {
     // deviceId：优先用 endpoint 的 ID（若给的是 ID 类型）TODO：获取deviceID
@@ -260,9 +260,9 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem& commun
     return PARAM_INVALID;
   }
   uint64_t *flag_addr = &flag_queue_[flag_index];
-  EndPointInfo endpoint = src_endpoint_->GetEndpoint();
+  EndPointDesc endpoint = src_endpoint_->GetEndpoint();
   const char *kTransFlagName = nullptr;
-  if (endpoint.location == END_POINT_LOCATION_HOST) {
+  if (endpoint.loc.locType == END_POINT_LOCATION_HOST) {
     kTransFlagName = kTransFlagNameHost;
   } else {
     kTransFlagName = kTransFlagNameDevice;
@@ -288,9 +288,9 @@ Status HixlCSClient::EnsureUbRemoteFlagInitedLocked() {
   if (ub_remote_flag_inited_) {
     return SUCCESS;
   }
-  EndPointInfo endpoint = src_endpoint_->GetEndpoint();
+  EndPointDesc endpoint = src_endpoint_->GetEndpoint();
   const char *kTransFlagName = nullptr;
-  if (endpoint.location == END_POINT_LOCATION_HOST) {
+  if (endpoint.loc.locType == END_POINT_LOCATION_HOST) {
     kTransFlagName = kTransFlagNameHost;
   } else {
     kTransFlagName = kTransFlagNameDevice;
@@ -709,7 +709,7 @@ Status WaitChannelReadyInternal(Endpoint &endpoint, ChannelHandle channel_handle
 }
 
 Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms) {
-  const EndPointInfo &src_ep = src_endpoint_->GetEndpoint();
+  const EndPointDesc &src_ep = src_endpoint_->GetEndpoint();
   HIXL_LOGD("[HixlClient] Sending CreateChannelReq. socket: %d, timeout: %u ms, "
             "Src[prot:%u, type:%u, id:%u], Dst[prot:%u, type:%u, id:%u]",
             socket_, timeout_ms,
@@ -812,7 +812,7 @@ void CloseImportedBufs(EndPointHandle ep_handle, std::vector<HcommBuf> &bufs) {
     HcommBuf tmp{};
     tmp.addr = b.addr;
     tmp.len = b.len;
-    const HcclResult ret = HcommMemClose(ep_handle, &tmp);
+    const HcclResult ret = HcommMemUnimport(ep_handle, &tmp);
     if (ret != HCCL_SUCCESS) {
       HIXL_LOGW("[HixlClient] HcommMemClose failed. addr=%p len=%" PRIu64 " ret=0x%X",
                 tmp.addr, tmp.len, static_cast<uint32_t>(ret));

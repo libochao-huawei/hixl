@@ -38,9 +38,9 @@ Status HixlCSServer::InitTransFinishedFlag() {
   for (auto handle : all_handles) {
     auto endpoint = endpoint_store_.GetEndpoint(handle);
     if (endpoint) {
-      if (endpoint->GetEndpoint().location == END_POINT_LOCATION_HOST) {
+      if (endpoint->GetEndpoint().loc.locType == END_POINT_LOCATION_HOST) {
         has_host_ep = true;
-      } else if (endpoint->GetEndpoint().location == END_POINT_LOCATION_DEVICE) {
+      } else if (endpoint->GetEndpoint().loc.locType == END_POINT_LOCATION_DEVICE) {
         has_device_ep = true;
       }
     }
@@ -80,7 +80,7 @@ Status HixlCSServer::InitTransFinishedFlag() {
   return SUCCESS;
 }
 
-Status HixlCSServer::Initialize(const EndPointInfo *endpoint_list, uint32_t list_num, const HixlServerConfig *config) {
+Status HixlCSServer::Initialize(const EndPointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config) {
   HIXL_CHECK_NOTNULL(endpoint_list);
   HIXL_CHECK_NOTNULL(config);
   HIXL_CHK_BOOL_RET_STATUS(list_num > 0, PARAM_INVALID, "endpoint list num:%u is invalid, must > 0", list_num);
@@ -175,7 +175,6 @@ Status HixlCSServer::RegisterMem(const char *mem_tag, const HcclMem *mem, MemHan
   reg_mems_[ep_mem_infos[0].mem_handle] = std::move(ep_mem_infos);
   return SUCCESS;
 }
-
 
 Status HixlCSServer::DeregisterMem(MemHandle mem_handle) {
   HIXL_EVENT("[HixlServer] deregister mem start, handle:%p", mem_handle);

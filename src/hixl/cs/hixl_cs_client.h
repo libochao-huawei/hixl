@@ -109,8 +109,8 @@ class HixlCSClient {
 
   Status InitFlagQueue() noexcept;
 
-  Status Create(const char *server_ip, uint32_t server_port, const EndPointInfo *src_endpoint,
-                const EndPointInfo *dst_endpoint);
+  Status Create(const char *server_ip, uint32_t server_port, const EndPointDesc *src_endpoint,
+                const EndPointDesc *dst_endpoint);
 
   Status Connect(uint32_t timeout_ms);
 
@@ -153,7 +153,7 @@ class HixlCSClient {
   std::string server_ip_;
   uint32_t server_port_{0U};
   EndpointPtr src_endpoint_;
-  EndPointInfo dst_endpoint_{};
+  EndPointDesc dst_endpoint_{};
   Channel client_channel_;
   ChannelHandle client_channel_handle_ = 0UL;
   uint64_t dst_endpoint_handle_{0U};

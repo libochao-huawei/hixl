@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <netinet/in.h>
 #include <string>
-#include "hccl_api.h"
+#include "hccl/hccl_rank_graph.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -47,7 +47,7 @@ enum BatchTransferStatus : int32_t {
  * @param [out] server_handle server创建返回的handle信息，用于后续调用其他接口
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSServerCreate(const char *ip, uint32_t port, const EndPointInfo *endpoint_list, uint32_t list_num,
+HixlStatus HixlCSServerCreate(const char *ip, uint32_t port, const EndPointDesc *endpoint_list, uint32_t list_num,
                               const HixlServerConfig *config, HixlServerHandle *server_handle);
 
 /**
@@ -93,8 +93,8 @@ HixlStatus HixlCSServerDestroy(HixlServerHandle server_handle);
  * @param [out] client_handle 输出的客户端句柄
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSClientCreate(const char *server_ip, uint32_t server_port, const EndPointInfo *src_endpoint,
-                              const EndPointInfo *dst_endpoint, HixlClientHandle *client_handle);
+HixlStatus HixlCSClientCreate(const char *server_ip, uint32_t server_port, const EndPointDesc *src_endpoint,
+                              const EndPointDesc *dst_endpoint, HixlClientHandle *client_handle);
 
 /**
  * @brief 发起 Client 连接（同步建链入口）
