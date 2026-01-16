@@ -37,9 +37,9 @@ void from_json(const json &j, CommProtocol &p) {
   } else if (s == "roce") {
     p = COMM_PROTOCOL_ROCE;
   } else if (s == "UB_CTP") {
-    p = COMM_PROTOCOL_UB_CTP;
+    p = COMM_PROTOCOL_UBC_CTP;
   } else if (s == "UB_TP") {
-    p = COMM_PROTOCOL_UB_TP;
+    p = COMM_PROTOCOL_UBC_TP;
   } else {
     p = COMM_PROTOCOL_RESERVED;
   }

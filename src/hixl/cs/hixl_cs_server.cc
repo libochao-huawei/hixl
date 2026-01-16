@@ -38,9 +38,9 @@ Status HixlCSServer::InitTransFinishedFlag() {
   for (auto handle : all_handles) {
     auto endpoint = endpoint_store_.GetEndpoint(handle);
     if (endpoint) {
-      if (endpoint->GetEndpoint().loc.locType == END_POINT_LOCATION_HOST) {
+      if (endpoint->GetEndpoint().loc.locType == ENDPOINT_LOC_TYPE_HOST) {
         has_host_ep = true;
-      } else if (endpoint->GetEndpoint().loc.locType == END_POINT_LOCATION_DEVICE) {
+      } else if (endpoint->GetEndpoint().loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
         has_device_ep = true;
       }
     }

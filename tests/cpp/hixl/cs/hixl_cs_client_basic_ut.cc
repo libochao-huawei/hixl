@@ -22,20 +22,20 @@ namespace hixl {
 
 EndpointDesc MakeSrcEp() {
   EndpointDesc ep{};
-  ep.loc.locType = END_POINT_LOCATION_HOST;
-  ep.protocol = COMM_PROTOCOL_TCP;      // 或 COMM_PROTOCOL_ROCE，按你们测试协议
-  ep.addr.type = COMM_ADDR_TYPE_IP_V4;
+  ep.loc.locType = ENDPOINT_LOC_TYPE_HOST;
+  ep.protocol = COMM_PROTOCOL_ROCE;      // 或 COMM_PROTOCOL_ROCE，按你们测试协议
+  ep.commAddr.type = COMM_ADDR_TYPE_IP_V4;
   // 填充 IPv4 地址到 in_addr
-  inet_pton(AF_INET, "127.0.0.1", &ep.addr.addr);
+  inet_pton(AF_INET, "127.0.0.1", &ep.commAddr.addr);
   return ep;
 }
 
 EndpointDesc MakeDstEp() {
   EndpointDesc ep{};
-  ep.loc.locType = END_POINT_LOCATION_DEVICE;  // 或 HOST：取决于你们对端在设备还是主机
-  ep.protocol = COMM_PROTOCOL_TCP;          // 与 src 协议一致
-  ep.addr.type = COMM_ADDR_TYPE_IP_V4;
-  inet_pton(AF_INET, "127.0.0.1", &ep.addr.addr);
+  ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;  // 或 HOST：取决于你们对端在设备还是主机
+  ep.protocol = COMM_PROTOCOL_ROCE;          // 与 src 协议一致
+  ep.commAddr.type = COMM_ADDR_TYPE_IP_V4;
+  inet_pton(AF_INET, "127.0.0.1", &ep.commAddr.addr);
   return ep;
 }
 

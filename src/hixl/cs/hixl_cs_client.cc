@@ -100,7 +100,7 @@ HixlCSClient::~HixlCSClient() {
 
 namespace {
 static inline bool IsDeviceEndpoint(const EndpointDesc &ep) {
-  return (ep.loc.locType == END_POINT_LOCATION_DEVICE);
+  return (ep.loc.locType == ENDPOINT_LOC_TYPE_DEVICE);
 }
 }
 
@@ -113,8 +113,8 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
              "Src[Loc:%d, Proto:%d, Type:%d, Val:0x%x], "
              "Dst[Loc:%d, Proto:%d, Type:%d, Val:0x%x]",
              server_ip, server_port,
-             src_endpoint->loc, src_endpoint->protocol, src_endpoint->addr.type, src_endpoint->addr.id,
-             dst_endpoint->loc, dst_endpoint->protocol, dst_endpoint->addr.type, dst_endpoint->addr.id);
+             src_endpoint->loc, src_endpoint->protocol, src_endpoint->commAddr.type, src_endpoint->commAddr.id,
+             dst_endpoint->loc, dst_endpoint->protocol, dst_endpoint->commAddr.type, dst_endpoint->commAddr.id);
   std::lock_guard<std::mutex> lock(mutex_);
   server_ip_ = server_ip;
   server_port_ = server_port;
@@ -124,7 +124,7 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
   HIXL_CHK_STATUS_RET(ret,
                       "[HixlClient] Failed to initialize src endpoint. "
                       "Check Config: [Loc:%d, Proto:%d, AddrVal:0x%x]",
-                      src_endpoint->loc, src_endpoint->protocol, src_endpoint->addr.id);
+                      src_endpoint->loc, src_endpoint->protocol, src_endpoint->commAddr.id);
   HIXL_LOGI("[HixlClient] src_endpoint initialized. ep_handle=%p", src_endpoint_->GetHandle());
   dst_endpoint_ = *dst_endpoint;
   CtrlMsgPlugin::Initialize();
@@ -141,8 +141,8 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
   is_device_ = IsDeviceEndpoint(src_ep);
   if (is_device_) {
     // deviceId：优先用 endpoint 的 ID（若给的是 ID 类型）TODO：获取deviceID
-    if (src_endpoint->addr.type == COMM_ADDR_TYPE_ID) {
-      ub_device_id_ = static_cast<int32_t>(src_endpoint->addr.id);
+    if (src_endpoint->commAddr.type == COMM_ADDR_TYPE_ID) {
+      ub_device_id_ = static_cast<int32_t>(src_endpoint->commAddr.id);
     } else {
       ub_device_id_ = -1;
     }
@@ -262,7 +262,7 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem& commun
   uint64_t *flag_addr = &flag_queue_[flag_index];
   EndpointDesc endpoint = src_endpoint_->GetEndpoint();
   const char *kTransFlagName = nullptr;
-  if (endpoint.loc.locType == END_POINT_LOCATION_HOST) {
+  if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_HOST) {
     kTransFlagName = kTransFlagNameHost;
   } else {
     kTransFlagName = kTransFlagNameDevice;
@@ -290,7 +290,7 @@ Status HixlCSClient::EnsureUbRemoteFlagInitedLocked() {
   }
   EndpointDesc endpoint = src_endpoint_->GetEndpoint();
   const char *kTransFlagName = nullptr;
-  if (endpoint.loc.locType == END_POINT_LOCATION_HOST) {
+  if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_HOST) {
     kTransFlagName = kTransFlagNameHost;
   } else {
     kTransFlagName = kTransFlagNameDevice;
@@ -713,8 +713,8 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
   HIXL_LOGD("[HixlClient] Sending CreateChannelReq. socket: %d, timeout: %u ms, "
             "Src[prot:%u, type:%u, id:%u], Dst[prot:%u, type:%u, id:%u]",
             socket_, timeout_ms,
-            src_ep.protocol, src_ep.addr.type, src_ep.addr.id,
-            dst_endpoint_.protocol, dst_endpoint_.addr.type, dst_endpoint_.addr.id);
+            src_ep.protocol, src_ep.commAddr.type, src_ep.commAddr.id,
+            dst_endpoint_.protocol, dst_endpoint_.commAddr.type, dst_endpoint_.commAddr.id);
   Status ret = ConnMsgHandler::SendCreateChannelRequest(socket_, src_ep, dst_endpoint_);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendCreateChannelRequest failed. fd=%d", socket_);
   ret = ConnMsgHandler::RecvCreateChannelResponse(socket_, dst_endpoint_handle_, timeout_ms);

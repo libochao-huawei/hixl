@@ -14,7 +14,8 @@
 #include <cstdint>
 #include <netinet/in.h>
 #include <string>
-#include "hccl/hccl_rank_graph.h"
+// #include "hccl_api.h"
+#include "hcomm/include/hcomm_res_defs.h"
 
 #ifdef __cplusplus
 extern "C" {

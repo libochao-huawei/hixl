@@ -31,12 +31,12 @@ using ThreadHandle = uint64_t;
 //   HCCL_MEM_TYPE_HOST,    // host
 //   HCCL_MEM_TYPE_NUM
 // } HcclMemType;
-//
-// typedef struct {
-//   HcclMemType type;
-//   void *addr;
-//   uint64_t size;
-// } HcommMem;
+
+typedef struct {
+  HcclMemType type;
+  void *addr;
+  uint64_t size;
+} HcommMem;
 
 struct HixlBuf {
   void *addr;
@@ -46,10 +46,12 @@ struct HixlBuf {
 enum CommProtocol {
   COMM_PROTOCOL_RESERVED = -1,
   COMM_PROTOCOL_HCCS = 0,
-  COMM_PROTOCOL_TCP = 1,
-  COMM_PROTOCOL_ROCE = 2,
-  COMM_PROTOCOL_UB_CTP = 3,
-  COMM_PROTOCOL_UB_TP = 4
+  COMM_PROTOCOL_ROCE = 1,
+  COMM_PROTOCOL_PCIE= 2,
+  COMM_PROTOCOL_SIO = 3,
+  COMM_PROTOCOL_UBC_CTP = 4,
+  COMM_PROTOCOL_UBC_TP = 5,
+  COMM_PROTOCOL_UB_MEM = 6
 };
 
 enum CommAddrType {
@@ -71,14 +73,14 @@ struct CommAddr {
   };
 };
 
-enum EndPointLocType {
-  END_POINT_LOCATION_RESERVED = -1,
-  END_POINT_LOCATION_HOST = 0,
-  END_POINT_LOCATION_DEVICE = 1,
+enum EndpointLocType {
+  ENDPOINT_LOC_TYPE_RESERVED = -1,
+  ENDPOINT_LOC_TYPE_HOST = 0,
+  ENDPOINT_LOC_TYPE_DEVICE = 1,
 };
 
 struct EndPointLoc {
-  EndPointLocType locType;
+  EndpointLocType locType;
   union {
     u_int8_t raws[60];
     struct {
@@ -96,7 +98,7 @@ struct EndPointLoc {
 struct EndpointDesc {
   EndPointLoc loc;
   CommProtocol protocol;
-  CommAddr addr;
+  CommAddr commAddr;
   union {
     u_int8_t raw[52];
   };
@@ -108,7 +110,7 @@ inline bool operator == (const EndpointDesc& lhs, const EndpointDesc& rhs) {
   }
 
   if (lhs.protocol == COMM_PROTOCOL_HCCS) {
-    return lhs.addr.id == rhs.addr.id;
+    return lhs.commAddr.id == rhs.commAddr.id;
   }
   return true;
 }
@@ -165,7 +167,7 @@ HcclResult HcommEndpointCreate(const EndpointDesc *endpoint, void **handle);
 
 HcclResult HcommEndpointDestroy(void *handle);
 
-//HcclResult HcommMemReg(void *handle, HcommMem mem, void **mem_handle);
+HcclResult HcommMemReg(void *handle, HcommMem mem, void **mem_handle);
 
 HcclResult HcommMemUnreg(void *handle, void *mem_handle);
 
