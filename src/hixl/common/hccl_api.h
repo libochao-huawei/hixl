@@ -24,7 +24,20 @@ using MemHandle = void *;
 using FdHandle = void *;
 using EndPointHandle = void *;
 using ChannelHandle = uint64_t;
-using ThreadHandle = void *;
+using ThreadHandle = uint64_t;
+
+// typedef enum {
+//   HCCL_MEM_TYPE_DEVICE,  // device
+//   HCCL_MEM_TYPE_HOST,    // host
+//   HCCL_MEM_TYPE_NUM
+// } HcclMemType;
+//
+// typedef struct {
+//   HcclMemType type;
+//   void *addr;
+//   uint64_t size;
+// } HcommMem;
+
 struct HixlBuf {
   void *addr;
   uint64_t len;
@@ -80,7 +93,7 @@ struct EndPointLoc {
   };
 };
 
-struct EndPointDesc {
+struct EndpointDesc {
   EndPointLoc loc;
   CommProtocol protocol;
   CommAddr addr;
@@ -89,7 +102,7 @@ struct EndPointDesc {
   };
 };
 
-inline bool operator == (const EndPointDesc& lhs, const EndPointDesc& rhs) {
+inline bool operator == (const EndpointDesc& lhs, const EndpointDesc& rhs) {
   if (lhs.protocol != rhs.protocol) {
     return false;
   }
@@ -134,7 +147,7 @@ struct UbAttr {
 };
 
 struct HcommChannelDescNew {
-  EndPointDesc remoteEndPoint;
+  EndpointDesc remoteEndPoint;
   uint32_t notifyNum;
   union {
     HccsAttr hccsAttr;
@@ -148,11 +161,11 @@ struct HcommBuf {
   uint64_t len;
 };
 
-HcclResult HcommEndpointCreate(const EndPointDesc *endpoint, void **handle);
+HcclResult HcommEndpointCreate(const EndpointDesc *endpoint, void **handle);
 
 HcclResult HcommEndpointDestroy(void *handle);
 
-HcclResult HcommMemReg(void *handle, HcclMem mem, void **mem_handle);
+//HcclResult HcommMemReg(void *handle, HcommMem mem, void **mem_handle);
 
 HcclResult HcommMemUnreg(void *handle, void *mem_handle);
 

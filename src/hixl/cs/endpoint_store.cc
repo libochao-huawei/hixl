@@ -13,7 +13,7 @@
 #include "common/hixl_utils.h"
 
 namespace hixl {
-Status EndpointStore::CreateEndpoint(const EndPointDesc &endpoint, EndPointHandle &endpoint_handle) {
+Status EndpointStore::CreateEndpoint(const EndpointDesc &endpoint, EndPointHandle &endpoint_handle) {
   auto ep = MakeShared<Endpoint>(endpoint);
   HIXL_CHECK_NOTNULL(ep);
   HIXL_CHK_STATUS_RET(ep->Initialize(), "Failed to Initialize endpoint.");
@@ -41,7 +41,7 @@ std::vector<EndPointHandle> EndpointStore::GetAllEndpointHandles() {
   return handles;
 }
 
-EndpointPtr EndpointStore::MatchEndpoint(const EndPointDesc &endpoint, EndPointHandle &endpoint_handle) {
+EndpointPtr EndpointStore::MatchEndpoint(const EndpointDesc &endpoint, EndPointHandle &endpoint_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
   for (const auto &it : endpoints_) {
     if (it.second->GetEndpoint() == endpoint) {

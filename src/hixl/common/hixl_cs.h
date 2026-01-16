@@ -47,7 +47,7 @@ enum BatchTransferStatus : int32_t {
  * @param [out] server_handle server创建返回的handle信息，用于后续调用其他接口
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSServerCreate(const char *ip, uint32_t port, const EndPointDesc *endpoint_list, uint32_t list_num,
+HixlStatus HixlCSServerCreate(const char *ip, uint32_t port, const EndpointDesc *endpoint_list, uint32_t list_num,
                               const HixlServerConfig *config, HixlServerHandle *server_handle);
 
 /**
@@ -58,7 +58,7 @@ HixlStatus HixlCSServerCreate(const char *ip, uint32_t port, const EndPointDesc 
  * @param [out] mem_handle server注册内存返回的handle信息
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSServerRegMem(HixlServerHandle server_handle, const char *mem_tag, const HcclMem *mem,
+HixlStatus HixlCSServerRegMem(HixlServerHandle server_handle, const char *mem_tag, const HcommMem *mem,
                               MemHandle *mem_handle);
 
 /**
@@ -93,8 +93,8 @@ HixlStatus HixlCSServerDestroy(HixlServerHandle server_handle);
  * @param [out] client_handle 输出的客户端句柄
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSClientCreate(const char *server_ip, uint32_t server_port, const EndPointDesc *src_endpoint,
-                              const EndPointDesc *dst_endpoint, HixlClientHandle *client_handle);
+HixlStatus HixlCSClientCreate(const char *server_ip, uint32_t server_port, const EndpointDesc *src_endpoint,
+                              const EndpointDesc *dst_endpoint, HixlClientHandle *client_handle);
 
 /**
  * @brief 发起 Client 连接（同步建链入口）
@@ -113,7 +113,7 @@ HixlStatus HixlCSClientConnectSync(HixlClientHandle client_handle, uint32_t time
  * @param [in] timeout_ms 请求的超时时间（ms）
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSClientGetRemoteMem(HixlClientHandle client_handle, HcclMem **remote_mem_list, char ***mem_tag_list,
+HixlStatus HixlCSClientGetRemoteMem(HixlClientHandle client_handle, HcommMem **remote_mem_list, char ***mem_tag_list,
                                     uint32_t *list_num, uint32_t timeout_ms);
 
 /**
@@ -124,7 +124,7 @@ HixlStatus HixlCSClientGetRemoteMem(HixlClientHandle client_handle, HcclMem **re
  * @param [out] mem_handle client注册内存返回的handle信息
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSClientRegMem(HixlClientHandle client_handle, const char *mem_tag, const HcclMem *mem, void **mem_handle);
+HixlStatus HixlCSClientRegMem(HixlClientHandle client_handle, const char *mem_tag, const HcommMem *mem, void **mem_handle);
 
 /**
  * @brief 注销client给endpoint分配的内存

@@ -24,13 +24,13 @@ class EndpointStore {
 
   ~EndpointStore() = default;
 
-  Status CreateEndpoint(const EndPointDesc &endpoint, EndPointHandle &endpoint_handle);
+  Status CreateEndpoint(const EndpointDesc &endpoint, EndPointHandle &endpoint_handle);
 
   EndpointPtr GetEndpoint(EndPointHandle endpoint_handle);
 
   std::vector<EndPointHandle> GetAllEndpointHandles();
 
-  EndpointPtr MatchEndpoint(const EndPointDesc &endpoint, EndPointHandle &endpoint_handle);
+  EndpointPtr MatchEndpoint(const EndpointDesc &endpoint, EndPointHandle &endpoint_handle);
 
   Status Finalize();
 

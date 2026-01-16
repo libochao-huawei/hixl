@@ -49,17 +49,17 @@ class HixlCSTest : public ::testing::Test {
  protected:
   // 在测试类中设置一些准备工作，如果需要的话
   void SetUp() override {
-    EndPointDesc ep0{};
+    EndpointDesc ep0{};
     ep0.loc.locType = END_POINT_LOCATION_HOST;
     ep0.protocol = COMM_PROTOCOL_UB_CTP;
     ep0.addr.type = COMM_ADDR_TYPE_ID;
     ep0.addr.id = kEpAddrId0;
-    EndPointDesc ep1{};
+    EndpointDesc ep1{};
     ep1.loc.locType = END_POINT_LOCATION_HOST;
     ep1.protocol = COMM_PROTOCOL_UB_CTP;
     ep1.addr.type = COMM_ADDR_TYPE_ID;
     ep1.addr.id = kEpAddrId1;
-    EndPointDesc ep_dev{};
+    EndpointDesc ep_dev{};
     ep_dev.loc.locType = END_POINT_LOCATION_DEVICE;
     ep_dev.protocol = COMM_PROTOCOL_UB_TP;
     ep_dev.addr.type = COMM_ADDR_TYPE_ID;
@@ -74,7 +74,7 @@ class HixlCSTest : public ::testing::Test {
   }
 
  private:
-  std::vector<EndPointDesc> default_eps;
+  std::vector<EndpointDesc> default_eps;
 
   static void CleanupClient(HixlClientHandle client_handle,
                           MemHandle mem1,
@@ -94,13 +94,13 @@ class HixlCSTest : public ::testing::Test {
   static Status RegTwoMems(HixlClientHandle client_handle,
                            MemHandle &mem_handle1,
                            MemHandle &mem_handle2) {
-    HcclMem mem{};
+    HcommMem mem{};
     mem.size = sizeof(int32_t);
     mem.addr = &kDeviceMems[0];
     auto ret = HixlCSClientRegMem(client_handle, nullptr, &mem, &mem_handle1);
     if (ret != SUCCESS) return ret;
 
-    HcclMem mem2{};
+    HcommMem mem2{};
     mem2.type = HCCL_MEM_TYPE_HOST;
     mem2.size = sizeof(int32_t);
     mem2.addr = &kHostMems[0];
@@ -111,7 +111,7 @@ class HixlCSTest : public ::testing::Test {
   static bool FetchTagsOnce(HixlClientHandle client_handle,
                           std::vector<std::string> &tags,
                           uint32_t &list_num) {
-    HcclMem *remote_mem_list = nullptr;
+    HcommMem *remote_mem_list = nullptr;
     char **mem_tag_list = nullptr;
     list_num = kListNum;
 
@@ -160,7 +160,7 @@ class HixlCSTest : public ::testing::Test {
       return;
     }
 
-    HcclMem *remote_mem_list = nullptr;
+    HcommMem *remote_mem_list = nullptr;
     char **mem_tag_list = nullptr;
     uint32_t list_num = 0;
     ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kTimeoutMs);
@@ -185,7 +185,7 @@ class HixlCSTest : public ::testing::Test {
     }
 
     // 不 Connect，直接 GetRemoteMem
-    HcclMem* remote_mem_list = nullptr;
+    HcommMem* remote_mem_list = nullptr;
     char** mem_tag_list = nullptr;  // C API char*** -> 传 &mem_tag_list
     uint32_t list_num = 0;
 
@@ -288,7 +288,7 @@ class HixlCSTest : public ::testing::Test {
     }
 
     for (size_t i = 0; i < kHostMems.size(); ++i) {
-      HcclMem mem{};
+      HcommMem mem{};
       mem.size = sizeof(int32_t);
       mem.addr = &kHostMems[i];
       mem.type = HCCL_MEM_TYPE_HOST;
@@ -301,7 +301,7 @@ class HixlCSTest : public ::testing::Test {
     }
 
     for (size_t i = 0; i < kDeviceMems.size(); ++i) {
-      HcclMem mem{};
+      HcommMem mem{};
       mem.size = sizeof(int32_t);
       mem.addr = &kDeviceMems[i];
       mem.type = HCCL_MEM_TYPE_DEVICE;
@@ -378,7 +378,7 @@ TEST_F(HixlCSTest, TestHixlCSClientBatchPut) {
   HixlServerHandle server_handle = nullptr;
   auto ret = HixlCSServerCreate("127.0.0.1", kPort, &default_eps[0], default_eps.size(), &config, &server_handle);
   EXPECT_EQ(ret, SUCCESS);
-  HcclMem mem = MakeMem(&kHostMems[0], uint64_t{10}, HCCL_MEM_TYPE_HOST);  // 取kHostMems[0]的地址，内存大小为10
+  HcommMem mem = MakeMem(&kHostMems[0], uint64_t{10}, HCCL_MEM_TYPE_HOST);  // 取kHostMems[0]的地址，内存大小为10
   std::array<MemHandle, 3> mem_handles{nullptr, nullptr, nullptr};
   ret = HixlCSServerRegMem(server_handle, nullptr, &mem, &mem_handles[0]);
   EXPECT_EQ(ret, SUCCESS);
@@ -389,8 +389,8 @@ TEST_F(HixlCSTest, TestHixlCSClientBatchPut) {
   ret = HixlCSClientCreate("127.0.0.1", kPort, &default_eps[0], &default_eps[1], &client_handle);
   EXPECT_EQ(ret, SUCCESS);
   // 设置用于传输的内存块信息
-  HcclMem mem2 = MakeMem(&kHostMems[0] + size_t(1), uint64_t{3}, HCCL_MEM_TYPE_HOST);  // 取kHostMems[0]的地址，之后向右偏移3位，内存大小设置为3
-  HcclMem mem3 = MakeMem(&kHostMems[0], uint64_t{10}, HCCL_MEM_TYPE_HOST);  // 取kHostMems[0]的地址，内存大小为10
+  HcommMem mem2 = MakeMem(&kHostMems[0] + size_t(1), uint64_t{3}, HCCL_MEM_TYPE_HOST);  // 取kHostMems[0]的地址，之后向右偏移3位，内存大小设置为3
+  HcommMem mem3 = MakeMem(&kHostMems[0], uint64_t{10}, HCCL_MEM_TYPE_HOST);  // 取kHostMems[0]的地址，内存大小为10
   ret = HixlCSClientRegMem(client_handle, nullptr, &mem3, &mem_handles[2]);
   EXPECT_EQ(ret, SUCCESS);
   // 注册已经分配过的内存，预期报错
@@ -398,7 +398,7 @@ TEST_F(HixlCSTest, TestHixlCSClientBatchPut) {
   EXPECT_EQ(ret, PARAM_INVALID);
   ret = HixlCSClientConnectSync(client_handle, kTimeoutMs);
   EXPECT_EQ(ret, SUCCESS);
-  HcclMem *remote_mem_list = nullptr;
+  HcommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0;
   ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kTimeoutMs);
@@ -457,14 +457,14 @@ TEST_F(HixlCSTest, TestClientGetRemoteMemMultiTimesSuccess) {
   ASSERT_EQ(ret, SUCCESS);
 
   // 注册 mem（确保 GetRemoteMem 返回内容完整）
-  HcclMem mem{};
+  HcommMem mem{};
   mem.size = sizeof(int32_t);
   mem.addr = &kDeviceMems[0];
   MemHandle mem_handle = nullptr;
   ret = HixlCSServerRegMem(server_handle, nullptr, &mem, &mem_handle);
   ASSERT_EQ(ret, SUCCESS);
 
-  HcclMem mem2{};
+  HcommMem mem2{};
   mem2.type = HCCL_MEM_TYPE_HOST;
   mem2.size = sizeof(int32_t);
   mem2.addr = &kHostMems[0];

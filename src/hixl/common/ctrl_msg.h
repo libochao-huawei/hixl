@@ -37,8 +37,8 @@ struct CtrlMsg {
 };
 
 struct CreateChannelReq {
-  EndPointDesc src;
-  EndPointDesc dst;
+  EndpointDesc src;
+  EndpointDesc dst;
 };
 
 struct CreateChannelResp {
@@ -51,7 +51,7 @@ struct GetRemoteMemReq {
 };
 
 struct HixlMemDesc {
-  HcclMem mem;
+  HcommMem mem;
   std::string tag;
   void *export_desc = nullptr;
   uint32_t export_len = 0U;

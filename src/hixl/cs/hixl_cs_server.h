@@ -37,9 +37,9 @@ class HixlCSServer {
 
   ~HixlCSServer() = default;
 
-  Status Initialize(const EndPointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config);
+  Status Initialize(const EndpointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config);
   Status Finalize();
-  Status RegisterMem(const char *mem_tag, const HcclMem *mem, MemHandle *mem_handle);
+  Status RegisterMem(const char *mem_tag, const HcommMem *mem, MemHandle *mem_handle);
   Status DeregisterMem(MemHandle mem_handle);
   Status Listen(uint32_t backlog);
   Status RegProc(CtrlMsgType msg_type, MsgProcessor proc);

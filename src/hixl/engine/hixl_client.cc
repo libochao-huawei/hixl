@@ -296,8 +296,8 @@ CommType HixlClient::ParseCommType(const std::string &local_placement, const std
 // 创建cs_client
 Status HixlClient::CreateCsClients(const EndPointConfig &local_endpoint_config,
                                    const EndPointConfig &remote_endpoint_config, CommType type) {
-  EndPointDesc local_endpoint{};
-  EndPointDesc remote_endpoint{};
+  EndpointDesc local_endpoint{};
+  EndpointDesc remote_endpoint{};
   HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(local_endpoint_config, local_endpoint),
                       "HixlClient convert EndPointConfig to EndPointInfo failed");
   HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(remote_endpoint_config, remote_endpoint),
@@ -345,7 +345,7 @@ Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {
 }
 
 Status HixlClient::RegisterMemToCsClient(const MemDesc &mem, const MemType type) {
-  HcclMem hccl_mem{};
+  HcommMem hccl_mem{};
   hccl_mem.type = (type == MemType::MEM_DEVICE) ? HCCL_MEM_TYPE_DEVICE : HCCL_MEM_TYPE_HOST;
   hccl_mem.addr = reinterpret_cast<void *>(mem.addr);
   hccl_mem.size = mem.len;
@@ -416,7 +416,7 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
 Status HixlClient::ProcessRemoteMem(uint32_t timeout_ms) {
   for (const auto &pair : client_handles_) {
     auto handle = pair.second;
-    HcclMem *remote_mem_list = nullptr;
+    HcommMem *remote_mem_list = nullptr;
     char **mem_tag_list = nullptr;
     uint32_t list_num = 0;
     HIXL_CHK_STATUS_RET(HixlCSClientGetRemoteMem(handle, &remote_mem_list, &mem_tag_list, &list_num, timeout_ms),
