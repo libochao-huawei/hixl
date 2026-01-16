@@ -296,8 +296,8 @@ CommType HixlClient::ParseCommType(const std::string &local_placement, const std
 // 创建cs_client
 Status HixlClient::CreateCsClients(const EndPointConfig &local_endpoint_config,
                                    const EndPointConfig &remote_endpoint_config, CommType type) {
-  EndPointInfo local_endpoint{};
-  EndPointInfo remote_endpoint{};
+  EndPointDesc local_endpoint{};
+  EndPointDesc remote_endpoint{};
   HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(local_endpoint_config, local_endpoint),
                       "HixlClient convert EndPointConfig to EndPointInfo failed");
   HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(remote_endpoint_config, remote_endpoint),

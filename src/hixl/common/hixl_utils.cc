@@ -122,8 +122,8 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
   return SUCCESS;
 }
 
-Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndPointInfo &endpoint) {
-  static const std::map<std::string, EndPointLocation> placement_map = {{"host", END_POINT_LOCATION_HOST},
+Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndPointDesc &endpoint) {
+  static const std::map<std::string, EndPointLocType> placement_map = {{"host", END_POINT_LOCATION_HOST},
                                                                         {"device", END_POINT_LOCATION_DEVICE}};
 
   static const std::map<std::string, CommProtocol> protocol_map = {{"hccs", COMM_PROTOCOL_HCCS},
@@ -138,7 +138,7 @@ Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndPointInfo
     HIXL_LOGE(PARAM_INVALID, "Unsupported placement: %s", endpoint_config.placement.c_str());
     return PARAM_INVALID;
   }
-  endpoint.location = placement_it->second;
+  endpoint.loc.locType = placement_it->second;
 
   // 处理protocol
   auto protocol_it = protocol_map.find(endpoint_config.protocol);

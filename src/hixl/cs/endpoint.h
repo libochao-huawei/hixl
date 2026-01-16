@@ -24,20 +24,20 @@
 namespace hixl {
 class Endpoint {
  public:
-  explicit Endpoint(const EndPointInfo &endpoint) : endpoint_(endpoint) {};
+  explicit Endpoint(const EndPointDesc &endpoint) : endpoint_(endpoint) {};
   ~Endpoint() = default;
 
   Status Initialize();
   Status Finalize();
 
   EndPointHandle GetHandle() const;
-  const EndPointInfo &GetEndpoint() const;
+  const EndPointDesc &GetEndpoint() const;
 
   Status RegisterMem(const char *mem_tag, const HcclMem &mem, MemHandle &mem_handle);
   Status DeregisterMem(MemHandle mem_handle);
   Status ExportMem(std::vector<HixlMemDesc> &mem_descs);
 
-  Status CreateChannel(const EndPointInfo &remote_endpoint, ChannelHandle &channel_handle);
+  Status CreateChannel(const EndPointDesc &remote_endpoint, ChannelHandle &channel_handle);
   Status GetChannelStatus(ChannelHandle channel_handle, int32_t *status_out);
   Status DestroyChannel(ChannelHandle channel_handle);
   Status GetMemDesc(MemHandle mem_handle, HixlMemDesc &desc);
@@ -45,7 +45,7 @@ class Endpoint {
 
  private:
   std::mutex mutex_;
-  EndPointInfo endpoint_{};
+  EndPointDesc endpoint_{};
   EndPointHandle handle_ = nullptr;
   std::map<MemHandle, HixlMemDesc> reg_mems_;
   std::map<ChannelHandle, ChannelPtr> channels_;

@@ -38,8 +38,8 @@ namespace hixl {
 class ConnMsgHandler {
  public:
   // 发送 CreateChannelReq，携带本端 src_endpoint 和远端 dst_endpoint
-  static Status SendCreateChannelRequest(int32_t socket, const EndPointInfo &src_endpoint,
-                                         const EndPointInfo &dst_endpoint);
+  static Status SendCreateChannelRequest(int32_t socket, const EndPointDesc &src_endpoint,
+                                         const EndPointDesc &dst_endpoint);
 
   // 接收 CreateChannelResp，解析出对端 endpoint_handle
   static Status RecvCreateChannelResponse(int32_t socket, uint64_t &dst_endpoint_handle, uint32_t timeout_ms);

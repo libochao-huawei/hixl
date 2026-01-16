@@ -37,7 +37,7 @@ class HixlCSServer {
 
   ~HixlCSServer() = default;
 
-  Status Initialize(const EndPointInfo *endpoint_list, uint32_t list_num, const HixlServerConfig *config);
+  Status Initialize(const EndPointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config);
   Status Finalize();
   Status RegisterMem(const char *mem_tag, const HcclMem *mem, MemHandle *mem_handle);
   Status DeregisterMem(MemHandle mem_handle);

@@ -22,13 +22,13 @@ namespace hixl {
 Status HixlServer::Initialize(const std::string &ip, int32_t port,
                               const std::vector<EndPointConfig> &data_endpoint_config_list) {
   data_endpoint_config_list_ = data_endpoint_config_list;
-  std::vector<EndPointInfo> data_end_point_list;
+  std::vector<EndPointDesc> data_end_point_list;
   for (const auto &it : data_endpoint_config_list) {
-    EndPointInfo end_point_info{};
+    EndPointDesc end_point_info{};
     HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(it, end_point_info));
     data_end_point_list.emplace_back(end_point_info);
   }
-  const EndPointInfo *endpoints = data_end_point_list.data();
+  const EndPointDesc *endpoints = data_end_point_list.data();
   HixlServerConfig config{};
   HIXL_CHK_STATUS_RET(HixlCSServerCreate(ip.c_str(), static_cast<uint32_t>(port), endpoints,
                       static_cast<uint32_t>(data_endpoint_config_list.size()),

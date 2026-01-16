@@ -20,9 +20,9 @@ namespace hixl {
 
 // 初始化源endpoint和本地endpoint
 
-EndPointInfo MakeSrcEp() {
-  EndPointInfo ep{};
-  ep.location = END_POINT_LOCATION_HOST;
+EndPointDesc MakeSrcEp() {
+  EndPointDesc ep{};
+  ep.loc.locType = END_POINT_LOCATION_HOST;
   ep.protocol = COMM_PROTOCOL_TCP;      // 或 COMM_PROTOCOL_ROCE，按你们测试协议
   ep.addr.type = COMM_ADDR_TYPE_IP_V4;
   // 填充 IPv4 地址到 in_addr
@@ -30,9 +30,9 @@ EndPointInfo MakeSrcEp() {
   return ep;
 }
 
-EndPointInfo MakeDstEp() {
-  EndPointInfo ep{};
-  ep.location = END_POINT_LOCATION_DEVICE;  // 或 HOST：取决于你们对端在设备还是主机
+EndPointDesc MakeDstEp() {
+  EndPointDesc ep{};
+  ep.loc.locType = END_POINT_LOCATION_DEVICE;  // 或 HOST：取决于你们对端在设备还是主机
   ep.protocol = COMM_PROTOCOL_TCP;          // 与 src 协议一致
   ep.addr.type = COMM_ADDR_TYPE_IP_V4;
   inet_pton(AF_INET, "127.0.0.1", &ep.addr.addr);
@@ -75,8 +75,8 @@ struct ImportedRemote {
 };
 // 封装：创建连接 + 导入远端内存
 void PrepareConnectionAndImport(hixl::HixlCSClient& cli, const char* server_ip, uint32_t port) {
-  EndPointInfo src = MakeSrcEp();
-  EndPointInfo dst = MakeDstEp();
+  EndPointDesc src = MakeSrcEp();
+  EndPointDesc dst = MakeDstEp();
   ASSERT_EQ(cli.Create(server_ip, port, &src, &dst), SUCCESS);
 
   std::vector<HixlMemDesc> descs;
@@ -101,8 +101,8 @@ TEST_F(HixlCSClientFixture, RegMemAndUnRegMem) {
   // 先创建本端 endpoint（Create 不依赖 socket 初始化以外的 HCCL）
   const char *server_ip = "127.0.0.1";
   uint32_t server_port = 12345;
-  EndPointInfo src = MakeSrcEp();
-  EndPointInfo dst = MakeDstEp();
+  EndPointDesc src = MakeSrcEp();
+  EndPointDesc dst = MakeDstEp();
   // 对齐实现：Create 要求 dst.protocol != RESERVED 才能用于后续 Connect，这里仅测试 RegMem 不调用 Connect
   EXPECT_EQ(cli.Create(server_ip, server_port, &src, &dst), SUCCESS);
 
@@ -123,8 +123,8 @@ TEST_F(HixlCSClientFixture, RegMemAndUnRegMem) {
 TEST_F(HixlCSClientFixture, ImportRemoteMemAndClearRemoteMemInfo) {
   const char *server_ip = "127.0.0.1";
   uint32_t server_port = 22334;
-  EndPointInfo src = MakeSrcEp();
-  EndPointInfo dst = MakeDstEp();
+  EndPointDesc src = MakeSrcEp();
+  EndPointDesc dst = MakeDstEp();
   EXPECT_EQ(cli.Create(server_ip, server_port, &src, &dst), SUCCESS);
 
   // 构造两个远端内存描述并导入
@@ -152,8 +152,8 @@ TEST_F(HixlCSClientFixture, ImportRemoteMemAndClearRemoteMemInfo) {
 TEST_F(HixlCSClientFixture, BatchPutSuccessWithStubbedHccl) {
   const char *server_ip = "127.0.0.1";
   uint32_t port = 22335;
-  EndPointInfo src = MakeSrcEp();
-  EndPointInfo dst = MakeDstEp();
+  EndPointDesc src = MakeSrcEp();
+  EndPointDesc dst = MakeDstEp();
   EXPECT_EQ(cli.Create(server_ip, port, &src, &dst), SUCCESS);
   std::cout << "cli已创建" << std::endl;
 

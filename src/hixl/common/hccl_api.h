@@ -58,19 +58,38 @@ struct CommAddr {
   };
 };
 
-enum EndPointLocation {
+enum EndPointLocType {
   END_POINT_LOCATION_RESERVED = -1,
   END_POINT_LOCATION_HOST = 0,
   END_POINT_LOCATION_DEVICE = 1,
 };
 
-struct EndPointInfo {
-  EndPointLocation location;
-  CommProtocol protocol;
-  CommAddr addr;
+struct EndPointLoc {
+  EndPointLocType locType;
+  union {
+    u_int8_t raws[60];
+    struct {
+      uint32_t devPhyId;
+      uint32_t superDevId;
+      uint32_t serverIdx;
+      uint32_t superPodIdx;
+    } device;
+    struct {
+      uint32_t id;
+    } host;
+  };
 };
 
-inline bool operator == (const EndPointInfo& lhs, const EndPointInfo& rhs) {
+struct EndPointDesc {
+  EndPointLoc loc;
+  CommProtocol protocol;
+  CommAddr addr;
+  union {
+    u_int8_t raw[52];
+  };
+};
+
+inline bool operator == (const EndPointDesc& lhs, const EndPointDesc& rhs) {
   if (lhs.protocol != rhs.protocol) {
     return false;
   }
@@ -115,7 +134,7 @@ struct UbAttr {
 };
 
 struct HcommChannelDescNew {
-  EndPointInfo remoteEndPoint;
+  EndPointDesc remoteEndPoint;
   uint32_t notifyNum;
   union {
     HccsAttr hccsAttr;
@@ -129,9 +148,9 @@ struct HcommBuf {
   uint64_t len;
 };
 
-HcclResult HcommEndPointCreate(const EndPointInfo *endpoint, void **handle);
+HcclResult HcommEndpointCreate(const EndPointDesc *endpoint, void **handle);
 
-HcclResult HcommEndPointDestroy(void *handle);
+HcclResult HcommEndpointDestroy(void *handle);
 
 HcclResult HcommMemReg(void *handle, HcclMem mem, void **mem_handle);
 
@@ -145,7 +164,7 @@ HcclResult HcommEndPointDestroy(void *end_point_handle);
 
 HcclResult HcommMemImport(void *end_point_handle, const void *mem_desc, uint32_t desc_len, HcommBuf *out_buf);
 
-HcclResult HcommMemClose(void *endPointHandle, const HcommBuf *buf);
+HcclResult HcommMemUnimport(void *endPointHandle, const HcommBuf *buf);
 
 HcclResult HcommChannelCreate(void **end_point_handle, CommEngine engine, HcommChannelDescNew *channel_desc_list,
                               uint32_t list_num, const void **mem_handle_list, uint32_t mem_handle_list_num,
@@ -166,6 +185,7 @@ int32_t HcommReadOnThread(ThreadHandle thread, ChannelHandle channel, void *dst,
 void HcommChannelFence(ChannelHandle channel);
 
 HcclResult HcommThreadAlloc(CommEngine engine, uint32_t threadNum, uint32_t notifyNumPerThread, ThreadHandle *thread);
+
 HcclResult HcommThreadFree(ThreadHandle thread);
 #ifdef __cplusplus
 }

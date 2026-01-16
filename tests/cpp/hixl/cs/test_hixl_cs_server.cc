@@ -46,18 +46,18 @@ class HixlCSTest : public ::testing::Test {
  protected:
   // 在测试类中设置一些准备工作，如果需要的话
   void SetUp() override {
-    EndPointInfo ep0{};
-    ep0.location = END_POINT_LOCATION_HOST;
+    EndPointDesc ep0{};
+    ep0.loc.locType = END_POINT_LOCATION_HOST;
     ep0.protocol = COMM_PROTOCOL_UB_CTP;
     ep0.addr.type = COMM_ADDR_TYPE_ID;
     ep0.addr.id = kEpAddrId0;
-    EndPointInfo ep1{};
-    ep1.location = END_POINT_LOCATION_HOST;
+    EndPointDesc ep1{};
+    ep1.loc.locType = END_POINT_LOCATION_HOST;
     ep1.protocol = COMM_PROTOCOL_UB_CTP;
     ep1.addr.type = COMM_ADDR_TYPE_ID;
     ep1.addr.id = kEpAddrId1;
-    EndPointInfo ep_dev{};
-    ep_dev.location = END_POINT_LOCATION_DEVICE;
+    EndPointDesc ep_dev{};
+    ep_dev.loc.locType = END_POINT_LOCATION_DEVICE;
     ep_dev.protocol = COMM_PROTOCOL_UB_TP;
     ep_dev.addr.type = COMM_ADDR_TYPE_ID;
     ep_dev.addr.id = kEpAddrId2;
@@ -71,7 +71,7 @@ class HixlCSTest : public ::testing::Test {
   }
 
  private:
-  std::vector<EndPointInfo> default_eps;
+  std::vector<EndPointDesc> default_eps;
 
   void SendCreateChannelReq(int32_t client_fd) {
     CtrlMsgHeader header{};

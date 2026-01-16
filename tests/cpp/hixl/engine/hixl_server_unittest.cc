@@ -275,7 +275,7 @@ TEST(ConvertToEndPointInfoTest, InvalidPlacement) {
   ep.comm_id = "192.168.1.1";
   ep.placement = "invalid_placement";
 
-  EndPointInfo endpoint{};
+  EndPointDesc endpoint{};
   Status ret = ConvertToEndPointInfo(ep, endpoint);
   EXPECT_EQ(ret, PARAM_INVALID);
 }
@@ -286,7 +286,7 @@ TEST(ConvertToEndPointInfoTest, InvalidProtocol) {
   ep.comm_id = "192.168.1.1";
   ep.placement = "host";
 
-  EndPointInfo endpoint{};
+  EndPointDesc endpoint{};
   Status ret = ConvertToEndPointInfo(ep, endpoint);
   EXPECT_EQ(ret, PARAM_INVALID);
 }
@@ -297,11 +297,11 @@ TEST(ConvertToEndPointInfoTest, RoceWithIPv6) {
   ep.comm_id = "::1";
   ep.placement = "device";
 
-  EndPointInfo endpoint{};
+  EndPointDesc endpoint{};
   Status ret = ConvertToEndPointInfo(ep, endpoint);
   EXPECT_EQ(ret, SUCCESS);
   EXPECT_EQ(endpoint.protocol, COMM_PROTOCOL_ROCE);
-  EXPECT_EQ(endpoint.location, END_POINT_LOCATION_DEVICE);
+  EXPECT_EQ(endpoint.loc.locType, END_POINT_LOCATION_DEVICE);
   EXPECT_EQ(endpoint.addr.type, COMM_ADDR_TYPE_IP_V6);
 }
 
@@ -311,7 +311,7 @@ TEST(ConvertToEndPointInfoTest, RoceWithInvalidIP) {
   ep.comm_id = "invalid_ip";
   ep.placement = "host";
 
-  EndPointInfo endpoint{};
+  EndPointDesc endpoint{};
   Status ret = ConvertToEndPointInfo(ep, endpoint);
   EXPECT_EQ(ret, PARAM_INVALID);
 }

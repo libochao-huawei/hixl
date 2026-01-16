@@ -40,7 +40,7 @@ HcclResult HcommMemExport(void *handle, const void *mem_handle, void **mem_desc,
   return HCCL_SUCCESS;
 }
 
-HcclResult HcommEndPointCreate(const EndPointInfo *endpoint, void **handle) {
+HcclResult HcommEndpointCreate(const EndPointDesc *endpoint, void **handle) {
   (void)endpoint;
 
   static int32_t ep_num_stub = 1;
@@ -48,7 +48,7 @@ HcclResult HcommEndPointCreate(const EndPointInfo *endpoint, void **handle) {
   return HCCL_SUCCESS;
 }
 
-HcclResult HcommEndPointDestroy(void *handle) {
+HcclResult HcommEndpointDestroy(void *handle) {
   (void)handle;
   return HCCL_SUCCESS;
 }
@@ -70,7 +70,7 @@ HcclResult HcommMemImport(void *end_point_handle, const void *mem_desc, uint32_t
   return HCCL_SUCCESS;
 }
 
-HcclResult HcommMemClose(void *endPointHandle, const HcommBuf *buf) {
+HcclResult HcommMemUnimport(void *endPointHandle, const HcommBuf *buf) {
   (void)endPointHandle;
   (void)buf;
   return HCCL_SUCCESS;

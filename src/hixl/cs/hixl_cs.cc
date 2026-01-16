@@ -17,7 +17,7 @@
 #include "hixl_cs_server.h"
 #include "hixl_cs_client.h"
 
-HixlStatus HixlCSServerCreate(const char *ip, uint32_t port, const EndPointInfo *endpoint_list, uint32_t list_num,
+HixlStatus HixlCSServerCreate(const char *ip, uint32_t port, const EndPointDesc *endpoint_list, uint32_t list_num,
                               const HixlServerConfig *config, HixlServerHandle *server_handle) {
   HIXL_CHECK_NOTNULL(server_handle);
   auto server = new (std::nothrow) hixl::HixlCSServer(ip, port);
@@ -63,8 +63,8 @@ HixlStatus HixlCSServerListen(HixlServerHandle server_handle, uint32_t backlog) 
   return HIXL_SUCCESS;
 }
 
-HixlStatus HixlCSClientCreate(const char *server_ip, uint32_t server_port, const EndPointInfo *src_endpoint,
-                              const EndPointInfo *dst_endpoint, HixlClientHandle *client_handle) {
+HixlStatus HixlCSClientCreate(const char *server_ip, uint32_t server_port, const EndPointDesc *src_endpoint,
+                              const EndPointDesc *dst_endpoint, HixlClientHandle *client_handle) {
   HIXL_CHECK_NOTNULL(client_handle);
   auto *client = new (std::nothrow) hixl::HixlCSClient();
   HIXL_CHECK_NOTNULL(client);

@@ -497,8 +497,8 @@ class MiniServer {
   MiniSrvMode mem_mode_{MiniSrvMode::kNormal};
 };
 
-static EndPointInfo MakeIdEp(uint32_t id) {
-  EndPointInfo ep{};
+static EndPointDesc MakeIdEp(uint32_t id) {
+  EndPointDesc ep{};
   ep.protocol = COMM_PROTOCOL_UB_CTP;
   ep.addr.type = COMM_ADDR_TYPE_ID;
   ep.addr.id = id;
@@ -535,8 +535,8 @@ class HixlCSClientUT : public ::testing::Test {
   }
 
  protected:
-  EndPointInfo src_{};
-  EndPointInfo dst_{};
+  EndPointDesc src_{};
+  EndPointDesc dst_{};
   MiniServer server_;
   uint16_t port_{0};
   HixlCSClient client_;
