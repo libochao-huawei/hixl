@@ -301,8 +301,8 @@ TEST(ConvertToEndPointInfoTest, RoceWithIPv6) {
   Status ret = ConvertToEndPointInfo(ep, endpoint);
   EXPECT_EQ(ret, SUCCESS);
   EXPECT_EQ(endpoint.protocol, COMM_PROTOCOL_ROCE);
-  EXPECT_EQ(endpoint.loc.locType, END_POINT_LOCATION_DEVICE);
-  EXPECT_EQ(endpoint.addr.type, COMM_ADDR_TYPE_IP_V6);
+  EXPECT_EQ(endpoint.loc.locType, ENDPOINT_LOC_TYPE_DEVICE);
+  EXPECT_EQ(endpoint.commAddr.type, COMM_ADDR_TYPE_IP_V6);
 }
 
 TEST(ConvertToEndPointInfoTest, RoceWithInvalidIP) {

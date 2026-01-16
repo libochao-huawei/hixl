@@ -50,20 +50,20 @@ class HixlCSTest : public ::testing::Test {
   // 在测试类中设置一些准备工作，如果需要的话
   void SetUp() override {
     EndpointDesc ep0{};
-    ep0.loc.locType = END_POINT_LOCATION_HOST;
-    ep0.protocol = COMM_PROTOCOL_UB_CTP;
-    ep0.addr.type = COMM_ADDR_TYPE_ID;
-    ep0.addr.id = kEpAddrId0;
+    ep0.loc.locType = ENDPOINT_LOC_TYPE_HOST;
+    ep0.protocol = COMM_PROTOCOL_UBC_CTP;
+    ep0.commAddr.type = COMM_ADDR_TYPE_ID;
+    ep0.commAddr.id = kEpAddrId0;
     EndpointDesc ep1{};
-    ep1.loc.locType = END_POINT_LOCATION_HOST;
-    ep1.protocol = COMM_PROTOCOL_UB_CTP;
-    ep1.addr.type = COMM_ADDR_TYPE_ID;
-    ep1.addr.id = kEpAddrId1;
+    ep1.loc.locType = ENDPOINT_LOC_TYPE_HOST;
+    ep1.protocol = COMM_PROTOCOL_UBC_CTP;
+    ep1.commAddr.type = COMM_ADDR_TYPE_ID;
+    ep1.commAddr.id = kEpAddrId1;
     EndpointDesc ep_dev{};
-    ep_dev.loc.locType = END_POINT_LOCATION_DEVICE;
-    ep_dev.protocol = COMM_PROTOCOL_UB_TP;
-    ep_dev.addr.type = COMM_ADDR_TYPE_ID;
-    ep_dev.addr.id = kEpAddrId2;
+    ep_dev.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
+    ep_dev.protocol = COMM_PROTOCOL_UBC_TP;
+    ep_dev.commAddr.type = COMM_ADDR_TYPE_ID;
+    ep_dev.commAddr.id = kEpAddrId2;
 
     default_eps.emplace_back(ep0);
     default_eps.emplace_back(ep1);

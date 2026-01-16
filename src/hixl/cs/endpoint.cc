@@ -100,9 +100,9 @@ Status Endpoint::CreateChannel(const EndpointDesc &remote_endpoint, ChannelHandl
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[channel] CreateChannel called before Initialize");
   CommEngine engine = CommEngine::COMM_ENGINE_RESERVED;
-  if (endpoint_.loc.locType == EndPointLocType::END_POINT_LOCATION_HOST) {
+  if (endpoint_.loc.locType == EndpointLocType::ENDPOINT_LOC_TYPE_HOST) {
     engine = CommEngine::COMM_ENGINE_HOSTCPU;
-  } else if (endpoint_.loc.locType == EndPointLocType::END_POINT_LOCATION_DEVICE) {
+  } else if (endpoint_.loc.locType == EndpointLocType::ENDPOINT_LOC_TYPE_DEVICE) {
     engine = CommEngine::COMM_ENGINE_AICPU;
   } else {
     HIXL_LOGE(PARAM_INVALID, "[channel] invalid endpoint location=%d",

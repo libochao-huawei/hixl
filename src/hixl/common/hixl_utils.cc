@@ -123,14 +123,13 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
 }
 
 Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc &endpoint) {
-  static const std::map<std::string, EndPointLocType> placement_map = {{"host", END_POINT_LOCATION_HOST},
-                                                                        {"device", END_POINT_LOCATION_DEVICE}};
+  static const std::map<std::string, EndpointLocType> placement_map = {{"host", ENDPOINT_LOC_TYPE_HOST},
+                                                                        {"device", ENDPOINT_LOC_TYPE_DEVICE}};
 
   static const std::map<std::string, CommProtocol> protocol_map = {{"hccs", COMM_PROTOCOL_HCCS},
-                                                                   {"tcp", COMM_PROTOCOL_TCP},
                                                                    {"roce", COMM_PROTOCOL_ROCE},
-                                                                   {"ub_ctp", COMM_PROTOCOL_UB_CTP},
-                                                                   {"ub_tp", COMM_PROTOCOL_UB_TP}};
+                                                                   {"ub_ctp", COMM_PROTOCOL_UBC_CTP},
+                                                                   {"ub_tp", COMM_PROTOCOL_UBC_TP}};
 
   // 处理placement
   auto placement_it = placement_map.find(endpoint_config.placement);
@@ -150,12 +149,12 @@ Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc
 
   // 处理ROCE协议的comm_id
   if (endpoint_config.protocol == "roce") {
-    HIXL_CHK_STATUS_RET(ParseIpAddress(endpoint_config.comm_id, endpoint.addr), "ParseIpAddress failed");
+    HIXL_CHK_STATUS_RET(ParseIpAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseIpAddress failed");
   }
 
   // 处理UB协议的comm_id
   if (endpoint_config.protocol == "ub_ctp" || endpoint_config.protocol == "ub_tp") {
-    HIXL_CHK_STATUS_RET(ParseEidAddress(endpoint_config.comm_id, endpoint.addr), "ParseEidAddress failed");
+    HIXL_CHK_STATUS_RET(ParseEidAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseEidAddress failed");
   }
   return SUCCESS;
 }

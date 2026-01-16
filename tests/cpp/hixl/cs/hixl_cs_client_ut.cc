@@ -499,9 +499,9 @@ class MiniServer {
 
 static EndpointDesc MakeIdEp(uint32_t id) {
   EndpointDesc ep{};
-  ep.protocol = COMM_PROTOCOL_UB_CTP;
-  ep.addr.type = COMM_ADDR_TYPE_ID;
-  ep.addr.id = id;
+  ep.protocol = COMM_PROTOCOL_UBC_CTP;
+  ep.commAddr.type = COMM_ADDR_TYPE_ID;
+  ep.commAddr.id = id;
   return ep;
 }
 
