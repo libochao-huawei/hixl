@@ -17,13 +17,13 @@
 extern "C" {
 #endif
 
-HcclResult HcommMemReg(void *handle, HcclMem mem, void **mem_handle) {
-  static int32_t mem_num_stub = 1;
-  (void)handle;
-  (void)mem;
-  *mem_handle = reinterpret_cast<void *>(mem_num_stub++);
-  return HCCL_SUCCESS;
-}
+// HcclResult HcommMemReg(void *handle, HcommMem mem, void **mem_handle) {
+//   static int32_t mem_num_stub = 1;
+//   (void)handle;
+//   (void)mem;
+//   *mem_handle = reinterpret_cast<void *>(mem_num_stub++);
+//   return HCCL_SUCCESS;
+// }
 
 HcclResult HcommMemUnreg(void *handle, void *mem_handle) {
   (void)handle;
@@ -40,7 +40,7 @@ HcclResult HcommMemExport(void *handle, const void *mem_handle, void **mem_desc,
   return HCCL_SUCCESS;
 }
 
-HcclResult HcommEndpointCreate(const EndPointDesc *endpoint, void **handle) {
+HcclResult HcommEndpointCreate(const EndpointDesc *endpoint, void **handle) {
   (void)endpoint;
 
   static int32_t ep_num_stub = 1;

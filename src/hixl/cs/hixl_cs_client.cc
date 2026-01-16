@@ -99,13 +99,13 @@ HixlCSClient::~HixlCSClient() {
 }
 
 namespace {
-static inline bool IsDeviceEndpoint(const EndPointDesc &ep) {
+static inline bool IsDeviceEndpoint(const EndpointDesc &ep) {
   return (ep.loc.locType == END_POINT_LOCATION_DEVICE);
 }
 }
 
-Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const EndPointDesc *src_endpoint,
-                            const EndPointDesc *dst_endpoint) {
+Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const EndpointDesc *src_endpoint,
+                            const EndpointDesc *dst_endpoint) {
   HIXL_CHECK_NOTNULL(server_ip);
   HIXL_CHECK_NOTNULL(src_endpoint);
   HIXL_CHECK_NOTNULL(dst_endpoint);
@@ -137,7 +137,7 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
     HIXL_LOGE(init_ret, "[HixlClient] Failed to initialize flag queue.");
     return init_ret;
   }
-  const EndPointDesc &src_ep = src_endpoint_->GetEndpoint();
+  const EndpointDesc &src_ep = src_endpoint_->GetEndpoint();
   is_device_ = IsDeviceEndpoint(src_ep);
   if (is_device_) {
     // deviceId：优先用 endpoint 的 ID（若给的是 ID 类型）TODO：获取deviceID
@@ -173,7 +173,7 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
 }
 
 // 注册client的endpoint的内存信息到内存注册表中。mem是一个结构体，其中记录了内存类型、地址和大小。
-Status HixlCSClient::RegMem(const char *mem_tag, const HcclMem *mem, MemHandle *mem_handle) {
+Status HixlCSClient::RegMem(const char *mem_tag, const HcommMem *mem, MemHandle *mem_handle) {
   HIXL_CHECK_NOTNULL(mem);
   auto check_result = mem_store_.CheckMemoryForRegister(false, mem->addr, mem->size);
   if (check_result) {
@@ -260,7 +260,7 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem& commun
     return PARAM_INVALID;
   }
   uint64_t *flag_addr = &flag_queue_[flag_index];
-  EndPointDesc endpoint = src_endpoint_->GetEndpoint();
+  EndpointDesc endpoint = src_endpoint_->GetEndpoint();
   const char *kTransFlagName = nullptr;
   if (endpoint.loc.locType == END_POINT_LOCATION_HOST) {
     kTransFlagName = kTransFlagNameHost;
@@ -288,7 +288,7 @@ Status HixlCSClient::EnsureUbRemoteFlagInitedLocked() {
   if (ub_remote_flag_inited_) {
     return SUCCESS;
   }
-  EndPointDesc endpoint = src_endpoint_->GetEndpoint();
+  EndpointDesc endpoint = src_endpoint_->GetEndpoint();
   const char *kTransFlagName = nullptr;
   if (endpoint.loc.locType == END_POINT_LOCATION_HOST) {
     kTransFlagName = kTransFlagNameHost;
@@ -301,7 +301,7 @@ Status HixlCSClient::EnsureUbRemoteFlagInitedLocked() {
     return PARAM_INVALID;
   }
 
-  const HcclMem &mem = it->second;
+  const HcommMem &mem = it->second;
   if (mem.addr == nullptr) {
     HIXL_LOGE(PARAM_INVALID, "[HixlClient][UB] builtin remote_flag addr is null");
     return PARAM_INVALID;
@@ -469,7 +469,7 @@ Status HixlCSClient::BatchTransferDevice(bool is_get,
   UbBatchArgs &args = h->args;
   args.is_get = is_get ? 1U : 0U;
   args.list_num = communicate_mem_param.list_num;
-  args.thread = PtrToU64(static_cast<const void *>(slot.thread));
+  args.thread = slot.thread;
   args.channel = static_cast<uint64_t>(client_channel_handle_);
   args.local_buf_list = PtrToU64(local_list_ptr);
   args.remote_buf_list = PtrToU64(remote_list_ptr);
@@ -709,7 +709,7 @@ Status WaitChannelReadyInternal(Endpoint &endpoint, ChannelHandle channel_handle
 }
 
 Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms) {
-  const EndPointDesc &src_ep = src_endpoint_->GetEndpoint();
+  const EndpointDesc &src_ep = src_endpoint_->GetEndpoint();
   HIXL_LOGD("[HixlClient] Sending CreateChannelReq. socket: %d, timeout: %u ms, "
             "Src[prot:%u, type:%u, id:%u], Dst[prot:%u, type:%u, id:%u]",
             socket_, timeout_ms,
@@ -730,7 +730,7 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
   return SUCCESS;
 }
 
-Status HixlCSClient::GetRemoteMem(HcclMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num,
+Status HixlCSClient::GetRemoteMem(HcommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num,
                                   uint32_t timeout_ms) {
   HIXL_EVENT("[HixlClient] GetRemoteMem begin. fd=%d, remote_ep_handle=%" PRIu64 ", timeout=%u ms", socket_,
              dst_endpoint_handle_, timeout_ms);
@@ -844,7 +844,7 @@ Status ImportOneDesc(ImportCtx &ctx, uint32_t idx, HixlMemDesc &desc) {
   }
   ctx.imported.emplace_back(buf);
 
-  HcclMem mem{};
+  HcommMem mem{};
   mem.type = desc.mem.type;
   mem.addr = desc.mem.addr;
   mem.size = desc.mem.size;
@@ -875,7 +875,7 @@ Status ImportAllDescs(ImportCtx &ctx, std::vector<HixlMemDesc> &desc_list) {
 
 }  // namespace
 
-void HixlCSClient::FillOutputParams(ImportCtx &ctx, HcclMem **remote_mem_list, char ***mem_tag_list,
+void HixlCSClient::FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, char ***mem_tag_list,
                                     uint32_t *list_num) {
   imported_remote_bufs_ = std::move(ctx.imported);
   recorded_remote_addrs_ = std::move(ctx.recorded_addrs);
@@ -891,7 +891,7 @@ void HixlCSClient::FillOutputParams(ImportCtx &ctx, HcclMem **remote_mem_list, c
 }
 
 Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list,
-                                     HcclMem **remote_mem_list,
+                                     HcommMem **remote_mem_list,
                                      char ***mem_tag_list,
                                      uint32_t *list_num) {
   HIXL_MAKE_GUARD(free_export_desc, [&desc_list]() {

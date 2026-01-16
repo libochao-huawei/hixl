@@ -55,7 +55,7 @@ Status HcclError2Status(HcclResult ret);
 
 std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char delim);
 
-Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndPointDesc &endpoint);
+Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc &endpoint);
 
 Status ParseIpAddress(const std::string &ip_str, CommAddr &addr);
 

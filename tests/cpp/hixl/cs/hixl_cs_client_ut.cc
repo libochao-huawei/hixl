@@ -48,7 +48,7 @@ static constexpr uint32_t kTimeOutOne = 1000U;
 static constexpr char kGetRemoteMemStr0[] = "_hixl_builtin_dev_trans_flag";
 static constexpr char kGetRemoteMemStr1[] = "a";
 static constexpr char kGetRemoteMemStr2[] = "b";
-static HcclMem gRemoteSentinel{};
+static HcommMem gRemoteSentinel{};
 static char *gTagsSentinel[1] = {nullptr};
 static constexpr uint32_t kNumSentinel = 123U;
 enum class MiniSrvMode : uint32_t {
@@ -497,8 +497,8 @@ class MiniServer {
   MiniSrvMode mem_mode_{MiniSrvMode::kNormal};
 };
 
-static EndPointDesc MakeIdEp(uint32_t id) {
-  EndPointDesc ep{};
+static EndpointDesc MakeIdEp(uint32_t id) {
+  EndpointDesc ep{};
   ep.protocol = COMM_PROTOCOL_UB_CTP;
   ep.addr.type = COMM_ADDR_TYPE_ID;
   ep.addr.id = id;
@@ -535,8 +535,8 @@ class HixlCSClientUT : public ::testing::Test {
   }
 
  protected:
-  EndPointDesc src_{};
-  EndPointDesc dst_{};
+  EndpointDesc src_{};
+  EndpointDesc dst_{};
   MiniServer server_;
   uint16_t port_{0};
   HixlCSClient client_;
@@ -628,7 +628,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailWithoutConnect) {
   StartServer(MiniSrvMode::kNormal, MiniSrvMode::kNormal);
   CreateClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -651,7 +651,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailNullListNum) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   EXPECT_NE(client_.GetRemoteMem(&remote, &tags, nullptr, kTimeOutOne), SUCCESS);
 }
@@ -661,7 +661,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemSuccessNormalWithTags) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -679,7 +679,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemSuccessNormalNoTagsOutParam) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   uint32_t num = kZero;
 
   EXPECT_NE(client_.GetRemoteMem(&remote, nullptr, &num, kTimeOutOne), SUCCESS);
@@ -690,7 +690,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemSuccessEmptyList) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = &gRemoteSentinel;
+  HcommMem *remote = &gRemoteSentinel;
   char **tags = gTagsSentinel;
   uint32_t num = kNumSentinel;
 
@@ -705,7 +705,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailBadMagic) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -718,7 +718,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailBadMsgType) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -730,7 +730,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailBadBodySizeTooSmall) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -742,7 +742,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailBadJson) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -754,7 +754,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailMissingFieldResult) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -766,7 +766,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailMissingFieldMemDescs) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -778,7 +778,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailResultNotSuccess) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -790,7 +790,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailExportDescEmptyTriggersImportCheck) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -805,7 +805,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailDuplicateAddrRecordMemoryConflict) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
   // 传入重复server地址时，不报错，跳过内存记录
@@ -817,12 +817,12 @@ TEST_F(HixlCSClientUT, GetRemoteMemSuccessTwiceCoversClearRemoteMemInfo) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote1 = nullptr;
+  HcommMem *remote1 = nullptr;
   char **tags1 = nullptr;
   uint32_t num1 = 0;
   ASSERT_EQ(client_.GetRemoteMem(&remote1, &tags1, &num1, kTimeOutOne), SUCCESS);
 
-  HcclMem *remote2 = nullptr;
+  HcommMem *remote2 = nullptr;
   char **tags2 = nullptr;
   uint32_t num2 = 0;
   ASSERT_EQ(client_.GetRemoteMem(&remote2, &tags2, &num2, kTimeOutOne), SUCCESS);
@@ -837,7 +837,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemTwiceAltMemResponse) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote1 = nullptr;
+  HcommMem *remote1 = nullptr;
   char **tags1 = nullptr;
   uint32_t num1 = 0;
   ASSERT_EQ(client_.GetRemoteMem(&remote1, &tags1, &num1, kTimeOutOne), SUCCESS);
@@ -846,7 +846,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemTwiceAltMemResponse) {
   // 第一次：flag addr=4096
   EXPECT_EQ(reinterpret_cast<uint64_t>(remote1[0].addr), 4096ULL);
 
-  HcclMem *remote2 = nullptr;
+  HcommMem *remote2 = nullptr;
   char **tags2 = nullptr;
   uint32_t num2 = kZero;
   ASSERT_EQ(client_.GetRemoteMem(&remote2, &tags2, &num2, kTimeOutOne), SUCCESS);
@@ -862,7 +862,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailAfterDestroy) {
   ConnectClient();
   ASSERT_EQ(client_.Destroy(), SUCCESS);
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
   EXPECT_NE(client_.GetRemoteMem(&remote, &tags, &num, kTimeOutOne), SUCCESS);
@@ -873,7 +873,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailMemImportFailedRollbackCovered) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
 
@@ -892,7 +892,7 @@ TEST_F(HixlCSClientUT, GetRemoteMemFailTagCStringAllocFailedRollbackCovered) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = &gRemoteSentinel;
+  HcommMem *remote = &gRemoteSentinel;
   char **tags = gTagsSentinel;
   uint32_t num = kNumSentinel;
 
@@ -913,7 +913,7 @@ TEST_F(HixlCSClientUT, DestroySuccessIdempotent) {
   CreateClient();
   ConnectClient();
 
-  HcclMem *remote = nullptr;
+  HcommMem *remote = nullptr;
   char **tags = nullptr;
   uint32_t num = kZero;
   ASSERT_EQ(client_.GetRemoteMem(&remote, &tags, &num, kTimeOutOne), SUCCESS);

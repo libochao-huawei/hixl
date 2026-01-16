@@ -22,13 +22,13 @@ namespace hixl {
 Status HixlServer::Initialize(const std::string &ip, int32_t port,
                               const std::vector<EndPointConfig> &data_endpoint_config_list) {
   data_endpoint_config_list_ = data_endpoint_config_list;
-  std::vector<EndPointDesc> data_end_point_list;
+  std::vector<EndpointDesc> data_end_point_list;
   for (const auto &it : data_endpoint_config_list) {
-    EndPointDesc end_point_info{};
+    EndpointDesc end_point_info{};
     HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(it, end_point_info));
     data_end_point_list.emplace_back(end_point_info);
   }
-  const EndPointDesc *endpoints = data_end_point_list.data();
+  const EndpointDesc *endpoints = data_end_point_list.data();
   HixlServerConfig config{};
   HIXL_CHK_STATUS_RET(HixlCSServerCreate(ip.c_str(), static_cast<uint32_t>(port), endpoints,
                       static_cast<uint32_t>(data_endpoint_config_list.size()),
@@ -83,7 +83,7 @@ Status HixlServer::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_
       return PARAM_INVALID;
     }
   }
-  HcclMem hccl_mem{};
+  HcommMem hccl_mem{};
   hccl_mem.type = (type == MemType::MEM_DEVICE) ? HCCL_MEM_TYPE_DEVICE : HCCL_MEM_TYPE_HOST;
   hccl_mem.addr = reinterpret_cast<void *>(mem.addr);
   hccl_mem.size = mem.len;

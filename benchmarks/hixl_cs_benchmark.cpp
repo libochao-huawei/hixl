@@ -45,7 +45,7 @@ void from_json(const json &j, CommProtocol &p) {
   }
 }
 
-void from_json(const json &j, EndPointDesc &info) {
+void from_json(const json &j, EndpointDesc &info) {
   j.at("location").get_to(info.loc.locType);
   j.at("protocol").get_to(info.protocol);
   std::string addr;
@@ -101,9 +101,9 @@ struct Args {
   std::string remote_comm_res;
 };
 
-int32_t InitEndPointInfo(const std::string &comm_res, EndPointDesc &ep) {
+int32_t InitEndPointInfo(const std::string &comm_res, EndpointDesc &ep) {
   try {
-    ep = json::parse(comm_res).get<EndPointDesc>();
+    ep = json::parse(comm_res).get<EndpointDesc>();
   } catch (const std::exception &e) {
     (void)printf("Failed to parse json:%s\n", e.what());
     return -1;
@@ -112,7 +112,7 @@ int32_t InitEndPointInfo(const std::string &comm_res, EndPointDesc &ep) {
 }
 
 int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std::string &transfer_op) {
-  HcclMem *remote_mem_list = nullptr;
+  HcommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
   auto ret =
@@ -121,7 +121,7 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
     (void)printf("[ERROR] HixlCSClientGetRemoteMem failed, ret = %u\n", ret);
     return -1;
   }
-  std::map<std::string, HcclMem> server_mems;
+  std::map<std::string, HcommMem> server_mems;
   for (uint32_t i = 0; i < list_num; ++i) {
     server_mems[mem_tag_list[i]] = remote_mem_list[i];
   }
@@ -213,8 +213,8 @@ int32_t RunClient(const Args &args) {
   }
 
   // 1. 初始化
-  EndPointDesc local_ep;
-  EndPointDesc remote_ep;
+  EndpointDesc local_ep;
+  EndpointDesc remote_ep;
   if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 || InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
     (void)printf("[ERROR] Initialize EndPoint list failed\n");
     return -1;
@@ -238,7 +238,7 @@ int32_t RunClient(const Args &args) {
 
   // 3. 注册内存地址
   MemHandle mem_handle = nullptr;
-  HcclMem mem{};
+  HcommMem mem{};
   aclError acl_ret = ACL_ERROR_NONE;
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
   if (is_host) {
@@ -275,7 +275,7 @@ int32_t RunClient(const Args &args) {
 int32_t RunServer(const Args &args) {
   (void)printf("[INFO] server start\n");
   // 1. 初始化
-  EndPointDesc ep;
+  EndpointDesc ep;
   if (InitEndPointInfo(args.local_comm_res, ep) != 0) {
     (void)printf("[ERROR] Initialize EndPoint list failed\n");
     return -1;
@@ -301,7 +301,7 @@ int32_t RunServer(const Args &args) {
 
   // 2. 注册内存地址
   MemHandle mem_handle = nullptr;
-  HcclMem mem{};
+  HcommMem mem{};
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
   aclError acl_ret = ACL_ERROR_NONE;
   if (is_host) {

@@ -55,11 +55,11 @@ EndPointHandle Endpoint::GetHandle() const {
   return handle_;
 }
 
-const EndPointDesc &Endpoint::GetEndpoint() const {
+const EndpointDesc &Endpoint::GetEndpoint() const {
   return endpoint_;
 }
 
-Status Endpoint::RegisterMem(const char *mem_tag, const HcclMem &mem, MemHandle &mem_handle) {
+Status Endpoint::RegisterMem(const char *mem_tag, const HcommMem &mem, MemHandle &mem_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_HCCL_RET(HcommMemReg(handle_, mem, &mem_handle));
   HixlMemDesc desc{};
@@ -96,7 +96,7 @@ Status Endpoint::ExportMem(std::vector<HixlMemDesc> &mem_descs) {
   return SUCCESS;
 }
 
-Status Endpoint::CreateChannel(const EndPointDesc &remote_endpoint, ChannelHandle &channel_handle) {
+Status Endpoint::CreateChannel(const EndpointDesc &remote_endpoint, ChannelHandle &channel_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[channel] CreateChannel called before Initialize");
   CommEngine engine = CommEngine::COMM_ENGINE_RESERVED;

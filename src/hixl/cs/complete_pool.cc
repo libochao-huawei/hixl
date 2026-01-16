@@ -87,7 +87,7 @@ CompletePool::CompletePool()
     s.inUse = false;
     s.ctx = nullptr;
     s.stream = nullptr;
-    s.thread = nullptr;
+    s.thread = 0U;
     s.notify = nullptr;
     s.devFlagAddr = 0ULL;
     s.hostFlag = nullptr;
@@ -439,7 +439,7 @@ HcclResult CompletePool::EnsureThreadLocked(Slot &slot,
                                             CommEngine engine,
                                             uint32_t threadNum,
                                             uint32_t notifyNumPerThread) {
-  if (slot.thread != nullptr) {
+  if (slot.thread != 0U) {
     return HCCL_SUCCESS;
   }
 
@@ -543,7 +543,7 @@ HcclResult CompletePool::EnsureNotifyAndDevFlagLocked(Slot &slot, uint32_t slot_
     return HCCL_E_INTERNAL;
   }
 
-  HcclMem mem{};
+  HcommMem mem{};
   mem.type = HCCL_MEM_TYPE_DEVICE;
   mem.addr = addrInfo.resAddress;
   mem.size = static_cast<u64>(kNotifyFlagBytes);
@@ -582,12 +582,12 @@ void CompletePool::DestroySlotLocked(Slot &slot) {
     slot.notify = nullptr;
   }
 
-  if (slot.thread != nullptr) {
+  if (slot.thread != 0U) {
     HcclResult tret = HcommThreadFree(slot.thread);
     if (tret != HCCL_SUCCESS) {
       HIXL_LOGW("[CompletePool] HcommThreadFree failed. ret=0x%X", static_cast<uint32_t>(tret));
     }
-    slot.thread = nullptr;
+    slot.thread = 0U;
   }
 
   if (slot.stream != nullptr) {

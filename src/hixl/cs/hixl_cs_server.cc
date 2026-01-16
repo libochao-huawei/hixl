@@ -16,7 +16,7 @@
 #include "common/scope_guard.h"
 #include "common/ctrl_msg_plugin.h"
 
-static inline void to_json(nlohmann::json &j, const HcclMem &m) {
+static inline void to_json(nlohmann::json &j, const HcommMem &m) {
   j = nlohmann::json{};
   j["type"] = m.type;
   j["addr"] = static_cast<uint64_t>(reinterpret_cast<intptr_t>(m.addr));
@@ -49,7 +49,7 @@ Status HixlCSServer::InitTransFinishedFlag() {
     void* host_flag = nullptr;
     HIXL_CHK_RT_RET(rtMalloc(&host_flag, sizeof(int64_t), RT_MEMORY_HOST, HIXL_MODULE_NAME));
     *static_cast<int64_t*>(host_flag) = 1;
-    HcclMem mem{};
+    HcommMem mem{};
     mem.type = HCCL_MEM_TYPE_HOST;
     mem.addr = host_flag;
     mem.size = sizeof(int64_t);
@@ -66,7 +66,7 @@ Status HixlCSServer::InitTransFinishedFlag() {
                              RT_MEMORY_HBM | RT_MEMORY_POLICY_HUGE_PAGE_ONLY, HIXL_MODULE_NAME));
     int64_t val = 1;
     HIXL_CHK_RT_RET(rtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), RT_MEMCPY_HOST_TO_DEVICE));
-    HcclMem mem{};
+    HcommMem mem{};
     mem.type = HCCL_MEM_TYPE_DEVICE;
     mem.addr = dev_flag;
     mem.size = sizeof(int64_t);
@@ -80,7 +80,7 @@ Status HixlCSServer::InitTransFinishedFlag() {
   return SUCCESS;
 }
 
-Status HixlCSServer::Initialize(const EndPointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config) {
+Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config) {
   HIXL_CHECK_NOTNULL(endpoint_list);
   HIXL_CHECK_NOTNULL(config);
   HIXL_CHK_BOOL_RET_STATUS(list_num > 0, PARAM_INVALID, "endpoint list num:%u is invalid, must > 0", list_num);
@@ -152,7 +152,7 @@ Status HixlCSServer::Finalize() {
   return ret;
 }
 
-Status HixlCSServer::RegisterMem(const char *mem_tag, const HcclMem *mem, MemHandle *mem_handle) {
+Status HixlCSServer::RegisterMem(const char *mem_tag, const HcommMem *mem, MemHandle *mem_handle) {
   HIXL_EVENT("[HixlServer] register mem start, addr:%p, size:%lu, type:%d",
              mem->addr, mem->size, static_cast<int32_t>(mem->type));
   auto all_handles = endpoint_store_.GetAllEndpointHandles();

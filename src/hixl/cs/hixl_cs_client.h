@@ -97,8 +97,8 @@ struct ImportCtx {
   bool need_tag{false};
   std::vector<HcommBuf> imported;
   std::vector<void*> recorded_addrs;
-  std::map<std::string, HcclMem> tag_mem_map;
-  std::vector<HcclMem> mems;
+  std::map<std::string, HcommMem> tag_mem_map;
+  std::vector<HcommMem> mems;
   std::vector<std::vector<char>> tag_storage;
 };
 
@@ -109,15 +109,15 @@ class HixlCSClient {
 
   Status InitFlagQueue() noexcept;
 
-  Status Create(const char *server_ip, uint32_t server_port, const EndPointDesc *src_endpoint,
-                const EndPointDesc *dst_endpoint);
+  Status Create(const char *server_ip, uint32_t server_port, const EndpointDesc *src_endpoint,
+                const EndpointDesc *dst_endpoint);
 
   Status Connect(uint32_t timeout_ms);
 
-  Status GetRemoteMem(HcclMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num, uint32_t timeout_ms);
+  Status GetRemoteMem(HcommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num, uint32_t timeout_ms);
 
   // 注册client的endpoint的内存信息到内存注册表中。
-  Status RegMem(const char *mem_tag, const HcclMem *mem, MemHandle *mem_handle);
+  Status RegMem(const char *mem_tag, const HcommMem *mem, MemHandle *mem_handle);
 
   // 通过已经建立好的channel，从用户提取的地址列表中，批量读取、写入server内存地址中的内容
   Status BatchTransfer(bool is_get, const CommunicateMem &communicate_mem_param, void **queryhandle);
@@ -142,9 +142,9 @@ class HixlCSClient {
   Status EnsureUbRemoteFlagInitedLocked();
   Status EnsureUbKernelLoadedLocked();
   const void *UbGetKernelStubFunc(bool is_get) const;
-  Status ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcclMem **remote_mem_list, char ***mem_tag_list,
+  Status ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcommMem **remote_mem_list, char ***mem_tag_list,
                          uint32_t *list_num);
-  void FillOutputParams(ImportCtx &ctx, HcclMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
+  void FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
   Status ClearRemoteMemInfo();
  private:
   std::mutex mutex_;
@@ -153,7 +153,7 @@ class HixlCSClient {
   std::string server_ip_;
   uint32_t server_port_{0U};
   EndpointPtr src_endpoint_;
-  EndPointDesc dst_endpoint_{};
+  EndpointDesc dst_endpoint_{};
   Channel client_channel_;
   ChannelHandle client_channel_handle_ = 0UL;
   uint64_t dst_endpoint_handle_{0U};
@@ -164,8 +164,8 @@ class HixlCSClient {
   std::mutex indices_mutex_;
   std::array<CompleteHandle*, kFlagQueueSize> live_handles_{}; // 用来记录读写生成的queryhandle
   int32_t socket_ = -1;
-  std::map<std::string, HcclMem> tag_mem_descs_;
-  std::vector<HcclMem> remote_mems_out_;
+  std::map<std::string, HcommMem> tag_mem_descs_;
+  std::vector<HcommMem> remote_mems_out_;
   std::vector<std::vector<char>> remote_tag_storage_;
   std::vector<char*> remote_tag_ptrs_;
   std::vector<void*> recorded_remote_addrs_;

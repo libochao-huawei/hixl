@@ -46,17 +46,17 @@ class HixlCSTest : public ::testing::Test {
  protected:
   // 在测试类中设置一些准备工作，如果需要的话
   void SetUp() override {
-    EndPointDesc ep0{};
+    EndpointDesc ep0{};
     ep0.loc.locType = END_POINT_LOCATION_HOST;
     ep0.protocol = COMM_PROTOCOL_UB_CTP;
     ep0.addr.type = COMM_ADDR_TYPE_ID;
     ep0.addr.id = kEpAddrId0;
-    EndPointDesc ep1{};
+    EndpointDesc ep1{};
     ep1.loc.locType = END_POINT_LOCATION_HOST;
     ep1.protocol = COMM_PROTOCOL_UB_CTP;
     ep1.addr.type = COMM_ADDR_TYPE_ID;
     ep1.addr.id = kEpAddrId1;
-    EndPointDesc ep_dev{};
+    EndpointDesc ep_dev{};
     ep_dev.loc.locType = END_POINT_LOCATION_DEVICE;
     ep_dev.protocol = COMM_PROTOCOL_UB_TP;
     ep_dev.addr.type = COMM_ADDR_TYPE_ID;
@@ -71,7 +71,7 @@ class HixlCSTest : public ::testing::Test {
   }
 
  private:
-  std::vector<EndPointDesc> default_eps;
+  std::vector<EndpointDesc> default_eps;
 
   void SendCreateChannelReq(int32_t client_fd) {
     CtrlMsgHeader header{};
@@ -135,13 +135,13 @@ TEST_F(HixlCSTest, TestHixlCSServer) {
   };
   ret = HixlCSServerRegProc(server_handle, static_cast<CtrlMsgType>(kCtrlMsgType), proc);
   EXPECT_EQ(ret, SUCCESS);
-  HcclMem mem{};
+  HcommMem mem{};
   mem.size = sizeof(int32_t);
   mem.addr = &kDeviceMems[0];
   MemHandle mem_handle = nullptr;
   ret = HixlCSServerRegMem(server_handle, nullptr, &mem, &mem_handle);
   EXPECT_EQ(ret, SUCCESS);
-  HcclMem mem2{};
+  HcommMem mem2{};
   mem2.size = sizeof(int32_t);
   mem2.addr = &kHostMems[0];
   MemHandle mem_handle2 = nullptr;
@@ -162,7 +162,7 @@ TEST_F(HixlCSTest, TestHixlCSClient2Server) {
   HixlServerHandle server_handle = nullptr;
   auto ret = HixlCSServerCreate("127.0.0.1", kPort, &default_eps[0], default_eps.size(), &config, &server_handle);
   EXPECT_EQ(ret, SUCCESS);
-  HcclMem mem{};
+  HcommMem mem{};
   mem.size = sizeof(int32_t);
   mem.addr = &kDeviceMems[0];
   MemHandle mem_handle = nullptr;

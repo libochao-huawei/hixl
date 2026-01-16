@@ -12,8 +12,8 @@
 #define CANN_HIXL_TESTS_CPP_HIXL_CS_HIXL_HIXL_TEST_H
 
 #include "hixl/hixl_types.h"
-inline HcclMem MakeMem(void* addr, uint64_t size, HcclMemType type) {
-  HcclMem m{};
+inline HcommMem MakeMem(void* addr, uint64_t size, HcclMemType type) {
+  HcommMem m{};
   m.type = type;
   m.size = size;
   m.addr = addr;
