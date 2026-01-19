@@ -23,7 +23,7 @@ class Channel {
   Channel() = default;
   ~Channel() = default;
 
-  Status Create(EndPointHandle ep_handle, HcommChannelDescNew &ch_desc, CommEngine engine);
+  Status Create(EndPointHandle ep_handle, HcommChannelDesc &ch_desc, CommEngine engine);
   ChannelHandle GetChannelHandle() const;
   Status GetStatus(ChannelHandle channel_handle, int32_t *status_out);
 

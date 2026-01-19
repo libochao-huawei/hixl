@@ -14,20 +14,12 @@
 
 namespace hixl {
 
-Status Channel::Create(EndPointHandle ep_handle, HcommChannelDescNew &ch_desc, CommEngine engine) {
+Status Channel::Create(EndPointHandle ep_handle, HcommChannelDesc &ch_desc, CommEngine engine) {
   HIXL_CHK_BOOL_RET_STATUS(ep_handle != nullptr, PARAM_INVALID, "Channel::Create called with null endpoint handle");
-
   constexpr uint32_t list_num = 1U;
-  const void **mem_handle_list = nullptr;
-  constexpr uint32_t mem_handle_list_num = 0U;
-
   ChannelHandle ch_list[1] = {};
-
-  HIXL_CHK_HCCL_RET(HcommChannelCreate(&ep_handle, engine, &ch_desc, list_num, mem_handle_list, mem_handle_list_num,
-                                       ch_list));
-
+  HIXL_CHK_HCCL_RET(HcommChannelCreate(&ep_handle, engine, &ch_desc, list_num, ch_list));
   channel_handle_ = ch_list[0];
-
   HIXL_LOGI("Channel::Create success, handle=%lu", channel_handle_);
   return SUCCESS;
 }

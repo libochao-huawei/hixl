@@ -41,6 +41,17 @@ std::vector<EndPointHandle> EndpointStore::GetAllEndpointHandles() {
   return handles;
 }
 
+inline bool operator == (const EndpointDesc& lhs, const EndpointDesc& rhs) {
+  if (lhs.protocol != rhs.protocol) {
+    return false;
+  }
+
+  if (lhs.protocol == COMM_PROTOCOL_HCCS) {
+    return lhs.commAddr.id == rhs.commAddr.id;
+  }
+  return true;
+}
+
 EndpointPtr EndpointStore::MatchEndpoint(const EndpointDesc &endpoint, EndPointHandle &endpoint_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
   for (const auto &it : endpoints_) {

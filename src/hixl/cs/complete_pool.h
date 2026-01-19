@@ -8,7 +8,8 @@
 
 #include "acl/acl.h"
 #include "runtime/runtime/rt.h"
-#include "common/hccl_api.h"
+#include "common/hixl_cs.h"
+//#include "common/hccl_api.h"
 
 namespace hixl {
 
