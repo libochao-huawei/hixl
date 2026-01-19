@@ -65,7 +65,7 @@ struct UbBatchArgs {
   uint64_t remote_buf_list;  // server 侧地址数组
   uint64_t len_list;         // 长度数组
   void *remote_flag;  // server builtin flag addr（你要的 tag_mem_descs_[...].addr）
-  uint64_t local_flag;   // device local flag addr（notify addr）
+  void *local_flag;   // device local flag addr（notify addr）
   uint32_t flag_size;    // sizeof(flag)
   uint32_t reserved;
 };
@@ -137,8 +137,8 @@ class HixlCSClient {
   Status ReleaseUbCompleteHandle(UbCompleteHandle *ub_handle);
   Status CheckStatusHost(CompleteHandle *queryhandle, int32_t *status);
   Status CheckStatusDevice(UbCompleteHandle *queryhandle, int32_t *status);
-  Status BatchTransferHost(bool is_get, const CommunicateMem& p, void** queryhandle);
-  Status BatchTransferDevice(bool is_get, const CommunicateMem& p, void** queryhandle);
+  Status BatchTransferRoce(bool is_get, const CommunicateMem& p, void** queryhandle);
+  Status BatchTransferUB(bool is_get, const CommunicateMem& p, void** queryhandle);
   Status EnsureUbRemoteFlagInitedLocked();
   Status EnsureUbKernelLoadedLocked();
   const void *UbGetKernelStubFunc(bool is_get) const;
@@ -146,6 +146,32 @@ class HixlCSClient {
                          uint32_t *list_num);
   void FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
   Status ClearRemoteMemInfo();
+  Status ValidateUbInputs_(bool is_get,
+                          const CommunicateMem &mem_param,
+                          void **query_handle) const;
+
+  Status PrepareUbRemoteFlagAndKernel_(void **remote_flag);
+
+  Status AcquireUbSlot_(CompletePool::SlotHandle *slot);
+
+  Status SelectUbLists_(bool is_get,
+                      const CommunicateMem &mem_param,
+                      const void **local_list,
+                      const void **remote_list) const;
+
+  Status FillUbBatchArgs_(bool is_get,
+                        const CommunicateMem &mem_param,
+                        const CompletePool::SlotHandle &slot,
+                        void *remote_flag,
+                        UbBatchArgs *args) const;
+
+  Status GetCurrentAclContext_(aclrtContext *old_ctx) const;
+  void RestoreAclContext_(aclrtContext old_ctx) const;
+  Status SetAclContext_(aclrtContext new_ctx) const;
+
+  Status LaunchUbAndStageD2H_(bool is_get,
+                              UbCompleteHandle *handle,
+                              void *remote_flag);
  private:
   std::mutex mutex_;
   // 用于记录内存地址的分配情况
@@ -171,6 +197,7 @@ class HixlCSClient {
   std::vector<void*> recorded_remote_addrs_;
   std::vector<HcommBuf> imported_remote_bufs_;
   bool is_device_ {false};
+  bool is_ub_mode_{false};
   int32_t ub_device_id_ {-1};
   std::mutex ub_mu_;
   bool ub_remote_flag_inited_ {false};
