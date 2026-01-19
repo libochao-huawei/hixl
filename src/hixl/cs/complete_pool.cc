@@ -1,3 +1,12 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include "complete_pool.h"
 
 #include <cstdint>
@@ -9,6 +18,10 @@
 #include "common/scope_guard.h"
 
 namespace hixl {
+CompletePool &GetCompletePool() {
+  static CompletePool pool;
+  return pool;
+}
 namespace {
 
 constexpr uint64_t kFlagInitValue = 0ULL;
@@ -502,7 +515,9 @@ Status CompletePool::EnsurePinnedHostFlagLocked(Slot &slot) {
 void CompletePool::DestroySlotLocked(Slot &slot) {
   if (slot.notify_mem_handle != nullptr) {
     if (endpoint_ != nullptr) {
-      (void)endpoint_->DeregisterMem(slot.notify_mem_handle);
+      HIXL_CHK_STATUS(endpoint_->DeregisterMem(slot.notify_mem_handle),
+                "[CompletePool] DeregisterMem failed. tag=%s",
+                slot.notify_tag.data());
     }
     slot.notify_mem_handle = nullptr;
   }
@@ -513,7 +528,7 @@ void CompletePool::DestroySlotLocked(Slot &slot) {
   }
 
   if (slot.thread != 0U) {
-    //HIXL_CHK_HCCL(HcommThreadFree(slot.thread));
+    HIXL_CHK_HCCL(HcommThreadFree(slot.thread));
     slot.thread = 0U;
   }
 
