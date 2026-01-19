@@ -23,11 +23,11 @@ extern "C" {
 using HixlServerHandle = void *;
 using HixlClientHandle = void *;
 using HixlStatus = uint32_t;
-// using MemHandle = void *;
-// using FdHandle = void *;
-// using EndPointHandle = void *;
-// using ChannelHandle = uint64_t;
-// using ThreadHandle = uint64_t;
+using MemHandle = void *;
+using FdHandle = void *;
+using EndPointHandle = void *;
+using ChannelHandle = uint64_t;
+using ThreadHandle = uint64_t;
 constexpr HixlStatus HIXL_SUCCESS = 0U;
 constexpr HixlStatus HIXL_PARAM_INVALID = 103900U;
 constexpr HixlStatus HIXL_TIMEOUT = 103901U;

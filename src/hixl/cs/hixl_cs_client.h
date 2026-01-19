@@ -26,15 +26,11 @@
 #include "hixl_mem_store.h"
 #include "complete_pool.h"
 
-
 namespace hixl {
-
 namespace {
 constexpr uint32_t kUbThreadNum = 1U;
 constexpr uint32_t kUbNotifyNumPerThread = 1U;
 constexpr CommEngine kUbEngine = CommEngine::COMM_ENGINE_AICPU;
-
-CompletePool g_complete_pool;  // 进程级共享池：Create ref++，Destroy ref--
 }  // namespace
 
 struct CompleteHandle {
@@ -150,26 +146,26 @@ class HixlCSClient {
                           const CommunicateMem &mem_param,
                           void **query_handle) const;
 
-  Status PrepareUbRemoteFlagAndKernel_(void **remote_flag);
+  Status PrepareUbRemoteFlagAndKernel(void **remote_flag);
 
-  Status AcquireUbSlot_(CompletePool::SlotHandle *slot);
+  Status AcquireUbSlot(CompletePool::SlotHandle *slot);
 
-  Status SelectUbLists_(bool is_get,
+  Status SelectUbLists(bool is_get,
                       const CommunicateMem &mem_param,
                       const void **local_list,
                       const void **remote_list) const;
 
-  Status FillUbBatchArgs_(bool is_get,
+  Status FillUbBatchArgs(bool is_get,
                         const CommunicateMem &mem_param,
                         const CompletePool::SlotHandle &slot,
                         void *remote_flag,
                         UbBatchArgs *args) const;
 
-  Status GetCurrentAclContext_(aclrtContext *old_ctx) const;
-  void RestoreAclContext_(aclrtContext old_ctx) const;
-  Status SetAclContext_(aclrtContext new_ctx) const;
+  Status GetCurrentAclContext(aclrtContext *old_ctx) const;
+  void RestoreAclContext(aclrtContext old_ctx) const;
+  Status SetAclContext(aclrtContext new_ctx) const;
 
-  Status LaunchUbAndStageD2H_(bool is_get,
+  Status LaunchUbAndStageD2H(bool is_get,
                               UbCompleteHandle *handle,
                               void *remote_flag);
  private:
