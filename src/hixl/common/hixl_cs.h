@@ -14,8 +14,7 @@
 #include <cstdint>
 #include <netinet/in.h>
 #include <string>
-// #include "hccl_api.h"
-#include "hcomm_res.h"
+#include "hccl/hcomm_res.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,11 +23,11 @@ extern "C" {
 using HixlServerHandle = void *;
 using HixlClientHandle = void *;
 using HixlStatus = uint32_t;
-using MemHandle = void *;
-using FdHandle = void *;
-using EndPointHandle = void *;
-using ChannelHandle = uint64_t;
-using ThreadHandle = uint64_t;
+// using MemHandle = void *;
+// using FdHandle = void *;
+// using EndPointHandle = void *;
+// using ChannelHandle = uint64_t;
+// using ThreadHandle = uint64_t;
 constexpr HixlStatus HIXL_SUCCESS = 0U;
 constexpr HixlStatus HIXL_PARAM_INVALID = 103900U;
 constexpr HixlStatus HIXL_TIMEOUT = 103901U;

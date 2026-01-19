@@ -307,7 +307,7 @@ class HixlClientUTest : public ::testing::Test {
     // [新增] 打开 Stub 的特殊开关
     setenv("HIXL_UT_UB_FLAG_HACK", "1", 1);
     // [新增] 1. 创建一个空的 dummy json 文件，专门为了过 realpath 的检查
-    std::ofstream outfile("libcann_hixl_kernel.json");
+    std::ofstream outfile("scatter_hixl_kernel.json");
     if (outfile.is_open()) {
       outfile << "{}" << std::endl;
       outfile.close();
