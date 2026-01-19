@@ -101,7 +101,7 @@ Status Endpoint::CreateChannel(const EndpointDesc &remote_endpoint, ChannelHandl
   HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[channel] CreateChannel called before Initialize");
   CommEngine engine = CommEngine::COMM_ENGINE_RESERVED;
   if (endpoint_.loc.locType == EndpointLocType::ENDPOINT_LOC_TYPE_HOST) {
-    engine = CommEngine::COMM_ENGINE_HOSTCPU;
+    engine = CommEngine::COMM_ENGINE_CPU;
   } else if (endpoint_.loc.locType == EndpointLocType::ENDPOINT_LOC_TYPE_DEVICE) {
     engine = CommEngine::COMM_ENGINE_AICPU;
   } else {
@@ -109,8 +109,8 @@ Status Endpoint::CreateChannel(const EndpointDesc &remote_endpoint, ChannelHandl
               static_cast<int32_t>(endpoint_.loc.locType));
     return PARAM_INVALID;
   }
-  HcommChannelDescNew ch_desc{};
-  ch_desc.remoteEndPoint = remote_endpoint;
+  HcommChannelDesc ch_desc{};
+  ch_desc.remoteEndpoint = remote_endpoint;
   ch_desc.notifyNum = 1U;
   ChannelPtr channel = MakeShared<Channel>();
   HIXL_CHECK_NOTNULL(channel);

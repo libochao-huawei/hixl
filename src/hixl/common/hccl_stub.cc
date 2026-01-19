@@ -76,15 +76,12 @@ HcclResult HcommMemUnimport(void *endPointHandle, const HcommBuf *buf) {
   return HCCL_SUCCESS;
 }
 
-HcclResult HcommChannelCreate(void **end_point_handle, CommEngine engine, HcommChannelDescNew *channel_desc_list,
-                              uint32_t list_num, const void **mem_handle_list, uint32_t mem_handle_list_num,
-                              ChannelHandle *channel_list) {
+  HcclResult HcommChannelCreate(void **end_point_handle, CommEngine engine, HcommChannelDesc *channel_desc_list,
+                                uint32_t list_num, ChannelHandle *channel_list) {
   (void)end_point_handle;
   (void)engine;
   (void)channel_desc_list;
   (void)list_num;
-  (void)mem_handle_list;
-  (void)mem_handle_list_num;
   static int32_t chn_num_stub = 1;
   *channel_list = static_cast<ChannelHandle>(chn_num_stub++);
   return HCCL_SUCCESS;

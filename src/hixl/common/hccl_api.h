@@ -104,20 +104,8 @@ struct EndpointDesc {
   };
 };
 
-inline bool operator == (const EndpointDesc& lhs, const EndpointDesc& rhs) {
-  if (lhs.protocol != rhs.protocol) {
-    return false;
-  }
-
-  if (lhs.protocol == COMM_PROTOCOL_HCCS) {
-    return lhs.commAddr.id == rhs.commAddr.id;
-  }
-  return true;
-}
-
 enum CommEngine {
   COMM_ENGINE_RESERVED = -1,
-  COMM_ENGINE_HOSTCPU = 0,
   COMM_ENGINE_CPU = 1,
   COMM_ENGINE_CPU_TS = 2,
   COMM_ENGINE_AICPU = 3,
@@ -147,16 +135,42 @@ struct UbAttr {
   JettyAttr *jettyAttr;
   uint32_t jettyNum;
 };
-
-struct HcommChannelDescNew {
-  EndpointDesc remoteEndPoint;
+using HcommSocket = void *;
+struct HcommChannelDesc {
+  EndpointDesc remoteEndpoint;
   uint32_t notifyNum;
+
+  bool exchangeAllMems;
+  void **memHandles;
+  uint32_t memHandleNum;
   union {
-    HccsAttr hccsAttr;
-    RoCEAttr roceAttr;
-    UbAttr ubAttr;
+    uint8_t raws[128];
+    struct {
+      uint32_t queueNum;
+      uint32_t retryCnt;
+      uint32_t retryInterval;
+      uint32_t tc;
+      uint32_t sl;
+    } roceAttr;
+
   };
+  HcommSocket socket;
+  uint16_t port;
 };
+
+  // struct HcommChannelDesc {
+  //   EndpointDesc remoteEndPoint;
+  //   uint32_t notifyNum;
+  //
+  //   bool exchangeAllMems;
+  //   void **memHandles;
+  //   uint32_t memHandleNum;
+  //   union {
+  //     HccsAttr hccsAttr;
+  //     RoCEAttr roceAttr;
+  //     UbAttr ubAttr;
+  //   };
+  // };
 
 struct HcommBuf {
   void *addr;
@@ -181,9 +195,12 @@ HcclResult HcommMemImport(void *end_point_handle, const void *mem_desc, uint32_t
 
 HcclResult HcommMemUnimport(void *endPointHandle, const HcommBuf *buf);
 
-HcclResult HcommChannelCreate(void **end_point_handle, CommEngine engine, HcommChannelDescNew *channel_desc_list,
-                              uint32_t list_num, const void **mem_handle_list, uint32_t mem_handle_list_num,
-                              ChannelHandle *channel_list);
+// HcclResult HcommChannelCreate(void **end_point_handle, CommEngine engine, HcommChannelDesc *channel_desc_list,
+//                               uint32_t list_num, const void **mem_handle_list, uint32_t mem_handle_list_num,
+//                               ChannelHandle *channel_list);
+
+HcclResult HcommChannelCreate(void **end_point_handle, CommEngine engine, HcommChannelDesc *channel_desc_list,
+                              uint32_t list_num, ChannelHandle *channel_list);
 
 HcclResult HcommChannelDestroy(const ChannelHandle *channel_list, uint32_t list_num);
 
