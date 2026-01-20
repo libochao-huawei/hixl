@@ -79,8 +79,8 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, As
     const int32_t high_waterline = std::max(static_cast<int32_t>(max_channel * high_waterline_ratio), 1);
     const int32_t low_waterline = std::max(static_cast<int32_t>(max_channel * low_waterline_ratio), 1);
     ADXL_CHK_BOOL_RET_STATUS(high_waterline - low_waterline >= 1, PARAM_INVALID, 
-                          "Invalid waterline config: high_waterline:%.2f, low_waterline:%.2f \
-                          high_mark(%d) must be at least 1 greater than low_mark(%d) when max_channel=%d.", 
+                          "Invalid waterline config: high_waterline:%.2f, low_waterline:%.2f, "
+                          "high_mark(%d) must be at least 1 greater than low_mark(%d) when max_channel=%d.", 
                           high_waterline_ratio, low_waterline_ratio, high_waterline, low_waterline, max_channel);
     msg_handler_.SetUserChannelPoolConfig();
     msg_handler_.SetHighWaterline(high_waterline);
@@ -88,8 +88,8 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, As
     msg_handler_.SetMaxChannel(max_channel);
   } else {
     ADXL_CHK_BOOL_RET_STATUS(max_it == json_options.end(), PARAM_INVALID, 
-                            "Invalid waterline config: when high_waterline or low_waterline is not set \
-                            properly, you should not set max_channel.");
+                            "Invalid waterline config: when high_waterline or low_waterline is not set "
+                            "properly, you should not set max_channel.");
   }
   return SUCCESS;
 }
