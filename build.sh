@@ -66,7 +66,7 @@ checkopts() {
   ENABLE_BENCHMARKS=OFF
   ENABLE_ASAN=OFF
   ENABLE_GCOV=OFF
-  ENABLE_SIGN=ON
+  ENABLE_SIGN=OFF
   #CUSTOM_SIGN_SCRIPT="${BASEPATH}/scripts/sign/community_sign_build.py"
   # 黄区的签名脚本
   CUSTOM_SIGN_SCRIPT="${BASEPATH}/../vendor/hisi/build/scripts/sign_and_add_header.sh"
