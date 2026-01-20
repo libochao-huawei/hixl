@@ -214,54 +214,54 @@ Buffers SelectBuffers(bool is_get, const void *src, const void *dst) noexcept {
 }
 
 Status HixlCSClient::BatchTransferRoce(bool is_get, const CommunicateMem& communicate_mem_param, void** queryhandle) {
-  // (void) is_get;
-  // (void) communicate_mem_param;
-  // (void) queryhandle;
-  if (flag_queue_ == nullptr) {
-    HIXL_LOGE(RESOURCE_EXHAUSTED, "Client not initialized: flag queue is null.");
-    return RESOURCE_EXHAUSTED;
-  }
-  if (is_get) {
-    for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      HcommReadNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i], const_cast<void *>(communicate_mem_param.src_buf_list[i]),
-                   communicate_mem_param.len_list[i]);
-    }
-  }
-  else {
-    for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      HcommWriteNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i], const_cast<void *>(communicate_mem_param.src_buf_list[i]),
-                    communicate_mem_param.len_list[i]);
-    }
-  }
-  // 创建内存隔断，等到通道上所有的读任务执行结束后才会接着执行之后创建的读写任务
-  HcommChannelFence(client_channel_handle_);
-  int32_t flag_index = AcquireFlagIndex();
-  if (flag_index == -1) {
-    HIXL_LOGE(PARAM_INVALID, "There are a large number of transfer tasks with no query results, making it impossible to create new transfer tasks.");
-    return PARAM_INVALID;
-  }
-  uint64_t *flag_addr = &flag_queue_[flag_index];
-  EndpointDesc endpoint = src_endpoint_->GetEndpoint();
-  const char *kTransFlagName = nullptr;
-  if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_HOST) {
-    kTransFlagName = kTransFlagNameHost;
-  } else {
-    kTransFlagName = kTransFlagNameDevice;
-  }
-  HcommReadNbi(client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes);
-  CompleteHandle* query_mem_handle = new (std::nothrow) CompleteHandle();
-  if (query_mem_handle != nullptr ) {
-    query_mem_handle->magic = kRoceCompleteMagic;
-    query_mem_handle->flag_index = flag_index;
-    query_mem_handle->flag_address = flag_addr;
-    // 需要先创建queryhandle实体，之后再传给指针。
-    *queryhandle = query_mem_handle;
-    live_handles_[flag_index] = query_mem_handle;
-  }
-  else {
-    HIXL_LOGE(PARAM_INVALID, "Memory allocation failed; unable to generate query handle.");
-    return PARAM_INVALID;
-  }
+  (void) is_get;
+  (void) communicate_mem_param;
+  (void) queryhandle;
+  // if (flag_queue_ == nullptr) {
+  //   HIXL_LOGE(RESOURCE_EXHAUSTED, "Client not initialized: flag queue is null.");
+  //   return RESOURCE_EXHAUSTED;
+  // }
+  // if (is_get) {
+  //   for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
+  //     HcommReadNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i], const_cast<void *>(communicate_mem_param.src_buf_list[i]),
+  //                  communicate_mem_param.len_list[i]);
+  //   }
+  // }
+  // else {
+  //   for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
+  //     HcommWriteNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i], const_cast<void *>(communicate_mem_param.src_buf_list[i]),
+  //                   communicate_mem_param.len_list[i]);
+  //   }
+  // }
+  // // 创建内存隔断，等到通道上所有的读任务执行结束后才会接着执行之后创建的读写任务
+  // HcommChannelFence(client_channel_handle_);
+  // int32_t flag_index = AcquireFlagIndex();
+  // if (flag_index == -1) {
+  //   HIXL_LOGE(PARAM_INVALID, "There are a large number of transfer tasks with no query results, making it impossible to create new transfer tasks.");
+  //   return PARAM_INVALID;
+  // }
+  // uint64_t *flag_addr = &flag_queue_[flag_index];
+  // EndpointDesc endpoint = src_endpoint_->GetEndpoint();
+  // const char *kTransFlagName = nullptr;
+  // if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_HOST) {
+  //   kTransFlagName = kTransFlagNameHost;
+  // } else {
+  //   kTransFlagName = kTransFlagNameDevice;
+  // }
+  // HcommReadNbi(client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes);
+  // CompleteHandle* query_mem_handle = new (std::nothrow) CompleteHandle();
+  // if (query_mem_handle != nullptr ) {
+  //   query_mem_handle->magic = kRoceCompleteMagic;
+  //   query_mem_handle->flag_index = flag_index;
+  //   query_mem_handle->flag_address = flag_addr;
+  //   // 需要先创建queryhandle实体，之后再传给指针。
+  //   *queryhandle = query_mem_handle;
+  //   live_handles_[flag_index] = query_mem_handle;
+  // }
+  // else {
+  //   HIXL_LOGE(PARAM_INVALID, "Memory allocation failed; unable to generate query handle.");
+  //   return PARAM_INVALID;
+  // }
   return SUCCESS;
 }
 
