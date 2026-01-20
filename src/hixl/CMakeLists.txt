@@ -50,6 +50,7 @@ target_link_libraries(cann_hixl PRIVATE
         alog
         error_manager
         runtime
+        hccl
         json
         -ldl
         -O2 -fPIC -Wextra -Wfloat-equal

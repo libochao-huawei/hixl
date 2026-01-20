@@ -190,20 +190,23 @@ rtError_t RuntimeStub::rtMemcpyEx(void *dst, uint64_t dest_max, const void *src,
 
 rtError_t RuntimeStub::rtMemcpyAsync(void *dst, uint64_t dest_max, const void *src, uint64_t count, rtMemcpyKind_t kind,
                                      rtStream_t stream) {
-  const char* env_hack = std::getenv("HIXL_UT_UB_FLAG_HACK");
+  (void)kind;
+  (void)stream;
+
+  // 1) UB flag hack：强制写 done=1，并提前返回（开关开启时后面都不用管）
+  const char *env_hack = std::getenv("HIXL_UT_UB_FLAG_HACK");
   if (env_hack != nullptr && dst != nullptr && count == sizeof(uint64_t)) {
-    uint64_t done_flag = 1;
-
-    // 防止溢出
-    uint64_t safe_len = (dest_max < sizeof(uint64_t)) ? dest_max : sizeof(uint64_t);
-
-    // 强制写入 1
-    memcpy_s(dst, safe_len, &done_flag, safe_len);
-
-    // 打印日志以便确认生效
+    const uint64_t done_flag = 1ULL;
+    const uint64_t safe_len = (dest_max < sizeof(uint64_t)) ? dest_max : sizeof(uint64_t);
+    (void)memcpy_s(dst, safe_len, &done_flag, safe_len);
     printf(">>> [RUNTIME STUB HACK] rtMemcpyAsync Forced Flag=1 to dst=%p\n", dst);
-
     return RT_ERROR_NONE;
+  }
+
+  // 2) 可选：失败注入开关（建议加，UT覆盖更全）
+  const char *env_fail = std::getenv("HIXL_UT_RT_MEMCPY_ASYNC_FAIL");
+  if (env_fail != nullptr) {
+    return static_cast<rtError_t>(-1);
   }
   const char *const kEnvRecordPath = "MOCK_MEMCPY_HUGE";
   char record_path[MMPA_MAX_PATH] = {};
@@ -558,12 +561,16 @@ rtError_t RuntimeStub::rtGetDevice(int32_t *deviceId) {
 
 rtError_t RuntimeStub::rtGetDevResAddress(const rtDevResInfo *resInfo, rtDevResAddrInfo *addrInfo) {
   (void)resInfo;
+  const char *fail = std::getenv("HIXL_UT_RT_GET_DEV_RES_ADDR_FAIL");
+  if (fail != nullptr) {
+    return static_cast<rtError_t>(-1);
+  }
   if (addrInfo == nullptr || addrInfo->len == nullptr) {
     return RT_ERROR_NONE;
   }
-  // stub: 用一个静态地址当做“device addr”
+  const char *null_addr = std::getenv("HIXL_UT_RT_GET_DEV_RES_ADDR_NULL");
   static uint64_t g_dummy_dev_mem = 0ULL;
-  addrInfo->resAddress = &g_dummy_dev_mem;
+  addrInfo->resAddress = (null_addr != nullptr) ? nullptr : &g_dummy_dev_mem;
   *(addrInfo->len) = static_cast<uint32_t>(sizeof(g_dummy_dev_mem));
   return RT_ERROR_NONE;
 }

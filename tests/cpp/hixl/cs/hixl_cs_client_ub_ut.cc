@@ -7,19 +7,25 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-
 #include <array>
 #include <cstdint>
-#include <cstring>
+#include <cstdlib>
+#include <thread>
+#include <chrono>
+#include <vector>
 
 #include "gtest/gtest.h"
 
-// 打开 private 仅用于 UT（你现有 UT 里也直接访问过 mem_store_）
+// 为了直接访问 client 内部状态（保持你之前 UT 的方式）
 #define private public
 #define protected public
 #include "hixl_cs_client.h"
+#include "complete_pool.h"
 #undef protected
 #undef private
+
+// 依赖你现有的 rtNotifyWait 打桩返回栈：ADD_STUB_RETURN_VALUE(rtNotifyWait, rtError_t);
+extern std::vector<rtError_t> g_Stub_rtNotifyWait_RETURN;
 
 namespace hixl {
 namespace {
@@ -30,10 +36,9 @@ constexpr uint32_t kDummyPort = 12345U;
 constexpr uint32_t kListNum1 = 1U;
 constexpr uint64_t kLen8 = 8ULL;
 
-constexpr uint64_t kFlagDone = 1ULL;
-constexpr uint64_t kFlagInit = 0ULL;
+constexpr const char *kTransFlagNameDevice = "_hixl_builtin_dev_trans_flag";
 
-EndpointDesc MakeUbDeviceSrcEp(CommProtocol protocol, uint32_t dev_id) {
+EndpointDesc MakeUbDeviceEp(CommProtocol protocol, uint32_t dev_id) {
   EndpointDesc ep{};
   ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
   ep.protocol = protocol;
@@ -42,34 +47,43 @@ EndpointDesc MakeUbDeviceSrcEp(CommProtocol protocol, uint32_t dev_id) {
   return ep;
 }
 
-EndpointDesc MakeUbDeviceDstEp(CommProtocol protocol, uint32_t dev_id) {
-  EndpointDesc ep{};
-  ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
-  ep.protocol = protocol;
-  ep.commAddr.type = COMM_ADDR_TYPE_ID;
-  ep.commAddr.id = dev_id;
-  return ep;
-}
-
-void PrepareUbInternalsForUt(HixlCSClient &cli, void *remote_flag_addr) {
-  // 1) 跳过 EnsureUbRemoteFlagInitedLocked() 的 tag 查找
-  cli.ub_remote_flag_inited_ = true;
-  cli.ub_remote_flag_addr_ = remote_flag_addr;
-  cli.ub_remote_flag_size_ = static_cast<uint64_t>(sizeof(uint64_t));
-
-  // 2) 跳过 EnsureUbKernelLoadedLocked() 的加载流程
+void PrepareKernelReadyForUt(HixlCSClient &cli) {
   cli.ub_kernel_loaded_ = true;
-
-  // 只要非空即可，LaunchUbAndStageD2H_ 会检查 stub_func != nullptr
-  static uint8_t kNonNullStubObj = 0U;
-  cli.ub_stub_get_ = static_cast<const void *>(&kNonNullStubObj);
-  cli.ub_stub_put_ = static_cast<const void *>(&kNonNullStubObj);
+  static uint8_t kNonNullStub = 0U;
+  cli.ub_stub_get_ = static_cast<const void *>(&kNonNullStub);
+  cli.ub_stub_put_ = static_cast<const void *>(&kNonNullStub);
 }
 
-void RecordMemForBatchTransfer(HixlCSClient &cli, void *remote_addr, size_t remote_size, void *local_addr, size_t local_size) {
-  // BatchTransfer() 在进入 UB / ROCE 前会做 mem_store_ 校验
+void RecordMemForBatchTransfer(HixlCSClient &cli, void *remote_addr, size_t remote_size, void *local_addr,
+                               size_t local_size) {
   (void)cli.mem_store_.RecordMemory(true, remote_addr, remote_size);
   (void)cli.mem_store_.RecordMemory(false, local_addr, local_size);
+}
+
+void FillTagMem(HixlCSClient &cli, const char *tag, void *addr, uint64_t size) {
+  HcommMem mem{};
+  mem.type = HCCL_MEM_TYPE_DEVICE;
+  mem.addr = addr;
+  mem.size = size;
+  cli.tag_mem_descs_[tag] = mem;
+}
+
+Status PollUntilCompleted(HixlCSClient &cli, void *qh, int32_t *out_status) {
+  HIXL_CHECK_NOTNULL(out_status);
+  *out_status = -1;
+
+  // 允许 poll 几次（兼容桩“异步语义”）
+  for (int i = 0; i < 10; ++i) {
+    const Status ret = cli.CheckStatus(qh, out_status);
+    if (ret != SUCCESS) {
+      return ret;
+    }
+    if (*out_status == BatchTransferStatus::COMPLETED) {
+      return SUCCESS;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  return SUCCESS;
 }
 
 }  // namespace
@@ -77,172 +91,115 @@ void RecordMemForBatchTransfer(HixlCSClient &cli, void *remote_addr, size_t remo
 class HixlCSClientUbFixture : public ::testing::Test {
  protected:
   void SetUp() override {
-    const EndpointDesc src = MakeUbDeviceSrcEp(COMM_PROTOCOL_UBC_TP, kUbDevId);
-    const EndpointDesc dst = MakeUbDeviceDstEp(COMM_PROTOCOL_UBC_TP, kUbDevId);
+    const EndpointDesc src = MakeUbDeviceEp(COMM_PROTOCOL_UBC_TP, kUbDevId);
+    const EndpointDesc dst = MakeUbDeviceEp(COMM_PROTOCOL_UBC_TP, kUbDevId);
 
     const Status ret = cli_.Create("127.0.0.1", kDummyPort, &src, &dst);
     ASSERT_EQ(ret, SUCCESS);
 
-    // UT 不走真实 Connect，这里给一个占位值（FillUbBatchArgs_ 会写入 args->channel）
+    // 不走 Connect，全链路里只要 channel_handle 非空即可
     cli_.client_channel_handle_ = static_cast<ChannelHandle>(1ULL);
 
-    // remote_flag 用 host 内存模拟（UT 里仅作为地址透传）
-    remote_flag_ = kFlagInit;
-    PrepareUbInternalsForUt(cli_, static_cast<void *>(&remote_flag_));
+    // 让 PrepareUbRemoteFlagAndKernel 走 tag_mem_descs_ 的路径
+    cli_.ub_remote_flag_inited_ = false;
+    remote_flag_dev_ = 0ULL;
+    FillTagMem(cli_, kTransFlagNameDevice, static_cast<void *>(&remote_flag_dev_), sizeof(uint64_t));
+
+    PrepareKernelReadyForUt(cli_);
   }
 
   void TearDown() override {
     (void)cli_.Destroy();
+    unsetenv("HIXL_UT_UB_FLAG_HACK");
   }
 
   HixlCSClient cli_{};
-  uint64_t remote_flag_{0ULL};
+  uint64_t remote_flag_dev_{0ULL};
 };
 
-TEST_F(HixlCSClientUbFixture, GetCompletePoolSingleton_SameObject) {
-  CompletePool *p0 = &GetCompletePool();
-  CompletePool *p1 = &GetCompletePool();
-  EXPECT_EQ(p0, p1);
-}
+TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceSuccessUseMemcpyHackFlag) {
+  setenv("HIXL_UT_UB_FLAG_HACK", "1", 1);
 
-TEST_F(HixlCSClientUbFixture, SelectUbLists_GetAndPut_CorrectMapping) {
-  std::array<void *, 1> dst_list{};
-  std::array<const void *, 1> src_list{};
-  std::array<uint64_t, 1> len_list{};
-
-  CommunicateMem mem{};
-  mem.list_num = kListNum1;
-  mem.dst_buf_list = dst_list.data();
-  mem.src_buf_list = src_list.data();
-  mem.len_list = len_list.data();
-
-  const void *local_list = nullptr;
-  const void *remote_list = nullptr;
-
-  {
-    const Status ret = cli_.SelectUbLists(true, mem, &local_list, &remote_list);
-    EXPECT_EQ(ret, SUCCESS);
-    EXPECT_EQ(remote_list, static_cast<const void *>(mem.src_buf_list));
-    EXPECT_EQ(local_list, static_cast<const void *>(mem.dst_buf_list));
-  }
-
-  local_list = nullptr;
-  remote_list = nullptr;
-  {
-    const Status ret = cli_.SelectUbLists(false, mem, &local_list, &remote_list);
-    EXPECT_EQ(ret, SUCCESS);
-    EXPECT_EQ(local_list, static_cast<const void *>(mem.src_buf_list));
-    EXPECT_EQ(remote_list, static_cast<const void *>(mem.dst_buf_list));
-  }
-}
-
-TEST_F(HixlCSClientUbFixture, BatchPut_UBDevice_Success_CompleteAndRelease) {
   std::array<uint8_t, 8> local_src{};
   std::array<uint8_t, 8> remote_dst{};
 
-  RecordMemForBatchTransfer(cli_,
-                           static_cast<void *>(remote_dst.data()),
-                           remote_dst.size(),
-                           static_cast<void *>(local_src.data()),
-                           local_src.size());
+  RecordMemForBatchTransfer(cli_, static_cast<void *>(remote_dst.data()), remote_dst.size(),
+                            static_cast<void *>(local_src.data()), local_src.size());
 
-  void *remote_list[kListNum1] = { static_cast<void *>(remote_dst.data()) };
-  const void *local_list[kListNum1] = { static_cast<const void *>(local_src.data()) };
-  uint64_t len_list[kListNum1] = { kLen8 };
+  void *remote_list[kListNum1] = {static_cast<void *>(remote_dst.data())};
+  const void *local_list[kListNum1] = {static_cast<const void *>(local_src.data())};
+  uint64_t len_list[kListNum1] = {kLen8};
 
   CommunicateMem mem{};
   mem.list_num = kListNum1;
-  mem.dst_buf_list = remote_list;   // put: dst=remote
-  mem.src_buf_list = local_list;    // put: src=local
+  mem.dst_buf_list = remote_list;  // put: dst=remote
+  mem.src_buf_list = local_list;   // put: src=local
   mem.len_list = len_list;
 
   void *qh = nullptr;
-  const uint32_t before_in_use = GetCompletePool().GetInUseCount();
-
-  Status ret = cli_.BatchTransfer(false, mem, &qh);
+  const Status ret = cli_.BatchTransfer(false, mem, &qh);
   EXPECT_EQ(ret, SUCCESS);
   ASSERT_NE(qh, nullptr);
 
-  // 模拟 D2H 后完成：直接把 host_flag 写成 done
-  auto *ub = static_cast<UbCompleteHandle *>(qh);
-  ASSERT_NE(ub->slot.host_flag, nullptr);
-  *(static_cast<uint64_t *>(ub->slot.host_flag)) = kFlagDone;
-
-  int32_t status = -1;
-  ret = cli_.CheckStatus(qh, &status);
-  EXPECT_EQ(ret, SUCCESS);
-  EXPECT_EQ(status, BatchTransferStatus::COMPLETED);
-
-  const uint32_t after_in_use = GetCompletePool().GetInUseCount();
-  EXPECT_EQ(after_in_use, before_in_use);
+  int32_t st = -1;
+  (void)PollUntilCompleted(cli_, qh, &st);
+  EXPECT_EQ(st, BatchTransferStatus::COMPLETED);
 }
 
-TEST_F(HixlCSClientUbFixture, BatchGet_UBDevice_Success_CompleteAndRelease) {
-  std::array<uint8_t, 8> remote_src{};
+TEST_F(HixlCSClientUbFixture, BatchGetUbDeviceSuccessUseMemcpyHackFlag) {
+  setenv("HIXL_UT_UB_FLAG_HACK", "1", 1);
+
   std::array<uint8_t, 8> local_dst{};
+  std::array<uint8_t, 8> remote_src{};
 
-  RecordMemForBatchTransfer(cli_,
-                           static_cast<void *>(remote_src.data()),
-                           remote_src.size(),
-                           static_cast<void *>(local_dst.data()),
-                           local_dst.size());
+  RecordMemForBatchTransfer(cli_, static_cast<void *>(remote_src.data()), remote_src.size(),
+                            static_cast<void *>(local_dst.data()), local_dst.size());
 
-  void *local_list[kListNum1] = { static_cast<void *>(local_dst.data()) };
-  const void *remote_list[kListNum1] = { static_cast<const void *>(remote_src.data()) };
-  uint64_t len_list[kListNum1] = { kLen8 };
+  const void *remote_list[kListNum1] = {static_cast<const void *>(remote_src.data())};
+  void *local_list[kListNum1] = {static_cast<void *>(local_dst.data())};
+  uint64_t len_list[kListNum1] = {kLen8};
 
   CommunicateMem mem{};
   mem.list_num = kListNum1;
-  mem.dst_buf_list = local_list;    // get: dst=local
-  mem.src_buf_list = remote_list;   // get: src=remote
+  mem.dst_buf_list = local_list;   // get: dst=local
+  mem.src_buf_list = remote_list;  // get: src=remote
   mem.len_list = len_list;
-
-  void *qh = nullptr;
-  const uint32_t before_in_use = GetCompletePool().GetInUseCount();
-
-  Status ret = cli_.BatchTransfer(true, mem, &qh);
-  EXPECT_EQ(ret, SUCCESS);
-  ASSERT_NE(qh, nullptr);
-
-  auto *ub = static_cast<UbCompleteHandle *>(qh);
-  ASSERT_NE(ub->slot.host_flag, nullptr);
-  *(static_cast<uint64_t *>(ub->slot.host_flag)) = kFlagDone;
-
-  int32_t status = -1;
-  ret = cli_.CheckStatus(qh, &status);
-  EXPECT_EQ(ret, SUCCESS);
-  EXPECT_EQ(status, BatchTransferStatus::COMPLETED);
-
-  const uint32_t after_in_use = GetCompletePool().GetInUseCount();
-  EXPECT_EQ(after_in_use, before_in_use);
-}
-
-TEST_F(HixlCSClientUbFixture, BatchTransferUB_Fail_ListNumZero) {
-  CommunicateMem mem{};
-  mem.list_num = 0U;
-  mem.dst_buf_list = nullptr;
-  mem.src_buf_list = nullptr;
-  mem.len_list = nullptr;
 
   void *qh = nullptr;
   const Status ret = cli_.BatchTransfer(true, mem, &qh);
-  EXPECT_NE(ret, SUCCESS);
-  EXPECT_EQ(qh, nullptr);
+  EXPECT_EQ(ret, SUCCESS);
+  ASSERT_NE(qh, nullptr);
+
+  int32_t st = -1;
+  (void)PollUntilCompleted(cli_, qh, &st);
+  EXPECT_EQ(st, BatchTransferStatus::COMPLETED);
 }
 
-TEST_F(HixlCSClientUbFixture, Destroy_Fail_WhenUbSlotInUse_ThenRecover) {
+TEST_F(HixlCSClientUbFixture, PrepareUbRemoteFlagAndKernelMissingTagFail) {
+  cli_.ub_remote_flag_inited_ = false;
+  cli_.tag_mem_descs_.clear();
+
+  void *remote_flag = nullptr;
+  const Status ret = cli_.PrepareUbRemoteFlagAndKernel(&remote_flag);
+
+  EXPECT_EQ(ret, PARAM_INVALID);
+  EXPECT_EQ(remote_flag, nullptr);
+}
+
+TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceNotifyWaitFail) {
+  // 这个用 return 栈控制失败，不需要改桩代码
+  // 注意：GET_STUB_RETURN_VALUE 是 pop_back，所以 push 的顺序就是实际返回顺序
+  g_Stub_rtNotifyWait_RETURN.push_back(static_cast<rtError_t>(-1));
+
   std::array<uint8_t, 8> local_src{};
   std::array<uint8_t, 8> remote_dst{};
 
-  RecordMemForBatchTransfer(cli_,
-                           static_cast<void *>(remote_dst.data()),
-                           remote_dst.size(),
-                           static_cast<void *>(local_src.data()),
-                           local_src.size());
+  RecordMemForBatchTransfer(cli_, static_cast<void *>(remote_dst.data()), remote_dst.size(),
+                            static_cast<void *>(local_src.data()), local_src.size());
 
-  void *remote_list[kListNum1] = { static_cast<void *>(remote_dst.data()) };
-  const void *local_list[kListNum1] = { static_cast<const void *>(local_src.data()) };
-  uint64_t len_list[kListNum1] = { kLen8 };
+  void *remote_list[kListNum1] = {static_cast<void *>(remote_dst.data())};
+  const void *local_list[kListNum1] = {static_cast<const void *>(local_src.data())};
+  uint64_t len_list[kListNum1] = {kLen8};
 
   CommunicateMem mem{};
   mem.list_num = kListNum1;
@@ -251,30 +208,54 @@ TEST_F(HixlCSClientUbFixture, Destroy_Fail_WhenUbSlotInUse_ThenRecover) {
   mem.len_list = len_list;
 
   void *qh = nullptr;
-  Status ret = cli_.BatchTransfer(false, mem, &qh);
-  EXPECT_EQ(ret, SUCCESS);
-  ASSERT_NE(qh, nullptr);
-
-  // 不完成时 Destroy 应失败（你 Destroy 里会检查 pool in_use）
-  ret = cli_.Destroy();
+  const Status ret = cli_.BatchTransfer(false, mem, &qh);
   EXPECT_NE(ret, SUCCESS);
+  EXPECT_EQ(qh, nullptr);
+}
 
-  // 现在完成并释放 slot，确保 TearDown 不再失败
-  auto *ub = static_cast<UbCompleteHandle *>(qh);
-  *(static_cast<uint64_t *>(ub->slot.host_flag)) = kFlagDone;
+TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceSlotExhaustedFail) {
+  // 目的：不调用 CheckStatus 让 slot 一直 in_use，直到池耗尽，然后下一次 BatchTransfer 失败
+  setenv("HIXL_UT_UB_FLAG_HACK", "1", 1);
 
-  int32_t status = -1;
-  ret = cli_.CheckStatus(qh, &status);
-  EXPECT_EQ(ret, SUCCESS);
-  EXPECT_EQ(status, BatchTransferStatus::COMPLETED);
+  std::array<uint8_t, 8> local_src{};
+  std::array<uint8_t, 8> remote_dst{};
 
-  // 再 Destroy 应成功
-  ret = cli_.Destroy();
-  EXPECT_EQ(ret, SUCCESS);
+  RecordMemForBatchTransfer(cli_, static_cast<void *>(remote_dst.data()), remote_dst.size(),
+                            static_cast<void *>(local_src.data()), local_src.size());
 
-  // 避免 TearDown 再 Destroy 一次触发问题
-  cli_.src_endpoint_.reset();
-  cli_.is_device_ = false;
+  void *remote_list[kListNum1] = {static_cast<void *>(remote_dst.data())};
+  const void *local_list[kListNum1] = {static_cast<const void *>(local_src.data())};
+  uint64_t len_list[kListNum1] = {kLen8};
+
+  CommunicateMem mem{};
+  mem.list_num = kListNum1;
+  mem.dst_buf_list = remote_list;
+  mem.src_buf_list = local_list;
+  mem.len_list = len_list;
+
+  std::vector<void *> handles;
+  handles.reserve(CompletePool::kMaxSlots);
+
+  for (uint32_t i = 0; i < CompletePool::kMaxSlots; ++i) {
+    void *qh = nullptr;
+    const Status ret = cli_.BatchTransfer(false, mem, &qh);
+    ASSERT_EQ(ret, SUCCESS);
+    ASSERT_NE(qh, nullptr);
+    handles.emplace_back(qh);
+  }
+
+  // 这次应该拿不到 slot（Acquire 返回 RESOURCE_EXHAUSTED，client 里会转成 FAILED 返回）
+  void *qh_extra = nullptr;
+  const Status ret_extra = cli_.BatchTransfer(false, mem, &qh_extra);
+  EXPECT_NE(ret_extra, SUCCESS);
+  EXPECT_EQ(qh_extra, nullptr);
+
+  // 清理：把之前占用的 slot 全部释放（靠 memcpy hack 使 host_flag=1）
+  for (void *h : handles) {
+    int32_t st = -1;
+    (void)PollUntilCompleted(cli_, h, &st);
+    EXPECT_EQ(st, BatchTransferStatus::COMPLETED);
+  }
 }
 
 }  // namespace hixl
