@@ -528,7 +528,7 @@ void CompletePool::DestroySlotLocked(Slot &slot) {
   }
 
   if (slot.thread != 0U) {
-    HIXL_CHK_HCCL(HcommThreadFree(slot.thread));
+    //HIXL_CHK_HCCL(HcommThreadFree(slot.thread));
     slot.thread = 0U;
   }
 
