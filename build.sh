@@ -67,9 +67,9 @@ checkopts() {
   ENABLE_ASAN=OFF
   ENABLE_GCOV=OFF
   ENABLE_SIGN=OFF
-  #CUSTOM_SIGN_SCRIPT="${BASEPATH}/scripts/sign/community_sign_build.py"
+  CUSTOM_SIGN_SCRIPT="${BASEPATH}/scripts/sign/community_sign_build.py"
   # 黄区的签名脚本
-  CUSTOM_SIGN_SCRIPT="${BASEPATH}/../vendor/hisi/build/scripts/sign_and_add_header.sh"
+  #CUSTOM_SIGN_SCRIPT="${BASEPATH}/../vendor/hisi/build/scripts/sign_and_add_header.sh"
   VERSION_INFO="8.5.0"
 
   ARCH=$(uname -m)
