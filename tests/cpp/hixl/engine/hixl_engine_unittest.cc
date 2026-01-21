@@ -41,9 +41,9 @@ class HixlEngineTest : public ::testing::Test {
             },
             {
                 "protocol": "ub_ctp",
-                "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0463",
+                "comm_id": "000000000000000000000000c0a80463",
                 "placement": "device",
-                "dst_eid": "0000:0000:0000:0000:0000:0000:c0a8:0563"
+                "dst_eid": "000000000000000000000000c0a80563"
             }
         ],
         "version": "1.3"
@@ -56,9 +56,9 @@ class HixlEngineTest : public ::testing::Test {
         "endpoint_list": [
             {
                 "protocol": "ub_ctp",
-                "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0463",
+                "comm_id": "000000000000000000000000c0a80463",
                 "placement": "device",
-                "dst_eid": "0000:0000:0000:0000:0000:0000:c0a8:0563"
+                "dst_eid": "000000000000000000000000c0a80563"
             },
             {
                 "protocol": "roce",

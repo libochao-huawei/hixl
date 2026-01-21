@@ -23,8 +23,7 @@ class HixlUtilsUTest : public ::testing::Test {
 
 TEST_F(HixlUtilsUTest, ParseEidAddressSuccessTest) {
   CommAddr addr;
-  // 测试正常的EID地址
-  std::string eid_str = "1:2:3:0004:0005:0006:0007:0008";
+  std::string eid_str = "00010002000300040005000600070008";
   Status st = ParseEidAddress(eid_str, addr);
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(addr.type, COMM_ADDR_TYPE_EID);
@@ -51,8 +50,7 @@ TEST_F(HixlUtilsUTest, ParseEidAddressSuccessTest) {
 // ParseEidAddress 函数测试：正常场景 - 包含大小写字母的十六进制段
 TEST_F(HixlUtilsUTest, ParseEidAddressMixedCaseTest) {
   CommAddr addr;
-  // 测试包含大小写字母的EID地址
-  std::string eid_str = "aBcD:1234:5678:90Ef:AbCd:Ef12:3456:7890";
+  std::string eid_str = "aBcD1234567890EfAbCdEf1234567890";
   Status st = ParseEidAddress(eid_str, addr);
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(addr.type, COMM_ADDR_TYPE_EID);
@@ -62,40 +60,32 @@ TEST_F(HixlUtilsUTest, ParseEidAddressMixedCaseTest) {
   EXPECT_EQ(addr.eid[1], 0xCD);
   EXPECT_EQ(addr.eid[2], 0x12);
   EXPECT_EQ(addr.eid[3], 0x34);
+  EXPECT_EQ(addr.eid[4], 0x56);
+  EXPECT_EQ(addr.eid[5], 0x78);
+  EXPECT_EQ(addr.eid[6], 0x90);
+  EXPECT_EQ(addr.eid[7], 0xEF);
+  EXPECT_EQ(addr.eid[8], 0xAB);
+  EXPECT_EQ(addr.eid[9], 0xCD);
+  EXPECT_EQ(addr.eid[10], 0xEF);
+  EXPECT_EQ(addr.eid[11], 0x12);
+  EXPECT_EQ(addr.eid[12], 0x34);
+  EXPECT_EQ(addr.eid[13], 0x56);
+  EXPECT_EQ(addr.eid[14], 0x78);
+  EXPECT_EQ(addr.eid[15], 0x90);
 }
 
-// ParseEidAddress 函数测试：异常场景 - 段数不足8个
-TEST_F(HixlUtilsUTest, ParseEidAddressLessSegmentsTest) {
+// ParseEidAddress 函数测试：异常场景 - 长度不足32个字符
+TEST_F(HixlUtilsUTest, ParseEidAddressShortStringTest) {
   CommAddr addr;
-  // 测试段数不足8个的EID地址
-  std::string eid_str = "0001:0002:0003:0004:0005:0006:0007";
+  std::string eid_str = "0001000200030004000500060007";
   Status st = ParseEidAddress(eid_str, addr);
   EXPECT_EQ(st, PARAM_INVALID);
 }
 
-// ParseEidAddress 函数测试：异常场景 - 段数超过8个
-TEST_F(HixlUtilsUTest, ParseEidAddressMoreSegmentsTest) {
+// ParseEidAddress 函数测试：异常场景 - 长度超过32个字符
+TEST_F(HixlUtilsUTest, ParseEidAddressLongStringTest) {
   CommAddr addr;
-  // 测试段数超过8个的EID地址
-  std::string eid_str = "0001:0002:0003:0004:0005:0006:0007:0008:0009";
-  Status st = ParseEidAddress(eid_str, addr);
-  EXPECT_EQ(st, PARAM_INVALID);
-}
-
-// ParseEidAddress 函数测试：异常场景 - 段长度小于1
-TEST_F(HixlUtilsUTest, ParseEidAddressEmptySegmentTest) {
-  CommAddr addr;
-  // 测试包含空段的EID地址
-  std::string eid_str = "0001::0003:0004:0005:0006:0007:0008";
-  Status st = ParseEidAddress(eid_str, addr);
-  EXPECT_EQ(st, PARAM_INVALID);
-}
-
-// ParseEidAddress 函数测试：异常场景 - 段长度大于4
-TEST_F(HixlUtilsUTest, ParseEidAddressLongSegmentTest) {
-  CommAddr addr;
-  // 测试包含长度大于4的段的EID地址
-  std::string eid_str = "0001:00023:0003:0004:0005:0006:0007:0008";
+  std::string eid_str = "000100020003000400050006000700080009";
   Status st = ParseEidAddress(eid_str, addr);
   EXPECT_EQ(st, PARAM_INVALID);
 }
@@ -104,16 +94,7 @@ TEST_F(HixlUtilsUTest, ParseEidAddressLongSegmentTest) {
 TEST_F(HixlUtilsUTest, ParseEidAddressNonHexTest) {
   CommAddr addr;
   // 测试包含非十六进制字符的EID地址
-  std::string eid_str = "0001:0002:0003:0004:0005:0006:0007:000g";
-  Status st = ParseEidAddress(eid_str, addr);
-  EXPECT_EQ(st, PARAM_INVALID);
-}
-
-// ParseEidAddress 函数测试：异常场景 - 段值超过0xFFFF
-TEST_F(HixlUtilsUTest, ParseEidAddressOverflowTest) {
-  CommAddr addr;
-  // 测试包含超过0xFFFF的段的EID地址
-  std::string eid_str = "0001:0002:0003:0004:0005:0006:0007:10000";
+  std::string eid_str = "0001000200030004000500060007000g";
   Status st = ParseEidAddress(eid_str, addr);
   EXPECT_EQ(st, PARAM_INVALID);
 }
