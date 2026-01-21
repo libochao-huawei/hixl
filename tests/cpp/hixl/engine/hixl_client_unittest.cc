@@ -240,8 +240,8 @@ const std::string MockHixlServer::kRoceEndpointJson = R"({
 
 const std::string MockHixlServer::kUbCtpHostEndpointJson = R"({
       "protocol": "ub_ctp",
-      "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0463",
-      "dst_eid" : "0000:0000:0000:0000:0000:0000:c0a8:0563",
+      "comm_id": "000000000000000000000000c0a80463",
+      "dst_eid" : "000000000000000000000000c0a80563",
       "plane": "",
       "placement" : "host",
       "net_instance_id" : "superpod1-1"
@@ -249,8 +249,8 @@ const std::string MockHixlServer::kUbCtpHostEndpointJson = R"({
 
 const std::string MockHixlServer::kUbCtpDeviceEndpointJson = R"({
       "protocol": "ub_ctp",
-      "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0663",
-      "dst_eid" : "0000:0000:0000:0000:0000:0000:c0a8:0763",
+      "comm_id": "000000000000000000000000c0a80663",
+      "dst_eid" : "000000000000000000000000c0a80763",
       "plane": "",
       "placement" : "device",
       "net_instance_id" : "superpod1-1"
@@ -258,7 +258,7 @@ const std::string MockHixlServer::kUbCtpDeviceEndpointJson = R"({
 
 const std::string MockHixlServer::kUbCtpPlaneAEndpointJson = R"({
       "protocol": "ub_ctp",
-      "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0063",
+      "comm_id": "000000000000000000000000c0a80063",
       "dst_eid": "",
       "plane" : "plane-a",
       "placement" : "device",
@@ -267,7 +267,7 @@ const std::string MockHixlServer::kUbCtpPlaneAEndpointJson = R"({
 
 const std::string MockHixlServer::kUbTpPlaneBEndpointJson = R"({
       "protocol": "ub_tp",
-      "comm_id": "0000:0000:0000:0000:0000:0000:c0a8:0163",
+      "comm_id": "000000000000000000000000c0a80163",
       "dst_eid": "",
       "plane" : "plane-b",
       "placement" : "host",
@@ -365,8 +365,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbHostLocalEp1() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0563";
-    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0463";
+    ep.comm_id = "000000000000000000000000c0a80563";
+    ep.dst_eid = "000000000000000000000000c0a80463";
     ep.placement = "host";
     ep.net_instance_id = "superpod1-1";
     return ep;
@@ -375,8 +375,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbHostRemoteEp1() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0463";
-    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0563";
+    ep.comm_id = "000000000000000000000000c0a80463";
+    ep.dst_eid = "000000000000000000000000c0a80563";
     ep.placement = "host";
     ep.net_instance_id = "superpod1-1";
     return ep;
@@ -385,8 +385,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbHostLocalEp2() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0763";
-    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0663";
+    ep.comm_id = "000000000000000000000000c0a80763";
+    ep.dst_eid = "000000000000000000000000c0a80663";
     ep.placement = "host";
     ep.net_instance_id = "superpod1-1";
     return ep;
@@ -395,8 +395,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDeviceRemoteEp2() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0663";
-    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0763";
+    ep.comm_id = "000000000000000000000000c0a80663";
+    ep.dst_eid = "000000000000000000000000c0a80763";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
     return ep;
@@ -405,7 +405,7 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDeviceLocalEp3() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0363";
+    ep.comm_id = "000000000000000000000000c0a80363";
     ep.plane = "plane-a";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
@@ -415,7 +415,7 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDeviceRemoteEp3() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0063";
+    ep.comm_id = "000000000000000000000000c0a80063";
     ep.plane = "plane-a";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
@@ -425,7 +425,7 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDeviceLocalEp4() {
     EndPointConfig ep{};
     ep.protocol = "ub_tp";
-    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0263";
+    ep.comm_id = "000000000000000000000000c0a80263";
     ep.plane = "plane-b";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
@@ -435,7 +435,7 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbHostRemoteEp4() {
     EndPointConfig ep{};
     ep.protocol = "ub_tp";
-    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0163";
+    ep.comm_id = "000000000000000000000000c0a80163";
     ep.plane = "plane-b";
     ep.placement = "host";
     ep.net_instance_id = "superpod1-1";
@@ -445,8 +445,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDiffNetLocalEp1() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0563";
-    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0463";
+    ep.comm_id = "000000000000000000000000c0a80563";
+    ep.dst_eid = "000000000000000000000000c0a80463";
     ep.placement = "host";
     ep.net_instance_id = "superpod2-2";
     return ep;
@@ -455,8 +455,8 @@ class HixlClientUTest : public ::testing::Test {
   EndPointConfig MakeUbDiffNetLocalEp2() {
     EndPointConfig ep{};
     ep.protocol = "ub_ctp";
-    ep.comm_id = "0000:0000:0000:0000:0000:0000:c0a8:0763";
-    ep.dst_eid = "0000:0000:0000:0000:0000:0000:c0a8:0663";
+    ep.comm_id = "000000000000000000000000c0a80763";
+    ep.dst_eid = "000000000000000000000000c0a80663";
     ep.placement = "host";
     ep.net_instance_id = "superpod2-2";
     return ep;
