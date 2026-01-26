@@ -135,8 +135,9 @@ third_party/
 ```
 
 > [!NOTE]说明
-> 在下载第三方开源软件压缩包并解压后，须修改文件夹名为上述目录结构中的对应名称。
-
+> - 在下载第三方开源软件压缩包并解压后，须修改文件夹名为上述目录结构中的对应名称。
+> - 针对 `.zip` 结尾的压缩包，可使用 `unzip <file-name> -d /path/to/your/destination` 解压至您需要的目录。 
+> - 针对 `.tar.gz` 结尾的压缩包，可使用 `tar -xzvf <file-name> -C /path/to/your/destination` 解压至您需要的目录。
 
 ## 源码下载
 
