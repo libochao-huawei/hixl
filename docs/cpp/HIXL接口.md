@@ -181,6 +181,21 @@ Atlas A3 训练系列产品/Atlas A3 推理系列产品：该场景下采用HCCS
 
 </td>
 </tr>
+<tr id="row92022108110"><td class="cellrowborder" valign="top" width="27.500000000000004%" headers="mcps1.2.4.1.1 "><p id="p8840153616235"><a name="p8840153616235"></a><a name="p8840153616235"></a>OPTION_ENABLE_USE_FABRIC_MEM</p>
+</td>
+<td class="cellrowborder" valign="top" width="13.139999999999999%" headers="mcps1.2.4.1.2 "><p id="p1284014363233"><a name="p1284014363233"></a><a name="p1284014363233"></a>可选</p>
+</td>
+<td class="cellrowborder" valign="top" width="59.36%" headers="mcps1.2.4.1.3 "><p id="p1321144310716"><a name="p1321144310716"></a><a name="p1321144310716"></a>字符串取值"EnableUseFabricMem"。 
+
+- 0：不开启Fabric Mem模式 
+- 1：开启Fabric Mem模式 
+
+此option适用于需要使用HCCS进行D2RH、RH2D传输的场景。 
+
+说明：集群场景下，该参数在所有节点需要配置为相同的值。仅支持Atlas A3 训练系列产品/Atlas A3 推理系列产品。</p>
+
+</td>
+</tr>
 </tbody>
 </table>
 
