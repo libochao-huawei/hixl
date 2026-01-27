@@ -132,6 +132,7 @@ third_party/
 |-- json
 |-- makeself
 |-- pybind11
+|-- gtest
 ```
 
 > [!NOTE]说明
