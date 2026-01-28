@@ -62,8 +62,9 @@ Status HixlCSServer::InitTransFinishedFlag() {
   }
   if (has_device_ep) {
     void* dev_flag = nullptr;
-    HIXL_CHK_RT_RET(rtMalloc(&dev_flag, sizeof(int64_t),
-                             RT_MEMORY_HBM | RT_MEMORY_POLICY_HUGE_PAGE_ONLY, HIXL_MODULE_NAME));
+    dev_flag = malloc(sizeof(int64_t));
+    // HIXL_CHK_RT_RET(rtMalloc(&dev_flag, sizeof(int64_t),
+    //                          RT_MEMORY_HBM | RT_MEMORY_POLICY_HUGE_PAGE_ONLY, HIXL_MODULE_NAME));
     int64_t val = 1;
     HIXL_CHK_RT_RET(rtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), RT_MEMCPY_HOST_TO_DEVICE));
     HcommMem mem{};
@@ -125,10 +126,11 @@ Status HixlCSServer::Finalize() {
     trans_flag_ = nullptr;
   }
   if (host_trans_flag_ != nullptr) {
-    auto rt_ret = rtFree(host_trans_flag_);
-    if (rt_ret != RT_ERROR_NONE) {
-      HIXL_LOGE(FAILED, "Failed to free HOST trans finished flag, ret:%d", rt_ret);
-    }
+    free(host_trans_flag_);
+    // auto rt_ret = rtFree(host_trans_flag_);
+    // if (rt_ret != RT_ERROR_NONE) {
+    //   HIXL_LOGE(FAILED, "Failed to free HOST trans finished flag, ret:%d", rt_ret);
+    // }
     host_trans_flag_ = nullptr;
   }
   if (dev_trans_flag_ != nullptr) {
