@@ -18,7 +18,9 @@ namespace hixl {
 
 Status Endpoint::Initialize() {
   std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_LOGI("endpoint:=%d", endpoint_.protocol);
   HIXL_CHK_HCCL_RET(HcommEndpointCreate(&endpoint_, &handle_));
+  HIXL_LOGI("handle_:=%p", handle_);
   return SUCCESS;
 }
 
@@ -61,7 +63,7 @@ const EndpointDesc &Endpoint::GetEndpoint() const {
 
 Status Endpoint::RegisterMem(const char *mem_tag, const HcommMem &mem, MemHandle &mem_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_CHK_HCCL_RET(HcommMemReg(handle_, mem, &mem_handle));
+  HIXL_CHK_HCCL_RET(HcommMemReg(handle_, mem_tag, mem, &mem_handle));
   HixlMemDesc desc{};
   if (mem_tag != nullptr) {
     desc.tag = mem_tag;
@@ -145,7 +147,7 @@ Status Endpoint::DestroyChannel(ChannelHandle channel_handle) {
   return SUCCESS;
 }
 
-Status Endpoint::MemImport(const void *mem_desc, uint32_t desc_len, HcommBuf &out_buf) {
+Status Endpoint::MemImport(const void *mem_desc, uint32_t desc_len, HcommMem &out_buf) {
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHECK_NOTNULL(handle_);
   HIXL_CHECK_NOTNULL(mem_desc);

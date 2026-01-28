@@ -46,7 +46,7 @@ class HixlCSServer {
 
  private:
   template <typename T>
-  Status Serialize(const T &msg, std::string &msg_str);
+  static Status Serialize(const T &msg, std::string &msg_str);
   Status CreateChannel(int32_t fd, const char *msg, uint64_t msg_len);
   Status DestroyChannel(int32_t fd, const char *msg, uint64_t msg_len);
   Status GetRemoteMem(int32_t fd, const char *msg, uint64_t msg_len);

@@ -106,7 +106,7 @@ void CompletePool::InitFreeListLocked_() {
 
 Status CompletePool::GetCurrentAclContext_(aclrtContext *old_ctx) const {
   HIXL_CHECK_NOTNULL(old_ctx);
-  *old_ctx = nullptr;
+
   HIXL_CHK_ACL_RET(aclrtGetCurrentContext(old_ctx));
   return SUCCESS;
 }
@@ -386,19 +386,36 @@ Status CompletePool::GetNotifyAddrLocked_(uint32_t notify_id, void **notify_addr
   rtDevResAddrInfo addr_info{};
   addr_info.resAddress = &addr;
   addr_info.len = &len;
-  HIXL_LOGI("[CompletePool] res_info: dieId=%u, procType=%u, resType=%u, resId=%u, flag=%u", res_info.dieId,
-            res_info.procType, res_info.resType, res_info.resId, res_info.flag);
-  HIXL_LOGI("[CompletePool] rtGetDevResAddress start");
+
+  HIXL_LOGI("[CompletePool] rtDevResInfo: dieId=%u, procType=%d, resType=%d, resId=%u, flag=%u",
+
+          res_info.dieId,
+          static_cast<int>(res_info.procType),
+          static_cast<int>(res_info.resType),
+          res_info.resId,
+          res_info.flag);
+  HIXL_LOGI("rtGetDevResAddress start");
   HIXL_CHK_RT_RET(rtGetDevResAddress(&res_info, &addr_info));
-  if (addr_info.resAddress && addr_info.len) {
-    HIXL_LOGI("[HixlClient][UB] addr_info: resAddress=%p (指向地址:%p), len=%p (值:%zu)",
-              addr_info.resAddress, *addr_info.resAddress,
-              addr_info.len, *addr_info.len);
+  HIXL_LOGI("rtGetDevResAddress end");
+  HIXL_LOGI("[CompletePool] rtDevResInfo: dieId=%u, procType=%d, resType=%d, resId=%u, flag=%u",
+          res_info.dieId,
+          static_cast<int>(res_info.procType),
+          static_cast<int>(res_info.resType),
+          res_info.resId,
+          res_info.flag);
+
+  if (addr_info.resAddress != nullptr && addr_info.len != nullptr) {
+    HIXL_LOGI("[HixlClient] rtDevResAddrInfo: resAddress=%p[0]=0x%016lx, len=%p, *len=%u",
+              addr_info.resAddress,
+              *addr_info.resAddress,  // 打印指针指向的第一个64位值
+              addr_info.len,
+              *addr_info.len);
   } else {
-    HIXL_LOGI("[HixlClient][UB] addr_info: resAddress=%p, len=%p (包含空指针)",
-              addr_info.resAddress, addr_info.len);
+    HIXL_LOGI("[HixlClient] rtDevResAddrInfo: resAddress=%p, len=%p",
+              addr_info.resAddress,
+              addr_info.len);
   }
-  HIXL_LOGI("[CompletePool] rtGetDevResAddress end");
+
   HIXL_CHK_BOOL_RET_STATUS(addr_info.resAddress != nullptr,
                            FAILED,
                            "[CompletePool] rtGetDevResAddress returned null. notify_id=%u",

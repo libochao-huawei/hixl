@@ -30,26 +30,6 @@ Status HcclError2Status(HcclResult ret) {
   return FAILED;
 }
 
-std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char_t delim) {
-  std::vector<std::string, std::allocator<std::string>> elems;
-  if (str.empty()) {
-    (void)elems.emplace_back("");
-    return elems;
-  }
-
-  std::stringstream ss(str);
-  std::string item;
-  while (getline(ss, item, delim)) {
-    (void)elems.push_back(item);
-  }
-
-  const auto str_size = str.size();
-  if ((str_size > 0U) && (str[str_size - 1U] == delim)) {
-    (void)elems.emplace_back("");
-  }
-  return elems;
-}
-
 Status ParseIpAddress(const std::string &ip_str, CommAddr &addr) {
   struct in_addr ipv4_addr;
   (void)memset_s(&ipv4_addr, sizeof(ipv4_addr), 0, sizeof(ipv4_addr));
