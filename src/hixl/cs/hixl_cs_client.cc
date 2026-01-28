@@ -730,35 +730,35 @@ Status HixlCSClient::Connect(uint32_t timeout_ms) {
   return SUCCESS;
 }
 
-Status WaitChannelReadyInternal(Endpoint &endpoint, ChannelHandle channel_handle, uint32_t timeout_ms) {
-  auto start = std::chrono::steady_clock::now();
-  while (true) {
-    auto now = std::chrono::steady_clock::now();
-    uint32_t elapsed_ms =
-        static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count());
-    if (elapsed_ms > timeout_ms) {
-      HIXL_LOGE(TIMEOUT, "[HixlClient] Wait channel ready timeout. ch=%p, elapsed=%u ms (limit %u ms)", channel_handle,
-                elapsed_ms, timeout_ms);
-      return TIMEOUT;
-    }
-    int32_t channel_status_val = kDefaultChannelStatus;
-    Status st_status = endpoint.GetChannelStatus(channel_handle, &channel_status_val);
-    if (st_status == 20) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(kWaitChannelPollIntervalMs));
-      continue;
-    }
-    if (st_status != SUCCESS) {
-      HIXL_LOGE(st_status, "[HixlClient] GetChannelStatus failed. ch=%p", channel_handle);
-      return st_status;
-    }
-    if (channel_status_val == 0) {
-      HIXL_LOGI("[HixlClient] Channel is ready. handle=%p, Cost=%u ms", channel_handle, elapsed_ms);
-      return SUCCESS;
-    }
-
-  }
-  return SUCCESS;
-}
+// Status WaitChannelReadyInternal(Endpoint &endpoint, ChannelHandle channel_handle, uint32_t timeout_ms) {
+//   auto start = std::chrono::steady_clock::now();
+//   while (true) {
+//     auto now = std::chrono::steady_clock::now();
+//     uint32_t elapsed_ms =
+//         static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count());
+//     if (elapsed_ms > timeout_ms) {
+//       HIXL_LOGE(TIMEOUT, "[HixlClient] Wait channel ready timeout. ch=%p, elapsed=%u ms (limit %u ms)", channel_handle,
+//                 elapsed_ms, timeout_ms);
+//       return TIMEOUT;
+//     }
+//     int32_t channel_status_val = kDefaultChannelStatus;
+//     Status st_status = endpoint.GetChannelStatus(channel_handle, &channel_status_val);
+//     if (st_status == 20) {
+//       std::this_thread::sleep_for(std::chrono::milliseconds(kWaitChannelPollIntervalMs));
+//       continue;
+//     }
+//     if (st_status != SUCCESS) {
+//       HIXL_LOGE(st_status, "[HixlClient] GetChannelStatus failed. ch=%p", channel_handle);
+//       return st_status;
+//     }
+//     if (channel_status_val == 0) {
+//       HIXL_LOGI("[HixlClient] Channel is ready. handle=%p, Cost=%u ms", channel_handle, elapsed_ms);
+//       return SUCCESS;
+//     }
+//
+//   }
+//   return SUCCESS;
+// }
 
 Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms) {
   const EndpointDesc &src_ep = src_endpoint_->GetEndpoint();
@@ -775,8 +775,8 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
   ChannelHandle channel_handle = 0UL;
   ret = src_endpoint_->CreateChannel(dst_endpoint_, channel_handle);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] Endpoint CreateChannel failed. remote_ep_handle=%" PRIu64, dst_endpoint_handle_);
-  ret = WaitChannelReadyInternal(*src_endpoint_, channel_handle, timeout_ms);
-  HIXL_CHK_STATUS_RET(ret, "[HixlClient] WaitChannelReadyInternal failed. ch=%p, timeout=%u ms", channel_handle, timeout_ms);
+  // ret = WaitChannelReadyInternal(*src_endpoint_, channel_handle, timeout_ms);
+  // HIXL_CHK_STATUS_RET(ret, "[HixlClient] WaitChannelReadyInternal failed. ch=%p, timeout=%u ms", channel_handle, timeout_ms);
   client_channel_handle_ = channel_handle;
   HIXL_LOGI("[HixlClient] Channel Ready. client_channel_handle_=%p", client_channel_handle_);
   return SUCCESS;
