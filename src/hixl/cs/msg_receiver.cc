@@ -43,7 +43,7 @@ Status MsgReceiver::RecvHeader() {
   return SUCCESS;
 }
 
-bool MsgReceiver::CheckDisconnect(ssize_t recv_size) {
+bool MsgReceiver::CheckDisconnect(ssize_t recv_size) const {
   if (recv_size == 0) {
     HIXL_LOGI("Connection closed by peer, fd:%d.", fd_);
     return true;

@@ -391,21 +391,50 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
 
   ThreadPool thread_pool("hixl_client_connect", client_handles_.size());
   std::vector<std::future<Status>> connect_futures;
+  aclrtContext context = nullptr;
+  HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&context));
+  HIXL_LOGI("[XMX] aclrtGetCurrentContext, context: %p", context);
   for (const auto &pair : client_handles_) {
     auto type = pair.first;
     auto handle = pair.second;
-    auto future = thread_pool.commit([handle, timeout_ms, type]() -> Status {
+    auto future = thread_pool.commit([handle, timeout_ms, type, context]() -> Status {
+      HIXL_CHK_ACL_RET(aclrtSetCurrentContext(context));
+      HIXL_LOGI("[XMX] aclrtSetCurrentContext, context: %p", context);
       auto ret = HixlCSClientConnectSync(handle, timeout_ms);
-      if (ret != SUCCESS) {
-        HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, timeout:%u", CommTypeToString(type), timeout_ms);
+      // if (ret != SUCCESS) {
+      //   HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, timeout:%u", CommTypeToString(type), timeout_ms);
+      // }
+      // return ret;
+      try {
+        auto ret = HixlCSClientConnectSync(handle, timeout_ms);
+        if (ret != SUCCESS) {
+          HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, timeout:%u",
+                      CommTypeToString(type), timeout_ms);
+        }
+        return ret;
+      } catch (const std::exception& e) {
+        HIXL_LOGE(FAILED, "Exception in HixlCSClientConnectSync: %s", e.what());
+        return FAILED;
+      } catch (...) {
+        HIXL_LOGE(FAILED, "Unknown exception in HixlCSClientConnectSync");
+        return FAILED;
       }
-      return ret;
     });
     connect_futures.emplace_back(std::move(future));
   }
   for (auto &future : connect_futures) {
-    HIXL_CHK_STATUS_RET(future.get());
+    HIXL_CHK_STATUS_RET(future.get(), "HixlClient Connect failed, timeout:%u", timeout_ms);
   }
+
+  // for (const auto &pair : client_handles_) {
+  //   auto type = pair.first;
+  //   auto handle = pair.second;
+  //   auto ret = HixlCSClientConnectSync(handle, timeout_ms);
+  //   if (ret != SUCCESS) {
+  //     HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, timeout:%u", CommTypeToString(type), timeout_ms);
+  //     return ret;
+  //   }
+  // }
   HIXL_LOGI("HixlClient Connect success");
   HIXL_CHK_STATUS_RET(ProcessRemoteMem(timeout_ms), "HixlClient ProcessRemoteMem failed");
   std::lock_guard<std::mutex> status_lock(status_mutex_);

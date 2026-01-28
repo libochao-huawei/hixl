@@ -209,6 +209,7 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   HIXL_DISMISSABLE_GUARD(failed, ([fd, this]() {
     CreateChannelResp resp{};
     resp.result = FAILED;
+    HIXL_LOGI("[JZY] SendCreateChannelResp start");
     HIXL_CHK_STATUS(SendCreateChannelResp(fd, resp));
   }));
   HIXL_CHECK_NOTNULL(msg);
@@ -221,7 +222,9 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   CreateChannelResp resp{};
   resp.dst_ep_handle = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(handle));
   ChannelHandle channel_handle = 0UL;
+  HIXL_LOGI("[JZY] CreateChannel start");
   HIXL_CHK_STATUS_RET(ep->CreateChannel(req.src, channel_handle), "Failed to create channel");
+  HIXL_LOGI("[JZY] CreateChannel end");
   std::lock_guard<std::mutex> lock(chn_mutex_);
   EndpointChannelInfo info{};
   info.endpoint_handle = handle;
@@ -230,6 +233,7 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   HIXL_DISMISS_GUARD(failed);
   resp.result = SUCCESS;
   HIXL_CHK_STATUS_RET(SendCreateChannelResp(fd, resp), "Failed to send create channel resp");
+  HIXL_LOGI("[HIXLCSSERVER JZY]resp.result=%d", resp.result);
   return SUCCESS;
 }
 

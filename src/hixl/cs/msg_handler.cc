@@ -26,7 +26,15 @@ Status MsgHandler::Initialize() {
   thread_pool_ = MakeUnique<ThreadPool>("cs_server", kThreadPoolSize);
   HIXL_CHECK_NOTNULL(thread_pool_);
   running_ = true;
-  listener_ = std::thread([this]() { HandleMsg(); });
+
+  HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&ctx_));
+  HIXL_LOGI("[JZY] aclrtGetCurrentContext ctx=%p", ctx_);
+  listener_ = std::thread([this]() {
+      HIXL_LOGI("[JZY] aclrtGetCurrentContext ctx=%p", ctx_);
+     aclrtSetCurrentContext(ctx_);
+       HIXL_LOGI("[JZY] aclrtSetCurrentContext ctx=%p", ctx_);
+     HandleMsg();
+     });
   return SUCCESS;
 }
 
@@ -71,7 +79,12 @@ void MsgHandler::HandleMsg() {
     const auto it = processors_.find(req.second->msg_type);
     if (it != processors_.cend()) {
       auto proc = it->second;
-      (void)thread_pool_->commit([this, req, proc]() -> void { (void)HandleMsg(req.first, req.second, proc); });
+      (void)thread_pool_->commit([this, req, proc]() -> void {
+        HIXL_LOGI("[JZY] HandleMsg aclrtGetCurrentContext ctx=%p", ctx_);
+        aclrtSetCurrentContext(ctx_);
+        HIXL_LOGI("[JZY] HandleMsg aclrtSetCurrentContext ctx=%p", ctx_);
+         (void)HandleMsg(req.first, req.second, proc);
+         });
     } else {
       HIXL_EVENT("[HixlServer] msg type:%d, not registed", static_cast<int32_t>(req.second->msg_type));
     }

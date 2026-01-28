@@ -91,7 +91,7 @@ struct ImportCtx {
   HixlMemStore *store{nullptr};
   uint32_t num{0U};
   bool need_tag{false};
-  std::vector<HcommBuf> imported;
+  std::vector<HcommMem> imported;
   std::vector<void*> recorded_addrs;
   std::map<std::string, HcommMem> tag_mem_map;
   std::vector<HcommMem> mems;
@@ -191,7 +191,8 @@ class HixlCSClient {
   std::vector<std::vector<char>> remote_tag_storage_;
   std::vector<char*> remote_tag_ptrs_;
   std::vector<void*> recorded_remote_addrs_;
-  std::vector<HcommBuf> imported_remote_bufs_;
+  std::vector<HcommMem> imported_remote_bufs_;
+  std::vector<HixlMemDesc> desc_list_;
   bool is_device_ {false};
   bool is_ub_mode_{false};
   int32_t ub_device_id_ {-1};

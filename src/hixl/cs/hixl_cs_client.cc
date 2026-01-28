@@ -469,7 +469,7 @@ Status HixlCSClient::FillUbBatchArgs(bool is_get, const CommunicateMem &mem_para
 
 Status HixlCSClient::GetCurrentAclContext(aclrtContext *old_ctx) const {
   HIXL_CHECK_NOTNULL(old_ctx);
-  *old_ctx = nullptr;
+
 
   const aclError err = aclrtGetCurrentContext(old_ctx);
   if (err != ACL_SUCCESS) {
@@ -743,6 +743,10 @@ Status WaitChannelReadyInternal(Endpoint &endpoint, ChannelHandle channel_handle
     }
     int32_t channel_status_val = kDefaultChannelStatus;
     Status st_status = endpoint.GetChannelStatus(channel_handle, &channel_status_val);
+    if (st_status == 20) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(kWaitChannelPollIntervalMs));
+      continue;
+    }
     if (st_status != SUCCESS) {
       HIXL_LOGE(st_status, "[HixlClient] GetChannelStatus failed. ch=%p", channel_handle);
       return st_status;
@@ -751,8 +755,9 @@ Status WaitChannelReadyInternal(Endpoint &endpoint, ChannelHandle channel_handle
       HIXL_LOGI("[HixlClient] Channel is ready. handle=%p, Cost=%u ms", channel_handle, elapsed_ms);
       return SUCCESS;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(kWaitChannelPollIntervalMs));
+
   }
+  return SUCCESS;
 }
 
 Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms) {
@@ -850,19 +855,20 @@ void BuildTagPtrs(std::vector<std::vector<char>> &storage, std::vector<char*> &p
   }
 }
 
-void CloseImportedBufs(EndPointHandle ep_handle, std::vector<HcommBuf> &bufs) {
+void CloseImportedBufs(EndPointHandle ep_handle, std::vector<HixlMemDesc> &bufs) {
   if (ep_handle == nullptr) {
     bufs.clear();
     return;
   }
   for (const auto &b : bufs) {
-    HcommBuf tmp{};
-    tmp.addr = b.addr;
-    tmp.len = b.len;
-    const HcclResult ret = HcommMemUnimport(ep_handle, &tmp);
+    HcommMem tmp{};
+    tmp.type = b.mem.type;
+    tmp.addr = b.mem.addr;
+    tmp.size = b.mem.size;
+    const HcclResult ret = HcommMemUnimport(ep_handle, b.export_desc, b.export_len);
     if (ret != HCCL_SUCCESS) {
-      HIXL_LOGW("[HixlClient] HcommMemClose failed. addr=%p len=%" PRIu64 " ret=0x%X",
-                tmp.addr, tmp.len, static_cast<uint32_t>(ret));
+      HIXL_LOGW("[HixlClient] HcommMemUnimport failed. addr=%p size=%" PRIu64 " ret=0x%X",
+                tmp.addr, tmp.size, static_cast<uint32_t>(ret));
     }
   }
   bufs.clear();
@@ -883,7 +889,7 @@ void UnrecordAddrs(HixlMemStore &store, std::vector<void*> &addrs) {
 }
 
 Status ImportOneDesc(ImportCtx &ctx, uint32_t idx, HixlMemDesc &desc) {
-  HcommBuf buf{};
+  HcommMem  buf{};
   Status ret = ctx.ep->MemImport(desc.export_desc, desc.export_len, buf);
   if (ret != SUCCESS) {
     HIXL_LOGE(ret, "[HixlClient] MemImport failed, idx=%u, tag=%s", idx, desc.tag.c_str());
@@ -967,10 +973,11 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list,
   ctx.tag_storage.reserve(ctx.num);
   ret = ImportAllDescs(ctx, desc_list);
   if (ret != SUCCESS) {
-    HIXL_LOGW("[HixlClient] RollbackImport triggered. Cleaning up %zu imported bufs.", ctx.imported.size());
-    CloseImportedBufs(ctx.ep_handle, ctx.imported);
+    HIXL_LOGW("[HixlClient] RollbackImport triggered. Cleaning up %zu imported bufs.", desc_list.size());
+    CloseImportedBufs(ctx.ep_handle, desc_list);
     return ret;
   }
+  desc_list_ = desc_list;
   FillOutputParams(ctx, remote_mem_list, mem_tag_list, list_num);
   return SUCCESS;
 }
@@ -982,13 +989,13 @@ Status HixlCSClient::ClearRemoteMemInfo() {
   if (buf_cnt > 0U || addr_cnt > 0U) {
     HIXL_LOGI("[HixlClient] Cleaning up remote mem info. Bufs=%zu, Addrs=%zu", buf_cnt, addr_cnt);
   }
-  if (!imported_remote_bufs_.empty()) {
+  if (!desc_list_.empty()) {
     if (ep_handle != nullptr) {
-      CloseImportedBufs(ep_handle, imported_remote_bufs_);
+      CloseImportedBufs(ep_handle, desc_list_);
     } else {
       HIXL_LOGW("[HixlClient] ClearRemoteMemInfo: endpoint handle null, skip MemClose for %zu bufs",
-                imported_remote_bufs_.size());
-      imported_remote_bufs_.clear();
+                desc_list_.size());
+      desc_list_.clear();
     }
   }
   if (!recorded_remote_addrs_.empty()) {
