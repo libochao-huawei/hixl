@@ -67,6 +67,7 @@ target_link_libraries(llm_datadist PRIVATE
         error_manager
         metadef # for acend string
         runtime
+        hccl
         json
         -ldl
         -fPIC -Wextra -Wfloat-equal
