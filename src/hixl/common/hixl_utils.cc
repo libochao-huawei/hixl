@@ -88,7 +88,7 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
   return SUCCESS;
 }
 
-Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t devPhyId = 0) {
+Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t devPhyId) {
   static const std::map<std::string, EndpointLocType> placement_map = {{"host", ENDPOINT_LOC_TYPE_HOST},
                                                                        {"device", ENDPOINT_LOC_TYPE_DEVICE}};
 
