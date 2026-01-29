@@ -65,7 +65,7 @@ Status HixlEngine::DeregisterMem(MemHandle mem_handle) {
 Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
   ClientPtr client_ptr_ = nullptr;
   client_ptr_ = client_manager_.GetClient(remote_engine.GetString());
-  if (client != nullptr) {
+  if (client_ptr_ != nullptr) {
     HIXL_LOGW("remote engine:%s is already connected.", remote_engine.GetString());
   }
 

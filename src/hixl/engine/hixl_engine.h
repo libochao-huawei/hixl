@@ -140,8 +140,8 @@ class HixlEngine : public hixl::Engine {
 
   std::mutex mutex_;
 
-  std::atomic<bool> is_initialized_;
   std::string local_engine_;
+  std::atomic<bool> is_initialized_;
   ClientManager client_manager_;
   HixlServer server_;
   std::map<void *, MemInfo> mem_map_;
