@@ -21,12 +21,12 @@
 
 using json = nlohmann::json;
 
-void from_json(const json &j, EndPointLocation &l) {
+void from_json(const json &j, EndpointLocType &l) {
   std::string s = j.get<std::string>();
   if (s == "host") {
-    l = END_POINT_LOCATION_HOST;
+    l = ENDPOINT_LOC_TYPE_HOST;
   } else {
-    l = END_POINT_LOCATION_DEVICE;
+    l = ENDPOINT_LOC_TYPE_DEVICE;
   }
 }
 
@@ -51,12 +51,12 @@ void from_json(const json &j, EndpointDesc &info) {
   std::string addr;
   j.at("addr").get_to(addr);
   if (info.protocol == COMM_PROTOCOL_ROCE) {
-    if (inet_pton(AF_INET, addr.c_str(), &info.addr.addr) == 1) {
-      info.addr.type = COMM_ADDR_TYPE_IP_V4;
-    } else if (inet_pton(AF_INET6, addr.c_str(), &info.addr.addr6) == 1) {
-      info.addr.type = COMM_ADDR_TYPE_IP_V6;
+    if (inet_pton(AF_INET, addr.c_str(), &info.commAddr.addr) == 1) {
+      info.commAddr.type = COMM_ADDR_TYPE_IP_V4;
+    } else if (inet_pton(AF_INET6, addr.c_str(), &info.commAddr.addr6) == 1) {
+      info.commAddr.type = COMM_ADDR_TYPE_IP_V6;
     } else {
-      info.addr.type = COMM_ADDR_TYPE_RESERVED;
+      info.commAddr.type = COMM_ADDR_TYPE_RESERVED;
     }
   }
 }
@@ -142,13 +142,13 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
     const auto start = std::chrono::steady_clock::now();
     if (transfer_op == "write") {
       ret =
-          HixlCSClientBatchput(client_handle, trans_num, &remote_addrs[0], &local_addrs[0], &lens[0], &complete_handle);
+          HixlCSClientBatchPut(client_handle, trans_num, &remote_addrs[0], &local_addrs[0], &lens[0], &complete_handle);
     } else {
       ret =
-          HixlCSClientBatchget(client_handle, trans_num, &remote_addrs[0], &local_addrs[0], &lens[0], &complete_handle);
+          HixlCSClientBatchGet(client_handle, trans_num, &remote_addrs[0], &local_addrs[0], &lens[0], &complete_handle);
     }
     if (ret != HIXL_SUCCESS) {
-      (void)printf("[ERROR] HixlCSClientBatchput/HixlCSClientBatchget failed, ret = %u\n", ret);
+      (void)printf("[ERROR] HixlCSClientBatchPut/HixlCSClientBatchGet failed, ret = %u\n", ret);
       return -1;
     }
     int32_t status = kStatus;
