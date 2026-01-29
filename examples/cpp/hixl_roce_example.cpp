@@ -32,8 +32,8 @@ constexpr uint32_t kArgIndexRemoteEngine = 3;
 constexpr uint32_t kArgIndexTransferMode = 4;
 constexpr int32_t kSrcValue = 2;
 
-constexpr const char kServerJsonFilePath[] = "/home/r00848312/hixl-dev/examples/cpp/local_comm_res_server.json";
-constexpr const char kClientJsonFilePath[] = "/home/r00848312/hixl-dev/examples/cpp/local_comm_res_client.json";
+constexpr const char kServerJsonFilePath[] = "local_comm_res_server.json";
+constexpr const char kClientJsonFilePath[] = "local_comm_res_client.json";
 constexpr const char kMapKey[] = "adxl.LocalCommRes";
 
 #define CHECK_ACL(x)                                                                  \
@@ -302,7 +302,6 @@ int main(int32_t argc, char **argv) {
   std::string local_engine;
   std::string remote_engine;
   std::string transfer_mode;
-  std::string transfer_op_str;
   if (argc == kExpectedArgCnt) {
     device_id = argv[kArgIndexDeviceId];
     local_engine = argv[kArgIndexLocalEngine];
