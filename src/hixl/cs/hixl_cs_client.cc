@@ -49,7 +49,7 @@ inline uint64_t PtrToU64(const void *p) {
   return reinterpret_cast<uintptr_t>(p);
 }
 
-constexpr const char *kUbKernelJson = "scatter_hixl_kernel.json";
+constexpr const char *kUbKernelJson = "/home/hixl/Ascend/cann/opp/build-in/op_impl/aicpu/config/scatter_hixl_kernel.json";
 constexpr const char *kUbFuncGet = "HixlBatchGet";
 constexpr const char *kUbFuncPut = "HixlBatchPut";
 }  // namespace
