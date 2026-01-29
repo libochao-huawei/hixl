@@ -211,14 +211,18 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, const std
     return -1;
   }
   // 2. 注册内存地址
+  MemType mem_type = (transfer_mode == "h2d" || transfer_mode == "h2h") ? MEM_HOST : MEM_DEVICE;
   int32_t *src = nullptr;
-  CHECK_ACL(aclrtMallocHost(reinterpret_cast<void **>(&src), sizeof(int32_t)));
+  if (mem_type == MEM_HOST) {
+    CHECK_ACL(aclrtMallocHost(reinterpret_cast<void **>(&src), sizeof(int32_t)));
+  } else {
+    CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&src), sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
+  }
   bool connected = false;
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(src);
   desc.len = sizeof(int32_t);
   MemHandle handle = nullptr;
-  MemType mem_type = (transfer_mode == "h2d" || transfer_mode == "h2h") ? MEM_HOST : MEM_DEVICE;
   auto ret = hixl_engine.RegisterMem(desc, mem_type, handle);
   if (ret != SUCCESS) {
     printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
@@ -259,17 +263,19 @@ int32_t RunServer(const char *local_engine, const std::string &transfer_mode, bo
     return -1;
   }
   // 2. 注册内存地址
+  MemType mem_type = (transfer_mode == "h2h" || transfer_mode == "d2h") ? MEM_HOST : MEM_DEVICE;
   int32_t dst = 1;
   int32_t *buffer = nullptr;
-  CHECK_ACL(aclrtMalloc((void **)&buffer, sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
-  // init device buffer
-  CHECK_ACL(aclrtMemcpy(buffer, sizeof(int32_t), &dst, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
+  if (mem_type == MEM_DEVICE) {
+    CHECK_ACL(aclrtMalloc((void **)&buffer, sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
+  } else {
+    CHECK_ACL(aclrtMallocHost((void **)&buffer, sizeof(int32_t)));
+  }
 
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(buffer);
   desc.len = sizeof(int32_t);
   MemHandle handle = nullptr;
-  MemType mem_type = (transfer_mode == "h2h" || transfer_mode == "d2h") ? MEM_HOST : MEM_DEVICE;
   auto ret = hixl_engine.RegisterMem(desc, mem_type, handle);
   if (ret != SUCCESS) {
     printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
