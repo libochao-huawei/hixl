@@ -247,7 +247,6 @@ int32_t RunServer(const char *local_engine, const std::string &transfer_mode, bo
   }
   // 2. 注册内存地址
   MemType mem_type = (transfer_mode == "h2h" || transfer_mode == "d2h") ? MEM_HOST : MEM_DEVICE;
-  int32_t dst = 1;
   int32_t *buffer = nullptr;
   if (mem_type == MEM_DEVICE) {
     CHECK_ACL(aclrtMalloc((void **)&buffer, sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
