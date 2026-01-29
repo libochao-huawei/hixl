@@ -53,7 +53,7 @@ static hixl::Status ToNumber(const std::string &num_str, T &value) {
 
 Status HcclError2Status(HcclResult ret);
 
-Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc &endpoint);
+Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t devPhyId = 0);
 
 Status ParseIpAddress(const std::string &ip_str, CommAddr &addr);
 

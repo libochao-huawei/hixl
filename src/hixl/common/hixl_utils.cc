@@ -88,9 +88,9 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
   return SUCCESS;
 }
 
-Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc &endpoint) {
+Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t devPhyId = 0) {
   static const std::map<std::string, EndpointLocType> placement_map = {{"host", ENDPOINT_LOC_TYPE_HOST},
-                                                                        {"device", ENDPOINT_LOC_TYPE_DEVICE}};
+                                                                       {"device", ENDPOINT_LOC_TYPE_DEVICE}};
 
   static const std::map<std::string, CommProtocol> protocol_map = {{"hccs", COMM_PROTOCOL_HCCS},
                                                                    {"roce", COMM_PROTOCOL_ROCE},
@@ -123,11 +123,7 @@ Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc
     HIXL_CHK_STATUS_RET(ParseEidAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseEidAddress failed");
     // placement 为device则需要填写device结构体中的物理id
     if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
-      int32_t devLogicId = 0;
-      int32_t devPhyId = 0;
-      HIXL_CHK_ACL_RET(aclrtGetDevice(&devLogicId));
-      HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(devLogicId, &devPhyId));
-      endpoint.loc.device.devPhyId = static_cast<uint32_t>(devPhyId);
+      endpoint.loc.device.devPhyId = devPhyId;
     }
   }
   return SUCCESS;
@@ -154,31 +150,31 @@ Status SerializeEndPointConfigList(const std::vector<EndPointConfig> &list, std:
   return SUCCESS;
 }
 
- Status CheckIp(const std::string &ip) {
+Status CheckIp(const std::string &ip) {
   struct in_addr addr;
   struct sockaddr_in6 ipv6_addr;
-  HIXL_CHK_BOOL_RET_STATUS(inet_pton(AF_INET, ip.c_str(), &addr) == 1 ||
-                          inet_pton(AF_INET6, ip.c_str(), &ipv6_addr.sin6_addr) == 1, hixl::PARAM_INVALID,
-                         "%s is not a valid ip address", ip.c_str());
+  HIXL_CHK_BOOL_RET_STATUS(
+      inet_pton(AF_INET, ip.c_str(), &addr) == 1 || inet_pton(AF_INET6, ip.c_str(), &ipv6_addr.sin6_addr) == 1,
+      hixl::PARAM_INVALID, "%s is not a valid ip address", ip.c_str());
   return hixl::SUCCESS;
 }
 
 std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char_t delim) {
   std::vector<std::string, std::allocator<std::string>> elems;
   if (str.empty()) {
-    (void) elems.emplace_back("");
+    (void)elems.emplace_back("");
     return elems;
   }
 
   std::stringstream ss(str);
   std::string item;
   while (getline(ss, item, delim)) {
-    (void) elems.push_back(item);
+    (void)elems.push_back(item);
   }
 
   const auto str_size = str.size();
   if ((str_size > 0U) && (str[str_size - 1U] == delim)) {
-    (void) elems.emplace_back("");
+    (void)elems.emplace_back("");
   }
   return elems;
 }
@@ -199,11 +195,10 @@ Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, i
   HIXL_CHK_BOOL_RET_STATUS(listen_infos.size() >= 1U, PARAM_INVALID,
                            "listen info is invalid: %s, expect ${ip}:${port} or ${ip}", listen_info.c_str());
   listen_ip = listen_infos[0];
-  HIXL_CHK_STATUS_RET(CheckIp(listen_ip), "IP is invalid: %s, listen info = %s",
-                   listen_ip.c_str(), listen_info.c_str());
+  HIXL_CHK_STATUS_RET(CheckIp(listen_ip), "IP is invalid: %s, listen info = %s", listen_ip.c_str(),
+                      listen_info.c_str());
   if (listen_infos.size() > 1U) {
-    HIXL_CHK_STATUS_RET(ToNumber(listen_infos[1], listen_port), "Port:%s is invalid.",
-                     listen_infos[1].c_str());
+    HIXL_CHK_STATUS_RET(ToNumber(listen_infos[1], listen_port), "Port:%s is invalid.", listen_infos[1].c_str());
   }
   return SUCCESS;
 }
