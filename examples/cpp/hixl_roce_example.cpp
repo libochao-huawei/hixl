@@ -161,18 +161,9 @@ int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine) {
   return 0;
 }
 
-void ClientFinalize(Hixl &hixl_engine, bool connected, const char *remote_engine,
-                    const std::vector<MemHandle> handles, const std::vector<void *> host_buffers = {}) {
-  if (connected) {
-    auto ret = Disconnect(hixl_engine, remote_engine);
-    if (ret != 0) {
-      printf("[ERROR] Disconnect failed, ret = %d\n", ret);
-    } else {
-      printf("[INFO] Disconnect success\n");
-    }
-  }
-
-  for (auto handle : handles) {
+void Finalize(Hixl &hixl_engine, bool is_host, const std::vector<MemHandle> &handles,
+                    const std::vector<void *> &buffers = {}) {
+  for (const auto &handle : handles) {
     auto ret = hixl_engine.DeregisterMem(handle);
     if (ret != 0) {
       printf("[ERROR] DeregisterMem failed, ret = %u\n", ret);
@@ -180,27 +171,18 @@ void ClientFinalize(Hixl &hixl_engine, bool connected, const char *remote_engine
       printf("[INFO] DeregisterMem success\n");
     }
   }
-  for (auto buffer : host_buffers) {
-    aclrtFreeHost(buffer);
+  if (is_host) {
+    for (const auto &buffer : buffers) {
+      aclrtFreeHost(buffer);
+    }
+  } else {
+    for (const auto &buffer : buffers) {
+      aclrtFree(buffer);
+    }
   }
   hixl_engine.Finalize();
 }
 
-void ServerFinalize(Hixl &hixl_engine, const std::vector<MemHandle> handles,
-                    const std::vector<void *> dev_buffers = {}) {
-  for (auto handle : handles) {
-    auto ret = hixl_engine.DeregisterMem(handle);
-    if (ret != 0) {
-      printf("[ERROR] DeregisterMem failed, ret = %u\n", ret);
-    } else {
-      printf("[INFO] DeregisterMem success\n");
-    }
-  }
-  for (auto buffer : dev_buffers) {
-    aclrtFree(buffer);
-  }
-  hixl_engine.Finalize();
-}
 
 int32_t RunClient(const char *local_engine, const char *remote_engine, const std::string &transfer_mode, bool is_client) {
   printf("[INFO] client start\n");
@@ -212,6 +194,7 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, const std
   }
   // 2. 注册内存地址
   MemType mem_type = (transfer_mode == "h2d" || transfer_mode == "h2h") ? MEM_HOST : MEM_DEVICE;
+  bool is_host = mem_type == MEM_HOST;
   int32_t *src = nullptr;
   if (mem_type == MEM_HOST) {
     CHECK_ACL(aclrtMallocHost(reinterpret_cast<void **>(&src), sizeof(int32_t)));
@@ -226,7 +209,7 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, const std
   auto ret = hixl_engine.RegisterMem(desc, mem_type, handle);
   if (ret != SUCCESS) {
     printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
-    ClientFinalize(hixl_engine, connected, remote_engine, {handle}, {src});
+    Finalize(hixl_engine, is_host, {handle}, {src});
     return -1;
   }
   printf("[INFO] RegisterMem success\n");
@@ -236,19 +219,21 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, const std
 
   // 3. 与server建链
   if (Connect(hixl_engine, remote_engine) != 0) {
-    ClientFinalize(hixl_engine, connected, remote_engine, {handle}, {src});
+    Finalize(hixl_engine, is_host, {handle}, {src});
     return -1;
   }
   connected = true;
 
   // 4. 从server get内存，并向server put内存
   if (Transfer(hixl_engine, *src, remote_engine) != 0) {
-    ClientFinalize(hixl_engine, connected, remote_engine, {handle}, {src});
+    Disconnect(hixl_engine, remote_engine);
+    Finalize(hixl_engine, is_host, {handle}, {src});
     return -1;
   }
 
-  // 5. 释放Cache与llmDataDist
-  ClientFinalize(hixl_engine, connected, remote_engine, {handle}, {src});
+  // 5. 断链并销毁
+  Disconnect(hixl_engine, remote_engine);
+  Finalize(hixl_engine, is_host, {handle}, {src});
   printf("[INFO] Finalize success\n");
   printf("[INFO] Prompt Sample end\n");
   return 0;
@@ -279,7 +264,7 @@ int32_t RunServer(const char *local_engine, const std::string &transfer_mode, bo
   auto ret = hixl_engine.RegisterMem(desc, mem_type, handle);
   if (ret != SUCCESS) {
     printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
-    ServerFinalize(hixl_engine, {handle}, {buffer});
+    Finalize(hixl_engine, {handle}, {buffer});
     return -1;
   }
   // 3. RegisterMem成功后，将地址保存到本地文件中等待client读取
@@ -292,11 +277,9 @@ int32_t RunServer(const char *local_engine, const std::string &transfer_mode, bo
   // 4. 等待client transfer
   std::this_thread::sleep_for(std::chrono::seconds(kWaitTransTime));
 
-  CHECK_ACL(aclrtMemcpy(&dst, sizeof(int32_t), buffer, sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
-  printf("[INFO] After transfer, dst value:%d\n", dst);
-
   // 5. 释放Cache与llmDataDist
-  ServerFinalize(hixl_engine, {handle}, {buffer});
+  bool is_host = mem_type == MEM_HOST;
+  Finalize(hixl_engine, is_host, {handle}, {buffer});
   printf("[INFO] Finalize success\n");
   printf("[INFO] server Sample end\n");
   return 0;
