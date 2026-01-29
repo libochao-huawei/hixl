@@ -400,7 +400,7 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
     auto future = thread_pool.commit([handle, timeout_ms, type, context]() -> Status {
       HIXL_CHK_ACL_RET(aclrtSetCurrentContext(context));
       HIXL_LOGI("[XMX] aclrtSetCurrentContext, context: %p", context);
-      auto ret = HixlCSClientConnectSync(handle, timeout_ms);
+      //auto ret = HixlCSClientConnectSync(handle, timeout_ms);
       // if (ret != SUCCESS) {
       //   HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, timeout:%u", CommTypeToString(type), timeout_ms);
       // }
