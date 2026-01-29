@@ -24,7 +24,6 @@ namespace hixl {
 
 class Endpoint;
 
-
 class CompletePool {
  public:
   static constexpr uint32_t kMaxSlots = 128U;
@@ -35,8 +34,8 @@ class CompletePool {
     aclrtStream stream;
     ThreadHandle thread;
     rtNotify_t notify;
-    void *host_flag;     // pinned host
-    void *notify_addr;   // device addr (notify record address)
+    void *host_flag;    // pinned host
+    void *notify_addr;  // device addr (notify record address)
   };
 
   CompletePool();
@@ -45,11 +44,8 @@ class CompletePool {
   CompletePool(const CompletePool &) = delete;
   CompletePool &operator=(const CompletePool &) = delete;
 
-  Status AddRefAndInitIfNeeded(int32_t device_id,
-                               CommEngine engine,
-                               uint32_t thread_num,
-                               uint32_t notify_num_per_thread,
-                               Endpoint *endpoint);
+  Status AddRefAndInitIfNeeded(int32_t device_id, CommEngine engine, uint32_t thread_num,
+                               uint32_t notify_num_per_thread, Endpoint *endpoint);
 
   void ReleaseRefAndDeinitIfNeeded();
 
@@ -76,55 +72,38 @@ class CompletePool {
   };
 
  private:
-  bool IsInitedParamsSame_(int32_t device_id,
-                           CommEngine engine,
-                           uint32_t thread_num,
-                           uint32_t notify_num_per_thread) const;
+  bool IsInitedParamsSame(int32_t device_id, CommEngine engine, uint32_t thread_num,
+                          uint32_t notify_num_per_thread) const;
 
-  void SaveInitParams_(int32_t device_id,
-                       CommEngine engine,
-                       uint32_t thread_num,
-                       uint32_t notify_num_per_thread,
-                       Endpoint *endpoint);
+  void SaveInitParams(int32_t device_id, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread,
+                      Endpoint *endpoint);
 
-  void ResetInitParamsLocked_();
-  void InitFreeListLocked_();
+  void ResetInitParamsLocked();
+  void InitFreeListLocked();
 
-  Status GetCurrentAclContext_(aclrtContext *old_ctx) const;
-  void RestoreAclContext_(aclrtContext old_ctx) const;
+  Status GetCurrentAclContext(aclrtContext *old_ctx) const;
+  void RestoreAclContext(aclrtContext old_ctx) const;
 
-  Status InitOneSlotLocked_(Slot &slot,
-                            uint32_t slot_index,
-                            int32_t device_id,
-                            CommEngine engine,
-                            uint32_t thread_num,
-                            uint32_t notify_num_per_thread);
+  Status InitOneSlotLocked(Slot &slot, uint32_t slot_index, int32_t device_id, CommEngine engine, uint32_t thread_num,
+                           uint32_t notify_num_per_thread);
 
-  Status SwitchDeviceAndNeedRestore_(int32_t target_device_id,
-                                    int32_t *old_device_id,
-                                    bool *need_restore) const;
+  Status SwitchDeviceAndNeedRestore(int32_t target_device_id, int32_t *old_device_id, bool *need_restore) const;
 
-  Status EnsureNotifyRecordLocked_(Slot &slot, uint32_t slot_index, int32_t device_id);
+  Status EnsureNotifyRecordLocked(Slot &slot, uint32_t slot_index, int32_t device_id);
 
-  void ResetNotifyResourcesLocked_(Slot &slot);
-  Status CreateNotifyLocked_(Slot &slot, int32_t device_id, uint32_t *notify_id);
-  Status GetNotifyAddrLocked_(uint32_t notify_id, void **notify_addr) const;
-  Status BuildNotifyTagLocked_(uint32_t slot_index, std::array<char, 64> *tag) const;
-  Status RegisterNotifyMemLocked_(Slot &slot, const char *tag, void *notify_addr);
+  void ResetNotifyResourcesLocked(Slot &slot);
+  Status CreateNotifyLocked(Slot &slot, int32_t device_id, uint32_t *notify_id);
+  Status GetNotifyAddrLocked(uint32_t notify_id, void **notify_addr) const;
+  Status BuildNotifyTagLocked(uint32_t slot_index, std::array<char, 64> *tag) const;
+  Status RegisterNotifyMemLocked(Slot &slot, const char *tag, void *notify_addr);
 
-  Status InitAllSlotsLocked(int32_t device_id,
-                            CommEngine engine,
-                            uint32_t thread_num,
-                            uint32_t notify_num_per_thread);
+  Status InitAllSlotsLocked(int32_t device_id, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread);
 
   void DeinitAllSlotsLocked();
 
   Status EnsureContextLocked(Slot &slot, int32_t device_id);
   Status EnsureStreamLocked(Slot &slot);
-  Status EnsureThreadLocked(Slot &slot,
-                            CommEngine engine,
-                            uint32_t thread_num,
-                            uint32_t notify_num_per_thread);
+  Status EnsureThreadLocked(Slot &slot, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread);
 
   Status EnsurePinnedHostFlagLocked(Slot &slot);
   void DestroySlotLocked(Slot &slot);
