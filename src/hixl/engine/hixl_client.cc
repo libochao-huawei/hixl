@@ -296,14 +296,17 @@ CommType HixlClient::ParseCommType(const std::string &local_placement, const std
 // 创建cs_client
 Status HixlClient::CreateCsClients(const EndPointConfig &local_endpoint_config,
                                    const EndPointConfig &remote_endpoint_config, CommType type) {
+  int32_t devLogicId = 0;
+  int32_t devPhyId = 0;
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&devLogicId));
+  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(devLogicId, &devPhyId));
   EndpointDesc local_endpoint{};
   EndpointDesc remote_endpoint{};
-  HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(local_endpoint_config, local_endpoint),
+  HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(local_endpoint_config, local_endpoint, static_cast<uint32_t>(devPhyId)),
                       "HixlClient convert EndPointConfig to EndPointInfo failed");
   HIXL_LOGI("[XMX] local_endpoint devPhyId: %u", local_endpoint.loc.device.devPhyId);
-  HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(remote_endpoint_config, remote_endpoint),
+  HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(remote_endpoint_config, remote_endpoint, 1),
                       "HixlClient convert EndPointConfig to EndPointInfo failed");
-  remote_endpoint.loc.device.devPhyId = 1;
   HIXL_LOGI("[XMX] remote_endpoint devPhyId: %u", remote_endpoint.loc.device.devPhyId);
   HixlClientHandle handle = nullptr;
   HIXL_CHK_STATUS_RET(HixlCSClientCreate(server_ip_.c_str(), server_port_, &local_endpoint, &remote_endpoint, &handle),

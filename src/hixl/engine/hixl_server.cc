@@ -23,9 +23,13 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
                               const std::vector<EndPointConfig> &data_endpoint_config_list) {
   data_endpoint_config_list_ = data_endpoint_config_list;
   std::vector<EndpointDesc> data_end_point_list;
+  int32_t devLogicId = 0;
+  int32_t devPhyId = 0;
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&devLogicId));
+  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(devLogicId, &devPhyId));
   for (const auto &it : data_endpoint_config_list) {
     EndpointDesc end_point_info{};
-    HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(it, end_point_info));
+    HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(it, end_point_info, static_cast<uint32_t>(devPhyId)));
     HIXL_LOGI("[ZC] end_point_info devPhyId: %u", end_point_info.loc.device.devPhyId);
     data_end_point_list.emplace_back(end_point_info);
   }
