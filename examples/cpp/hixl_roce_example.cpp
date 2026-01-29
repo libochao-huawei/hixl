@@ -32,8 +32,8 @@ constexpr uint32_t kArgIndexRemoteEngine = 3;
 constexpr uint32_t kArgIndexTransferMode = 4;
 constexpr int32_t kSrcValue = 2;
 
-constexpr const char kServerJsonFilePath[] = "local_comm_res_server.json";
-constexpr const char kClientJsonFilePath[] = "local_comm_res_client.json";
+constexpr const char kServerJsonFilePath[] = "../../../examples/cpp/local_comm_res_server.json";
+constexpr const char kClientJsonFilePath[] = "../../../examples/cpp/local_comm_res_client.json";
 constexpr const char kMapKey[] = "adxl.LocalCommRes";
 
 #define CHECK_ACL(x)                                                                  \
