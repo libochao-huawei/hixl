@@ -300,8 +300,11 @@ Status HixlClient::CreateCsClients(const EndPointConfig &local_endpoint_config,
   EndpointDesc remote_endpoint{};
   HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(local_endpoint_config, local_endpoint),
                       "HixlClient convert EndPointConfig to EndPointInfo failed");
+  HIXL_LOGI("[XMX] local_endpoint devPhyId: %u", local_endpoint.loc.device.devPhyId);
   HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(remote_endpoint_config, remote_endpoint),
                       "HixlClient convert EndPointConfig to EndPointInfo failed");
+  remote_endpoint.loc.device.devPhyId = 1;
+  HIXL_LOGI("[XMX] remote_endpoint devPhyId: %u", remote_endpoint.loc.device.devPhyId);
   HixlClientHandle handle = nullptr;
   HIXL_CHK_STATUS_RET(HixlCSClientCreate(server_ip_.c_str(), server_port_, &local_endpoint, &remote_endpoint, &handle),
                       "HixlClient create cs client failed for type %s", CommTypeToString(type));
@@ -400,19 +403,18 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
     auto future = thread_pool.commit([handle, timeout_ms, type, context]() -> Status {
       HIXL_CHK_ACL_RET(aclrtSetCurrentContext(context));
       HIXL_LOGI("[XMX] aclrtSetCurrentContext, context: %p", context);
-      //auto ret = HixlCSClientConnectSync(handle, timeout_ms);
-      // if (ret != SUCCESS) {
-      //   HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, timeout:%u", CommTypeToString(type), timeout_ms);
-      // }
-      // return ret;
+      // auto ret = HixlCSClientConnectSync(handle, timeout_ms);
+      //  if (ret != SUCCESS) {
+      //    HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, timeout:%u", CommTypeToString(type), timeout_ms);
+      //  }
+      //  return ret;
       try {
         auto ret = HixlCSClientConnectSync(handle, timeout_ms);
         if (ret != SUCCESS) {
-          HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, timeout:%u",
-                      CommTypeToString(type), timeout_ms);
+          HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, timeout:%u", CommTypeToString(type), timeout_ms);
         }
         return ret;
-      } catch (const std::exception& e) {
+      } catch (const std::exception &e) {
         HIXL_LOGE(FAILED, "Exception in HixlCSClientConnectSync: %s", e.what());
         return FAILED;
       } catch (...) {

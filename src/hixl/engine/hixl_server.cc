@@ -26,6 +26,7 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
   for (const auto &it : data_endpoint_config_list) {
     EndpointDesc end_point_info{};
     HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(it, end_point_info));
+    HIXL_LOGI("[ZC] end_point_info devPhyId: %u", end_point_info.loc.device.devPhyId);
     data_end_point_list.emplace_back(end_point_info);
   }
   const EndpointDesc *endpoints = data_end_point_list.data();

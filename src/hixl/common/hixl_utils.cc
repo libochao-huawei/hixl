@@ -121,6 +121,14 @@ Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc
   // 处理UB协议的comm_id
   if (endpoint_config.protocol == "ub_ctp" || endpoint_config.protocol == "ub_tp") {
     HIXL_CHK_STATUS_RET(ParseEidAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseEidAddress failed");
+    // placement 为device则需要填写device结构体中的物理id
+    if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
+      int32_t devLogicId = 0;
+      int32_t devPhyId = 0;
+      HIXL_CHK_ACL_RET(aclrtGetDevice(&devLogicId));
+      HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(devLogicId, &devPhyId));
+      endpoint.loc.device.devPhyId = static_cast<uint32_t>(devPhyId);
+    }
   }
   return SUCCESS;
 }
