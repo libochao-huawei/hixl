@@ -36,7 +36,6 @@ ClientPtr ClientManager::GetClient(const std::string &remote_engine) {
   if (it != clients_.cend()) {
     return it->second;
   }
-  HIXL_LOGE(FAILED, "Failed to get ClientPtr through remote_engine, remote_engine:%s", remote_engine.c_str());
   return nullptr;
 }
 

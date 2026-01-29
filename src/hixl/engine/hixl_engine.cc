@@ -36,6 +36,7 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
   HIXL_CHK_STATUS_RET(ParseListenInfo(local_engine_, ip, port), "Failed to parse local_engine_, local_engine_:%s",
                       local_engine_.c_str());
   HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_), "Failed to initialize HixlServer");
+  is_initialized_ = true;
   return SUCCESS;
 }
 
@@ -62,9 +63,12 @@ Status HixlEngine::DeregisterMem(MemHandle mem_handle) {
 }
 
 Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
-  HIXL_CHK_BOOL_RET_STATUS(client_manager_.GetClient(remote_engine.GetString()) == nullptr, ALREADY_CONNECTED,
-                           "remote engine:%s is already connected.", remote_engine.GetString());
   ClientPtr client_ptr_ = nullptr;
+  client_ptr_ = client_manager_.GetClient(remote_engine.GetString());
+  if (client != nullptr) {
+    HIXL_LOGW("remote engine:%s is already connected.", remote_engine.GetString());
+  }
+
   HIXL_CHK_STATUS_RET(client_manager_.CreateClient(endpoint_list_, remote_engine.GetString(), client_ptr_),
                       "Failed to create HixlClient, remote engine: %s", remote_engine.GetString());
   HIXL_CHECK_NOTNULL(client_ptr_, "Failed to get client through remote engine, remote_engine:%s",
@@ -125,7 +129,7 @@ Status HixlEngine::GetTransferStatus(const TransferReq &req, TransferStatus &sta
   auto remote_engine = it->second;
   auto client = client_manager_.GetClient(remote_engine.GetString());
   HIXL_CHECK_NOTNULL(client, "Failed to get client through remote engine, remote_engine:%s", remote_engine.GetString());
-  HIXL_CHK_STATUS_RET(client->GetTransferStatus(req, status), "Failed to get status through client, req:%p, status:%d");
+  HIXL_CHK_STATUS_RET(client->GetTransferStatus(req, status), "Failed to get status through client, req:%p, status:%d", req, status);
   if (status != TransferStatus::WAITING) {
     req2client_.erase(it);
   }
