@@ -201,7 +201,6 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, const std
   } else {
     CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&src), sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
   }
-  bool connected = false;
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(src);
   desc.len = sizeof(int32_t);
@@ -222,7 +221,6 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, const std
     Finalize(hixl_engine, is_host, {handle}, {src});
     return -1;
   }
-  connected = true;
 
   // 4. 从server get内存，并向server put内存
   if (Transfer(hixl_engine, *src, remote_engine) != 0) {
