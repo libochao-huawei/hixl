@@ -63,7 +63,8 @@ if(DEFINED ENV{TOOLCHAIN_DIR})
     ExternalProject_Add(device
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake/device
         BINARY_DIR ${CMAKE_BINARY_DIR}/device_build
-        CMAKE_ARGS  
+        CMAKE_ARGS
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
             -DTOOLCHAIN_DIR=${TOOLCHAIN_DIR}
             -DCMAKE_INSTALL_PREFIX=${CHILD_INSTALL_DIR}
             -DCMAKE_TOOLCHAIN_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/aarch64-hcc-toolchain.cmake
