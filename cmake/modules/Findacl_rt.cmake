@@ -49,6 +49,11 @@ find_path(_INCLUDE_DIR
     NO_CMAKE_SYSTEM_PATH
     NO_CMAKE_FIND_ROOT_PATH)
 
+find_path(_PKG_INCLUDE_DIR
+    NAMES "../pkg_inc/runtime/rt_external_device.h"
+    NO_CMAKE_SYSTEM_PATH
+    NO_CMAKE_FIND_ROOT_PATH)
+
 find_library(acl_rt_SHARED_LIBRARY
     NAMES libacl_rt.so
     PATH_SUFFIXES lib64
@@ -61,11 +66,13 @@ find_package_handle_standard_args(acl_rt
         acl_rt_FOUND
     REQUIRED_VARS
         _INCLUDE_DIR
+        _PKG_INCLUDE_DIR
         acl_rt_SHARED_LIBRARY
 )
 
 if(acl_rt_FOUND)
     set(acl_rt_INCLUDE_DIR "${_INCLUDE_DIR}")
+    set(acl_rt_PKG_INCLUDE_DIR "${_PKG_INCLUDE_DIR}")
     include(CMakePrintHelpers)
     message(STATUS "Variables in acl_rt module:")
     cmake_print_variables(acl_rt_INCLUDE_DIR)
@@ -79,7 +86,7 @@ if(acl_rt_FOUND)
 
     add_library(acl_rt_headers INTERFACE IMPORTED)
     set_target_properties(acl_rt_headers PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${acl_rt_INCLUDE_DIR};${acl_rt_INCLUDE_DIR}/acl"
+        INTERFACE_INCLUDE_DIRECTORIES "${acl_rt_INCLUDE_DIR};${acl_rt_INCLUDE_DIR}/acl;${acl_rt_PKG_INCLUDE_DIR}/../pkg_inc/runtime"
     )
 
     include(CMakePrintHelpers)
