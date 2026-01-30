@@ -119,12 +119,12 @@ Status CompletePool::SwitchDeviceAndNeedRestore(int32_t target_device_id, int32_
   *old_device_id = -1;
   *need_restore = false;
 
-  HIXL_CHK_RT_RET(aclrtGetDevice(old_device_id));
+  HIXL_CHK_ACL_RET(aclrtGetDevice(old_device_id));
   if (*old_device_id == target_device_id) {
     return SUCCESS;
   }
 
-  HIXL_CHK_RT_RET(aclrtSetDevice(target_device_id));
+  HIXL_CHK_ACL_RET(aclrtSetDevice(target_device_id));
   *need_restore = true;
   return SUCCESS;
 }
@@ -274,7 +274,7 @@ Status CompletePool::InitOneSlotLocked(Slot &slot, uint32_t slot_index, int32_t 
 
   HIXL_DISMISSABLE_GUARD(dev_restore, [&]() {
     if (need_restore) {
-      HIXL_CHK_RT(aclrtSetDevice(old_device_id));
+      HIXL_CHK_ACL(aclrtSetDevice(old_device_id));
     }
   });
 
@@ -320,7 +320,7 @@ Status CompletePool::EnsureNotifyRecordLocked(Slot &slot, uint32_t slot_index, i
 
 void CompletePool::ResetNotifyResourcesLocked(Slot &slot) {
   if (slot.notify != nullptr) {
-    HIXL_CHK_RT(rtNotifyDestroy(slot.notify));
+    HIXL_CHK_ACL(rtNotifyDestroy(slot.notify));
     slot.notify = nullptr;
   }
 
@@ -337,8 +337,8 @@ Status CompletePool::CreateNotifyLocked(Slot &slot, int32_t device_id, uint32_t 
   HIXL_CHECK_NOTNULL(notify_id);
   *notify_id = 0U;
 
-  HIXL_CHK_RT_RET(rtNotifyCreateWithFlag(device_id, &slot.notify, kNotifyCreateFlag));
-  HIXL_CHK_RT_RET(rtGetNotifyID(slot.notify, notify_id));
+  HIXL_CHK_ACL_RET(rtNotifyCreateWithFlag(device_id, &slot.notify, kNotifyCreateFlag));
+  HIXL_CHK_ACL_RET(rtGetNotifyID(slot.notify, notify_id));
   HIXL_LOGI("[JZY] notify_id=%u", notify_id);
   return SUCCESS;
 }
@@ -365,7 +365,7 @@ Status CompletePool::GetNotifyAddrLocked(uint32_t notify_id, void **notify_addr)
             res_info.dieId, static_cast<int>(res_info.procType), static_cast<int>(res_info.resType), res_info.resId,
             res_info.flag);
   HIXL_LOGI("rtGetDevResAddress start");
-  HIXL_CHK_RT_RET(rtGetDevResAddress(&res_info, &addr_info));
+  HIXL_CHK_ACL_RET(rtGetDevResAddress(&res_info, &addr_info));
   HIXL_LOGI("rtGetDevResAddress end");
   HIXL_LOGI("[CompletePool] rtDevResInfo: dieId=%u, procType=%d, resType=%d, resId=%u, flag=%u", res_info.dieId,
             static_cast<int>(res_info.procType), static_cast<int>(res_info.resType), res_info.resId, res_info.flag);
@@ -428,7 +428,7 @@ void CompletePool::DeinitAllSlotsLocked() {
   }
 
   if (need_restore) {
-    HIXL_CHK_RT(aclrtSetDevice(old_device_id));
+    HIXL_CHK_ACL(aclrtSetDevice(old_device_id));
   }
 
   free_list_.clear();
@@ -487,7 +487,7 @@ Status CompletePool::EnsurePinnedHostFlagLocked(Slot &slot) {
   }
 
   void *p = nullptr;
-  HIXL_CHK_RT_RET(rtMallocHost(&p, sizeof(uint64_t), HCCL));
+  HIXL_CHK_ACL_RET(rtMallocHost(&p, sizeof(uint64_t), HCCL));
   HIXL_CHK_BOOL_RET_STATUS(p != nullptr, FAILED, "[CompletePool] rtMallocHost returned null");
 
   slot.host_flag = p;
@@ -505,7 +505,7 @@ void CompletePool::DestroySlotLocked(Slot &slot) {
   }
 
   if (slot.notify != nullptr) {
-    HIXL_CHK_RT(rtNotifyDestroy(slot.notify));
+    HIXL_CHK_ACL(rtNotifyDestroy(slot.notify));
     slot.notify = nullptr;
   }
 
@@ -525,7 +525,7 @@ void CompletePool::DestroySlotLocked(Slot &slot) {
   }
 
   if (slot.host_flag != nullptr) {
-    HIXL_CHK_RT(rtFreeHost(slot.host_flag));
+    HIXL_CHK_ACL(rtFreeHost(slot.host_flag));
     slot.host_flag = nullptr;
   }
 
