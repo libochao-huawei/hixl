@@ -146,10 +146,10 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
     }
     if (ub_device_id_ < 0) {
       int32_t curDevId = -1;
-      const rtError_t rret = rtGetDevice(&curDevId);
+      const rtError_t rret = aclrtGetDevice(&curDevId);
       if (rret != RT_ERROR_NONE) {
         HIXL_LOGE(FAILED,
-                  "[HixlClient] rtGetDevice failed in Create. ret=%d",
+                  "[HixlClient] aclrtGetDevice failed in Create. ret=%d",
                   static_cast<int32_t>(rret));
         return FAILED;
       }

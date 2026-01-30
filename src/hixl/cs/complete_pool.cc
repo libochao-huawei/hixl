@@ -119,12 +119,12 @@ Status CompletePool::SwitchDeviceAndNeedRestore(int32_t target_device_id, int32_
   *old_device_id = -1;
   *need_restore = false;
 
-  HIXL_CHK_RT_RET(rtGetDevice(old_device_id));
+  HIXL_CHK_RT_RET(aclrtGetDevice(old_device_id));
   if (*old_device_id == target_device_id) {
     return SUCCESS;
   }
 
-  HIXL_CHK_RT_RET(rtSetDevice(target_device_id));
+  HIXL_CHK_RT_RET(aclrtSetDevice(target_device_id));
   *need_restore = true;
   return SUCCESS;
 }
@@ -274,7 +274,7 @@ Status CompletePool::InitOneSlotLocked(Slot &slot, uint32_t slot_index, int32_t 
 
   HIXL_DISMISSABLE_GUARD(dev_restore, [&]() {
     if (need_restore) {
-      HIXL_CHK_RT(rtSetDevice(old_device_id));
+      HIXL_CHK_RT(aclrtSetDevice(old_device_id));
     }
   });
 
@@ -428,7 +428,7 @@ void CompletePool::DeinitAllSlotsLocked() {
   }
 
   if (need_restore) {
-    HIXL_CHK_RT(rtSetDevice(old_device_id));
+    HIXL_CHK_RT(aclrtSetDevice(old_device_id));
   }
 
   free_list_.clear();
