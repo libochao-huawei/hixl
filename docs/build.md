@@ -217,7 +217,7 @@ your_3rd_party_path/
 bash build.sh --cann_3rd_lib_path={your_3rd_party_path}
 ```
 
-更多执行选项可参考[构建参数](#源码构建)中的说明，或通过命令`bash build.sh -h`进行查看。
+更多执行选项可参考[构建参数](#源码编译)中的说明，或通过命令`bash build.sh -h`进行查看。
 
 ## 本地验证(tests)
 利用tests路径下的测试用例进行本地验证:
