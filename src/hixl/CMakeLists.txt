@@ -42,6 +42,7 @@ target_link_libraries(cann_hixl PRIVATE
         $<BUILD_INTERFACE:slog_headers>
         $<BUILD_INTERFACE:mmpa_headers>
         $<BUILD_INTERFACE:hccl_headers>
+        $<BUILD_INTERFACE:acl_rt_headers>
         $<BUILD_INTERFACE:runtime_headers>
         $<BUILD_INTERFACE:msprof_headers>
         PUBLIC c_sec
@@ -49,6 +50,7 @@ target_link_libraries(cann_hixl PRIVATE
         adxl_static
         alog
         error_manager
+        acl_rt
         runtime
         hccl
         json
