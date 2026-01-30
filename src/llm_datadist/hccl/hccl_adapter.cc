@@ -18,7 +18,7 @@
 
 namespace llm {
 namespace {
-constexpr const char *kHcclSoName = "libhccl.so";
+constexpr const char *kHcclSoName = "libhcomm.so";
 constexpr const char *kHcclExchangeMemDescName = "HcclExchangeMemDesc";
 constexpr const char *kHcclCommInitClusterInfoMemName = "HcclCommInitClusterInfoMemConfig";
 constexpr const char *kHcclCommDestroyName = "HcclCommDestroy";
@@ -182,7 +182,7 @@ HcclResult HcclAdapter::HcclCommDestroy(HcclComm comm) {
 }
 
 HcclResult HcclAdapter::HcclBatchPut(HcclComm comm, uint32_t remote_rank, HcclOneSideOpDesc *desc, uint32_t desc_num,
-                                     rtStream_t stream) {
+                                     aclrtStream stream) {
   const auto start = std::chrono::steady_clock::now();
   auto ret = hccl_batch_put_func_(comm, remote_rank, desc, desc_num, stream);
   const auto end = std::chrono::steady_clock::now();
@@ -195,7 +195,7 @@ HcclResult HcclAdapter::HcclBatchGet(HcclComm comm,
                                      uint32_t remote_rank,
                                      HcclOneSideOpDesc *desc,
                                      uint32_t desc_num,
-                                     rtStream_t stream) const {
+                                     aclrtStream stream) const {
   auto ret = hccl_batch_get_func_(comm, remote_rank, desc, desc_num, stream);
   return ret;
 }

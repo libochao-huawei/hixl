@@ -63,12 +63,12 @@ class LinkMsgHandler {
         comm_mem_manager_(comm_mem_manager),
         cache_manager_(cache_manager),
         comm_config_{},
-        rt_context_(nullptr) {};
+        aclrt_context_(nullptr) {};
   ~LinkMsgHandler() = default;
   ge::Status Initialize(const std::map<ge::AscendString, ge::AscendString> &options);
   void Finalize();
 
-  ge::Status StartDaemon(uint32_t listen_port);
+  ge::Status StartDaemon(const std::string &ip, uint32_t listen_port);
   ge::Status StopDaemon();
   ge::Status LinkCluster(const ClusterInfo &cluster, int32_t timeout);
   ge::Status UnlinkCluster(const ClusterInfo &cluster, int32_t timeout, bool force_flag) const;
@@ -103,7 +103,7 @@ class LinkMsgHandler {
   MsgHandlerPlugin handler_plugin_;
   std::string local_comm_name_;
   HcclCommConfig comm_config_;
-  rtContext_t rt_context_;
+  aclrtContext aclrt_context_;
   std::mutex mutex_;
   std::string local_ip_;
   std::string local_comm_res_;

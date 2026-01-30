@@ -9,9 +9,19 @@
  */
 
 #include "adxl_utils.h"
+#include <fstream>
+#include "acl/acl.h"
 #include "llm_datadist/llm_datadist.h"
+#include "common/llm_log.h"  // Correct include path
 
 namespace adxl {
+std::string JsonValueToString(const nlohmann::json& j) {
+  if (j.is_string()) {
+      return j.get<std::string>();
+  }
+  return j.dump();
+}
+
 Status HcclError2AdxlStatus(HcclResult ret) {
   static const std::map<HcclResult, Status> hccl2adxl = {
       {HCCL_SUCCESS, SUCCESS},
@@ -26,9 +36,9 @@ Status HcclError2AdxlStatus(HcclResult ret) {
   return FAILED;
 }
 
-Status AclError2AdxlStatus(rtError_t ret) {
-  static const std::map<rtError_t, Status> acl2adxl = {
-      {RT_ERROR_NONE, SUCCESS},
+Status AclError2AdxlStatus(aclError ret) {
+  static const std::map<aclError, Status> acl2adxl = {
+      {ACL_ERROR_NONE, SUCCESS},
       {ACL_ERROR_RT_STREAM_SYNC_TIMEOUT, TIMEOUT},
   };
   const auto &it = acl2adxl.find(ret);
@@ -52,4 +62,26 @@ Status LLMError2AdxlStatus(ge::Status ret) {
   }
   return FAILED;
 }
+
+Status LoadJsonConfig(const std::string& json_string, std::map<AscendString, AscendString>& options) {
+  try {
+    nlohmann::json j = nlohmann::json::parse(json_string);
+    if (j.is_object()) {
+      for (auto it = j.begin(); it != j.end(); ++it) {
+        std::string key = it.key();
+        std::string value = JsonValueToString(it.value());
+        options[AscendString(key.c_str())] = AscendString(value.c_str());
+      }
+    }
+    return SUCCESS;
+  } catch (const std::exception& e) {
+    LLMLOGE(PARAM_INVALID, "Failed to parse JSON config string: %s", e.what());
+    return PARAM_INVALID;
+  }
+}
+
+bool NeedErrorLog(Status status) {
+  std::set<Status> warnning_status = {RESOURCE_EXHAUSTED};
+  return !warnning_status.count(status);
+} 
 }  // namespace adxl

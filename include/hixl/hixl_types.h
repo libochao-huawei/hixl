@@ -26,10 +26,12 @@ using AscendString = ge::AscendString;
 using TransferReq = void *;
 
 // options
+constexpr const char OPTION_ENABLE_USE_FABRIC_MEM[] = "EnableUseFabricMem";
 constexpr const char OPTION_RDMA_TRAFFIC_CLASS[] = "RdmaTrafficClass";
 constexpr const char OPTION_RDMA_SERVICE_LEVEL[] = "RdmaServiceLevel";
 constexpr const char OPTION_BUFFER_POOL[] = "BufferPool";
-
+constexpr const char OPTION_GLOBAL_RESOURCE_CONFIG[] = "GlobalResourceConfig";
+ 
 // status codes
 constexpr Status SUCCESS = 0U;
 constexpr Status PARAM_INVALID = 103900U;
@@ -39,6 +41,7 @@ constexpr Status ALREADY_CONNECTED = 103903U;
 constexpr Status NOTIFY_FAILED = 103904U;
 constexpr Status UNSUPPORTED = 103905U;
 constexpr Status FAILED = 503900U;
+constexpr Status RESOURCE_EXHAUSTED = 203900U;
 
 using MemHandle = void *;
 
@@ -72,6 +75,11 @@ enum class TransferStatus {
 
 struct TransferArgs{
   uint8_t reserved[128] = {};
+};
+
+struct NotifyDesc {
+  AscendString name;
+  AscendString notify_msg;
 };
 }  // namespace hixl
 

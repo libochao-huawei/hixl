@@ -9,6 +9,8 @@
 # ----------------------------------------------------------------------------
 
 set(LLM_DATADIST_TEST_FILES
+        channel_pool_unit_test.cc
+        channel_pool_system_test.cc
         test_data_cache_engine.cc
         test_llm_datadist_v2_api.cc
         test_hixl_api.cc
@@ -21,6 +23,8 @@ set(LLM_DATADIST_TEST_FILES
         hixl_api_unittest.cc
         adxl_engine_api_unittest.cc
         segment_table_unittest.cc
+        statistic_manager_unittest.cc
+        fabric_mem_transfer_service_unittest.cc
 )
 set(LLM_DATADIST_STUB_SRC_FILES
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/data_cache_engine_test_helper.cc"
@@ -69,18 +73,18 @@ target_include_directories(llm_datadist_test PRIVATE
 set_target_properties(llm_datadist_test PROPERTIES CXX_STANDARD 17)
 
 target_link_libraries(llm_datadist_test
-        ${COMMON_LINK_OPTION}
+        ${DT_COMMON_LINK_OPTION}
         c_sec
         mmpa_headers
         hccl_headers
-        runtime_headers
+        acl_rt_headers
         metadef_headers
         intf_pub
         json
         -ldl
         slog_stub
         mmpa_stub
-        runtime_stub
+        ascendcl_stub
         msprof_headers
         GTest::gtest GTest::gtest_main
         GTest::gmock
@@ -89,6 +93,3 @@ target_link_libraries(llm_datadist_test
 
 include(CTest)
 enable_testing()
-
-
-

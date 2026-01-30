@@ -1,10 +1,10 @@
 /**
- * This program is free software, you can redistribute it and/or modify it.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -20,7 +20,12 @@
 #include "control_msg_handler.h"
 
 namespace adxl {
-using CopyExtraInfo = std::pair<rtMemcpyKind_t, uint64_t>;
+using CopyExtraInfo = std::pair<aclrtMemcpyKind, uint64_t>;
+struct SliceInfo {
+  std::vector<uintptr_t> src_addrs;
+  std::vector<uintptr_t> dst_addrs;
+  std::vector<size_t> sizes;
+};
 class BufferTransferService {
  public:
   BufferTransferService(std::vector<llm::LlmMemPool *> npu_mem_pools, uint64_t buffer_size)
@@ -33,9 +38,9 @@ class BufferTransferService {
   Status Transfer(const ChannelPtr &channel, TransferType type, const std::vector<TransferOpDesc> &op_descs,
                   int32_t timeout_in_millis);
 
-  void PushBufferReq(const ChannelPtr &channel, BufferReq &buffer_req);
+  Status PushBufferReq(const ChannelPtr &channel, BufferReq &buffer_req);
 
-  void PushBufferResp(const ChannelPtr &channel, const BufferResp &buffer_resp);
+  Status PushBufferResp(const ChannelPtr &channel, BufferResp &buffer_resp);
 
  private:
   Status TryGetBuffer(void *&buffer_addr, uint64_t timeout, size_t pool_index = 0U);
@@ -68,12 +73,15 @@ class BufferTransferService {
                                                   uintptr_t dev_buffer_addr, uint64_t count);
   Status CheckReqFinishStatus(uint64_t timeout, uint64_t req_id);
 
-  void PushSecondStepReq(const ChannelPtr &channel, BufferReq &buffer_req);
+  Status PushSecondStepReq(const ChannelPtr &channel, BufferReq &buffer_req);
 
   void PushCtrlMsg(const ChannelPtr &channel, BufferReq &buffer_req);
 
   Status ProcessCopy(const ChannelPtr &channel, const std::vector<uintptr_t> &src_addrs,
                      const std::vector<uintptr_t> &dst_addrs, std::vector<size_t> &sizes, CopyExtraInfo extra_info);
+
+  Status ProcessCopyWithBatch(const SliceInfo &slice_info, uint64_t batch_num, uint64_t slice_index,
+                              CopyExtraInfo extra_info) const;
 
   static Status ProcessCopyWithAsync(const ChannelPtr &channel, const std::vector<uintptr_t> &src_addrs,
                                      const std::vector<uintptr_t> &dst_addrs, std::vector<size_t> &sizes,
@@ -88,7 +96,7 @@ class BufferTransferService {
   std::vector<llm::LlmMemPool*> npu_mem_pools_;
   uint64_t buffer_size_;
 
-  rtContext_t rt_context_{nullptr};
+  aclrtContext aclrt_context_{nullptr};
   int32_t device_id_{-1};
   bool support_batch_copy_batch_ = true;
 

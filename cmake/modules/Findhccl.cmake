@@ -60,7 +60,7 @@ else()
 endif()
 
 find_library(hccl_SHARED_LIBRARY
-    NAMES libhccl.so
+    NAMES libhcomm.so
     PATH_SUFFIXES lib64
     NO_CMAKE_SYSTEM_PATH
     NO_CMAKE_FIND_ROOT_PATH)
@@ -89,9 +89,15 @@ if(hccl_FOUND)
     )
 
     add_library(hccl_headers INTERFACE IMPORTED)
-    set_target_properties(hccl_headers PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${hccl_INCLUDE_DIR};${hccl_INCLUDE_DIR}/hccl"
-    )
+    if (EXISTS "${hccl_INCLUDE_DIR}/../pkg_inc/hccl")
+        set_target_properties(hccl_headers PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${hccl_INCLUDE_DIR};${hccl_INCLUDE_DIR}/hccl;${hccl_INCLUDE_DIR}/../pkg_inc;${hccl_INCLUDE_DIR}/../pkg_inc/hccl"
+        )
+    else ()
+        set_target_properties(hccl_headers PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${hccl_INCLUDE_DIR};${hccl_INCLUDE_DIR}/hccl"
+        )
+    endif ()
 
     include(CMakePrintHelpers)
     cmake_print_properties(TARGETS hccl

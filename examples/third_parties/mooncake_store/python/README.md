@@ -4,6 +4,8 @@
 
 ⚠️ **注意：在零拷贝接口调用前，必须完成buffer的注册**
 
+> 需要先调用Mooncake store的register_buffer()完成注册，相关API可以参考[Mooncake Store Python API](https://kvcache-ai.github.io/Mooncake/python-api-reference/mooncake-store.html#register-buffer)
+
 #### batch_put_from
 
 ```
@@ -76,23 +78,7 @@ def batch_get_into_multi_buffers(self, keys: List[str], all_buffer_ptrs: List[Li
 
 1. 安装CANN包，样例中场景为root用户安装与使用
 
-2. Mooncake编译安装 使用`-DUSE_ASCEND_DIRECT=ON` 参数启用Hixl功能
-
-   1. 下载Mooncake代码
-
-   2. 安装Mooncake依赖（需要稳定网络环境），否则需要手动安装Mooncake的第三方依赖
-      ```
-      bash dependencies.sh
-      ```
-
-   3. 编译安装Mooncake
-
-      ```
-      mkdir build && cd build \
-      cmake -DUSE_ASCEND_DIRECT=ON .. \
-      make -j \
-      make install
-      ```
+2. Mooncake编译安装，推荐使用 `v0.3.7.post2` 注意使用`-DUSE_ASCEND_DIRECT=ON` 参数启用Hixl功能；具体的编译安装步骤，参考[Mooncake 安装文档](https://github.com/kvcache-ai/Mooncake/blob/v0.3.7.post2/doc/zh/build.md)
 
 ### 执行测试用例
 
@@ -100,15 +86,19 @@ def batch_get_into_multi_buffers(self, keys: List[str], all_buffer_ptrs: List[Li
 ```bash
 mooncake_master \
   --enable_http_metadata_server=true \
-  --http_metadata_server_host= <运行时填入http server host> \
-  --http_metadata_server_port= <运行时填入http server port>
+  --http_metadata_server_host=0.0.0.0 \
+  --http_metadata_server_port=8080
 ```
 
 * 运行测试：
 
 参考`config_example.yaml`文件，配置运行时分布式集群配置以及Mooncake Store相关参数
 
-在`run.sh`中，通过`export HCCL_INTRA_ROCE_ENABLE=1 `选择传输方式为RDMA（如果设置为0，则走hccs）
+在`run.sh`中，通过`export HCCL_INTRA_ROCE_ENABLE=1 `选择传输方式为RDMA（如果设置为0，则机器内默认走hccs）
+
+注意不要同时禁用ROCE 和 PCIE，否则会有以下报错：
+
+>  [Parse] [IntraLinkType]only set HCCL_INTRA_ROCE_ENABLE, and the val is zero, pls set HCCL_INTRA_PCIE_ENABLE
 
 执行时通过在终端执行：
 
@@ -132,7 +122,7 @@ bash run.sh **.py
 以单机环境单卡执行batch_put_get接口对应用例，进行d2d数据传输时，在启动完Mooncake master并完成配置或在代码中硬编码对应的参数之后；执行以下命令：
 
 ```bash
-bash run.sh batch_put_get_sample.py --device_id=0 --shcema="d2d"
+bash run.sh batch_put_get_sample.py --device_id=0 --schema="d2d"
 ```
 
 > 单机多卡环境以及分布式集群下进行测试，只需要参考config_example.yaml创建配置文件，并在运行时传入 config参数指定配置文件路径即可。

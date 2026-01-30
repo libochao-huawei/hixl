@@ -13,6 +13,10 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include "hixl/hixl.h"
 #include "adxl/channel_manager.h"
 #include "dlog_pub.h"
@@ -25,20 +29,43 @@ using ::testing::Invoke;
 using ::testing::Mock;
 
 namespace hixl {
+namespace {
+constexpr size_t kTransferSize = 1024;
+constexpr uint8_t kDataPattern = 0xAA;
+constexpr uint8_t kInitPattern = 0;
+constexpr int32_t kDeviceId0 = 0;
+constexpr int32_t kDeviceId1 = 1;
+const std::string kIp = "127.0.0.1";
+const std::string kPort = "26001";
+const std::string kEngine1Ip = kIp;
+const std::string kEngine2Ip = kIp + ":" + kPort;
+const char *const kEnableFabricMem = "1";
+}  // namespace
 class HixlSTest : public ::testing::Test {
  protected:
-  // 在测试类中设置一些准备工作，如果需要的话
   void SetUp() override {
-    SetMockRtGetDeviceWay(1);
     llm::MockMmpaForHcclApi::Install();
     llm::AutoCommResRuntimeMock::Install();
   }
-  // 在测试类中进行清理工作，如果需要的话
   void TearDown() override {
     llm::HcclAdapter::GetInstance().Finalize();
-    llm::MockMmpaForHcclApi::Reset();
     llm::AutoCommResRuntimeMock::Reset();
-    SetMockRtGetDeviceWay(0);
+    llm::MockMmpaForHcclApi::Reset();
+  }
+
+ private:
+  bool CheckIpv6Supported() {
+    int fd = socket(AF_INET6, SOCK_STREAM, 0);
+    if (fd < 0) {
+      return false;
+    }
+    struct sockaddr_in6 addr{};
+    addr.sin6_family = AF_INET6;
+    (void) inet_pton(AF_INET6, "::1", &addr.sin6_addr);
+    addr.sin6_port = htons(0U);
+    bool ok = (connect(fd, (sockaddr*)&addr, sizeof(addr)) != -1 || errno != EADDRNOTAVAIL);
+    close(fd);
+    return ok;
   }
 };
 
@@ -74,6 +101,49 @@ TEST_F(HixlSTest, TestHixl) {
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
+}
+
+TEST_F(HixlSTest, TestHixlWithIpv6) {
+  auto support_ipv6 = CheckIpv6Supported();
+  if (support_ipv6) {
+    std::cout << "support ipv6" << std::endl;
+    llm::AutoCommResRuntimeMock::SetDevice(0);
+    Hixl engine1;
+    std::map<AscendString, AscendString> options1;
+    EXPECT_EQ(engine1.Initialize("[::1]:26002", options1), SUCCESS);
+
+    llm::AutoCommResRuntimeMock::SetDevice(1);
+    Hixl engine2;
+    std::map<AscendString, AscendString> options2;
+    EXPECT_EQ(engine2.Initialize("[::1]:26003", options2), SUCCESS);
+
+    hixl::MemDesc mem{};
+    mem.addr = 1;
+    mem.len = 1;
+    MemHandle handle1 = nullptr;
+    MemHandle handle2 = nullptr;
+    EXPECT_EQ(engine1.RegisterMem(mem, MEM_DEVICE, handle1), SUCCESS);
+    EXPECT_EQ(engine2.RegisterMem(mem, MEM_DEVICE, handle2), SUCCESS);
+    EXPECT_EQ(engine1.Connect("[::1]:26003"), SUCCESS);
+    int32_t src = 1;
+    int32_t dst = 2;
+    TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+    EXPECT_EQ(engine1.TransferSync("[::1]:26003", READ, {desc}), SUCCESS);
+    EXPECT_EQ(src, dst);
+    src = 1;
+    EXPECT_EQ(engine1.TransferSync("[::1]:26003", WRITE, {desc}), SUCCESS);
+    EXPECT_EQ(dst, src);
+    EXPECT_EQ(engine1.Disconnect("[::1]:26003"), SUCCESS);
+    EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+    EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+    engine1.Finalize();
+    engine2.Finalize();
+  } else {
+    std::cout << "not support ipv6" << std::endl;
+    Hixl engine1;
+    std::map<AscendString, AscendString> options1;
+    EXPECT_NE(engine1.Initialize("[::1]:26002", options1), SUCCESS);
+  }
 }
 
 TEST_F(HixlSTest, TestHixlH2HWithBuffer) {
@@ -336,4 +406,68 @@ TEST_F(HixlSTest, TestHeartbeat) {
   std::this_thread::sleep_for(std::chrono::milliseconds(60));  // wait server:engine2 clear client:engine3
   engine2.Finalize();
 }
+
+TEST_F(HixlSTest, TestHixlServerDown) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  std::map<AscendString, AscendString> options1;
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options1), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl engine2;
+  std::map<AscendString, AscendString> options2;
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
+  engine2.Finalize();
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+  engine1.Finalize();
+}
+
+TEST_F(HixlSTest, TestHixlFabricMem) {
+  llm::AutoCommResRuntimeMock::SetDevice(kDeviceId0);
+  Hixl engine1;
+  std::map<AscendString, AscendString> options1;
+  options1[OPTION_ENABLE_USE_FABRIC_MEM] = kEnableFabricMem;
+  EXPECT_EQ(engine1.Initialize(kEngine1Ip.c_str(), options1), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(kDeviceId1);
+  Hixl engine2;
+  std::map<AscendString, AscendString> options2;
+  options2[OPTION_ENABLE_USE_FABRIC_MEM] = kEnableFabricMem;
+  EXPECT_EQ(engine2.Initialize(kEngine2Ip.c_str(), options2), SUCCESS);
+
+  size_t size = kTransferSize;
+  std::vector<uint8_t> src(size, kDataPattern);
+  std::vector<uint8_t> dst(size, kInitPattern);
+
+  // Register remote mem
+  std::vector<uint8_t> remote_buf(size, kInitPattern);
+  hixl::MemDesc remote_mem{};
+  remote_mem.addr = reinterpret_cast<uintptr_t>(remote_buf.data());
+  remote_mem.len = size;
+  MemHandle handle2 = nullptr;
+  // Fabric mode in stub environment seems to require MEM_HOST to bypass "Device mem is ignored" check in ChannelMsgHandler
+  EXPECT_EQ(engine2.RegisterMem(remote_mem, MEM_HOST, handle2), SUCCESS);
+
+  EXPECT_EQ(engine1.Connect(kEngine2Ip.c_str()), SUCCESS);
+
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(src.data()), reinterpret_cast<uintptr_t>(remote_buf.data()), size};
+
+  // Write to remote (local representation of remote)
+  EXPECT_EQ(engine1.TransferSync(kEngine2Ip.c_str(), WRITE, {desc}), SUCCESS);
+
+  // Read back from remote
+  TransferOpDesc read_desc{reinterpret_cast<uintptr_t>(dst.data()), reinterpret_cast<uintptr_t>(remote_buf.data()), size};
+  EXPECT_EQ(engine1.TransferSync(kEngine2Ip.c_str(), READ, {read_desc}), SUCCESS);
+
+  // Verify read back data matches written data
+  for (size_t i = 0; i < size; ++i) {
+    EXPECT_EQ(dst[i], kDataPattern) << "Verification failed at index " << i;
+  }
+
+  EXPECT_EQ(engine1.Disconnect(kEngine2Ip.c_str()), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
 }  // namespace hixl

@@ -15,7 +15,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include "runtime/rt.h"
+#include "acl/acl.h"
 #include "llm_datadist/llm_error_codes.h"
 #include "common/llm_thread_pool.h"
 
@@ -25,8 +25,9 @@ class MsgHandlerPlugin {
  public:
   MsgHandlerPlugin() = default;
   ~MsgHandlerPlugin();
+  void Initialize();
   void Finalize();
-  ge::Status StartDaemon(uint32_t listen_port);
+  ge::Status StartDaemon(const std::string &ip, uint32_t listen_port);
   void RegisterConnectedProcess(ConnectedProcess proc);
   static ge::Status Connect(const std::string &ip, uint32_t port, int32_t &conn_fd, int32_t timeout,
                             ge::Status default_err);
@@ -43,13 +44,16 @@ class MsgHandlerPlugin {
   ge::Status DoAccept();
   static ge::Status DoConnect(struct ::addrinfo *addr, int32_t &conn_fd, int32_t &err_no, int32_t timeout,
                               ge::Status default_err);
+  static ge::Status GetAiFamily(const std::string &ip, int32_t &ai_family);
+  ge::Status SockAddrInit(const std::string &ip, uint32_t listen_port, int32_t ai_family,
+                          struct sockaddr_storage &server_addr, socklen_t &addr_len);
 
   int32_t listen_fd_ = -1;
   std::atomic<bool> listener_running_{false};
   std::thread listener_;
   std::unique_ptr<LLMThreadPool> thread_pool_ = nullptr;
   ConnectedProcess connected_process_;
-  rtContext_t rt_context_ = nullptr;
+  aclrtContext aclrt_context_ = nullptr;
 };
 }  // namespace llm
 #endif  // CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_MSG_HANDLER_PLUGIN_H_

@@ -10,6 +10,7 @@
 
 cmake_minimum_required(VERSION 3.7)
 project(llm_datadist)
+set(CMAKE_SKIP_RPATH TRUE)
 set(INC_DIR
         "${HIXL_CODE_DIR}/include"
         "${CMAKE_CURRENT_LIST_DIR}"
@@ -46,7 +47,6 @@ target_include_directories(llm_datadist PRIVATE ${INC_DIR})
 
 target_compile_options(llm_datadist PRIVATE
         -ftrapv
-        -O2
         -fno-common
         -Wfloat-equal
         -Wall
@@ -58,17 +58,17 @@ target_link_libraries(llm_datadist PRIVATE
         $<BUILD_INTERFACE:slog_headers>
         $<BUILD_INTERFACE:mmpa_headers>
         $<BUILD_INTERFACE:hccl_headers>
-        $<BUILD_INTERFACE:runtime_headers>
+        $<BUILD_INTERFACE:acl_rt_headers>
         $<BUILD_INTERFACE:msprof_headers>
         PUBLIC c_sec
         static_mmpa
         alog
         error_manager
         metadef # for acend string
-        runtime
+        acl_rt
         json
         -ldl
-        -O2 -fPIC -Wextra -Wfloat-equal
+        -fPIC -Wextra -Wfloat-equal
         )
 
 #set(INSTALL_LIBRARY_DIR lib)
@@ -88,6 +88,7 @@ add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 file(GLOB HIXL_SRC_LIST
         "${CMAKE_CURRENT_LIST_DIR}/api/hixl_impl.cc"
         "${CMAKE_CURRENT_LIST_DIR}/adxl/*.cc"
+        "${CMAKE_CURRENT_LIST_DIR}/llm_datadist_timer.cc"
         "${CMAKE_CURRENT_LIST_DIR}/statistic_manager.cc"
         "${CMAKE_CURRENT_LIST_DIR}/common/*.cc"
         "${CMAKE_CURRENT_LIST_DIR}/hccl/*.cc"
@@ -105,7 +106,6 @@ target_include_directories(cann_hixl PRIVATE ${HIXL_INC_DIR})
 
 target_compile_options(cann_hixl PRIVATE
         -ftrapv
-        -O2
         -fno-common
         -Wfloat-equal
         -Wall
@@ -117,17 +117,17 @@ target_link_libraries(cann_hixl PRIVATE
         $<BUILD_INTERFACE:slog_headers>
         $<BUILD_INTERFACE:mmpa_headers>
         $<BUILD_INTERFACE:hccl_headers>
-        $<BUILD_INTERFACE:runtime_headers>
+        $<BUILD_INTERFACE:acl_rt_headers>
         $<BUILD_INTERFACE:msprof_headers>
         PUBLIC c_sec
         static_mmpa
         alog
         error_manager
         metadef # for acend string
-        runtime
+        acl_rt
         json
         -ldl
-        -O2 -fPIC -Wextra -Wfloat-equal
+        -fPIC -Wextra -Wfloat-equal
         )
 
 #set(INSTALL_LIBRARY_DIR lib)

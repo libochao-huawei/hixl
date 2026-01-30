@@ -17,9 +17,8 @@ target_include_directories(mmpa_stub PRIVATE
 )
 target_link_libraries(mmpa_stub
     PRIVATE
-        intf_pub
         metadef_headers
-        runtime_headers
+        acl_rt_headers
         msprof_headers
         slog_headers
         c_sec

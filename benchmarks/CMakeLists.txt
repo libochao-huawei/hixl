@@ -41,8 +41,9 @@ foreach(target_name IN LISTS targets_list)
             -Wextra
         )
         target_link_libraries(${target_name} PRIVATE
-            llm_datadist
-            ascendcl
+            cann_hixl
+            acl_rt_headers
+            acl_rt
             -lpthread
             -lrt
         )

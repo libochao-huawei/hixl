@@ -25,7 +25,7 @@
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
 #include "common/llm_mem_pool.h"
-#include "rt_error_codes.h"
+#include "acl/acl.h"
 
 #include "data_transfer/d2d_data_transfer_job.h"
 #include "cache_mgr/data_cache_engine.h"
@@ -39,15 +39,6 @@ using namespace ge;
 using namespace ::testing;
 using ::testing::Invoke;
 using ::testing::Mock;
-
-RTS_API rtError_t rtEventQueryStatus(rtEvent_t evt, rtEventStatus_t *status) {
-  (void) evt;
-  static int32_t i = 0;
-  bool success = (++i % 2) == 0;
-  *status = success ? RT_EVENT_RECORDED : RT_EVENT_INIT;
-  LLMLOGI("Wait event ret = %d", success);
-  return RT_ERROR_NONE;
-}
 
 namespace llm {
 namespace {
@@ -199,7 +190,8 @@ HcclResult HcclExchangeMemDesc1(HcclComm comm, uint32_t remoteRank, HcclMemDescs
 class MockMmpaLongTimeRegister : public MmpaStubApiGe {
  public:
   void *DlOpen(const char *file_name, int32_t mode) override {
-    return (void *) 0x10000000;
+    static int64_t addr = 0;
+    return &addr;
   }
 
   void *DlSym(void *handle, const char *func_name) override {
@@ -229,10 +221,10 @@ class MockMmpaLongTimeRegister : public MmpaStubApiGe {
   }
 };
 
-class MockRuntime : public llm::RuntimeStub {
+class MockRuntime : public llm::AclRuntimeStub {
  public:
-  rtError_t rtStreamSynchronizeWithTimeout(rtStream_t stm, int32_t timeout) override {
-    return count_++ == 1 ? ACL_ERROR_RT_STREAM_SYNC_TIMEOUT : RT_ERROR_NONE;
+  aclError aclrtSynchronizeStreamWithTimeout(aclrtStream stm, int32_t timeout) override {
+    return count_++ == 1 ? ACL_ERROR_RT_STREAM_SYNC_TIMEOUT : ACL_ERROR_NONE;
   }
 
   int32_t count_ = 0;
@@ -270,7 +262,8 @@ TEST_F(DataCacheEngineSTest, UnlinkWhenPrepareNotFinished) {
 }
 
 TEST_F(DataCacheEngineSTest, TestMemPool) {
-  void *base_address_ = (void *) 0x1000000000UL;
+  int64_t addr = 0;
+  void *base_address_ = &addr;
   size_t pool_size = 10UL * 64 * 1024;
   llm::ScalableConfig config{};
   config.page_idem_num = 16;
@@ -300,7 +293,8 @@ TEST_F(DataCacheEngineSTest, TestMemPool) {
 }
 
 TEST_F(DataCacheEngineSTest, TestMemPool_Shared) {
-  void *base_address_ = (void *) 0x1000000000UL;
+  int64_t addr = 0;
+  void *base_address_ = &addr;
   size_t pool_size = 10UL * 64 * 1024;
   llm::ScalableConfig config{};
   config.page_idem_num = 16;
@@ -384,7 +378,7 @@ TEST_F(DataCacheEngineSTest, PullCache_D2H_B2B_BigBlock) {
   pull_cache_param.decoder_blocks.resize(32);
 
   llm::MockMmpaForHcclApi::Install();
-  llm::RuntimeStub::SetInstance(std::make_shared<llm::DataCacheEngineRuntimeMock>());
+  llm::AclRuntimeStub::SetInstance(std::make_shared<llm::DataCacheEngineRuntimeMock>());
   llm::HcclAdapter::GetInstance().Initialize();
   llm::DataCacheEngineTestRunner test_runner(100 * 1024 * 1024);
   test_runner.Initialize(src_cache_desc, dst_cache_desc, pull_cache_param);
@@ -589,11 +583,11 @@ TEST_F(DataCacheEngineSTest, PullCache_D2D_B2B_BatchGet) {
   cache_key.prompt_cluster_id = 0;
   cache_key.prompt_cache_id = 1;
 
-  llm::RuntimeStub::SetInstance(std::make_shared<MockRuntime>());
+  llm::AclRuntimeStub::SetInstance(std::make_shared<MockRuntime>());
   EXPECT_EQ(data_cache_engine_runner.GetLlmDataDist().PullCache(data_cache_engine_runner.GetDstCache().cache_id,
                                                                 cache_key,
                                                                 pull_cache_param), ge::LLM_TIMEOUT);
-  llm::RuntimeStub::Reset();
+  llm::AclRuntimeStub::Reset();
   data_cache_engine_runner.PullDataCache(pull_cache_param, pull_result);
   data_cache_engine_runner.ReleaseResource();
 
@@ -666,7 +660,7 @@ TEST_F(DataCacheEngineSTest, CopyCache_C2C_Big) {
   options[llm::LLM_OPTION_MEM_POOL_CONFIG] = "{\"memory_size\": 10000000}";
   EXPECT_EQ(cache_engine.Initialize(options), ge::SUCCESS);
 
-  int64_t big_dim = 1024 * 1024 + 128;
+  int64_t big_dim = static_cast<int64_t>(1024 * 1024 + 128);
   llm::CacheDesc src_cache_desc{};
   src_cache_desc.num_tensors = 1;
   src_cache_desc.placement = 1;
