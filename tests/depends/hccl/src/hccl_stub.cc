@@ -9,7 +9,8 @@
  */
 
 #include <cstring>
-#include "hcomm/hcomm_res_defs.h"
+#include "hcomm/hcomm_res.h"
+#include "common/hccl_api.h"
 
 #ifdef __cplusplus
 extern "C" {

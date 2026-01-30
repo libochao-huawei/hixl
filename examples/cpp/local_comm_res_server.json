@@ -1,0 +1,11 @@
+{
+    "net_instance_id": "superpod1_1",
+    "endpoint_list": [
+        {
+            "protocol": "roce",
+            "comm_id": "192.168.100.100",
+            "placement": "host" 
+        }
+    ],
+    "version": "1.3"
+}
