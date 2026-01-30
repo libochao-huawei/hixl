@@ -175,13 +175,14 @@ Status HixlCSClient::RegMem(const char *mem_tag, const HcommMem *mem, MemHandle 
   HIXL_CHECK_NOTNULL(mem);
   auto check_result = mem_store_.CheckMemoryForRegister(false, mem->addr, mem->size);
   if (check_result) {
-    HIXL_LOGE(PARAM_INVALID, "Memory registration failed. The provided memory has already been registered. Please check Mem, mem_adrr: %p, mem_size: %u.", mem->addr, mem->size);
+    HIXL_LOGE(PARAM_INVALID, "[HixlClient] Memory registration failed. The provided memory has already been registered. Please check Mem, mem_adrr: %p, mem_size: %u.", mem->addr, mem->size);
     return PARAM_INVALID;
   }
   MemHandle ep_mem_handle = nullptr;
-  HIXL_CHK_STATUS_RET(src_endpoint_->RegisterMem(mem_tag, *mem, ep_mem_handle), "Failed to register mem.");
+  HIXL_CHK_STATUS_RET(src_endpoint_->RegisterMem(mem_tag, *mem, ep_mem_handle), "[HixlClient] Failed to register client endpoint mem.");
   *mem_handle = ep_mem_handle;
   mem_store_.RecordMemory(false, mem->addr, mem->size);  // 记录client侧给endpoint分配的内存信息
+  HIXL_LOGI("[HixlClient] Memory registration success. ");
   return SUCCESS;
 }
 
@@ -217,7 +218,7 @@ Buffers SelectBuffers(bool is_get, const void *src, const void *dst) noexcept {
 
 Status HixlCSClient::BatchTransferRoce(bool is_get, const CommunicateMem& communicate_mem_param, void** queryhandle) {
   if (flag_queue_ == nullptr) {
-    HIXL_LOGE(RESOURCE_EXHAUSTED, "Client not initialized: flag queue is null.");
+    HIXL_LOGE(RESOURCE_EXHAUSTED, "[HixlClient] Client not initialized: flag queue is null.");
     return RESOURCE_EXHAUSTED;
   }
   if (is_get) {
@@ -236,7 +237,7 @@ Status HixlCSClient::BatchTransferRoce(bool is_get, const CommunicateMem& commun
   HcommChannelFence(client_channel_handle_);
   int32_t flag_index = AcquireFlagIndex();
   if (flag_index == -1) {
-    HIXL_LOGE(PARAM_INVALID, "There are a large number of transfer tasks with no query results, making it impossible to create new transfer tasks.");
+    HIXL_LOGE(PARAM_INVALID, "[HixlClient] There are a large number of transfer tasks with no query results, making it impossible to create new transfer tasks.");
     return PARAM_INVALID;
   }
   uint64_t *flag_addr = &flag_queue_[flag_index];
@@ -258,7 +259,7 @@ Status HixlCSClient::BatchTransferRoce(bool is_get, const CommunicateMem& commun
     live_handles_[flag_index] = query_mem_handle;
   }
   else {
-    HIXL_LOGE(PARAM_INVALID, "Memory allocation failed; unable to generate query handle.");
+    HIXL_LOGE(PARAM_INVALID, "[HixlClient] Memory allocation failed; unable to generate query handle.");
     return PARAM_INVALID;
   }
   return SUCCESS;
