@@ -63,10 +63,10 @@ Status HixlCSServer::InitTransFinishedFlag() {
   }
   if (has_device_ep) {
     void* dev_flag = nullptr;
-    HIXL_CHK_RT_RET(rtMalloc(&dev_flag, sizeof(int64_t),
-                             RT_MEMORY_HBM | RT_MEMORY_POLICY_HUGE_PAGE_ONLY, HIXL_MODULE_NAME));
+    HIXL_CHK_ACL_RET(rtMalloc(&dev_flag, sizeof(int64_t),
+                              RT_MEMORY_HBM | RT_MEMORY_POLICY_HUGE_PAGE_ONLY, HIXL_MODULE_NAME));
     int64_t val = 1;
-    HIXL_CHK_RT_RET(rtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), RT_MEMCPY_HOST_TO_DEVICE));
+    HIXL_CHK_ACL_RET(rtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), RT_MEMCPY_HOST_TO_DEVICE));
     HcommMem mem{};
     mem.type = HCCL_MEM_TYPE_DEVICE;
     mem.addr = dev_flag;
