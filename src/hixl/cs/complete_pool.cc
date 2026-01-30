@@ -11,7 +11,7 @@
 
 #include <cstdint>
 #include <securec.h>
-#include "rt_external_device.h"
+#include "rts/rts_device.h"
 #include "common/hixl_log.h"
 #include "endpoint.h"
 #include "common/hixl_utils.h"
