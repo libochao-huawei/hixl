@@ -25,6 +25,7 @@ set(targets_list
     "client_server_h2d"
     "server_server_d2d"
     "fabric_mem_d2d"
+    "hixl_roce_example"
 )
 
 foreach(target_name IN LISTS targets_list)

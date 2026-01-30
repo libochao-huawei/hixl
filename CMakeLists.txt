@@ -49,3 +49,33 @@ else ()
         add_subdirectory(benchmarks)
     endif()
 endif()
+
+if(DEFINED ENV{TOOLCHAIN_DIR})
+    message(STATUS "start build device")
+    message(STATUS $ENV{TOOLCHAIN_DIR})
+    set(TOOLCHAIN_DIR $ENV{TOOLCHAIN_DIR})
+    # 对于libc_sec，只有makefile，需要传递编译器路径
+    set(CMAKE_CXX_COMPILER_ "${TOOLCHAIN_DIR}/bin/aarch64-target-linux-gnu-g++")
+    set(CMAKE_C_COMPILER_ "${TOOLCHAIN_DIR}/bin/aarch64-target-linux-gnu-gcc")
+    set(CMAKE_C_AR "${TOOLCHAIN_DIR}/bin/aarch64-target-linux-gnu-ar")
+    set(CHILD_INSTALL_DIR ${CMAKE_BINARY_DIR}/device_install)
+    include(ExternalProject)
+    ExternalProject_Add(device
+        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake/device
+        BINARY_DIR ${CMAKE_BINARY_DIR}/device_build
+        CMAKE_ARGS  
+            -DTOOLCHAIN_DIR=${TOOLCHAIN_DIR}
+            -DCMAKE_INSTALL_PREFIX=${CHILD_INSTALL_DIR}
+            -DCMAKE_TOOLCHAIN_FILE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/aarch64-hcc-toolchain.cmake
+            -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER_}
+            -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER_}
+            -DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}
+            -DCMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}
+            -DENABLE_SIGN=${ENABLE_SIGN}
+            -DCUSTOM_SIGN_SCRIPT=${CUSTOM_SIGN_SCRIPT}
+            -DVERSION_INFO=${VERSION_INFO}
+            -DAARCH_PREFIX=${AARCH_PREFIX}
+        BUILD_ALWAYS TRUE
+    )
+    list(APPEND NPU_DEPENDENCIES device)
+endif()

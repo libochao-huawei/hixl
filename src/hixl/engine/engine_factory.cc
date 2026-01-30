@@ -9,6 +9,7 @@
  */
 
 #include "engine_factory.h"
+#include "hixl_engine.h"
 #include "adxl/adxl_inner_engine.h"
 #include "hixl/hixl_types.h"
 #include "adxl/adxl_types.h"
@@ -16,7 +17,10 @@
 namespace hixl {
 std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engine,
                                                     const std::map<AscendString, AscendString> &options) {
-  (void)options;
+  const auto &it = options.find(adxl::OPTION_LOCAL_COMM_RES);
+  if (it != options.cend()) {
+    return std::make_unique<HixlEngine>(AscendString(local_engine.c_str()));
+  }
   return std::make_unique<AdxlEngine>(AscendString(local_engine.c_str()));
 }
 }  // namespace hixl
