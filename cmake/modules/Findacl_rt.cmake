@@ -86,7 +86,7 @@ if(acl_rt_FOUND)
 
     add_library(acl_rt_headers INTERFACE IMPORTED)
     set_target_properties(acl_rt_headers PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${acl_rt_INCLUDE_DIR};${acl_rt_INCLUDE_DIR}/acl;${acl_rt_PKG_INCLUDE_DIR}/../pkg_inc/runtime"
+        INTERFACE_INCLUDE_DIRECTORIES "${acl_rt_INCLUDE_DIR};${acl_rt_INCLUDE_DIR}/acl;${acl_rt_PKG_INCLUDE_DIR}/../pkg_inc/runtime/runtime"
     )
 
     include(CMakePrintHelpers)
