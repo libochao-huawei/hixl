@@ -63,10 +63,10 @@ Status HixlCSServer::InitTransFinishedFlag() {
   }
   if (has_device_ep) {
     void* dev_flag = nullptr;
-    HIXL_CHK_ACL_RET(rtMalloc(&dev_flag, sizeof(int64_t),
-                              RT_MEMORY_HBM | RT_MEMORY_POLICY_HUGE_PAGE_ONLY, HIXL_MODULE_NAME));
+    HIXL_CHK_ACL_RET(aclrtMalloc(&dev_flag, sizeof(int64_t),
+        static_cast<aclrtMemMallocPolicy>(ACL_MEM_TYPE_HIGH_BAND_WIDTH | ACL_MEM_MALLOC_HUGE_ONLY)));
     int64_t val = 1;
-    HIXL_CHK_ACL_RET(rtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), RT_MEMCPY_HOST_TO_DEVICE));
+    HIXL_CHK_ACL_RET(aclrtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), ACL_MEMCPY_HOST_TO_DEVICE));
     HcommMem mem{};
     mem.type = HCCL_MEM_TYPE_DEVICE;
     mem.addr = dev_flag;
@@ -119,23 +119,23 @@ Status HixlCSServer::Finalize() {
   auto ret = endpoint_store_.Finalize();
   HIXL_CHK_STATUS(ret, "Failed to finalize endpoint store.");
   if (trans_flag_ != nullptr) {
-    auto rt_ret = rtFree(trans_flag_);
-    if (rt_ret != RT_ERROR_NONE) {
+    auto rt_ret = aclrtFree(trans_flag_);
+    if (rt_ret != ACL_SUCCESS) {
       HIXL_LOGE(FAILED, "Failed to free trans finished flag, ret:%d", rt_ret);
     }
     trans_flag_ = nullptr;
   }
   if (host_trans_flag_ != nullptr) {
     free(host_trans_flag_);
-    // auto rt_ret = rtFree(host_trans_flag_);
-    // if (rt_ret != RT_ERROR_NONE) {
+    // auto rt_ret = aclrtFree(host_trans_flag_);
+    // if (rt_ret != ACL_SUCCESS) {
     //   HIXL_LOGE(FAILED, "Failed to free HOST trans finished flag, ret:%d", rt_ret);
     // }
     host_trans_flag_ = nullptr;
   }
   if (dev_trans_flag_ != nullptr) {
-    auto rt_ret = rtFree(dev_trans_flag_);
-    if (rt_ret != RT_ERROR_NONE) {
+    auto rt_ret = aclrtFree(dev_trans_flag_);
+    if (rt_ret != ACL_SUCCESS) {
       HIXL_LOGE(FAILED, "Failed to free DEVICE trans finished flag, ret:%d", rt_ret);
     }
     dev_trans_flag_ = nullptr;
