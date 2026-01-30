@@ -13,7 +13,7 @@
 
 #include "hixl/hixl_types.h"
 #include "base/err_msg.h"
-#include "runtime/rt.h"
+#include "acl/acl.h"
 #include "acl/acl.h"
 #include "hixl_log.h"
 
