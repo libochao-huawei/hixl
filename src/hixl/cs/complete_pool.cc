@@ -11,7 +11,7 @@
 
 #include <cstdint>
 #include <securec.h>
-#include "rts/rts_device.h"
+#include "runtime/rts/rts_device.h"
 #include "common/hixl_log.h"
 #include "endpoint.h"
 #include "common/hixl_utils.h"
@@ -31,8 +31,6 @@ constexpr uint32_t kNotifyCreateFlag = 0U;
 
 constexpr rtDevResProcType_t kDefaultProcType = RT_PROCESS_CP1;
 constexpr rtDevResType_t kDefaultResType = RT_RES_TYPE_STARS_NOTIFY_RECORD;
-
-constexpr uint32_t kNotifyFlagBytes = static_cast<uint32_t>(sizeof(uint64_t));
 constexpr const char *kUbLocalNotifyTagPrefix = "_hixl_ub_local_dev_flag";
 
 }  // namespace
@@ -404,7 +402,7 @@ Status CompletePool::RegisterNotifyMemLocked(Slot &slot, const char *tag, void *
   HcommMem mem{};
   mem.type = HCCL_MEM_TYPE_DEVICE;
   mem.addr = notify_addr;
-  mem.size = static_cast<u64>(kNotifyFlagBytes);
+  mem.size = sizeof(uint64_t);
   HIXL_LOGI("[JZY] mem.addr=%p", mem.addr);
   MemHandle mem_handle = nullptr;
   HIXL_CHK_STATUS_RET(endpoint_->RegisterMem(tag, mem, mem_handle),
