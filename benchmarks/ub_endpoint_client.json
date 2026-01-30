@@ -1,0 +1,13 @@
+{
+  "net_instance_id": "superpod_0_0",
+  "endpoint_list": [
+    {
+      "protocol": "ub_ctp",
+      "comm_id": "000000000000002000100000dfdf0001",
+      "dst_eid": "000000000000002000100000dfdf0014",
+      "plane": "plane0",
+      "placement": "device"
+    }
+  ],
+  "version": "1.3"
+}
