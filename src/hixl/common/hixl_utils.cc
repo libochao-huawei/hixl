@@ -159,7 +159,7 @@ Status CheckIp(const std::string &ip) {
   return hixl::SUCCESS;
 }
 
-std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char_t delim) {
+std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char delim) {
   std::vector<std::string, std::allocator<std::string>> elems;
   if (str.empty()) {
     (void)elems.emplace_back("");

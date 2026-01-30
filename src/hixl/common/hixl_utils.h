@@ -63,7 +63,7 @@ Status SerializeEndPointConfigList(const std::vector<EndPointConfig> &list, std:
 
 Status CheckIp(const std::string &ip);
 
-std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char_t delim);
+std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char delim);
 
 Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);
 
