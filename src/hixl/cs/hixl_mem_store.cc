@@ -139,11 +139,17 @@ Status HixlMemStore::ValidateMemoryAccess(const void *server_addr, size_t mem_si
   bool server_valid = CheckMemoryForAccess(true, server_addr, mem_size);
   // 验证Server端内存访问
   if (server_valid != true) {
+    HIXL_LOGE(PARAM_INVALID,
+                "Server memory verification failed; the memory has not been registered yet. memory information: server_addr:%p, buf_len:%u",
+                server_addr, mem_size);
     return PARAM_INVALID;
   }
   // 验证Client端内存访问
   bool client_valid = CheckMemoryForAccess(false, client_addr, mem_size);
   if (client_valid != true) {
+    HIXL_LOGE(PARAM_INVALID,
+                "Client memory verification failed; the memory has not been registered yet. memory information: client_addr:%p, buf_len:%u",
+                client_addr, mem_size);
     return PARAM_INVALID;
   }
   return SUCCESS;
