@@ -24,7 +24,8 @@ target_include_directories(hixl_kernel PRIVATE
 
 target_compile_options(hixl_kernel PRIVATE
         $<$<CONFIG:Debug>:-g>
-        -O3
+        $<$<CONFIG:Debug>:-O0>
+        $<$<CONFIG:Release>:-O3>
         -fstack-protector-all
 )
 
