@@ -22,7 +22,11 @@ Status Channel::Create(EndPointHandle ep_handle, HcommChannelDesc &ch_desc, Comm
   HIXL_LOGI("[JZY]ep_handle=%p",ep_handle);
   Status ret = 0;
   try {
-    ret = HcommChannelCreate(&ep_handle, engine, &ch_desc, list_num, ch_list);
+    HIXL_LOGI("[JZY]HcommChannelCreate start");
+    HIXL_LOGI("[JZY][channel.cc] ch_desc.remoteEndpoint.loc.device.devPhyId=%u", ch_desc.remoteEndpoint.loc.device.devPhyId);
+    ret = HcommChannelCreate(ep_handle, engine, &ch_desc, list_num, ch_list);
+    HIXL_LOGI("[JZY]HcommChannelCreate end");
+
   } catch (const std::exception &e) {
     HIXL_LOGE(FAILED, "[JZY] e=%s", e.what());
   }

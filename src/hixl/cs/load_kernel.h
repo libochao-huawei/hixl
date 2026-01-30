@@ -17,8 +17,8 @@
 namespace hixl {
 
 struct UbKernelStubs {
-  const void *batchGet;
-  const void *batchPut;
+  void *batchGet;
+  void *batchPut;
 };
 
 Status LoadUbKernelAndResolveStubs(int32_t device_id,

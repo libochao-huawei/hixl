@@ -137,7 +137,7 @@ class HixlCSClient {
   Status BatchTransferUB(bool is_get, const CommunicateMem& p, void** queryhandle);
   Status EnsureUbRemoteFlagInitedLocked();
   Status EnsureUbKernelLoadedLocked();
-  const void *UbGetKernelStubFunc(bool is_get) const;
+  void *UbGetKernelStubFunc(bool is_get);
   Status ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcommMem **remote_mem_list, char ***mem_tag_list,
                          uint32_t *list_num);
   void FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
@@ -203,8 +203,8 @@ class HixlCSClient {
   // UB kernel load cache
   bool ub_kernel_loaded_ {false};
   aclrtBinHandle ub_kernel_handle_ {nullptr};
-  const void *ub_stub_get_ {nullptr};
-  const void *ub_stub_put_ {nullptr};
+  void *ub_stub_get_ {nullptr};
+  void *ub_stub_put_ {nullptr};
 
 };
 }  // namespace hixl

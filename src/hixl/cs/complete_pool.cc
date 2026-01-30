@@ -339,6 +339,7 @@ Status CompletePool::CreateNotifyLocked(Slot &slot, int32_t device_id, uint32_t 
 
   HIXL_CHK_RT_RET(rtNotifyCreateWithFlag(device_id, &slot.notify, kNotifyCreateFlag));
   HIXL_CHK_RT_RET(rtGetNotifyID(slot.notify, notify_id));
+  HIXL_LOGI("[JZY] notify_id=%u", notify_id);
   return SUCCESS;
 }
 
@@ -380,7 +381,9 @@ Status CompletePool::GetNotifyAddrLocked(uint32_t notify_id, void **notify_addr)
   HIXL_CHK_BOOL_RET_STATUS(addr_info.resAddress != nullptr, FAILED,
                            "[CompletePool] rtGetDevResAddress returned null. notify_id=%u", notify_id);
 
-  *notify_addr = addr_info.resAddress;
+  //*notify_addr = addr_info.resAddress;
+  uintptr_t addr_value = static_cast<uintptr_t>(*addr_info.resAddress);
+  *notify_addr = reinterpret_cast<void *>(addr_value);
   return SUCCESS;
 }
 
@@ -402,7 +405,7 @@ Status CompletePool::RegisterNotifyMemLocked(Slot &slot, const char *tag, void *
   mem.type = HCCL_MEM_TYPE_DEVICE;
   mem.addr = notify_addr;
   mem.size = static_cast<u64>(kNotifyFlagBytes);
-
+  HIXL_LOGI("[JZY] mem.addr=%p", mem.addr);
   MemHandle mem_handle = nullptr;
   HIXL_CHK_STATUS_RET(endpoint_->RegisterMem(tag, mem, mem_handle),
                       "[CompletePool] RegisterMem(notify) failed. tag=%s addr=%p", tag, notify_addr);

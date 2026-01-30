@@ -18,8 +18,12 @@ namespace hixl {
 
 Status Endpoint::Initialize() {
   std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_LOGI("[JZY] HcommEndpointCreate start");
   HIXL_LOGI("endpoint:=%d", endpoint_.protocol);
+  HIXL_LOGI("[JZY] endpoint_.loc.device.devPhyId=%u", endpoint_.loc.device.devPhyId);
   HIXL_CHK_HCCL_RET(HcommEndpointCreate(&endpoint_, &handle_));
+  HIXL_LOGI("[JZY] HcommEndpointCreate end");
+
   HIXL_LOGI("handle_:=%p", handle_);
   return SUCCESS;
 }

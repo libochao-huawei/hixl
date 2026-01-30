@@ -25,7 +25,7 @@
 namespace hixl {
 namespace {
 
-constexpr uint32_t kCpuKernelMode = 1U;
+constexpr uint32_t kCpuKernelMode = 0U;
 
 static Status SwitchDevice(int32_t target_device, int32_t &old_device, bool &need_restore) {
   old_device = -1;
@@ -104,8 +104,8 @@ static Status LoadBinaryFromJson(const char *json_path, aclrtBinHandle &bin_hand
   return SUCCESS;
 }
 
-static Status GetFuncStub(aclrtBinHandle bin_handle, const char *func_name, const void *&out_stub) {
-  out_stub = nullptr;
+static Status GetFuncStub(aclrtBinHandle bin_handle, const char *func_name, aclrtFuncHandle &func_handle) {
+
 
   if (bin_handle == nullptr) {
     return PARAM_INVALID;
@@ -114,7 +114,7 @@ static Status GetFuncStub(aclrtBinHandle bin_handle, const char *func_name, cons
     return PARAM_INVALID;
   }
 
-  aclrtFuncHandle func_handle = nullptr;
+
   aclError aerr = aclrtBinaryGetFunction(bin_handle, func_name, &func_handle);
   if (aerr != ACL_SUCCESS) {
     HIXL_LOGE(FAILED, "[LoadKernel] aclrtBinaryGetFunction failed. func=%s ret=%d",
@@ -122,8 +122,8 @@ static Status GetFuncStub(aclrtBinHandle bin_handle, const char *func_name, cons
     return FAILED;
   }
 
-  out_stub = static_cast<const void *>(func_handle);
-  HIXL_LOGI("[LoadKernel] resolve stub success. func=%s stub=%p", func_name, out_stub);
+
+  HIXL_LOGI("[LoadKernel] resolve stub success. func=%s stub=%p", func_name, func_handle);
   return SUCCESS;
 }
 
