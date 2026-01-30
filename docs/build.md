@@ -110,35 +110,8 @@
 
   - \$\{cann\_install\_path\}：表示指定安装路径，需要与toolkit包安装在相同路径，默认安装在`/usr/local/Ascend`目录。
 
-
-### 5. **第三方开源软件依赖（编译时依赖，可选）**  
-
-HIXL在编译时，依赖的第三方开源软件列表如下：
-
-| 开源软件 | 版本 | 下载地址 |
-|---|---|---|
-| googletest | 1.14.0 | [googletest-1.14.0.tar.gz](https://gitcode.com/cann-src-third-party/googletest/releases/download/v1.14.0/googletest-1.14.0.tar.gz) |
-| json | 3.11.3 | [include.zip](httpshttps://gitcode.com/cann-src-third-party/json/releases/download/v3.11.3/include.zip) |
-| makeself | 2.5.0 | [makeself-release-2.5.0-patch1.tar.gz](https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz) |
-| pybind11 | 2.13.6 | [pybind11-2.13.6.tar.gz](https://gitcode.com/cann-src-third-party/pybind11/releases/download/v2.13.6/pybind11-2.13.6.tar.gz) |
-
-> [!NOTE]说明
-> 如果您从其他地址下载，请确保版本号一致。
-
-我们在一键式编译脚本中，提供了自动下载脚本，默认下载路径为 `<HIXL-dir>/third-party`。若您在无网络环境中，或您希望指定开源软件放置路径，可以根据上方表格提供的下载地址自行下载，并按照如下目录结构放置。在编译时通过传入参数`--cann_3rd_lib_path=/path/to/your/third_party`来指定依赖的第三方软件目录。
-
-```
-third_party/
-|-- json
-|-- makeself
-|-- pybind11
-|-- gtest
-```
-
-> [!NOTE]说明
-> - 在下载第三方开源软件压缩包并解压后，须修改文件夹名为上述目录结构中的对应名称。
-> - 针对 `.zip` 结尾的压缩包，可使用 `unzip <file-name> -d /path/to/your/destination` 解压至您需要的目录。 
-> - 针对 `.tar.gz` 结尾的压缩包，可使用 `tar -xzvf <file-name> -C /path/to/your/destination` 解压至您需要的目录。
+> [!NOTE] 注意
+> 完成以上环境准备操作后，若您处于联网环境下，可直接进行后续[源码下载](#源码下载)、[源码编译](#源码编译)等操作。若您处于离线环境中，请参考[离线编译](./build_offline.md)进行操作。
 
 ## 源码下载
 
@@ -146,7 +119,9 @@ third_party/
 ```bash
 git clone https://gitcode.com/cann/hixl.git
 ```
-- 注意：gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。  
+
+> [!NOTE] 注意
+> gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。  
 
 ## 源码编译
 
@@ -165,15 +140,28 @@ source /usr/local/Ascend/cann/set_env.sh
 
 ```bash
 # 默认路径安装，root用户默认路径是/usr/local/Ascend，普通用户默认路径是${HOME}/Ascend
-bash build.sh 
+bash build.sh
 ```
 成功编译后会在build_out目录下生成`cann-hixl_${cann_version}_linux-${arch}.run`。
 - ${cann_version}表示cann版本号。
-- ${arch}表示表示CPU架构，如aarch64、x86_64。 
-- 更多执行选项可以用-h查看。  
+- ${arch}表示表示CPU架构，如aarch64、x86_64。
+- 更多执行选项可以用-h查看。
   ```
   bash build.sh -h
   ```
+
+| 参数 | 说明 | 默认值 |
+|---|---|---|
+| `-h, --help` | 打印帮助信息 | - |
+| `-v, --verbose` | 显示详细的编译命令 | - |
+| `-j<N>` | 设置编译时使用的线程数 | 8 |
+| `--build_type=<Release\|Debug>`<br>`--build-type=<Release\|Debug>` | 设置编译类型 | Release |
+| `--cann_3rd_lib_path=<PATH>`<br>`--cann-3rd-lib-path=<PATH>` | 设置第三方依赖包安装路径 | `./third_party` |
+| `--output_path=<PATH>`<br>`--output-path=<PATH>` | 设置编译输出路径 | `./build_out` |
+| `--pkg` | 构建run包（保留参数） | - |
+| `--examples` | 编译样例和基准测试 | OFF |
+| `--asan` | 启用AddressSanitizer（地址消毒），用于内存泄漏检测 | OFF |
+| `--cov` | 启用Coverage（代码覆盖率） | OFF |
 
 ## 本地验证(tests)
 利用tests路径下的测试用例进行本地验证:
