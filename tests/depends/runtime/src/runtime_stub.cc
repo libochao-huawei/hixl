@@ -15,7 +15,7 @@
 #include "mmpa/mmpa_api.h"
 #include "acl/acl_rt.h"
 #include "runtime_stub.h"
-#include "runtime/rt.h"
+#include "acl/acl.h"
 #include "runtime/base.h"
 #include "runtime/rt_preload_task.h"
 #include "rt_error_codes.h"

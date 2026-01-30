@@ -22,7 +22,7 @@
 #include <memory>
 #include <mutex>
 #include "mmpa/mmpa_api.h"
-#include "runtime/rt.h"
+#include "acl/acl.h"
 #include "rts_stub.h"
 
 #ifdef __cplusplus
