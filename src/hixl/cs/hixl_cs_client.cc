@@ -14,7 +14,7 @@
 #include <cstring>
 #include <algorithm>
 #include <securec.h>
-#include "runtime/rt.h"
+#include "acl/acl.h"
 #include "hixl/hixl_types.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
