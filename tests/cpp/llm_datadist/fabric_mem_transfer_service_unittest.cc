@@ -20,6 +20,7 @@
 #include "depends/ascendcl/src/ascendcl_stub.h"
 #include "acl/acl.h"
 #include "common/def_types.h"
+#include "adxl/virtual_memory_manager.h"
 
 namespace adxl {
 namespace {
@@ -126,6 +127,7 @@ void *GetBackingRemotePtr(const ChannelPtr &channel, uint64_t remote_addr) {
 class FabricMemTransferServiceUTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    VirtualMemoryManager::GetInstance().Initialize();
     service_ = std::make_shared<FabricMemTransferService>();
   }
   void TearDown() override {
@@ -135,6 +137,7 @@ class FabricMemTransferServiceUTest : public ::testing::Test {
     if (service_) {
       service_->Finalize();
     }
+    VirtualMemoryManager::GetInstance().Finalize();
   }
   std::shared_ptr<FabricMemTransferService> service_;
 };
