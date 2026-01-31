@@ -172,6 +172,7 @@ run() {
   chmod -R 750 ${OUTPUT_PATH}
   find ${OUTPUT_PATH} -name "*.so*" -print0 | xargs -0 -r chmod 500
 
+  export ASCEND_GLOBAL_LOG_LEVEL=1
   echo "Run tests with leaks check"
   if [[ "X$ENABLE_CPP_TEST" = "XON" ]]; then
       RUN_TEST_CASE="${BUILD_PATH}/tests/cpp/llm_datadist/llm_datadist_test --gtest_output=xml:${report_dir}/llm_datadist_test.xml" && ${RUN_TEST_CASE}
