@@ -118,6 +118,7 @@ Status Endpoint::CreateChannel(const EndpointDesc &remote_endpoint, ChannelHandl
   HcommChannelDesc ch_desc{};
   ch_desc.remoteEndpoint = remote_endpoint;
   ch_desc.notifyNum = 1U;
+  ch_desc.exchangeAllMems = true;
   ChannelPtr channel = MakeShared<Channel>();
   HIXL_CHECK_NOTNULL(channel);
   Status ret = channel->Create(handle_, ch_desc, engine);
