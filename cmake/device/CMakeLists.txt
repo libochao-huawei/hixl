@@ -13,7 +13,6 @@ project (device_hixl_ops)
 
 set(PRODUCT_SIDE device)
 include(../function.cmake)
-include(../intf_pub_linux.cmake)
 
 set(CMAKE_CXX_STANDARD 17)
 set(HIXL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../" CACHE PATH "Project top directory")
