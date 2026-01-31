@@ -20,6 +20,7 @@
 #include "depends/ascendcl/src/ascendcl_stub.h"
 #include "acl/acl.h"
 #include "common/def_types.h"
+#include "adxl/virtual_memory_manager.h"
 
 namespace adxl {
 namespace {
@@ -71,32 +72,6 @@ class ScopedRuntimeFunctionFail {
   std::string old_;
 };
 
-class ScopedEnvVar {
- public:
-  ScopedEnvVar(const char *key, const char *value) : key_(key) {
-    const char *old = std::getenv(key);
-    if (old != nullptr) {
-      old_value_ = old;
-      had_old_ = true;
-    }
-    (void)setenv(key, value, 1);
-  }
-  ~ScopedEnvVar() {
-    if (had_old_) {
-      (void)setenv(key_, old_value_.c_str(), 1);
-    } else {
-      (void)unsetenv(key_);
-    }
-  }
-  ScopedEnvVar(const ScopedEnvVar &) = delete;
-  ScopedEnvVar &operator=(const ScopedEnvVar &) = delete;
-
- private:
-  const char *key_;
-  bool had_old_ = false;
-  std::string old_value_;
-};
-
 ChannelPtr CreateInitializedChannel() {
   ChannelInfo channel_info{};
   channel_info.channel_id = kChannelId;
@@ -126,6 +101,7 @@ void *GetBackingRemotePtr(const ChannelPtr &channel, uint64_t remote_addr) {
 class FabricMemTransferServiceUTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    VirtualMemoryManager::GetInstance().Initialize();
     service_ = std::make_shared<FabricMemTransferService>();
   }
   void TearDown() override {
@@ -135,6 +111,7 @@ class FabricMemTransferServiceUTest : public ::testing::Test {
     if (service_) {
       service_->Finalize();
     }
+    VirtualMemoryManager::GetInstance().Finalize();
   }
   std::shared_ptr<FabricMemTransferService> service_;
 };

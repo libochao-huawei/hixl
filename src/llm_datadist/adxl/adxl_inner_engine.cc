@@ -17,6 +17,7 @@
 #include "statistic_manager.h"
 #include "llm_datadist_timer.h"
 #include "adxl_utils.h"
+#include "virtual_memory_manager.h"
 
 namespace adxl {
 namespace {
@@ -97,6 +98,7 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   std::lock_guard<std::mutex> lk(mutex_);
 
   ADXL_CHK_STATUS_RET(LoadGlobalResourceConfig(options), "Failed to load global resource config.");
+  ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().Initialize(), "Failed to initialize virtual memory manager.");
   ADXL_CHK_LLM_RET(llm::HcclAdapter::GetInstance().Initialize(), "HcclSoManager initialize failed.");
   int32_t device_id = -1;
   ADXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
@@ -292,6 +294,7 @@ void AdxlInnerEngine::Finalize() {
     statistic_timer_handle_ = nullptr;
   }
   llm::LlmDatadistTimer::Instance().Finalize();
+  VirtualMemoryManager::GetInstance().Finalize();
   StatisticManager::GetInstance().Reset();
 }
 
