@@ -17,6 +17,7 @@
 #include "statistic_manager.h"
 #include "llm_datadist_timer.h"
 #include "adxl_utils.h"
+#include "virtual_memory_manager.h"
 
 namespace adxl {
 namespace {
@@ -109,6 +110,7 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   }));
   ADXL_CHK_STATUS_RET(ParseEnableFabricMem(options), "Failed to parse option.");
   if (enable_use_fabric_mem_) {
+    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().Initialize(), "Failed to initialize virtual memory manager.");
     fabric_mem_transfer_service_ = llm::MakeUnique<FabricMemTransferService>();
     ADXL_CHK_STATUS_RET(fabric_mem_transfer_service_->Initialize(kMaxStreams),
                         "Failed to initialize fabric mem transfer service.");
@@ -292,6 +294,9 @@ void AdxlInnerEngine::Finalize() {
     statistic_timer_handle_ = nullptr;
   }
   llm::LlmDatadistTimer::Instance().Finalize();
+  if (enable_use_fabric_mem_) {
+    VirtualMemoryManager::GetInstance().Finalize();
+  }
   StatisticManager::GetInstance().Reset();
 }
 
