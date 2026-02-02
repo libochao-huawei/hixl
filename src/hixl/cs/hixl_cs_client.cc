@@ -1098,7 +1098,7 @@ Status ImportAllDescs(ImportCtx &ctx, std::vector<HixlMemDesc> &desc_list) {
 
 }  // namespace
 
-void HixlCSClient::FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, char ***mem_tag_list,
+void HixlCSClient::FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, MemDev &mem_dev, char ***mem_tag_list,
                                     uint32_t *list_num) {
   imported_remote_bufs_ = std::move(ctx.imported);
   recorded_remote_addrs_ = std::move(ctx.recorded_addrs);
