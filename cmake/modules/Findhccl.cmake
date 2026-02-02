@@ -91,7 +91,7 @@ if(hccl_FOUND)
     add_library(hccl_headers INTERFACE IMPORTED)
     if (EXISTS "${hccl_INCLUDE_DIR}/../pkg_inc/hccl")
         set_target_properties(hccl_headers PROPERTIES
-            INTERFACE_INCLUDE_DIRECTORIES "${hccl_INCLUDE_DIR};${hccl_INCLUDE_DIR}/hccl;${hccl_INCLUDE_DIR}/../include;${hccl_INCLUDE_DIR}/../include/hccl"
+            INTERFACE_INCLUDE_DIRECTORIES "${hccl_INCLUDE_DIR};${hccl_INCLUDE_DIR}/hccl;${hccl_INCLUDE_DIR}/../include;${hccl_INCLUDE_DIR}/../include/hccl;${hccl_INCLUDE_DIR}/../include/hcomm"
         )
     else ()
         set_target_properties(hccl_headers PROPERTIES
