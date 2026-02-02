@@ -144,7 +144,7 @@ class HixlCSClient {
   void *UbGetKernelStubFunc(bool is_get);
   Status ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcommMem **remote_mem_list, char ***mem_tag_list,
                          uint32_t *list_num);
-  void FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, MemDev &mem_dev, char ***mem_tag_list, uint32_t *list_num);
+  void FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
   Status ClearRemoteMemInfo();
   Status ValidateUbInputs_(bool is_get,
                           const CommunicateMem &mem_param,
