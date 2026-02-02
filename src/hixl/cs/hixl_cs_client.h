@@ -53,17 +53,21 @@ struct UbBatchKernelArgs {
 };
 
 struct UbBatchArgs {
-  uint32_t is_get;      // 1=get, 0=put
+  ThreadHandle thread;
+  ChannelHandle channel;
   uint32_t list_num;
-  uint64_t thread;      // thread handle（下游需要）
-  uint64_t channel;     // channel handle（下游需要）
-  uint64_t local_buf_list;   // client 侧地址数组
-  uint64_t remote_buf_list;  // server 侧地址数组
-  uint64_t len_list;         // 长度数组
-  void *remote_flag;  // server builtin flag addr（你要的 tag_mem_descs_[...].addr）
-  void *local_flag;   // device local flag addr（notify addr）
-  uint32_t flag_size;    // sizeof(flag)
-  uint32_t reserved;
+  void **dst_buf_list;
+  const void **src_buf_list;
+  uint64_t *len_list;
+  void *remote_flag;
+  void *local_flag;
+  uint32_t flag_size;
+};
+
+struct MemDev{
+  void *dst_buf_list_dev;
+  void *src_buf_list_dev;
+  uint64_t *len_list_dev;
 };
 
 struct UbCompleteHandle {
@@ -140,7 +144,7 @@ class HixlCSClient {
   void *UbGetKernelStubFunc(bool is_get);
   Status ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcommMem **remote_mem_list, char ***mem_tag_list,
                          uint32_t *list_num);
-  void FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
+  void FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, MemDev &mem_dev, char ***mem_tag_list, uint32_t *list_num);
   Status ClearRemoteMemInfo();
   Status ValidateUbInputs_(bool is_get,
                           const CommunicateMem &mem_param,

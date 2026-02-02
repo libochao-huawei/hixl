@@ -207,6 +207,10 @@ Status CompletePool::Acquire(SlotHandle *handle) {
   handle->notify = slot.notify;
   handle->host_flag = slot.host_flag;
   handle->notify_addr = slot.notify_addr;
+
+  //TODO:临时 解决
+  handle->notify_tag = slot.notify_tag;
+  HIXL_LOGI("[JZY] Acquire handle->notify_tag=%s", handle->notify_tag);
   return SUCCESS;
 }
 
@@ -337,7 +341,7 @@ Status CompletePool::CreateNotifyLocked(Slot &slot, int32_t device_id, uint32_t 
 
   HIXL_CHK_ACL_RET(rtNotifyCreateWithFlag(device_id, &slot.notify, kNotifyCreateFlag));
   HIXL_CHK_ACL_RET(rtGetNotifyID(slot.notify, notify_id));
-  HIXL_LOGI("[JZY] notify_id=%u", notify_id);
+  HIXL_LOGI("[JZY] notify_id=%u", *notify_id);
   return SUCCESS;
 }
 
