@@ -34,7 +34,11 @@ class CompletePool {
     aclrtStream stream;
     ThreadHandle thread;
     rtNotify_t notify;
-    void *host_flag;    // pinned host
+    void *host_flag;  // pinned host
+    // TODO:临时兼容
+    void *remote_flag_memcpy;
+    std::array<char, 64> notify_tag;
+
     void *notify_addr;  // device addr (notify record address)
   };
 
@@ -69,6 +73,9 @@ class CompletePool {
     MemHandle notify_mem_handle;
 
     std::array<char, 64> notify_tag;
+
+    //TODO:临时兼容
+   void *remote_flag_memcpy;
   };
 
  private:
