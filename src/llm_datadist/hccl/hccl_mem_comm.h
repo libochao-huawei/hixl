@@ -12,7 +12,7 @@
 #define HCCL_MEM_COMM_H
 #include "hccl/hccl_types.h"
 #include "hccl/base.h"
-#include "hcomm/hcomm_res.h"
+#include "hccl/hcomm_res.h"
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
