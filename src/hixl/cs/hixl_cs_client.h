@@ -157,13 +157,14 @@ class HixlCSClient {
   Status SelectUbLists(bool is_get,
                       const CommunicateMem &mem_param,
                       const void **local_list,
-                      const void **remote_list) const;
+                      void **remote_list);
 
   Status FillUbBatchArgs(bool is_get,
                         const CommunicateMem &mem_param,
+                        MemDev &mem_dev,
                         const CompletePool::SlotHandle &slot,
                         void *remote_flag,
-                        UbBatchArgs *args) const;
+                        UbBatchArgs *args);
 
   Status GetCurrentAclContext(aclrtContext *old_ctx) const;
   void RestoreAclContext(aclrtContext old_ctx) const;
