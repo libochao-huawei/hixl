@@ -474,10 +474,11 @@ Status HixlCSClient::FillUbBatchArgs(bool is_get, const CommunicateMem &mem_para
   args->len_list = memDev.len_list_dev;
   args->remote_flag = remote_flag;
 
-  std::string tag_str(slot.notify_tag.data());
-  HIXL_LOGI("[JZY] FillUbBatchArgs tag_str=%s", tag_str.c_str());
-  HIXL_LOGI("[JZY] FillUbBatchArgs tag_mem_descs_[tag_str].addr=%p", tag_mem_descs_[tag_str].addr);
-  args->local_flag = tag_mem_descs_[tag_str].addr;
+  // std::string tag_str(slot.notify_tag.data());
+  // HIXL_LOGI("[JZY] FillUbBatchArgs tag_str=%s", tag_str.c_str());
+  // HIXL_LOGI("[JZY] FillUbBatchArgs tag_mem_descs_[tag_str].addr=%p", tag_mem_descs_[tag_str].addr);
+  // args->local_flag = tag_mem_descs_[tag_str].addr;
+  args->local_flag = slot.notify_addr;
   args->flag_size = static_cast<uint32_t>(sizeof(uint64_t));
 
   return SUCCESS;
