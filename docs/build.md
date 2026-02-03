@@ -16,34 +16,21 @@
   - Python3 3.9/3.11/3.12(当前仅支持这三个版本)
 
   - CMake >= 3.16.0  (建议使用3.20.0版本)
-    ```shell
-    # Ubuntu/Debian操作系统安装命令示例如下，其他操作系统请自行安装
-    sudo apt-get install cmake
-    ```
 
-  - bash >= 5.1.16
+  - bash >= 5.1.16，由于测试用例开启了地址消毒，代码中执行system函数会触发低版本的bash被地址消毒检查出内存泄露。
 
-    由于测试用例开启了地址消毒，代码中执行system函数会触发低版本的bash被地址消毒检查出内存泄露。
+  - ccache（可选），ccache为编译器缓存优化工具，用于加快二次编译速度。
 
-    ```shell
-    # Ubuntu/Debian操作系统安装命令示例如下，其他操作系统请自行安装
-    sudo apt-get install bash
-    ```
-
-  - ccache（可选）
-
-    compile cache为编译器缓存优化工具，用于加快二次编译速度。
-
-    ```shell
-    # Ubuntu/Debian操作系统安装命令示例如下，其他操作系统请自行安装
-    sudo apt-get install ccache
-    ```
+  ```shell
+  # Ubuntu/Debian操作系统安装命令示例如下，其他操作系统请自行安装
+  sudo apt-get install cmake bash ccache
+  ```
 
 #### 方式二：使用Docker容器
 
-  **配套 X86 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_x86:lv1_latest`
+  **配套 X86 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_x86:latest`
   
-  **配套 ARM 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_arm:lv1_latest`
+  **配套 ARM 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_arm:latest`
 
   以下是推荐的使用方式，可供参考:
 
@@ -73,42 +60,18 @@
   驱动与固件的安装指导，可详见[《CANN软件安装指南》](https://www.hiascend.com/document/redirect/CannCommunityInstSoftware)。  
 
 ### 3. **安装社区版CANN toolkit包**
+  本项目编译过程依赖CANN开发套件包（cann-toolkit），请根据环境操作系统架构，下载对应CANN Toolkit安装包，参考[昇腾文档中心-CANN软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)进行安装：
 
-  根据实际环境，下载对应`Ascend-cann-toolkit_${cann_version}_linux-${arch}.run`包，下载链接为[CANN包社区版资源下载](https://ascend.devcloud.huaweicloud.com/cann/run/software/8.5.0-beta.1)。
-
-  ```bash
-  # 确保安装包具有可执行权限
-  chmod +x Ascend-cann-toolkit_${cann_version}_linux-${arch}.run
-  # 安装命令(其中--install-path为可选)
-  ./Ascend-cann-toolkit_${cann_version}_linux-${arch}.run --full --force --install-path=${cann_install_path}
-  ```
-  - \$\{cann\_version\}：表示CANN包版本号。
-  - \$\{arch\}：表示CPU架构，如aarch64、x86_64。
-  - \$\{cann\_install\_path\}：表示指定安装路径，可选，默认安装在`/usr/local/Ascend`目录，指定路径安装时，指定的路径权限需设置为755。
+  - aarch64架构：[Ascend-cann-toolkit_8.5.0-beta.1_linux-aarch64.run](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run/software/8.5.0-beta.1/aarch64/Ascend-cann-toolkit_8.5.0-beta.1_linux-aarch64.run)
+  - x86_64架构：[Ascend-cann-toolkit_8.5.0-beta.1_linux-x86_64.run](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run/software/8.5.0-beta.1/x86_64/Ascend-cann-toolkit_8.5.0-beta.1_linux-x86_64.run)
 
 ### 4. **安装社区版CANN ops包（运行样例依赖）**
-  由于torch_npu依赖本包，运行python样例时需安装本包，若仅编译源码或运行C++样例，可跳过此步骤。
+  由于torch_npu依赖CANN Ops包，运行python样例时需安装本包，若仅编译源码或运行C++样例，可跳过此步骤。
 
-  根据产品型号和环境架构，下载对应CANN ops包，下载链接为[CANN包社区版资源下载](https://ascend.devcloud.huaweicloud.com/cann/run/software/8.5.0-beta.1)：
+  根据产品型号和环境架构，下载对应CANN ops包，参考[昇腾文档中心-CANN软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)进行安装。下载链接为[CANN包社区版资源下载](https://ascend.devcloud.huaweicloud.com/cann/run/software/8.5.0-beta.1)：
 
   - Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：`Ascend-cann-910b-ops_${cann_version}_linux-${arch}.run`
   - Atlas A3 训练系列产品/Atlas A3 推理系列产品：`Atlas-cann-A3-ops_${cann_version}_linux-${arch}.run`
-
-  ```bash
-  # 确保安装包具有可执行权限
-  # Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件
-  chmod +x Ascend-cann-910b-ops_${cann_version}_linux-${arch}.run
-  # Atlas A3 训练系列产品/Atlas A3 推理系列产品
-  chmod +x Atlas-cann-A3-ops_${cann_version}_linux-${arch}.run
-
-  # 安装命令
-  # Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件
-  ./Ascend-cann-910b-ops_${cann_version}_linux-${arch}.run --install --quiet --install-path=${cann_install_path}
-  # Atlas A3 训练系列产品/Atlas A3 推理系列产品
-  ./Atlas-cann-A3-ops_${cann_version}_linux-${arch}.run --install --quiet --install-path=${cann_install_path}
-  ```
-
-  - \$\{cann\_install\_path\}：表示指定安装路径，需要与toolkit包安装在相同路径，默认安装在`/usr/local/Ascend`目录。
 
 ### 5. **配置环境变量**
 	
@@ -124,7 +87,7 @@ source /usr/local/Ascend/cann/set_env.sh
 > [!NOTE] 说明
 > 完成以上环境准备操作后，若您处于联网环境下，请参考[在线编译](#在线编译)进行操作。若您处于离线环境中，请参考[离线编译](#离线编译)进行操作。
 
-## 在线编译
+## 编译
 
 ### 源码下载
 
@@ -135,6 +98,40 @@ git clone https://gitcode.com/cann/hixl.git
 
 > [!NOTE] 注意
 > gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。  
+> 在离线环境中，由于无法通过`git`指令下载代码，须在联网环境中下载源码后，手动上传至目标环境。
+> - 在联网环境中，进入[本项目主页](https://gitcode.com/cann/hixl), 通过`下载ZIP`或`clone`按钮，根据指导，完成源码下载。
+> - 连接至离线环境中，上传源码至您指定的目录下。若下载的为源码压缩包，还需进行解压。
+
+### 开源第三方软件依赖
+
+HIXL在编译时，依赖的第三方开源软件列表如下：
+
+| 开源软件 | 版本 | 下载地址 |
+|---|---|---|
+| googletest | 1.14.0 | [googletest-1.14.0.tar.gz](https://gitcode.com/cann-src-third-party/googletest/releases/download/v1.14.0/googletest-1.14.0.tar.gz) |
+| json | 3.11.3 | [include.zip](https://gitcode.com/cann-src-third-party/json/releases/download/v3.11.3/include.zip) |
+| makeself | 2.5.0 | [makeself-release-2.5.0-patch1.tar.gz](https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz) |
+| pybind11 | 2.13.6 | [pybind11-2.13.6.tar.gz](https://gitcode.com/cann-src-third-party/pybind11/releases/download/v2.13.6/pybind11-2.13.6.tar.gz) |
+
+> [!NOTE]注意
+> 如果您从其他地址下载，请确保版本号一致。
+
+若您的编译环境无法访问网络，您需要在联网环境中下载上述开源软件压缩包，并上传至您的编译环境中。
+
+您需要在编译环境中新建一个`{your_3rd_party_path}`目录来存放这些第三方开源软件。按照如下目录结构创建文件夹后，将开源软件压缩包解压至对应文件夹中即可。
+
+```
+your_3rd_party_path/
+|-- json    # json
+|-- makeself    # makeself
+|-- pybind11    # pybind11
+|-- gtest   # googletest
+```
+
+> [!NOTE]说明
+> - 在下载第三方开源软件压缩包并解压后，须修改文件夹名为上述目录结构中的对应名称。
+> - 针对 `.zip` 结尾的压缩包，可使用 `unzip <file-name> -d /path/to/your/destination` 解压至您需要的目录。 
+> - 针对 `.tar.gz` 结尾的压缩包，可使用 `tar -xzvf <file-name> -C /path/to/your/destination` 解压至您需要的目录。
 
 ### 源码编译
 
@@ -160,64 +157,8 @@ bash build.sh
 | `--output_path=<PATH>`<br>`--output-path=<PATH>` | 设置编译输出路径 | `./build_out` |
 | `--pkg` | 构建run包（保留参数） | - |
 | `--examples` | 编译样例和基准测试 | OFF |
-| `--asan` | 启用AddressSanitizer（地址消毒），用于内存泄漏检测 | OFF |
-| `--cov` | 启用Coverage（代码覆盖率） | OFF |
-
-## 离线编译
-
-离线编译是指在您的环境没有联网的情况下，对软件源码进行编译、并安装到目标服务器的过程。在本项目中，HIXL的编译过程依赖一些开源第三方软件，在离线状态下无法进行自动下载。
-
-本文档提供了离线环境下的编译安装指导，在进行下面的操作之前，请确保已按照[环境准备](#环境准备)完成了基础环境搭建。
-
-### 源码下载
-
-在离线环境中，由于无法通过`git`指令下载代码，须在联网环境中下载源码后，手动上传至目标环境。
-
-- 在联网环境中，进入[本项目主页](https://gitcode.com/cann/hixl), 通过`下载ZIP`或`clone`按钮，根据指导，完成源码下载。
-- 连接至离线环境中，上传源码至您指定的目录下。若下载的为源码压缩包，还需进行解压。
-
-### 开源第三方软件下载 
-
-HIXL在编译时，依赖的第三方开源软件列表如下：
-
-| 开源软件 | 版本 | 下载地址 |
-|---|---|---|
-| googletest | 1.14.0 | [googletest-1.14.0.tar.gz](https://gitcode.com/cann-src-third-party/googletest/releases/download/v1.14.0/googletest-1.14.0.tar.gz) |
-| json | 3.11.3 | [include.zip](https://gitcode.com/cann-src-third-party/json/releases/download/v3.11.3/include.zip) |
-| makeself | 2.5.0 | [makeself-release-2.5.0-patch1.tar.gz](https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz) |
-| pybind11 | 2.13.6 | [pybind11-2.13.6.tar.gz](https://gitcode.com/cann-src-third-party/pybind11/releases/download/v2.13.6/pybind11-2.13.6.tar.gz) |
-
-> [!NOTE]说明
-> 如果您从其他地址下载，请确保版本号一致。
-
-在离线环境中进行编译时，您需要在联网环境中下载上述开源软件压缩包，并上传至离线环境中。
-
-您需要新建一个`{your_3rd_party_path}`目录来存放这些第三方开源软件。按照如下目录结构创建文件夹后，将开源软件压缩包解压至对应文件夹中即可。
-
-```
-your_3rd_party_path/
-|-- json    # json
-|-- makeself    # makeself
-|-- pybind11    # pybind11
-|-- gtest   # googletest
-```
-
-> [!NOTE]说明
-> - 在下载第三方开源软件压缩包并解压后，须修改文件夹名为上述目录结构中的对应名称。
-> - 针对 `.zip` 结尾的压缩包，可使用 `unzip <file-name> -d /path/to/your/destination` 解压至您需要的目录。 
-> - 针对 `.tar.gz` 结尾的压缩包，可使用 `tar -xzvf <file-name> -C /path/to/your/destination` 解压至您需要的目录。
-
-### 源码编译
-
-在离线环境中进行编译时，可通过`--cann_3rd_lib_path`参数来指定您的第三方开源软件目录，其默认值为`{hixl-project-path}/third_party`。
-
-您可通过如下命令进行离线编译。
-
-```
-bash build.sh --cann_3rd_lib_path={your_3rd_party_path}
-```
-
-更多执行选项可参考[构建参数](#源码编译)中的说明，或通过命令`bash build.sh -h`进行查看。
+| `--asan` | 启用地址消毒，用于内存泄漏检测 | OFF |
+| `--cov` | 启用代码覆盖率 | OFF |
 
 ## 本地验证(tests)
 利用tests路径下的测试用例进行本地验证:
