@@ -18,6 +18,7 @@
 #include "common/tcp_client_server.h"
 #include "acl/acl.h"
 #include "hixl/common/hixl_cs.h"
+#include "hixl/common/hixl_log.h"
 
 using json = nlohmann::json;
 
@@ -79,6 +80,7 @@ constexpr uint32_t kExecuteRepeatNum = 5;
 constexpr int32_t kPortMaxValue = 65535;
 constexpr int32_t kBackLog = 1024;
 constexpr const char *kServerMemTagName = "server_mem";
+constexpr const char *kClientMemTagName = "client_mem";
 constexpr const int32_t kStatus = 0;
 
 #define CHECK_ACL_RETURN(x)                                                           \
@@ -229,15 +231,7 @@ int32_t RunClient(const Args &args) {
     return -1;
   }
 
-  // 2. 建链
-  ret = HixlCSClientConnectSync(client_handle, kClientConnectTimeoutMs);
-  if (ret != HIXL_SUCCESS) {
-    ClientFinalize(client_handle, {});
-    (void)printf("[ERROR] HixlCSClientConnectSync failed, ret = %u\n", ret);
-    return -1;
-  }
-
-  // 3. 注册内存地址
+  // 2. 注册内存地址
   MemHandle mem_handle = nullptr;
   HcommMem mem{};
   aclError acl_ret = ACL_ERROR_NONE;
@@ -245,16 +239,33 @@ int32_t RunClient(const Args &args) {
   if (is_host) {
     acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize);
     mem.type = HCCL_MEM_TYPE_HOST;
+    mem.size = kTransferMemSize;
   } else {
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
     mem.type = HCCL_MEM_TYPE_DEVICE;
+    mem.size = kTransferMemSize;
   }
   if (acl_ret != ACL_ERROR_NONE) {
     (void)printf("[ERROR] aclrtMalloc failed, ret = %d\n", acl_ret);
     ClientFinalize(client_handle, {mem_handle});
     return -1;
   }
-  (void)printf("[INFO] RegisterMem success\n");
+  ret = HixlCSClientRegMem(client_handle, kClientMemTagName, &mem, &mem_handle);
+  if (ret != HIXL_SUCCESS) {
+    (void)printf("[ERROR] HixlCSClientRegMem failed, ret = %u\n", ret);
+    ClientFinalize(client_handle, {mem_handle});
+    return -1;
+  }
+  HIXL_LOGI("The client memory has been registered.");
+  (void)printf("[INFO] The client memory has been registered.\n");
+
+  // 3. 建链
+  ret = HixlCSClientConnectSync(client_handle, kClientConnectTimeoutMs);
+  if (ret != HIXL_SUCCESS) {
+    ClientFinalize(client_handle, {});
+    (void)printf("[ERROR] HixlCSClientConnectSync failed, ret = %u\n", ret);
+    return -1;
+  }
 
   // 4. 与server进行内存传输
   if (Transfer(client_handle, static_cast<uint8_t *>(mem.addr), args.transfer_op) != 0) {
@@ -308,9 +319,11 @@ int32_t RunServer(const Args &args) {
   if (is_host) {
     acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize);
     mem.type = HCCL_MEM_TYPE_HOST;
+    mem.size = kTransferMemSize;
   } else {
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
     mem.type = HCCL_MEM_TYPE_DEVICE;
+    mem.size = kTransferMemSize;
   }
   if (acl_ret != ACL_ERROR_NONE) {
     (void)printf("[ERROR] aclrtMalloc failed, ret = %d\n", acl_ret);
@@ -324,7 +337,8 @@ int32_t RunServer(const Args &args) {
     ServerFinalize(server_handle, {mem_handle});
     return -1;
   }
-  (void)printf("[INFO] RegisterMem success\n");
+  HIXL_LOGI("The server memory has been registered.");
+  (void)printf("[INFO] The server memory has been registered.\n");
 
   // 4. 等待client transfer
   TCPClient tcp_client;
