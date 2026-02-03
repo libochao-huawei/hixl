@@ -388,10 +388,16 @@ void ChannelManager::SendHeartbeats() {
     auto ret = channel->SendHeartBeat([&msg](int32_t fd) {
       return ControlMsgHandler::SendMsg(fd, ControlMsgType::kHeartBeat, msg, kSendMsgTimeout);
     });
-    if (ret == kNoNeedRetry) {
-      channel->StopHeartbeat();
+
+    if (ret != SUCCESS) {
+      channel->IncrementHeartbeatFailureCount();
+      if (channel->GetHeartbeatFailureCount() >= 5) {
+        LLMEVENT("Heartbeat failed count reach 5, destroy channel:%s.", channel->GetChannelId().c_str());
+        (void)DestroyChannel(ChannelType::kClient, channel->GetChannelId());
+      }
+    } else {
+      channel->ResetHeartbeatFailureCount();
     }
-    ADXL_CHK_STATUS(ret, "Failed to send heartbeat msg to:%s.", channel->GetChannelId().c_str());
   }
 }
 

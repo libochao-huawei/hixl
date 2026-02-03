@@ -76,6 +76,7 @@ class AdxlInnerEngine {
   Status ParseBufferPoolParams(const std::map<AscendString, AscendString> &options, uint64_t &buffer_size,
                                uint64_t &npu_pool_size);
   Status ParseEnableFabricMem(const std::map<AscendString, AscendString> &options);
+  Status ParseAutoConnectConfig(const std::map<AscendString, AscendString> &options);
 
   std::string local_engine_;
   ChannelManager channel_manager_;
@@ -90,6 +91,7 @@ class AdxlInnerEngine {
   std::unique_ptr<StreamPool> stream_pool_ = nullptr;
   bool user_config_buffer_pool_{false};
   bool user_config_channel_pool_{false};
+  bool auto_connect_{false};
   aclrtContext aclrt_context_{nullptr};
 
   std::mutex notify_mutex_;
