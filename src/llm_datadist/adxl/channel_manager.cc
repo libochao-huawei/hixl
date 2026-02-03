@@ -388,6 +388,9 @@ void ChannelManager::SendHeartbeats() {
     });
     if (ret == kNoNeedRetry) {
       channel->StopHeartbeat();
+      if (auto_connect_) {
+        (void) DestroyChannel(ChannelType::kClient, channel->GetChannelId());
+      }
     }
     ADXL_CHK_STATUS(ret, "Failed to send heartbeat msg to:%s.", channel->GetChannelId().c_str());
   }
@@ -508,5 +511,9 @@ void ChannelManager::ProcessAckMessages() {
 
 void ChannelManager::SetStreamPool(StreamPool *stream_pool) {
   stream_pool_ = stream_pool;
+}
+
+void ChannelManager::SetAutoConnect(bool auto_connect) {
+  auto_connect_ = auto_connect;
 }
 }  // namespace adxl
