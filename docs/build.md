@@ -84,9 +84,6 @@ source /usr/local/Ascend/cann/set_env.sh
 # source ${cann_install_path}/cann/set_env.sh
  ```
 
-> [!NOTE] 说明
-> 完成以上环境准备操作后，若您处于联网环境下，请参考[在线编译](#在线编译)进行操作。若您处于离线环境中，请参考[离线编译](#离线编译)进行操作。
-
 ## 编译
 
 ### 源码下载
@@ -97,10 +94,10 @@ git clone https://gitcode.com/cann/hixl.git
 ```
 
 > [!NOTE] 注意
-> gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。  
-> 在离线环境中，由于无法通过`git`指令下载代码，须在联网环境中下载源码后，手动上传至目标环境。
-> - 在联网环境中，进入[本项目主页](https://gitcode.com/cann/hixl), 通过`下载ZIP`或`clone`按钮，根据指导，完成源码下载。
-> - 连接至离线环境中，上传源码至您指定的目录下。若下载的为源码压缩包，还需进行解压。
+> - gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。  
+> - 在离线环境中，由于无法通过`git`指令下载代码，须在联网环境中下载源码后，手动上传至目标环境。
+>   - 在联网环境中，进入[本项目主页](https://gitcode.com/cann/hixl), 通过`下载ZIP`或`clone`按钮，根据指导，完成源码下载。
+>   - 连接至离线环境中，上传源码至您指定的目录下。若下载的为源码压缩包，还需进行解压。
 
 ### 开源第三方软件依赖
 
@@ -129,7 +126,6 @@ your_3rd_party_path/
 ```
 
 > [!NOTE]说明
-> - 在下载第三方开源软件压缩包并解压后，须修改文件夹名为上述目录结构中的对应名称。
 > - 针对 `.zip` 结尾的压缩包，可使用 `unzip <file-name> -d /path/to/your/destination` 解压至您需要的目录。 
 > - 针对 `.tar.gz` 结尾的压缩包，可使用 `tar -xzvf <file-name> -C /path/to/your/destination` 解压至您需要的目录。
 
@@ -139,10 +135,16 @@ your_3rd_party_path/
 # 默认路径安装，root用户默认路径是/usr/local/Ascend，普通用户默认路径是${HOME}/Ascend
 bash build.sh
 ```
+
+若您需要指定第三方开源软件安装路径，可使用如下命令进行编译：
+```bash
+bash build.sh --cann_3rd_lib_path={your_3rd_party_path}
+```
+
 成功编译后会在build_out目录下生成`cann-hixl_${cann_version}_linux-${arch}.run`。
 - ${cann_version}表示cann版本号。
 - ${arch}表示表示CPU架构，如aarch64、x86_64。
-- 更多执行选项可以用-h查看。
+- 更多执行选项可以用-h查看，或查询下表。
   ```
   bash build.sh -h
   ```
