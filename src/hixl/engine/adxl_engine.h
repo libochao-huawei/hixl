@@ -51,6 +51,8 @@ class AdxlEngine : public Engine {
 
   Status GetNotifies(std::vector<NotifyDesc> &notifies) override;
 
+  Status RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor) override;
+
  private:
   adxl::AdxlInnerEngine adxl_inner_engine_;
 };

@@ -76,6 +76,7 @@ class LLMDataDist(object):
         self._engine_options = options
         self._engine_options['llm.Role'] = self._role_to_str(self._role)
         self._enable_local_comm_res = "llm.LocalCommRes" in options
+        self._enable_transfer_backend = "llm.TransferBackend" in options
         if self._enable_local_comm_res and "llm.EnableCacheManager" not in options:
             log.info('cache manager is enabled by default when local_comm_res is set in LLMConfig')
             self._engine_options["llm.EnableCacheManager"] = "1"
@@ -89,6 +90,16 @@ class LLMDataDist(object):
         log.info('LLMDatadist init options = %s', self._engine_options)
         if self._enable_local_comm_res:
             self._check_is_cache_mgr_mode('llm.LocalCommRes')
+
+        if self._enable_transfer_backend:
+            raise_if_false(self._enable_cache_mgr,
+                           "llm.TransferBackend is not supported when llm.EnableCacheManager is not configured.")
+            if "llm.EnableRemoteCacheAccessible" not in options:
+                self._engine_options["llm.EnableRemoteCacheAccessible"] = "1"
+            raise_if_false(self._engine_options["llm.EnableRemoteCacheAccessible"] == "1",
+                           "llm.TransferBackend is not supported when llm.EnableRemoteCacheAccessible is not enable.")
+            raise_if_false("llm.listenIpInfo" in options,
+                           "llm.TransferBackend is not supported when llm.listenIpInfo is not configured.")
 
         if self._enable_cache_mgr:
             if 'llm.listenIpInfo' in options:

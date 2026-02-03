@@ -122,6 +122,7 @@ class LlmConfig(object):
         self._rdma_traffic_class = None
         self._rdma_service_level = None
         self._local_comm_res = None
+        self._transfer_backend = None
 
     def generate_options(self):
         """
@@ -177,6 +178,8 @@ class LlmConfig(object):
             self._options["llm.RdmaServiceLevel"] = str(self.rdma_service_level)
         if self._local_comm_res is not None:
             self._options["llm.LocalCommRes"] = str(self.local_comm_res)
+        if self._transfer_backend is not None:
+            self._options["llm.TransferBackend"] = str(self.transfer_backend)
         return self.options
 
     @property
@@ -375,3 +378,12 @@ class LlmConfig(object):
     def local_comm_res(self, local_comm_res):
         check_isinstance("local_comm_res", local_comm_res, str)
         self._local_comm_res = local_comm_res
+
+    @property
+    def transfer_backend(self):
+        return "" if self._transfer_backend is None else self._transfer_backend
+
+    @transfer_backend.setter
+    def transfer_backend(self, transfer_backend):
+        check_isinstance("transfer_backend", transfer_backend, str)
+        self._transfer_backend = transfer_backend
