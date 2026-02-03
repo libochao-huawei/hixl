@@ -115,30 +115,35 @@ HIXL在编译时，依赖的第三方开源软件列表如下：
 > [!NOTE]注意
 > 如果您从其他地址下载，请确保版本号一致。
 
-若您的编译环境无法访问网络，您需要在联网环境中下载上述开源软件压缩包，并上传至您的编译环境中。
-
-您需要在编译环境中新建一个`{your_3rd_party_path}`目录来存放这些第三方开源软件。按照如下目录结构创建文件夹后，将开源软件压缩包解压至对应文件夹中即可。
-
-```
-your_3rd_party_path/
-|-- json    # json
-|-- makeself    # makeself
-|-- pybind11    # pybind11
-|-- gtest   # googletest
-```
-
-> [!NOTE]说明
-> - 针对 `.zip` 结尾的压缩包，可使用 `unzip <file-name> -d /path/to/your/destination` 解压至您需要的目录。 
-> - 针对 `.tar.gz` 结尾的压缩包，可使用 `tar -xzvf <file-name> -C /path/to/your/destination` 解压至您需要的目录。
-
 ### 源码编译
+
+若您的编译环境可以访问网络，则可以使用如下命令进行编译。
 
 ```bash
 # 默认路径安装，root用户默认路径是/usr/local/Ascend，普通用户默认路径是${HOME}/Ascend
 bash build.sh
 ```
 
-若您需要指定第三方开源软件安装路径，可使用如下命令进行编译：
+若您的编译环境无法访问网络，您需要在联网环境中下载上述开源软件压缩包，并手动上传至您的编译环境中。
+
+您需要在编译环境中新建一个`{your_3rd_party_path}`目录来存放这些第三方开源软件。
+
+```bash
+mkdir {your_3rd_party_path}
+cd {your_3rd_party_path}
+```
+
+创建好目录后，将下载好的第三方开源软件压缩包上传至目录`{your_3rd_party_path}`后，运行命令：
+
+```bash
+mkdir -p gtest json makeself pybind11   # 创建对应目录
+tar -xzf googletest-1.14.0.tar.gz -C gtest --strip-components=1
+unzip -q include.zip -d json
+tar -xzf makeself-release-2.5.0-patch1.tar.gz -C makeself --strip-components=1
+tar -xzf pybind11-2.13.6.tar.gz -C pybind11 --strip-components=1
+```
+
+使用如下命令进行编译：
 ```bash
 bash build.sh --cann_3rd_lib_path={your_3rd_party_path}
 ```
