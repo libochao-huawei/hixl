@@ -18,18 +18,18 @@
 #include <iostream>
 #include <fstream>
 #include "nlohmann/json.hpp"
+#include "common/tcp_client_server.h"
 #include "acl/acl.h"
 #include "hixl/hixl.h"
 
 using namespace hixl;
 namespace {
-constexpr int32_t kWaitRegTime = 5;
-constexpr int32_t kWaitTransTime = 20;
-constexpr int32_t kExpectedArgCnt = 5;
+constexpr int32_t kExpectedArgCnt = 6;
 constexpr uint32_t kArgIndexDeviceId = 1;
 constexpr uint32_t kArgIndexLocalEngine = 2;
 constexpr uint32_t kArgIndexRemoteEngine = 3;
-constexpr uint32_t kArgIndexTransferMode = 4;
+constexpr uint32_t kArgIndexTcpPort = 4;
+constexpr uint32_t kArgIndexTransferMode = 5;
 constexpr int32_t kSrcValue = 2;
 
 constexpr const char kServerJsonFilePath[] = "../../../examples/cpp/local_comm_res_server.json";
@@ -128,10 +128,7 @@ int Disconnect(Hixl &hixl_engine, const char *remote_engine) {
   return 0;
 }
 
-int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine) {
-  uintptr_t dst_addr;
-  std::ifstream("./tmp") >> std::hex >> dst_addr;
-
+int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine, uint64_t dst_addr) {
   int32_t *dst_ptr = reinterpret_cast<int32_t *>(dst_addr);
   int32_t dst = *dst_ptr;
 
@@ -184,8 +181,23 @@ void Finalize(Hixl &hixl_engine, bool is_host, const std::vector<MemHandle> &han
 }
 
 
-int32_t RunClient(const char *local_engine, const char *remote_engine, const std::string &transfer_mode, bool is_client) {
+int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t tcp_port, const std::string &transfer_mode, bool is_client) {
   printf("[INFO] client start\n");
+  // 通过TCP接收Server侧的内存地址
+  TCPServer tcp_server;
+  uint64_t remote_addr = 0;
+  if (!tcp_server.StartServer(tcp_port)) {
+    printf("[ERROR] Failed to start TCP server\n");
+  }
+  printf("[INFO] TCP server started\n");
+  if (!tcp_server.AcceptConnection()) {
+    return -1;
+  }
+  remote_addr = tcp_server.ReceiveUint64();
+  if (remote_addr != 0) {
+    printf("[INFO] Success to receive server mem addr: 0x%lx\n", remote_addr);
+  }
+
   // 1. 初始化
   Hixl hixl_engine;
   if (Initialize(hixl_engine, local_engine, is_client) != 0) {
@@ -196,11 +208,13 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, const std
   MemType mem_type = (transfer_mode == "h2d" || transfer_mode == "h2h") ? MEM_HOST : MEM_DEVICE;
   bool is_host = mem_type == MEM_HOST;
   int32_t *src = nullptr;
+  void *tmp = nullptr;
   if (mem_type == MEM_HOST) {
-    CHECK_ACL(aclrtMallocHost(reinterpret_cast<void **>(&src), sizeof(int32_t)));
+    CHECK_ACL(aclrtMallocHost(&tmp, sizeof(int32_t)));
   } else {
-    CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&src), sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
+    CHECK_ACL(aclrtMalloc(&tmp, sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
   }
+  src = static_cast<int32_t *>(tmp);
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(src);
   desc.len = sizeof(int32_t);
@@ -214,7 +228,9 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, const std
   printf("[INFO] RegisterMem success\n");
 
   // 等待server注册完成
-  std::this_thread::sleep_for(std::chrono::seconds(kWaitRegTime));
+  if (tcp_server.ReceiveTaskStatus()) {
+    printf("[INFO] Server RegisterMem success\n");
+  }
 
   // 3. 与server建链
   if (Connect(hixl_engine, remote_engine) != 0) {
@@ -231,13 +247,16 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, const std
 
   // 5. 断链并销毁
   Disconnect(hixl_engine, remote_engine);
+  (void)tcp_server.SendTaskStatus();
+  tcp_server.DisConnectClient();
+  tcp_server.StopServer();
   Finalize(hixl_engine, is_host, {handle}, {src});
   printf("[INFO] Finalize success\n");
-  printf("[INFO] Prompt Sample end\n");
+  printf("[INFO] Client Sample end\n");
   return 0;
 }
 
-int32_t RunServer(const char *local_engine, const std::string &transfer_mode, bool is_client) {
+int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t tcp_port, std::string &transfer_mode, bool is_client) {
   printf("[INFO] server start\n");
   // 1. 初始化
   Hixl hixl_engine;
@@ -247,37 +266,46 @@ int32_t RunServer(const char *local_engine, const std::string &transfer_mode, bo
   }
   // 2. 注册内存地址
   MemType mem_type = (transfer_mode == "h2h" || transfer_mode == "d2h") ? MEM_HOST : MEM_DEVICE;
-  int32_t *buffer = nullptr;
+  bool is_host = mem_type == MEM_HOST;
+  void *buffer = nullptr;
   if (mem_type == MEM_DEVICE) {
-    CHECK_ACL(aclrtMalloc((void **)&buffer, sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
+    CHECK_ACL(aclrtMalloc(&buffer, sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
   } else {
-    CHECK_ACL(aclrtMallocHost((void **)&buffer, sizeof(int32_t)));
+    CHECK_ACL(aclrtMallocHost(&buffer, sizeof(int32_t)));
   }
+  auto addr = reinterpret_cast<uintptr_t>(buffer);
+
+  // 通过TCP传输内存地址到Client侧
+  TCPClient tcp_client;
+  if (!tcp_client.ConnectToServer(remote_engine, tcp_port)) {
+    return -1;
+  }
+  (void)tcp_client.SendUint64(addr);
 
   MemDesc desc{};
-  desc.addr = reinterpret_cast<uintptr_t>(buffer);
+  desc.addr = addr;
   desc.len = sizeof(int32_t);
   MemHandle handle = nullptr;
   auto ret = hixl_engine.RegisterMem(desc, mem_type, handle);
   if (ret != SUCCESS) {
     printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
-    Finalize(hixl_engine, {handle}, {buffer});
+    Finalize(hixl_engine, is_host, {handle}, {buffer});
     return -1;
   }
-  // 3. RegisterMem成功后，将地址保存到本地文件中等待client读取
   printf("[INFO] RegisterMem success, dst addr:%p\n", buffer);
-  std::ofstream tmp_file("./tmp");  // 默认就是 std::ios::out | std::ios::trunc
-  if (tmp_file) {
-    tmp_file << buffer << std::endl;
+
+  // 通过TCP通知Client侧内存已注册
+  (void)tcp_client.SendTaskStatus();
+
+  // 3. 等待client transfer
+  printf("[INFO] Wait transfer begin\n");
+  if (tcp_client.ReceiveTaskStatus()) {
+    printf("[INFO] Wait transfer end\n");
   }
+  tcp_client.Disconnect();
 
-  // 4. 等待client transfer
-  std::this_thread::sleep_for(std::chrono::seconds(kWaitTransTime));
-
-  // 5. 释放Cache与llmDataDist
-  bool is_host = mem_type == MEM_HOST;
+  // 4. 释放Cache与llmDataDist
   Finalize(hixl_engine, is_host, {handle}, {buffer});
-  printf("[INFO] Finalize success\n");
   printf("[INFO] server Sample end\n");
   return 0;
 }
@@ -287,11 +315,13 @@ int main(int32_t argc, char **argv) {
   std::string device_id;
   std::string local_engine;
   std::string remote_engine;
+  std::string tcp_port_str;
   std::string transfer_mode;
   if (argc == kExpectedArgCnt) {
     device_id = argv[kArgIndexDeviceId];
     local_engine = argv[kArgIndexLocalEngine];
     remote_engine = argv[kArgIndexRemoteEngine];
+    tcp_port_str = argv[kArgIndexTcpPort];
     transfer_mode = argv[kArgIndexTransferMode];
     printf("[INFO] device_id = %s, local_engine = %s, remote_engine = %s, transfer_mode=%s\n", device_id.c_str(), local_engine.c_str(),
            remote_engine.c_str(), transfer_mode.c_str());
@@ -304,13 +334,19 @@ int main(int32_t argc, char **argv) {
   }
   int32_t device = std::stoi(device_id);
   CHECK_ACL(aclrtSetDevice(device));
+  int32_t input_tcp_port = std::stoi(tcp_port_str);
+  if (input_tcp_port < 0 || input_tcp_port > 65535) {
+    printf("[ERROR] Invalid port: %d, should be in 0~65535\n", input_tcp_port);
+    return -1;
+  }
+  auto tcp_port = static_cast<uint16_t>(input_tcp_port);
   is_client = (local_engine.find(':') == std::string::npos);
 
   int32_t ret = 0;
   if (is_client) {
-    ret = RunClient(local_engine.c_str(), remote_engine.c_str(), transfer_mode.c_str(), is_client);
+    ret = RunClient(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode.c_str(), is_client);
   } else {
-    ret = RunServer(local_engine.c_str(), transfer_mode.c_str(), is_client);
+    ret = RunServer(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode.c_str(), is_client);
   }
   CHECK_ACL(aclrtResetDevice(device));
   return ret;
