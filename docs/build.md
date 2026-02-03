@@ -28,9 +28,9 @@
 
 #### 方式二：使用Docker容器
 
-  **配套 X86 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_x86:latest`
+  **配套 X86 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_x86:lv4_latest`
   
-  **配套 ARM 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_arm:latest`
+  **配套 ARM 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_arm:lv4_latest`
 
   以下是推荐的使用方式，可供参考:
 
@@ -51,7 +51,8 @@
   > - `--cap-add SYS_PTRACE`：创建Docker容器时添加`SYS_PTRACE`权限，以支持[本地验证](#本地验证tests)时的内存泄漏检测功能。
   > - 更多 docker 选项介绍请通过 `docker --help` 查询。
 
-  完成后可以进入[安装CANN-Toolkit软件包](#3-安装社区版cann-toolkit包)章节。
+  配套构建镜像已安装了上述依赖、CANN Toolkit开发套件包以及CANN ops算子包，安装路径为`/home/jenkins/Ascend`。
+  完成上述步骤后可直接进入[配置环境变量](#5-配置环境变量)章节。
 
 ### 2. **安装驱动与固件（运行样例依赖）**  
 
@@ -94,10 +95,11 @@ git clone https://gitcode.com/cann/hixl.git
 ```
 
 > [!NOTE] 注意
-> - gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。  
-> - 在离线环境中，由于无法通过`git`指令下载代码，须在联网环境中下载源码后，手动上传至目标环境。
->   - 在联网环境中，进入[本项目主页](https://gitcode.com/cann/hixl), 通过`下载ZIP`或`clone`按钮，根据指导，完成源码下载。
->   - 连接至离线环境中，上传源码至您指定的目录下。若下载的为源码压缩包，还需进行解压。
+> gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。  
+
+若您的编译环境无法访问网络，由于无法通过`git`指令下载代码，须在联网环境中下载源码后，手动上传至目标环境。
+- 在联网环境中，进入[本项目主页](https://gitcode.com/cann/hixl), 通过`下载ZIP`或`clone`按钮，根据指导，完成源码下载。
+- 连接至离线环境中，上传源码至您指定的目录下。若下载的为源码压缩包，还需进行解压。
 
 ### 开源第三方软件依赖
 
