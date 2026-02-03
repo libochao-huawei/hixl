@@ -131,6 +131,10 @@ class Channel {
   Status TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                                   aclrtStream stream, uint64_t timeout);
 
+  void IncrementHeartbeatFailureCount();
+  void ResetHeartbeatFailureCount();
+  int32_t GetHeartbeatFailureCount() const;
+
  private:
   Status ClearResources();
   void ClearNotifyMessages();
@@ -141,6 +145,7 @@ class Channel {
   std::atomic<bool> with_heartbeat_{false};
   std::chrono::steady_clock::time_point last_heartbeat_time_;
   static int64_t timeout_in_millis_;
+  int32_t heartbeat_failure_count_ = 0;
 
   // mutex for disconnect and transfer synchronize
   std::mutex transfer_mutex_;
