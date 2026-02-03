@@ -239,7 +239,7 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   }
 
   // 4. 从server get内存，并向server put内存
-  if (Transfer(hixl_engine, *src, remote_engine) != 0) {
+  if (Transfer(hixl_engine, *src, remote_engine, remote_addr) != 0) {
     Disconnect(hixl_engine, remote_engine);
     Finalize(hixl_engine, is_host, {handle}, {src});
     return -1;
@@ -344,9 +344,9 @@ int main(int32_t argc, char **argv) {
 
   int32_t ret = 0;
   if (is_client) {
-    ret = RunClient(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode.c_str(), is_client);
+    ret = RunClient(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, is_client);
   } else {
-    ret = RunServer(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode.c_str(), is_client);
+    ret = RunServer(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, is_client);
   }
   CHECK_ACL(aclrtResetDevice(device));
   return ret;

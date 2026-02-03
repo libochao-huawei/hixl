@@ -39,6 +39,7 @@ foreach(target_name IN LISTS targets_list)
         target_include_directories(${target_name} PRIVATE
             ${HIXL_INC_DIR}
             ${CANN_INSTALL_PATH}/include
+            ${HIXL_CODE_DIR}/benchmarks
         )
         target_compile_options(${target_name} PRIVATE
             -ftrapv
