@@ -117,7 +117,7 @@ HIXL在编译时，依赖的第三方开源软件列表如下：
 
 ### 源码编译
 
-若您的编译环境可以访问网络，则可以使用如下命令进行编译。
+若您的编译环境可以访问网络，编译过程中将自动下载上述开源第三方软件，可以使用如下命令进行编译。
 
 ```bash
 # 默认路径安装，root用户默认路径是/usr/local/Ascend，普通用户默认路径是${HOME}/Ascend
@@ -137,10 +137,10 @@ cd {your_3rd_party_path}
 
 ```bash
 mkdir -p gtest json makeself pybind11   # 创建对应目录
-tar -xzf googletest-1.14.0.tar.gz -C gtest --strip-components=1
-unzip -q include.zip -d json
-tar -xzf makeself-release-2.5.0-patch1.tar.gz -C makeself --strip-components=1
-tar -xzf pybind11-2.13.6.tar.gz -C pybind11 --strip-components=1
+tar -xzf googletest-1.14.0.tar.gz -C gtest --strip-components=1   # 解压googletest
+unzip -q include.zip -d json    # 解压json
+tar -xzf makeself-release-2.5.0-patch1.tar.gz -C makeself --strip-components=1    # 解压makeself
+tar -xzf pybind11-2.13.6.tar.gz -C pybind11 --strip-components=1    # 解压pybind11
 ```
 
 使用如下命令进行编译：
