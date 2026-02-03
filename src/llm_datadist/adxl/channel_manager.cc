@@ -387,7 +387,7 @@ void ChannelManager::SendHeartbeats() {
       return ControlMsgHandler::SendMsg(fd, ControlMsgType::kHeartBeat, msg, kSendMsgTimeout);
     });
     if (ret == kNoNeedRetry) {
-      channel->StopHeartbeat();
+      (void) DestroyChannel(ChannelType::kClient, channel->GetChannelId());
     }
     ADXL_CHK_STATUS(ret, "Failed to send heartbeat msg to:%s.", channel->GetChannelId().c_str());
   }

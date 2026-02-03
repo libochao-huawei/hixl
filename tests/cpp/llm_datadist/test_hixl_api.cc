@@ -419,7 +419,7 @@ TEST_F(HixlSTest, TestHixlServerDown) {
   EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
   EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
   engine2.Finalize();
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), NOT_CONNECTED);
   engine1.Finalize();
 }
 
