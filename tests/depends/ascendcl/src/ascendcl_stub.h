@@ -11,6 +11,8 @@
 #ifndef INC_EXTERNAL_ACL_ACL_RT_STUB_H_
 #define INC_EXTERNAL_ACL_ACL_RT_STUB_H_
 
+#include "../../../../../../Ascend/ascend-toolkit/latest/include/acl/acl_base_rt.h"
+
 #include <stdint.h>
 #include <stddef.h>
 #include <vector>
