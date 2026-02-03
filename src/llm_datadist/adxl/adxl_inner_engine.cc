@@ -105,6 +105,24 @@ Status AdxlInnerEngine::ParseFabricMemoryCapacity(const std::map<AscendString, A
   return SUCCESS;
 }
 
+Status AdxlInnerEngine::ParseAutoConnectConfig(const std::map<AscendString, AscendString>& options) {
+  auto auto_connect_it = options.find(hixl::OPTION_AUTO_CONNECT);
+  if (auto_connect_it != options.end()) {
+    std::string auto_connect_str = auto_connect_it->second.GetString();
+    if (!auto_connect_str.empty()) {
+      uint32_t auto_connect = 0U;
+      ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(auto_connect_str, auto_connect),
+                       "%s is invalid, value = %s", hixl::OPTION_AUTO_CONNECT,
+                       auto_connect_str.c_str());
+      ADXL_CHK_BOOL_RET_STATUS(auto_connect == 1U || auto_connect == 0U, PARAM_INVALID,
+                               "%s is invalid, should be zero or one.", hixl::OPTION_AUTO_CONNECT);
+      LLMLOGI("set %s to %d.", hixl::OPTION_AUTO_CONNECT, auto_connect);
+      auto_connect_ = (auto_connect == 1U);
+    }
+  }
+  return SUCCESS;
+}
+
 Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, AscendString>& options) {
   auto config_it = options.find(hixl::OPTION_GLOBAL_RESOURCE_CONFIG);
   std::map<AscendString, AscendString> json_options;
@@ -145,7 +163,9 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get(), fabric_mem_transfer_service_.get()),
                       "Failed to init msg handler.");
   ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
-  ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
+  ADXL_CHK_STATUS_RET(ParseAutoConnectConfig(options));
+  ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()),
+                      "Failed to init channel manager.");
   channel_manager_.SetStreamPool(stream_pool_.get());
   channel_manager_.RegisterNotifyAckCallback([this](uint64_t req_id) {
     std::lock_guard<std::mutex> lock(notify_mutex_);
@@ -454,7 +474,7 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
                                      const std::vector<TransferOpDesc> &op_descs,
                                      int32_t timeout_in_millis) {
   llm::TemporaryRtContext with_context(aclrt_context_);
-  if (user_config_channel_pool_) {
+  if (user_config_channel_pool_ || auto_connect_) {
     (void) ConnectWhenTransfer(remote_engine, timeout_in_millis);
   }
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
@@ -502,7 +522,7 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
                                       const TransferArgs &optional_args,
                                       TransferReq &req) {
   llm::TemporaryRtContext with_context(aclrt_context_);
-  if (user_config_channel_pool_) {
+  if (user_config_channel_pool_ || auto_connect_) {
     (void) ConnectWhenTransfer(remote_engine, kConnectWhenTransferTimeout);
   }
   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());

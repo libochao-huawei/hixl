@@ -443,6 +443,18 @@ void Channel::GetNotifyMessages(std::vector<NotifyDesc> &notifies) {
   notify_messages_.clear();
 }
 
+void Channel::IncrementHeartbeatFailureCount() {
+  heartbeat_failure_count_++;
+}
+
+void Channel::ResetHeartbeatFailureCount() {
+  heartbeat_failure_count_ = 0;
+}
+
+int32_t Channel::GetHeartbeatFailureCount() const {
+  return heartbeat_failure_count_;
+}
+
 BufferedTransfer::BufferedTransfer(
     std::function<Status(HcclOneSideOpDesc *descs, uint32_t desc_num)> trans_func) : trans_func_(trans_func) {
   op_descs_.reserve(kMaxOpDescNum);
