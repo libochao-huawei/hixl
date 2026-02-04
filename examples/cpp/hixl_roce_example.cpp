@@ -136,7 +136,7 @@ int32_t Transfer(Hixl &hixl_engine, int32_t *src_ptr, const char *remote_engine,
     return -1;
   }
   int32_t dst = 0;
-  CHECK_ACL(aclrtMemcpy(&dst, sizeof(int32_t), reinterpret_cast<uintptr_t>(dst_addr), sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
+  CHECK_ACL(aclrtMemcpy(&dst, sizeof(int32_t), reinterpret_cast<int32_t*>(dst_addr), sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
   if (dst != 0) {
     printf("[INFO] get dst value succeed, dst:%d\n", dst);
   } else {
@@ -160,13 +160,13 @@ int32_t Transfer(Hixl &hixl_engine, int32_t *src_ptr, const char *remote_engine,
   printf("[INFO] TransferSync write success, src = %d\n", src);
 
   dst = kDstValue;
-  CHECK_ACL(aclrtMemcpy(&dst, sizeof(int32_t), reinterpret_cast<uintptr_t>(dst_addr), sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
+  CHECK_ACL(aclrtMemcpy(&dst, sizeof(int32_t), reinterpret_cast<int32_t*>(dst_addr), sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
   ret = hixl_engine.TransferSync(remote_engine, READ, {desc});
   if (ret != SUCCESS) {
     printf("[ERROR] TransferSync read failed, ret = %u\n", ret);
     return -1;
   }
-  CHECK_ACL(aclrtMemcpy(&src, sizeof(int32_t), reinterpret_cast<uintptr_t>(src_ptr), ACL_MEMCPY_DEVICE_TO_HOST));
+  CHECK_ACL(aclrtMemcpy(&src, sizeof(int32_t), reinterpret_cast<int32_t*>(src_ptr), ACL_MEMCPY_DEVICE_TO_HOST));
   if (src != dst) {
     printf("[ERROR] Src and dst do not equal after reading. src:%d, dst:%d\n", src, dst);
     return -1;
@@ -292,7 +292,7 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   } else {
     CHECK_ACL(aclrtMallocHost(&buffer, sizeof(int32_t)));
   }
-  auto addr = reinterpret_cast<uintptr_t>(buffer);
+  auto addr = reinterpret_cast<int32_t*>(buffer);
 
   int32_t dst_value = 2;
   CHECK_ACL(aclrtMemcpy(addr, sizeof(int32_t), &dst_value, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
