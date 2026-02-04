@@ -658,6 +658,12 @@ TEST_F(DataCacheEngineSTest, CopyCache_C2C_Big) {
   std::map<ge::AscendString, ge::AscendString> options;
   // 4 * 64K
   options[llm::LLM_OPTION_MEM_POOL_CONFIG] = "{\"memory_size\": 10000000}";
+  llm::HcclTransferEngine hccl_transfer_engine(0);
+  hccl_transfer_engine.SetCommEntityManager(&comm_entity_manager);
+  hccl_transfer_engine.SetCacheManager(&cache_manager);
+  comm_mem_manager.Initialize(&hccl_transfer_engine);
+  GlobalMemManager::GetInstance().Initialize(&hccl_transfer_engine);
+  hccl_transfer_engine.Initialize(options);
   EXPECT_EQ(cache_engine.Initialize(options), ge::SUCCESS);
 
   int64_t big_dim = static_cast<int64_t>(1024 * 1024 + 128);
@@ -698,6 +704,12 @@ TEST_F(DataCacheEngineSTest, CopyCache_B2B) {
   std::map<ge::AscendString, ge::AscendString> options;
   // 4 * 64K
   options[llm::LLM_OPTION_MEM_POOL_CONFIG] = "{\"memory_size\": 10000000}";
+  llm::HcclTransferEngine hccl_transfer_engine(0);
+  hccl_transfer_engine.SetCommEntityManager(&comm_entity_manager);
+  hccl_transfer_engine.SetCacheManager(&cache_manager);
+  comm_mem_manager.Initialize(&hccl_transfer_engine);
+  GlobalMemManager::GetInstance().Initialize(&hccl_transfer_engine);
+  hccl_transfer_engine.Initialize(options);
   EXPECT_EQ(cache_engine.Initialize(options), ge::SUCCESS);
 
   llm::CacheDesc src_cache_desc{};
