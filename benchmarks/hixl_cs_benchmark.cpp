@@ -281,7 +281,7 @@ int32_t RunClient(const Args &args) {
     ret = aclrtFreeHost(tmp);
     return -1;
   }
-  uint32_t transfer_data = static_cast<uint32_t *>(tmp);
+  uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
   HIXL_LOGI("The client transfer_data addr is : %p",transfer_data);
   for (uint32_t i = 0; i < kTransferMemSize; i++) {
     transfer_data[i] = 0;
@@ -375,7 +375,7 @@ int32_t RunServer(const Args &args) {
     ret = aclrtFreeHost(tmp);
     return -1;
   }
-  uint32_t transfer_data = static_cast<uint32_t *>(tmp);
+  uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
   HIXL_LOGI("The transfer_data addr is : %p",transfer_data);
   for (uint32_t i = 0; i < kTransferMemSize; i++) {
     transfer_data[i] = 1;
