@@ -166,7 +166,7 @@ int32_t Transfer(Hixl &hixl_engine, int32_t *src_ptr, const char *remote_engine,
     printf("[ERROR] TransferSync read failed, ret = %u\n", ret);
     return -1;
   }
-  CHECK_ACL(aclrtMemcpy(&src, sizeof(int32_t), reinterpret_cast<int32_t*>(src_ptr), ACL_MEMCPY_DEVICE_TO_HOST));
+  CHECK_ACL(aclrtMemcpy(&src, sizeof(int32_t), reinterpret_cast<int32_t*>(src_ptr), sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
   if (src != dst) {
     printf("[ERROR] Src and dst do not equal after reading. src:%d, dst:%d\n", src, dst);
     return -1;
