@@ -22,7 +22,6 @@ struct UbKernelStubs {
 };
 
 Status LoadUbKernelAndResolveStubs(int32_t device_id,
-                                  const char *json_path,
                                   const char *func_get,
                                   const char *func_put,
                                   aclrtBinHandle &bin_handle,
