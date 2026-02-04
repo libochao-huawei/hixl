@@ -70,9 +70,15 @@ Status HixlCSClient::InitFlagQueue() noexcept {
     return SUCCESS;  // 已初始化
   }
   void *tmp = nullptr;
-  rtError_t ret = rtMallocHost(&tmp, kFlagQueueSize * sizeof(uint64_t), HCCL);
-  if (ret != RT_ERROR_NONE || tmp == nullptr) {
-    HIXL_LOGE(RESOURCE_EXHAUSTED, "rtMallocHost failed, ret=%d", ret);
+  // 目前endpoint只支持使用malloc方式注册的内存
+  tmp = malloc(kFlagQueueSize * sizeof(uint64_t));
+  // rtError_t ret = rtMallocHost(&tmp, kFlagQueueSize * sizeof(uint64_t), HCCL);
+  // if (ret != RT_ERROR_NONE || tmp == nullptr) {
+  //   HIXL_LOGE(RESOURCE_EXHAUSTED, "rtMallocHost failed, ret=%d", ret);
+  //   return RESOURCE_EXHAUSTED;
+  // }
+  if (tmp == nullptr) {
+    HIXL_LOGE(RESOURCE_EXHAUSTED, "falg_addr malloc failed.");
     return RESOURCE_EXHAUSTED;
   }
   flag_queue_ = static_cast<uint64_t *>(tmp);
@@ -80,15 +86,23 @@ Status HixlCSClient::InitFlagQueue() noexcept {
     flag_queue_[i] = 0;
   }
   top_index_ = kFlagQueueSize;  // 初始化成功后可用
+  HcommMem mem{};
+  mem.type = HCCL_MEM_TYPE_HOST;
+  mem.addr = flag_queue_;
+  mem.size = kFlagQueueSize * sizeof(uint64_t);
+  MemHandle flag_handle = nullptr;
+  HIXL_CHK_STATUS_RET(RegMem(kTransFlagNameHost, &mem, &flag_handle),
+                      "Failed to reg HOST trans finished flag, mem.addr: %p, mem.size: %u.", mem.addr, mem.size);
   return SUCCESS;
 }
 
 HixlCSClient::~HixlCSClient() {
   if (flag_queue_ != nullptr) {
-    rtError_t ret = rtFreeHost(flag_queue_);
-    if (ret != RT_ERROR_NONE) {
-      HIXL_LOGI("rtFreeHost failed, ret=%d", ret);
-    }
+    // rtError_t ret = rtFreeHost(flag_queue_);
+    // if (ret != RT_ERROR_NONE) {
+    //   HIXL_LOGI("rtFreeHost failed, ret=%d", ret);
+    // }
+    free(flag_queue_);
     flag_queue_ = nullptr;
   }
   for (size_t i = 0; i < kFlagQueueSize; ++i){
