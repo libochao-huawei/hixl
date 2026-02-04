@@ -29,13 +29,16 @@ Status Segment::AddRange(uint64_t start, uint64_t len) {
   if (it != ranges_.begin()) {
     auto prev_it = std::prev(it);
     if (prev_it->first == start && prev_it->second == end) {
-      HIXL_LOGI("Range already exists, start:%llu, end:%llu", start, end);
+      HIXL_LOGI("Range already exists, start:%lu, end:%lu", start, end);
+      return SUCCESS;
     }
   }
   if (it != ranges_.end() && it->first == start && it->second == end) {
-    HIXL_LOGI("Range already exists, start:%llu, end:%llu", start, end);
+    HIXL_LOGI("Range already exists, start:%lu, end:%lu", start, end);
+    return SUCCESS;
   }
   ranges_.insert(it, {start, end});
+  HIXL_LOGI("Add range success, start:%lu, end:%lu", start, end);
   return SUCCESS;
 }
 
@@ -44,6 +47,10 @@ void Segment::RemoveRange(uint64_t start, uint64_t end) {
                              [](const std::pair<uint64_t, uint64_t> &range, uint64_t val) {
                                return range.first < val;
                              });
+  if (it == ranges_.end() || it->first > start) {
+    HIXL_LOGW("Range not found, start:%lu, end:%lu", start, end);
+    return;
+  }
   for (; it != ranges_.end() && it->first == start; ++it) {
     if (it->second == end) {
       ranges_.erase(it);

@@ -12,9 +12,15 @@
 #define CANN_HIXL_SRC_HIXL_COMMON_HIXL_INNER_TYPES_H_
 
 #include <string>
+#include <sstream>
 #include "hixl/hixl_types.h"
 
 namespace hixl {
+constexpr const char *kProtocolRoce = "roce";
+constexpr const char *kProtocolUbCtp = "ub_ctp";
+constexpr const char *kProtocolUbTp = "ub_tp";
+constexpr const char *kPlacementDevice = "device";
+constexpr const char *kPlacementHost = "host";
 
 struct EndPointConfig {
   std::string protocol;
@@ -25,26 +31,16 @@ struct EndPointConfig {
   std::string net_instance_id;
 
   std::string ToString() const {
-    return "EndPointConfig{"
-           "protocol=\"" +
-           protocol +
-           "\", "
-           "comm_id=\"" +
-           comm_id +
-           "\", "
-           "placement=\"" +
-           placement +
-           "\", "
-           "plane=\"" +
-           plane +
-           "\", "
-           "dst_eid=\"" +
-           dst_eid +
-           "\", "
-           "net_instance_id=\"" +
-           net_instance_id +
-           "\""
-           "}";
+    std::ostringstream oss;
+    oss << "EndPointConfig{";
+    oss << "protocol: " << protocol << ", ";
+    oss << "comm_id: " << comm_id << ", ";
+    oss << "placement: " << placement << ", ";
+    oss << "plane: " << plane << ", ";
+    oss << "dst_eid: " << dst_eid << ", ";
+    oss << "net_instance_id: " << net_instance_id;
+    oss << "}";
+    return oss.str();
   }
 };
 
