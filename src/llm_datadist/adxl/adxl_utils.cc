@@ -10,7 +10,7 @@
 
 #include "adxl_utils.h"
 #include <fstream>
-#include "rt_error_codes.h"
+#include "acl/acl.h"
 #include "llm_datadist/llm_datadist.h"
 #include "common/llm_log.h"  // Correct include path
 
@@ -36,9 +36,9 @@ Status HcclError2AdxlStatus(HcclResult ret) {
   return FAILED;
 }
 
-Status AclError2AdxlStatus(rtError_t ret) {
-  static const std::map<rtError_t, Status> acl2adxl = {
-      {RT_ERROR_NONE, SUCCESS},
+Status AclError2AdxlStatus(aclError ret) {
+  static const std::map<aclError, Status> acl2adxl = {
+      {ACL_ERROR_NONE, SUCCESS},
       {ACL_ERROR_RT_STREAM_SYNC_TIMEOUT, TIMEOUT},
   };
   const auto &it = acl2adxl.find(ret);
@@ -63,15 +63,9 @@ Status LLMError2AdxlStatus(ge::Status ret) {
   return FAILED;
 }
 
-Status LoadJsonConfig(const std::string& file_path, std::map<AscendString, AscendString>& options) {
+Status LoadJsonConfig(const std::string& json_string, std::map<AscendString, AscendString>& options) {
   try {
-    std::ifstream json_file(file_path);
-    if (!json_file.is_open()) {
-      LLMLOGE(PARAM_INVALID, "Failed to open JSON config file: %s", file_path.c_str());
-      return PARAM_INVALID;
-    }
-    nlohmann::json j;
-    json_file >> j;
+    nlohmann::json j = nlohmann::json::parse(json_string);
     if (j.is_object()) {
       for (auto it = j.begin(); it != j.end(); ++it) {
         std::string key = it.key();
@@ -81,7 +75,7 @@ Status LoadJsonConfig(const std::string& file_path, std::map<AscendString, Ascen
     }
     return SUCCESS;
   } catch (const std::exception& e) {
-    LLMLOGE(PARAM_INVALID, "Failed to parse JSON config file %s: %s", file_path.c_str(), e.what());
+    LLMLOGE(PARAM_INVALID, "Failed to parse JSON config string: %s", e.what());
     return PARAM_INVALID;
   }
 }

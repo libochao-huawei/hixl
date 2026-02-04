@@ -9,8 +9,7 @@
  */
 
 #include "adxl_inner_engine.h"
-#include "runtime/rt.h"
-#include "rt_error_codes.h"
+#include "acl/acl.h"
 #include "hccl/hccl_adapter.h"
 #include "common/llm_utils.h"
 #include "common/llm_scope_guard.h"
@@ -18,6 +17,7 @@
 #include "statistic_manager.h"
 #include "llm_datadist_timer.h"
 #include "adxl_utils.h"
+#include "virtual_memory_manager.h"
 
 namespace adxl {
 namespace {
@@ -27,7 +27,6 @@ constexpr size_t kDefaultPageShift = 16U;
 constexpr uint64_t kDefaultBufferNum = 4U;
 constexpr uint64_t kDefaultBufferSize = 8U;
 constexpr const char *kDisabledPoolConfig = "0:0";
-constexpr uint64_t kNeedUseBufferThresh = 256 * 1024U;
 constexpr size_t kMemPoolNum = 2U;
 constexpr uint32_t kCheckDisconnetPeriod = 10U; // ms
 constexpr int32_t kConnectWhenTransferTimeout = 3000; // ms
@@ -46,51 +45,77 @@ Status AdxlInnerEngine::ParseWaterlineRatio(const std::map<AscendString, AscendS
   return SUCCESS;
 }
 
-Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, AscendString>& options) {
-  auto config_it = options.find(hixl::OPTION_GLOBAL_RESOURCE_CONFIG);
-  std::map<AscendString, AscendString> json_options;
-  if (config_it != options.end()) {
-    ADXL_CHK_STATUS_RET(LoadJsonConfig(config_it->second.GetString(), json_options), 
-                        "Failed to load JSON config from file: %s", config_it->second.GetString());
-  }
-
+Status AdxlInnerEngine::ParseChannelPoolConfig(const std::map<AscendString, AscendString>& json_options) {
   int32_t max_channel = kDefaultMaxChannel;
   auto max_it = json_options.find(adxl::OPTION_MAX_CHANNEL);
   if (max_it != json_options.end()) {
-    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(max_it->second.GetString(), max_channel), 
+    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(max_it->second.GetString(), max_channel),
                     "Invalid max_channel: %s", max_it->second.GetString());
     ADXL_CHK_BOOL_RET_STATUS(max_channel > 0, PARAM_INVALID, "Invalid max_channel: %d, must be > 0", max_channel);
-    ADXL_CHK_BOOL_RET_STATUS(max_channel <= kDefaultMaxChannel, PARAM_INVALID, 
+    ADXL_CHK_BOOL_RET_STATUS(max_channel <= kDefaultMaxChannel, PARAM_INVALID,
                              "Invalid max_channel: %d, must be <= %d", max_channel, kDefaultMaxChannel);
   }
 
   double high_waterline_ratio = -1.0;
-  ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_HIGH_WATERLINE, 
-                                          high_waterline_ratio), 
+  ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_HIGH_WATERLINE,
+                                          high_waterline_ratio),
                       "Failed to parse high_waterline");
 
   double low_waterline_ratio = -1.0;
-  ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_LOW_WATERLINE, 
-                                          low_waterline_ratio), 
+  ADXL_CHK_STATUS_RET(ParseWaterlineRatio(json_options, adxl::OPTION_LOW_WATERLINE,
+                                          low_waterline_ratio),
                       "Failed to parse low_waterline");
   user_config_channel_pool_ = (high_waterline_ratio > 0.0 && high_waterline_ratio < 1.0) &&
                               (low_waterline_ratio > 0.0 && low_waterline_ratio < 1.0);
   if (user_config_channel_pool_) {
     const int32_t high_waterline = std::max(static_cast<int32_t>(max_channel * high_waterline_ratio), 1);
     const int32_t low_waterline = std::max(static_cast<int32_t>(max_channel * low_waterline_ratio), 1);
-    ADXL_CHK_BOOL_RET_STATUS(high_waterline - low_waterline >= 1, PARAM_INVALID, 
+    ADXL_CHK_BOOL_RET_STATUS(high_waterline - low_waterline >= 1, PARAM_INVALID,
                           "Invalid waterline config: high_waterline:%.2f, low_waterline:%.2f, "
-                          "high_mark(%d) must be at least 1 greater than low_mark(%d) when max_channel=%d.", 
+                          "high_mark(%d) must be at least 1 greater than low_mark(%d) when max_channel=%d.",
                           high_waterline_ratio, low_waterline_ratio, high_waterline, low_waterline, max_channel);
     msg_handler_.SetUserChannelPoolConfig();
     msg_handler_.SetHighWaterline(high_waterline);
     msg_handler_.SetLowWaterline(low_waterline);
     msg_handler_.SetMaxChannel(max_channel);
   } else {
-    ADXL_CHK_BOOL_RET_STATUS(max_it == json_options.end(), PARAM_INVALID, 
+    ADXL_CHK_BOOL_RET_STATUS(max_it == json_options.end(), PARAM_INVALID,
                             "Invalid waterline config: when high_waterline or low_waterline is not set "
                             "properly, you should not set max_channel.");
   }
+  return SUCCESS;
+}
+
+Status AdxlInnerEngine::ParseFabricMemoryCapacity(const std::map<AscendString, AscendString>& json_options) {
+  auto fabric_mem_it = json_options.find(adxl::OPTION_MAX_FABRIC_MEMORY_CAPACITY);
+  if (fabric_mem_it != json_options.end()) {
+    size_t capacity_tb = 0;
+    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(fabric_mem_it->second.GetString(), capacity_tb),
+                    "Invalid max_fabric_memory_capacity: %s", fabric_mem_it->second.GetString());
+    ADXL_CHK_BOOL_RET_STATUS(capacity_tb > 0, PARAM_INVALID,
+                            "max_fabric_memory_capacity must be > 0 TB, got %zu", capacity_tb);
+    // Set reasonable upper limit: 1024 TB (1 PB)
+    constexpr size_t kMaxCapacityTB = 1024UL;
+    ADXL_CHK_BOOL_RET_STATUS(capacity_tb <= kMaxCapacityTB, PARAM_INVALID,
+                            "max_fabric_memory_capacity exceeds maximum %zu TB, got %zu",
+                            kMaxCapacityTB, capacity_tb);
+    VirtualMemoryManager::GetInstance().SetVirtualMemoryCapacity(capacity_tb);
+    LLMLOGI("Set fabric memory capacity to %zu TB", capacity_tb);
+  }
+  return SUCCESS;
+}
+
+Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, AscendString>& options) {
+  auto config_it = options.find(hixl::OPTION_GLOBAL_RESOURCE_CONFIG);
+  std::map<AscendString, AscendString> json_options;
+  if (config_it != options.end()) {
+    ADXL_CHK_STATUS_RET(LoadJsonConfig(config_it->second.GetString(), json_options),
+                        "Failed to load JSON config: %s", config_it->second.GetString());
+  }
+
+  ADXL_CHK_STATUS_RET(ParseChannelPoolConfig(json_options), "Failed to parse channel pool config.");
+  ADXL_CHK_STATUS_RET(ParseFabricMemoryCapacity(json_options), "Failed to parse fabric memory capacity.");
+
   return SUCCESS;
 }
 
@@ -100,15 +125,17 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   ADXL_CHK_STATUS_RET(LoadGlobalResourceConfig(options), "Failed to load global resource config.");
   ADXL_CHK_LLM_RET(llm::HcclAdapter::GetInstance().Initialize(), "HcclSoManager initialize failed.");
   int32_t device_id = -1;
-  ADXL_CHK_ACL_RET(rtGetDevice(&device_id));
+  ADXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
   llm::TemporaryRtContext with_context(nullptr);
-  ADXL_CHK_ACL_RET(rtCtxCreateEx(&rt_context_, 0U, device_id));
-  LLMEVENT("Switch new rts ctx:%p", rt_context_);
+  ADXL_CHK_ACL_RET(aclrtCreateContext(&aclrt_context_, device_id));
+  LLMEVENT("Switch new aclrt ctx:%p", aclrt_context_);
   LLM_DISMISSABLE_GUARD(fail_guard, ([this]() {
-    (void) rtCtxDestroyEx(rt_context_);
+    (void) aclrtDestroyContext(aclrt_context_);
+    aclrt_context_ = nullptr;
   }));
   ADXL_CHK_STATUS_RET(ParseEnableFabricMem(options), "Failed to parse option.");
   if (enable_use_fabric_mem_) {
+    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().Initialize(), "Failed to initialize virtual memory manager.");
     fabric_mem_transfer_service_ = llm::MakeUnique<FabricMemTransferService>();
     ADXL_CHK_STATUS_RET(fabric_mem_transfer_service_->Initialize(kMaxStreams),
                         "Failed to initialize fabric mem transfer service.");
@@ -118,8 +145,7 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get(), fabric_mem_transfer_service_.get()),
                       "Failed to init msg handler.");
   ADXL_CHK_STATUS_RET(InitBufferTransferService(options), "Failed to init buffer memory pool.");
-  ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get(), segment_table_.get()),
-                      "Failed to init channel manager.");
+  ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()), "Failed to init channel manager.");
   channel_manager_.SetStreamPool(stream_pool_.get());
   channel_manager_.RegisterNotifyAckCallback([this](uint64_t req_id) {
     std::lock_guard<std::mutex> lock(notify_mutex_);
@@ -231,7 +257,7 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
     }
     for (auto &mem : npu_pool_memorys_) {
       if (mem != nullptr) {
-        rtFree(mem);
+        aclrtFree(mem);
       }
     }
     npu_pool_memorys_.clear();
@@ -241,9 +267,9 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
   for (size_t i = 0; i < kMemPoolNum; ++i) {
     npu_mem_pools_[i] = llm::MakeUnique<llm::LlmMemPool>(config);
     ADXL_CHECK_NOTNULL(npu_mem_pools_[i], "Failed to create memory pool");
-    ADXL_CHK_BOOL_RET_STATUS(rtMalloc(&npu_pool_memorys_[i], npu_pool_size,
-                                      RT_MEMORY_HBM | static_cast<uint32_t>(RT_MEM_MALLOC_HUGE_FIRST),
-                                      LLM_MODULE_NAME_U16) == RT_ERROR_NONE,
+    ADXL_CHK_BOOL_RET_STATUS((aclrtMalloc(&npu_pool_memorys_[i], npu_pool_size,
+                             static_cast<aclrtMemMallocPolicy>(ACL_MEM_TYPE_HIGH_BAND_WIDTH | ACL_MEM_MALLOC_HUGE_FIRST)) ==
+                             ACL_ERROR_NONE),
                              FAILED, "Failed to allocate memory for memory_pool, pool size = %lu.", npu_pool_size);
     ADXL_CHK_LLM_RET(npu_mem_pools_[i]->Initialize(npu_pool_memorys_[i], npu_pool_size),
                      "Failed to initialize memory pool, pool size = %lu.", npu_pool_size);
@@ -265,14 +291,16 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
 }
 
 void AdxlInnerEngine::Finalize() {
-  llm::TemporaryRtContext with_context(rt_context_);
+  llm::TemporaryRtContext with_context(aclrt_context_);
   channel_manager_.Finalize();
   msg_handler_.Finalize();
-  stream_pool_->Finalize();
+  if (stream_pool_ != nullptr) {
+    stream_pool_->Finalize();
+  }
   for (auto &mem : npu_pool_memorys_) {
     if (mem != nullptr) {
-      auto ret = rtFree(mem);
-      LLMLOGI("Call rtFree ret:%d.", ret);
+      auto ret = aclrtFree(mem);
+      LLMLOGI("Call aclrtFree ret:%d.", ret);
     }
   }
   if (buffer_transfer_service_ != nullptr) {
@@ -281,16 +309,18 @@ void AdxlInnerEngine::Finalize() {
   if (fabric_mem_transfer_service_ != nullptr) {
     fabric_mem_transfer_service_->Finalize();
   }
-  if (rt_context_ != nullptr) {
-    (void) rtCtxDestroyEx(rt_context_);
+  if (aclrt_context_ != nullptr) {
+    (void) aclrtDestroyContext(aclrt_context_);
   }
-  rt_context_ = nullptr;
   if (statistic_timer_handle_ != nullptr) {
     (void)llm::LlmDatadistTimer::Instance().StopTimer(statistic_timer_handle_);
     (void)llm::LlmDatadistTimer::Instance().DeleteTimer(statistic_timer_handle_);
     statistic_timer_handle_ = nullptr;
   }
   llm::LlmDatadistTimer::Instance().Finalize();
+  if (enable_use_fabric_mem_) {
+    VirtualMemoryManager::GetInstance().Finalize();
+  }
   StatisticManager::GetInstance().Reset();
 }
 
@@ -299,13 +329,13 @@ bool AdxlInnerEngine::IsInitialized() const {
 }
 
 Status AdxlInnerEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
-  llm::TemporaryRtContext with_context(rt_context_);
+  llm::TemporaryRtContext with_context(aclrt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.RegisterMem(mem, type, mem_handle), "Failed to register mem");
   return SUCCESS;
 }
 
 Status AdxlInnerEngine::DeregisterMem(MemHandle mem_handle) {
-  llm::TemporaryRtContext with_context(rt_context_);
+  llm::TemporaryRtContext with_context(aclrt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.DeregisterMem(mem_handle), "Failed to deregister mem");
   return SUCCESS;
 }
@@ -315,7 +345,7 @@ Status AdxlInnerEngine::Connect(const AscendString &remote_engine, int32_t timeo
     std::lock_guard<std::mutex> lock(connection_mutex_);
     LLMEVENT("Start to connect, local engine:%s, remote engine:%s, timeout:%d ms.",
           local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
-    llm::TemporaryRtContext with_context(rt_context_);
+    llm::TemporaryRtContext with_context(aclrt_context_);
     ADXL_CHK_STATUS_RET(msg_handler_.Connect(remote_engine.GetString(), timeout_in_millis),
                       "Failed to connect, remote engine:%s, timeout:%d ms",
                       remote_engine.GetString(), timeout_in_millis);
@@ -323,7 +353,7 @@ Status AdxlInnerEngine::Connect(const AscendString &remote_engine, int32_t timeo
   }
   LLMEVENT("Start to connect, local engine:%s, remote engine:%s, timeout:%d ms.",
           local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
-  llm::TemporaryRtContext with_context(rt_context_);
+  llm::TemporaryRtContext with_context(aclrt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.Connect(remote_engine.GetString(), timeout_in_millis),
                       "Failed to connect, remote engine:%s, timeout:%d ms",
                       remote_engine.GetString(), timeout_in_millis);
@@ -331,7 +361,7 @@ Status AdxlInnerEngine::Connect(const AscendString &remote_engine, int32_t timeo
 }
 
 Status AdxlInnerEngine::Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis) {
-  llm::TemporaryRtContext with_context(rt_context_);
+  llm::TemporaryRtContext with_context(aclrt_context_);
   ADXL_CHK_STATUS_RET(msg_handler_.Disconnect(remote_engine.GetString(), timeout_in_millis),
                       "Failed to disconnect, remote engine:%s, timeout:%d ms",
                       remote_engine.GetString(), timeout_in_millis);
@@ -350,8 +380,7 @@ Status AdxlInnerEngine::GetTransferType(const ChannelPtr &channel, TransferOp op
     auto remote_segment =
         segment_table_->FindSegment(channel->GetChannelId(), op_desc.remote_addr, op_desc.remote_addr + op_desc.len);
     MemType remote_mem_type = remote_segment != nullptr ? remote_segment->GetMemType() : MemType::MEM_HOST;
-    need_buffer = need_buffer || ((local_segment == nullptr) || (remote_segment == nullptr)) ||
-                  (op_desc.len < kNeedUseBufferThresh);
+    need_buffer = need_buffer || ((local_segment == nullptr) || (remote_segment == nullptr));
 
     TransferType cur_type;
     if (operation == TransferOp::READ) {
@@ -411,7 +440,7 @@ Status AdxlInnerEngine::ConnectWhenTransfer(const AscendString &remote_engine, i
     if (channel == nullptr) {
       LLMEVENT("Start to connect, local engine:%s, remote engine:%s, timeout:%d ms.",
           local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
-      llm::TemporaryRtContext with_context(rt_context_);
+      llm::TemporaryRtContext with_context(aclrt_context_);
       ADXL_CHK_STATUS_RET(msg_handler_.Connect(remote_engine.GetString(), timeout_in_millis),
                           "Failed to connect, remote engine:%s, timeout:%d ms",
                           remote_engine.GetString(), timeout_in_millis);
@@ -424,7 +453,7 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
                                      TransferOp operation,
                                      const std::vector<TransferOpDesc> &op_descs,
                                      int32_t timeout_in_millis) {
-  llm::TemporaryRtContext with_context(rt_context_);
+  llm::TemporaryRtContext with_context(aclrt_context_);
   if (user_config_channel_pool_) {
     (void) ConnectWhenTransfer(remote_engine, timeout_in_millis);
   }
@@ -472,7 +501,7 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
                                       const std::vector<TransferOpDesc> &op_descs,
                                       const TransferArgs &optional_args,
                                       TransferReq &req) {
-  llm::TemporaryRtContext with_context(rt_context_);
+  llm::TemporaryRtContext with_context(aclrt_context_);
   if (user_config_channel_pool_) {
     (void) ConnectWhenTransfer(remote_engine, kConnectWhenTransferTimeout);
   }
@@ -505,7 +534,7 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
 }
 
 Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
-  llm::TemporaryRtContext with_context(rt_context_);
+  llm::TemporaryRtContext with_context(aclrt_context_);
   std::lock_guard<std::mutex> lock(req2channel_mutex_);
   auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
   auto it = req2channel_.find(id);

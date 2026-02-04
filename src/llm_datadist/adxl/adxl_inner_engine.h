@@ -70,6 +70,8 @@ class AdxlInnerEngine {
   Status ParseWaterlineRatio(const std::map<AscendString, AscendString>& json_options, 
                              const char* option_name, double& parsed_value);
   Status LoadGlobalResourceConfig(const std::map<AscendString, AscendString> &options);
+  Status ParseChannelPoolConfig(const std::map<AscendString, AscendString> &json_options);
+  Status ParseFabricMemoryCapacity(const std::map<AscendString, AscendString> &json_options);
   Status ConnectWhenTransfer(const AscendString &remote_engine, int32_t timeout_in_millis = 3000);
   Status ParseBufferPoolParams(const std::map<AscendString, AscendString> &options, uint64_t &buffer_size,
                                uint64_t &npu_pool_size);
@@ -88,7 +90,7 @@ class AdxlInnerEngine {
   std::unique_ptr<StreamPool> stream_pool_ = nullptr;
   bool user_config_buffer_pool_{false};
   bool user_config_channel_pool_{false};
-  rtContext_t rt_context_{nullptr};
+  aclrtContext aclrt_context_{nullptr};
 
   std::mutex notify_mutex_;
   std::unordered_map<uint64_t, bool> notify_ack_ready_;     // Map to indicate if ack status is ready

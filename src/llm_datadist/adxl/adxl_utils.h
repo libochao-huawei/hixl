@@ -14,7 +14,7 @@
 #include <map>
 #include <string>
 #include "hccl/hccl_types.h"
-#include "runtime/rt.h"
+#include "acl/acl.h"
 #include "adxl/adxl_types.h"
 #include "ge_common/ge_api_error_codes.h"
 #include "nlohmann/json.hpp"
@@ -23,12 +23,13 @@ namespace adxl {
 // Load JSON configuration from file and merge into option map
 Status LoadJsonConfig(const std::string& file_path, std::map<ge::AscendString, ge::AscendString>& options);
 Status HcclError2AdxlStatus(HcclResult ret);
-Status AclError2AdxlStatus(rtError_t ret);
+Status AclError2AdxlStatus(aclError ret);
 Status LLMError2AdxlStatus(ge::Status ret);
 
 constexpr const char* OPTION_MAX_CHANNEL = "channel_pool.max_channel";
 constexpr const char* OPTION_HIGH_WATERLINE = "channel_pool.high_waterline";
 constexpr const char* OPTION_LOW_WATERLINE = "channel_pool.low_waterline";
+constexpr const char* OPTION_MAX_FABRIC_MEMORY_CAPACITY = "fabric_memory.max_capacity";
 
 constexpr int kDefaultMaxChannel = 512;
 bool NeedErrorLog(Status status);

@@ -43,18 +43,14 @@ const char *const kEnableFabricMem = "1";
 }  // namespace
 class HixlSTest : public ::testing::Test {
  protected:
-  // 在测试类中设置一些准备工作，如果需要的话
   void SetUp() override {
-    SetMockRtGetDeviceWay(1);
     llm::MockMmpaForHcclApi::Install();
     llm::AutoCommResRuntimeMock::Install();
   }
-  // 在测试类中进行清理工作，如果需要的话
   void TearDown() override {
     llm::HcclAdapter::GetInstance().Finalize();
-    llm::MockMmpaForHcclApi::Reset();
     llm::AutoCommResRuntimeMock::Reset();
-    SetMockRtGetDeviceWay(0);
+    llm::MockMmpaForHcclApi::Reset();
   }
 
  private:
@@ -450,8 +446,7 @@ TEST_F(HixlSTest, TestHixlFabricMem) {
   remote_mem.addr = reinterpret_cast<uintptr_t>(remote_buf.data());
   remote_mem.len = size;
   MemHandle handle2 = nullptr;
-  // Fabric mode in stub environment seems to require MEM_HOST to bypass "Device mem is ignored" check in ChannelMsgHandler
-  EXPECT_EQ(engine2.RegisterMem(remote_mem, MEM_HOST, handle2), SUCCESS);
+  EXPECT_EQ(engine2.RegisterMem(remote_mem, MEM_DEVICE, handle2), SUCCESS);
 
   EXPECT_EQ(engine1.Connect(kEngine2Ip.c_str()), SUCCESS);
 

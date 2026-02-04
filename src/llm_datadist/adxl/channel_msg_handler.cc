@@ -23,15 +23,16 @@
 #include "common/def_types.h"
 #include "adxl_utils.h"
 #include "control_msg_handler.h"
+#include "statistic_manager.h"
 
 namespace adxl {
 
 namespace {
 constexpr int32_t kWaitRespTime = 20;
 constexpr int32_t kCheckDisconnetPeriod = 10;
-std::string GetDebugStr(rtDrvMemFabricHandle share_handle) {
+std::string GetDebugStr(aclrtMemFabricHandle share_handle) {
   std::stringstream ss;
-  for (auto &i : share_handle.share_info) {
+  for (auto &i : share_handle.data) {
     ss << i;
   }
   return ss.str();
@@ -53,7 +54,7 @@ static void from_json(const nlohmann::json &j, ShareHandleInfo &c) {
   j.at("len").get_to(c.len);
   const auto& share_array = j["share_handle"];
   for (size_t i = 0; i < share_array.size(); ++i) {
-    c.share_handle.share_info[i] = share_array[i].get<uint8_t>();
+    c.share_handle.data[i] = share_array[i].get<uint8_t>();
   }
 }
 
@@ -62,8 +63,8 @@ static void to_json(nlohmann::json &j, const ShareHandleInfo &c) {
   j["va_addr"] = c.va_addr;
   j["len"] = c.len;
   auto share_array = nlohmann::json::array();
-  for (size_t i = 0; i < sizeof(c.share_handle.share_info); ++i) {
-    share_array.push_back(c.share_handle.share_info[i]);
+  for (size_t i = 0; i < sizeof(c.share_handle.data); ++i) {
+    share_array.push_back(c.share_handle.data[i]);
   }
   j["share_handle"] = share_array;
 }
@@ -200,7 +201,8 @@ Status ChannelMsgHandler::ParseServiceLevel(const std::map<AscendString, AscendS
 Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> &options, SegmentTable *segment_table,
                                      FabricMemTransferService *fabric_mem_transfer_service) {
   ADXL_CHECK_NOTNULL(channel_manager_);
-  ADXL_CHK_ACL_RET(rtGetDevice(&device_id_));
+  ADXL_CHK_ACL_RET(aclrtGetCurrentContext(&aclrt_context_));
+  ADXL_CHK_ACL_RET(aclrtGetDevice(&device_id_));
   ADXL_CHK_STATUS_RET(ParseListenInfo(listen_info_, local_ip_, listen_port_), "Failed to parse listen info");
   ADXL_CHK_LLM_RET(llm::LocalCommResGenerator::Generate(local_ip_, device_id_, local_comm_res_),
                    "Failed to generate local comm res, local_ip:%s, device_id:%d",
@@ -350,6 +352,19 @@ Status ChannelMsgHandler::CreateChannel(const ChannelInfo &channel_info, bool is
   return SUCCESS;
 }
 
+Status ChannelMsgHandler::ParseRankTable(const ChannelConnectInfo &peer_channel_info, std::string &rank_table,
+                                         int32_t &local_rank_id, int32_t &peer_rank_id) {
+  auto rank_table_generator = llm::RankTableGeneratorFactory::Create(local_comm_res_, peer_channel_info.comm_res);
+  ADXL_CHK_BOOL_RET_STATUS(rank_table_generator != nullptr, PARAM_INVALID, "Failed to create rank table generator.");
+  ADXL_CHK_STATUS_RET(rank_table_generator->Generate(device_id_, rank_table), "Failed to generate rank table");
+  local_rank_id = rank_table_generator->GetLocalRankId();
+  ADXL_CHK_BOOL_RET_STATUS(local_rank_id >= 0, PARAM_INVALID, "Failed to get local rank id, please check rank table.");
+  peer_rank_id = rank_table_generator->GetPeerRankId();
+  ADXL_CHK_BOOL_RET_STATUS(peer_rank_id >= 0, PARAM_INVALID,
+                           "Failed to get peer rank id, please check rank table, "
+                           "not support connect with self device.");
+  return SUCCESS;
+}
 
 Status ChannelMsgHandler::ConnectInfoProcess(const ChannelConnectInfo &peer_channel_info,
                                              int32_t timeout, bool is_client) {
@@ -368,18 +383,12 @@ Status ChannelMsgHandler::ConnectInfoProcess(const ChannelConnectInfo &peer_chan
       std::this_thread::sleep_for(std::chrono::milliseconds(kCheckDisconnetPeriod));
     }
   }
-  auto rank_table_generator = llm::RankTableGeneratorFactory::Create(local_comm_res_, peer_channel_info.comm_res);
-  ADXL_CHK_BOOL_RET_STATUS(rank_table_generator != nullptr, PARAM_INVALID,
-                           "Failed to create rank table generator.");
   std::string rank_table;
-  ADXL_CHK_STATUS_RET(rank_table_generator->Generate(device_id_, rank_table), "Failed to generate rank table");
-  auto local_rank_id = rank_table_generator->GetLocalRankId();
-  ADXL_CHK_BOOL_RET_STATUS(local_rank_id >= 0, PARAM_INVALID,
-                           "Failed to get local rank id, please check rank table.");
-  auto peer_rank_id = rank_table_generator->GetPeerRankId();
-  ADXL_CHK_BOOL_RET_STATUS(peer_rank_id >= 0, PARAM_INVALID,
-                           "Failed to get peer rank id, please check rank table, "
-                           "not support connect with self device.");
+  int32_t local_rank_id = 0;
+  int32_t peer_rank_id = 0;
+  if (!enable_use_fabric_mem_) {
+    ADXL_CHK_STATUS_RET(ParseRankTable(peer_channel_info, rank_table, local_rank_id, peer_rank_id), "Failed to prase rank table.");
+  }
   ChannelInfo channel_info{};
   channel_info.channel_type = is_client ? ChannelType::kClient : ChannelType::kServer;
   channel_info.channel_id = peer_channel_info.channel_id;
@@ -458,9 +467,6 @@ Status ChannelMsgHandler::ProcessConnectRequest(int32_t fd, const std::vector<ch
 Status ChannelMsgHandler::DisconnectInfoProcess(ChannelType channel_type,
                                                 const ChannelDisconnectInfo &peer_disconnect_info) {
   LLMLOGI("Destroy channel in disconnect process.");
-  if (enable_use_fabric_mem_) {
-    fabric_mem_transfer_service_->RemoveChannel(peer_disconnect_info.channel_id);
-  }
   return channel_manager_->DestroyChannel(channel_type, peer_disconnect_info.channel_id);
 }
 
@@ -600,7 +606,13 @@ Status ChannelMsgHandler::Disconnect(const std::string &remote_engine, int32_t t
     disconnect_info.channel_id = listen_info_;
     send_status = SendMsg(conn_fd, ChannelMsgType::kDisconnect, disconnect_info);
   }
-
+  if (segment_table_ != nullptr) {
+    segment_table_->RemoveChannel(remote_engine);
+  }
+  StatisticManager::GetInstance().RemoveChannel(remote_engine);
+  if (enable_use_fabric_mem_) {
+    fabric_mem_transfer_service_->RemoveChannel(remote_engine);
+  }
   ChannelDisconnectInfo local_disconnect_info = {};
   local_disconnect_info.channel_id = remote_engine;
   auto ret = DisconnectInfoProcess(ChannelType::kClient, local_disconnect_info);
@@ -647,6 +659,7 @@ Status ChannelMsgHandler::SetupChannelManagerCallbacks() {
     auto client_channel = channel_manager_->GetChannel(ChannelType::kClient, channel_id);
     if (client_channel != nullptr) {
       item.channel_type = ChannelType::kClient;
+      client_channel->SetDisconnecting(true);
     } else {
       LLMLOGI("Channel %s not found for disconnect", channel_id.c_str());
       return NOT_CONNECTED;
@@ -767,6 +780,7 @@ std::vector<EvictItem> ChannelMsgHandler::SelectEvictionCandidates(int32_t need_
 }
 
 void ChannelMsgHandler::EvictionLoop() {
+  aclrtSetCurrentContext(aclrt_context_);
   while (true) {
     std::unique_lock<std::mutex> lock(evict_mutex_);
     evict_cv_.wait(
@@ -781,9 +795,7 @@ void ChannelMsgHandler::EvictionLoop() {
     while (!evict_queue_.empty()) {
       EvictItem item = evict_queue_.front();
       evict_queue_.pop();
-      lock.unlock();
       ProcessEviction(item);
-      lock.lock();
     }
     ResetAllTransferFlags();
   }
@@ -797,8 +809,9 @@ Status ChannelMsgHandler::ProcessEviction(const EvictItem& item) {
     return SUCCESS;
   }
   
-  if (channel->GetTransferCount() > 0) {
+  if (channel->GetTransferCount() > 0 || !channel->IsDisconnecting()) {
     LLMLOGI("Skip eviction: channel %s has unfinished transfers", item.channel_id.c_str());
+    channel->SetDisconnecting(false);
     return SUCCESS;
   }
   if (item.channel_type == ChannelType::kServer) {
@@ -846,6 +859,7 @@ Status ChannelMsgHandler::ProcessServerEviction(const std::string& channel_id, C
     lock.unlock();
     LLMLOGI("Client refused or failed to disconnect channel %s, error_code=%u, error_message=%s", 
       channel_id.c_str(), resp.error_code, resp.error_message.c_str());
+    channel->SetDisconnecting(false);
     return SUCCESS;
   }
 }

@@ -21,7 +21,6 @@
 #include "common/def_types.h"
 #include "base/err_msg.h"
 #include "control_msg_handler.h"
-#include "statistic_manager.h"
 
 namespace adxl {
 namespace {
@@ -35,10 +34,9 @@ Status kNoNeedRetry = 1U;
 
 int64_t ChannelManager::wait_time_in_millis_ = kWaitTimeInMillis;
 
-Status ChannelManager::Initialize(BufferTransferService *buffer_transfer_service, SegmentTable *segment_table) {
-  ADXL_CHK_ACL_RET(rtCtxGetCurrent(&rt_context_));
+Status ChannelManager::Initialize(BufferTransferService *buffer_transfer_service) {
+  ADXL_CHK_ACL_RET(aclrtGetCurrentContext(&aclrt_context_));
   buffer_transfer_service_ = buffer_transfer_service;
-  segment_table_ = segment_table;
   epoll_fd_ = epoll_create1(0);
   if (epoll_fd_ == -1) {
     LLMLOGE(FAILED, "Failed to create epoll fd.");
@@ -54,7 +52,7 @@ Status ChannelManager::Initialize(BufferTransferService *buffer_transfer_service
   });
   // receive msg thread
   msg_receiver_ = std::thread([this]() {
-    rtCtxSetCurrent(rt_context_);
+    aclrtSetCurrentContext(aclrt_context_);
     while (!stop_signal_.load()) {
       HandleEpoolEvents();
       CheckHeartbeatTimeouts();
@@ -258,6 +256,7 @@ Status ChannelManager::HandleRequestDisconnectMessage(const ChannelPtr &channel,
     Status ret = disconnect_callback_(req_msg.channel_id, timeout_ms);
     if (ret == SUCCESS) {
       LLMLOGI("Successfully disconnected channel %s by request", req_msg.channel_id.c_str());
+      return SUCCESS;
     } else {
       resp.error_code = static_cast<uint32_t>(ret);
       resp.error_message = "Disconnect failed";
@@ -457,10 +456,6 @@ Status ChannelManager::DestroyChannel(ChannelType channel_type, const std::strin
     LLMLOGI("Destroy channel end, channel_type = %d, channel_id = %s",
            static_cast<int32_t>(channel_type), channel_id.c_str());
   }
-  if (segment_table_ != nullptr) {
-    segment_table_->RemoveChannel(channel_id);
-  }
-  StatisticManager::GetInstance().RemoveChannel(channel_id);
   return ret;
 }
 

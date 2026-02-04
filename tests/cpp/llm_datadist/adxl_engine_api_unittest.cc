@@ -11,11 +11,14 @@
 #include <memory>
 #include <vector>
 #include <cstdlib>
+#include <unistd.h>
+#include <cstdio>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
 #include "adxl/adxl_engine.h"
 #include "adxl/channel_manager.h"
+#include "adxl/virtual_memory_manager.h"
 #include "dlog_pub.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
@@ -30,7 +33,6 @@ class AdxlEngineUTest : public ::testing::Test {
  protected:
   // 在测试类中设置一些准备工作，如果需要的话
   void SetUp() override {
-    SetMockRtGetDeviceWay(1);
     llm::MockMmpaForHcclApi::Install();
     llm::AutoCommResRuntimeMock::Install();
     llm::HcclAdapter::GetInstance().Initialize();
@@ -40,7 +42,6 @@ class AdxlEngineUTest : public ::testing::Test {
     llm::HcclAdapter::GetInstance().Finalize();
     llm::AutoCommResRuntimeMock::Reset();
     llm::MockMmpaForHcclApi::Reset();
-    SetMockRtGetDeviceWay(0);
   }
   //初始化两个 AdxlEngine 引擎
   void SetupEngines(AdxlEngine &engine1, AdxlEngine &engine2) {
@@ -452,9 +453,9 @@ TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithQueryEventFailed) {
   EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req), SUCCESS);
   TransferStatus status = TransferStatus::WAITING;
   TransferAsyncRuntimeMock instance;;
-  llm::RuntimeStub::Install(&instance);
+  llm::AclRuntimeStub::Install(&instance);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
-  llm::RuntimeStub::UnInstall(&instance);
+  llm::AclRuntimeStub::UnInstall(&instance);
   engine1.Finalize();
   engine2.Finalize();
 }
@@ -653,11 +654,45 @@ TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithStreamSyncFailed) {
   EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req), SUCCESS);
   TransferStatus status = TransferStatus::WAITING;
   TransferAsyncSteamRuntimeMocak instance;;
-  llm::RuntimeStub::Install(&instance);
+  llm::AclRuntimeStub::Install(&instance);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
-  llm::RuntimeStub::UnInstall(&instance);
+  llm::AclRuntimeStub::UnInstall(&instance);
   engine1.Finalize();
   engine2.Finalize();
+}
+
+TEST_F(AdxlEngineUTest, TestAdxlEngineFabricMemoryCapacityConfig) {
+  // Ensure VirtualMemoryManager is not initialized
+  VirtualMemoryManager::GetInstance().Finalize();
+
+  // Test with custom fabric memory capacity (32TB)
+  constexpr size_t kCustomCapacityTB = 32UL;
+  std::string json_config = R"({
+    "fabric_memory": {
+      "max_capacity": )" + std::to_string(kCustomCapacityTB) + R"(
+    }
+  })";
+
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  AdxlEngine engine1;
+  std::map<AscendString, AscendString> options1;
+  options1[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = AscendString(json_config.c_str());
+  options1[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = AscendString("1");
+
+  // Initialize with custom capacity
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options1), SUCCESS);
+
+  // Verify that VirtualMemoryManager is initialized with custom capacity
+  // by trying to allocate memory up to the custom capacity
+  uintptr_t addr = 0;
+  // Try to allocate 1GB - should succeed
+  constexpr size_t k1GB = 1024UL * 1024UL * 1024UL;
+  EXPECT_EQ(VirtualMemoryManager::GetInstance().ReserveMemory(k1GB, addr), SUCCESS);
+  EXPECT_NE(addr, 0);
+  EXPECT_EQ(VirtualMemoryManager::GetInstance().ReleaseMemory(addr), SUCCESS);
+
+  // Clean up
+  engine1.Finalize();
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyMsgTooLong) {
@@ -672,7 +707,7 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyMsgTooLong) {
   EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
 
   EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
-  
+
   NotifyDesc notify;
   notify.name = AscendString("short name");
   // send notify msg consist of 2000 'b'
@@ -684,4 +719,4 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyMsgTooLong) {
   engine1.Finalize();
   engine2.Finalize();
 }
-}  // namespace llm_datadist
+}  // namespace adxl

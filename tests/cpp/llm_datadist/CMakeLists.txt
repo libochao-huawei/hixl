@@ -25,6 +25,7 @@ set(LLM_DATADIST_TEST_FILES
         segment_table_unittest.cc
         statistic_manager_unittest.cc
         fabric_mem_transfer_service_unittest.cc
+        virtual_memory_manager_unittest.cc
 )
 set(LLM_DATADIST_STUB_SRC_FILES
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/data_cache_engine_test_helper.cc"
@@ -77,14 +78,14 @@ target_link_libraries(llm_datadist_test
         c_sec
         mmpa_headers
         hccl_headers
-        runtime_headers
+        acl_rt_headers
         metadef_headers
         intf_pub
         json
         -ldl
         slog_stub
         mmpa_stub
-        runtime_stub
+        ascendcl_stub
         msprof_headers
         GTest::gtest GTest::gtest_main
         GTest::gmock

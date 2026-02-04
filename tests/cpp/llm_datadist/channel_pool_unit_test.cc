@@ -45,14 +45,13 @@ public:
 class ChannelPoolUnitTest : public ::testing::Test {
 protected:
   void SetUp() override {
-    SetMockRtGetDeviceWay(1);
     llm::MockMmpaForHcclApi::Install();
     llm::AutoCommResRuntimeMock::Install();
     llm::HcclAdapter::GetInstance().Initialize();
     llm::AutoCommResRuntimeMock::SetDevice(0);
 
     channel_manager_ = std::make_unique<ChannelManager>();
-    Status ret = channel_manager_->Initialize(buffer_transfer_service_.get(), nullptr);
+    Status ret = channel_manager_->Initialize(buffer_transfer_service_.get());
     ASSERT_EQ(ret, SUCCESS) << "Failed to initialize ChannelManager";
     std::string listen_info = "127.0.0.1:20000";
     channel_msg_handler_ = std::make_unique<MockChannelMsgHandler>(listen_info, channel_manager_.get());
@@ -80,7 +79,6 @@ protected:
     llm::HcclAdapter::GetInstance().Finalize();
     llm::MockMmpaForHcclApi::Reset();
     llm::AutoCommResRuntimeMock::Reset();
-    SetMockRtGetDeviceWay(0);
   }
 
   void CreateChannels(int count, ChannelType channel_type = ChannelType::kClient) {
