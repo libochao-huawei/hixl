@@ -129,7 +129,7 @@ bash build.sh
 您需要在编译环境中新建一个`{your_3rd_party_path}/pkg`目录来存放这些第三方开源软件。
 
 ```bash
-mkdir {your_3rd_party_path}/pkg
+mkdir -p {your_3rd_party_path}/pkg
 cd {your_3rd_party_path}/pkg
 ```
 
