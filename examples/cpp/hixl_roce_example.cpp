@@ -30,7 +30,7 @@ constexpr uint32_t kArgIndexLocalEngine = 2;
 constexpr uint32_t kArgIndexRemoteEngine = 3;
 constexpr uint32_t kArgIndexTcpPort = 4;
 constexpr uint32_t kArgIndexTransferMode = 5;
-constexpr int32_t kSrcValue = 2;
+constexpr int32_t kDstValue = 2;
 
 constexpr const char kServerJsonFilePath[] = "../../../examples/cpp/local_comm_res_server.json";
 constexpr const char kClientJsonFilePath[] = "../../../examples/cpp/local_comm_res_client.json";
@@ -128,33 +128,50 @@ int Disconnect(Hixl &hixl_engine, const char *remote_engine) {
   return 0;
 }
 
-int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine, uint64_t dst_addr) {
-  int32_t *dst_ptr = reinterpret_cast<int32_t *>(dst_addr);
-  int32_t dst = *dst_ptr;
-
-  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(dst_addr), sizeof(int32_t)};
-  auto ret = hixl_engine.TransferSync(remote_engine, READ, {desc});
-  if (ret != SUCCESS) {
-    printf("[ERROR] TransferSync read failed, ret = %u\n", ret);
-    return -1;
-  }
-  if (src != dst) {
-    printf("[ERROR] Src and dst do not equal after reading. src:%d, dst:%d\n", src, dst);
-    return -1;
-  }
-  printf("[INFO] TransferSync read success, src = %d\n", src);
-
-  src = kSrcValue;
-  ret = hixl_engine.TransferSync(remote_engine, WRITE, {desc});
+int32_t Transfer(Hixl &hixl_engine, int32_t *src_ptr, const char *remote_engine, uint64_t dst_addr) {
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(src_ptr), reinterpret_cast<uintptr_t>(dst_addr), sizeof(int32_t)};
+  auto ret = hixl_engine.TransferSync(remote_engine, WRITE, {desc});
   if (ret != SUCCESS) {
     printf("[ERROR] TransferSync write failed, ret = %u\n", ret);
     return -1;
   }
+  int32_t dst = 0;
+  CHECK_ACL(aclrtMemcpy(&dst, sizeof(int32_t), reinterpret_cast<uintptr_t>(dst_addr), sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
+  if (dst != 0) {
+    printf("[INFO] get dst value succeed, dst:%d\n", dst);
+  } else {
+    printf("[ERROR] get dst value failed\n");
+    return -1;
+  }
+
+  int32_t src = 0;
+  CHECK_ACL(aclrtMemcpy(&src, sizeof(int32_t), src_ptr, sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
+  if (src != 0) {
+    printf("[INFO] get src value succeed, src:%d\n", src);
+  } else {
+    printf("[ERROR] get src value failed\n");
+    return -1;
+  }
+
   if (dst != src) {
     printf("[ERROR] Src and dst do not equal after writing. src:%d, dst:%d\n", src, dst);
     return -1;
   }
   printf("[INFO] TransferSync write success, src = %d\n", src);
+
+  dst = kDstValue;
+  CHECK_ACL(aclrtMemcpy(&dst, sizeof(int32_t), reinterpret_cast<uintptr_t>(dst_addr), sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
+  ret = hixl_engine.TransferSync(remote_engine, READ, {desc});
+  if (ret != SUCCESS) {
+    printf("[ERROR] TransferSync read failed, ret = %u\n", ret);
+    return -1;
+  }
+  CHECK_ACL(aclrtMemcpy(&src, sizeof(int32_t), reinterpret_cast<uintptr_t>(src_ptr), ACL_MEMCPY_DEVICE_TO_HOST));
+  if (src != dst) {
+    printf("[ERROR] Src and dst do not equal after reading. src:%d, dst:%d\n", src, dst);
+    return -1;
+  }
+  printf("[INFO] TransferSync read success, src = %d\n", src);
   return 0;
 }
 
@@ -214,7 +231,9 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   } else {
     CHECK_ACL(aclrtMalloc(&tmp, sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
   }
-  src = static_cast<int32_t *>(tmp);
+  src = static_cast<int32_t*>(tmp);
+  int32_t src_value = 1;
+  CHECK_ACL(aclrtMemcpy(src, sizeof(int32_t), &src_value, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(src);
   desc.len = sizeof(int32_t);
@@ -239,7 +258,7 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   }
 
   // 4. 从server get内存，并向server put内存
-  if (Transfer(hixl_engine, *src, remote_engine, remote_addr) != 0) {
+  if (Transfer(hixl_engine, src, remote_engine, remote_addr) != 0) {
     Disconnect(hixl_engine, remote_engine);
     Finalize(hixl_engine, is_host, {handle}, {src});
     return -1;
@@ -274,6 +293,9 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
     CHECK_ACL(aclrtMallocHost(&buffer, sizeof(int32_t)));
   }
   auto addr = reinterpret_cast<uintptr_t>(buffer);
+
+  int32_t dst_value = 2;
+  CHECK_ACL(aclrtMemcpy(addr, sizeof(int32_t), &dst_value, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
 
   // 通过TCP传输内存地址到Client侧
   TCPClient tcp_client;
