@@ -78,7 +78,7 @@ Status HixlCSClient::InitFlagQueue() noexcept {
   //   return RESOURCE_EXHAUSTED;
   // }
   if (tmp == nullptr) {
-    HIXL_LOGE(RESOURCE_EXHAUSTED, "falg_addr malloc failed.");
+    HIXL_LOGE(RESOURCE_EXHAUSTED, "flag_addr malloc failed.");
     return RESOURCE_EXHAUSTED;
   }
   flag_queue_ = static_cast<uint64_t *>(tmp);
