@@ -155,6 +155,37 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
       }
       ub_device_id_ = curDevId;
     }
+    {
+      int32_t old_ctx_dev_id = -1;
+      aclrtGetDevice(&old_ctx_dev_id);
+
+      if (old_ctx_dev_id != ub_device_id_) {
+        aclError acl_ret = aclrtSetDevice(ub_device_id_);
+        if (acl_ret != ACL_SUCCESS) {
+          HIXL_LOGE(FAILED, "[HixlClient] aclrtSetDevice failed. devId=%d", ub_device_id_);
+          return FAILED;
+        }
+      }
+      aclError acl_ret = aclrtMalloc(&ub_dev_const_one_, sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_ONLY);
+      if (acl_ret != ACL_SUCCESS) {
+        HIXL_LOGE(FAILED, "[HixlClient] aclrtMalloc ub_dev_const_one_ failed. ret=%d", acl_ret);
+        return FAILED;
+      }
+      uint64_t host_one = 1U;
+      acl_ret = aclrtMemcpy(ub_dev_const_one_, sizeof(uint64_t), &host_one, sizeof(uint64_t), ACL_MEMCPY_HOST_TO_DEVICE);
+      if (acl_ret != ACL_SUCCESS) {
+        HIXL_LOGE(FAILED, "[HixlClient] aclrtMemcpy ub_dev_const_one_ failed. ret=%d", acl_ret);
+        aclrtFree(ub_dev_const_one_);
+        ub_dev_const_one_ = nullptr;
+        return FAILED;
+      }
+      HIXL_LOGI("[HixlClient] UB Device const one initialized at %p on dev %d", ub_dev_const_one_, ub_device_id_);
+
+      // 恢复之前的 Device
+      if (old_ctx_dev_id != -1 && old_ctx_dev_id != ub_device_id_) {
+        aclrtSetDevice(old_ctx_dev_id);
+      }
+    }
     Status pret = GetCompletePool().AddRefAndInitIfNeeded(ub_device_id_, kUbEngine, kUbThreadNum, kUbNotifyNumPerThread,
                                                         src_endpoint_.get());
     if (pret != SUCCESS) {
@@ -311,6 +342,15 @@ Status HixlCSClient::ReleaseUbCompleteHandle(UbCompleteHandle *h) {
     HIXL_LOGE(PARAM_INVALID, "[HixlClient][UB] ReleaseUbCompleteHandle bad magic=0x%X", h->magic);
     return PARAM_INVALID;
   }
+  if (h->mem_dev.dst_buf_list_dev != nullptr) {
+    aclrtFree(h->mem_dev.dst_buf_list_dev);
+  }
+  if (h->mem_dev.src_buf_list_dev != nullptr) {
+    aclrtFree(h->mem_dev.src_buf_list_dev);
+  }
+  if (h->mem_dev.len_list_dev != nullptr) {
+    aclrtFree(reinterpret_cast<void *>(h->mem_dev.len_list_dev));
+  }
   h->magic = 0U;
   GetCompletePool().Release(h->slot.slot_index);
   delete h;
@@ -333,7 +373,6 @@ Status HixlCSClient::EnsureUbKernelLoadedLocked() {
 
   hixl::UbKernelStubs stubs{};
   Status ret = hixl::LoadUbKernelAndResolveStubs(ub_device_id_,
-                                                 kUbKernelJson,
                                                  kUbFuncGet,
                                                  kUbFuncPut,
                                                  ub_kernel_handle_,
@@ -372,7 +411,7 @@ void *HixlCSClient::UbGetKernelStubFunc(bool is_get) {
   return ub_stub_put_;
 }
 
-Status HixlCSClient::ValidateUbInputs_(bool is_get,
+Status HixlCSClient::ValidateUbInputs(bool is_get,
                                       const CommunicateMem &mem_param,
                                       void **query_handle) const {
   (void)is_get;
@@ -454,33 +493,18 @@ Status HixlCSClient::FillUbBatchArgs(bool is_get, const CommunicateMem &mem_para
   HIXL_CHECK_NOTNULL(args);
   const void *local_list = nullptr;
   void *remote_list = nullptr;
-  Status ret = SelectUbLists(is_get, mem_param, &local_list, &remote_list);
-  if (ret != SUCCESS) {
-    return ret;
-  }
-
-
+  HIXL_CHK_STATUS_RET(SelectUbLists(is_get, mem_param, &local_list, &remote_list));
   args->thread = slot.thread;
   args->channel = static_cast<uint64_t>(client_channel_handle_);
   args->list_num = mem_param.list_num;
-
   void** dst_buf_array = static_cast<void**>(memDev.dst_buf_list_dev);
   const void** src_buf_array = static_cast<const void**>(memDev.src_buf_list_dev);
   args->dst_buf_list = dst_buf_array;
-
-
   args->src_buf_list = src_buf_array;
-
   args->len_list = memDev.len_list_dev;
   args->remote_flag = remote_flag;
-
-  // std::string tag_str(slot.notify_tag.data());
-  // HIXL_LOGI("[JZY] FillUbBatchArgs tag_str=%s", tag_str.c_str());
-  // HIXL_LOGI("[JZY] FillUbBatchArgs tag_mem_descs_[tag_str].addr=%p", tag_mem_descs_[tag_str].addr);
-  // args->local_flag = tag_mem_descs_[tag_str].addr;
   args->local_flag = slot.notify_addr;
   args->flag_size = static_cast<uint32_t>(sizeof(uint64_t));
-
   return SUCCESS;
 }
 
@@ -572,131 +596,92 @@ Status HixlCSClient::LaunchUbAndStageD2H(bool is_get, UbCompleteHandle *handle, 
   } else {
       HIXL_CHK_BOOL_RET_STATUS(aclRet == ACL_SUCCESS, FAILED, "[JZY][aclrtLaunchKernelWithConfig]errNo[%d] launch kernel failed", aclRet);
   }
-  // rtError_t rret = rtKernelLaunch(stub_func, block_dim, &handle->args, static_cast<uint32_t>(sizeof(UbBatchArgs)),
-  //                                 sm_desc, handle->slot.stream);
+
   HIXL_LOGI("[JZY] aclrtLaunchKernelWithConfig end ");
-  // if (rret != RT_ERROR_NONE) {
-  //   HIXL_LOGE(FAILED, "[HixlClient][UB] rtKernelLaunch failed. ret=%d", static_cast<int32_t>(rret));
-  //   return FAILED;
-  // }
+
   aclRet = aclrtWaitAndResetNotify(handle->slot.notify, handle->slot.stream, CUSTOM_TIMEOUT);
     if (is_get) {
       HIXL_CHK_BOOL_RET_STATUS(aclRet == ACL_SUCCESS, FAILED, "[JZY][aclrtWaitAndResetNotify]errNo[%d] launch kernel failed", aclRet);
   } else {
       HIXL_CHK_BOOL_RET_STATUS(aclRet == ACL_SUCCESS, FAILED, "[JZY][aclrtWaitAndResetNotify]errNo[%d] launch kernel failed", aclRet);
   }
-  // rret = rtNotifyWait(handle->slot.notify, handle->slot.stream);
-  // if (rret != RT_ERROR_NONE) {
-  //   HIXL_LOGE(FAILED, "[HixlClient][UB] rtNotifyWait failed. ret=%d", static_cast<int32_t>(rret));
-  //   return FAILED;
-  // }
-  void *remote_flag_dev;
-  aclRet = aclrtMalloc(&remote_flag_dev, sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_ONLY);
-  if (aclRet != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtMalloc remote_flag_dev faild");
-      return FAILED;
-  }
-  uint64_t host_one = 1U;
-  aclRet = aclrtMemcpy(remote_flag_dev, sizeof(uint64_t),
-                       reinterpret_cast<void *>(&host_one), sizeof(uint64_t),ACL_MEMCPY_HOST_TO_DEVICE);
-  if (aclRet != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtMemcpy host_one faild");
-      return FAILED;
-  }
-  aclRet = aclrtMemcpyAsync(handle->slot.host_flag,
-                            static_cast<uint64_t>(sizeof(uint64_t)),
-                            remote_flag_dev,
-                            static_cast<uint64_t>(sizeof(uint64_t)),
-                            ACL_MEMCPY_DEVICE_TO_HOST,
-                            handle->slot.stream);
+
+  aclRet = aclrtMemcpyAsync(handle->slot.host_flag, static_cast<uint64_t>(sizeof(uint64_t)), ub_dev_const_one_,
+                            static_cast<uint64_t>(sizeof(uint64_t)), ACL_MEMCPY_DEVICE_TO_HOST, handle->slot.stream);
   if (is_get) {
       HIXL_CHK_BOOL_RET_STATUS(aclRet == ACL_SUCCESS, FAILED, "[JZY][aclrtMemcpyAsync]errNo[%d] launch kernel failed", aclRet);
   } else {
       HIXL_CHK_BOOL_RET_STATUS(aclRet == ACL_SUCCESS, FAILED, "[JZY][aclrtMemcpyAsync]errNo[%d] launch kernel failed", aclRet);
   }
-  // rret = rtMemcpyAsync(handle->slot.host_flag,
-  //                      static_cast<uint64_t>(sizeof(uint64_t)),
-  //                      remote_flag,
-  //                      static_cast<uint64_t>(sizeof(uint64_t)),
-  //                      RT_MEMCPY_DEVICE_TO_HOST,
-  //                      handle->slot.stream);
-  // if (rret != RT_ERROR_NONE) {
-  //   HIXL_LOGE(FAILED, "[HixlClient][UB] rtMemcpyAsync(D2H) failed. ret=%d", static_cast<int32_t>(rret));
-  //   return FAILED;
-  // }
   return SUCCESS;
 }
 
 Status HixlCSClient::BatchTransferUB(bool is_get, const CommunicateMem &communicate_mem_param, void **queryhandle) {
-  Status ret = ValidateUbInputs_(is_get, communicate_mem_param, queryhandle);
+  Status ret = ValidateUbInputs(is_get, communicate_mem_param, queryhandle);
   if (ret != SUCCESS) {
     return ret;
   }
-  MemDev memDev{};
-  aclError aclRet = aclrtMalloc(&memDev.dst_buf_list_dev, communicate_mem_param.list_num * sizeof(uintptr_t), ACL_MEM_MALLOC_HUGE_ONLY);
+  MemDev mem_dev{};
+  aclError aclRet = aclrtMalloc(&mem_dev.dst_buf_list_dev, communicate_mem_param.list_num * sizeof(uintptr_t),
+                                ACL_MEM_MALLOC_HUGE_ONLY);
   if (aclRet != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtMalloc dst_buf_list_dev faild");
-      return FAILED;
+    HIXL_LOGE(FAILED, "aclrtMalloc dst_buf_list_dev faild");
+    return FAILED;
   }
- // HIXL_CHK_ACL_RET(aclRet, "aclrtMalloc dst_buf_list_dev faild");
 
-  aclRet = aclrtMalloc(&memDev.src_buf_list_dev, communicate_mem_param.list_num * sizeof(uintptr_t), ACL_MEM_MALLOC_HUGE_ONLY);
- // HIXL_CHK_ACL_RET(aclRet, "aclrtMalloc src_buf_list_dev faild");
- if (aclRet != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtMalloc src_buf_list_dev faild");
-      return FAILED;
+  aclRet = aclrtMalloc(&mem_dev.src_buf_list_dev, communicate_mem_param.list_num * sizeof(uintptr_t),
+                       ACL_MEM_MALLOC_HUGE_ONLY);
+  if (aclRet != ACL_SUCCESS) {
+    HIXL_LOGE(FAILED, "aclrtMalloc src_buf_list_dev faild");
+    return FAILED;
   }
-  aclRet = aclrtMalloc(reinterpret_cast<void **>(&memDev.len_list_dev), communicate_mem_param.list_num * sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_ONLY);
- // HIXL_CHK_ACL_RET(aclRet, "aclrtMalloc len_list_dev faild");
- if (aclRet != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtMalloc len_list_dev faild");
-      return FAILED;
+  aclRet = aclrtMalloc(reinterpret_cast<void **>(&mem_dev.len_list_dev),
+                       communicate_mem_param.list_num * sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_ONLY);
+  if (aclRet != ACL_SUCCESS) {
+    HIXL_LOGE(FAILED, "aclrtMalloc len_list_dev faild");
+    return FAILED;
   }
-  aclRet = aclrtMemcpy(memDev.dst_buf_list_dev, communicate_mem_param.list_num * sizeof(uintptr_t),
+  aclRet = aclrtMemcpy(mem_dev.dst_buf_list_dev, communicate_mem_param.list_num * sizeof(uintptr_t),
                        communicate_mem_param.dst_buf_list, communicate_mem_param.list_num * sizeof(uintptr_t),
                        ACL_MEMCPY_HOST_TO_DEVICE);
-  void * dst_buf_list_host;
+  void *dst_buf_list_host;
   aclRet = aclrtMallocHost(&dst_buf_list_host, communicate_mem_param.list_num * sizeof(uintptr_t));
-if (aclRet != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtMallocHost dst_buf_list_host faild");
-      return FAILED;
-  }
-  aclRet = aclrtMemcpy(dst_buf_list_host, communicate_mem_param.list_num * sizeof(uintptr_t),
-                      memDev.dst_buf_list_dev, communicate_mem_param.list_num * sizeof(uintptr_t),
-                      ACL_MEMCPY_DEVICE_TO_HOST
-                      );
   if (aclRet != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtMemcpy dst_buf_list_host faild");
-      return FAILED;
+    HIXL_LOGE(FAILED, "aclrtMallocHost dst_buf_list_host faild");
+    return FAILED;
   }
-  // 正确的方式1：转换为 void** 再访问
-void** dst_buf_array = static_cast<void**>(dst_buf_list_host);
-for (uint32_t i = 0; i < communicate_mem_param.list_num; ++i) {
+  aclRet = aclrtMemcpy(dst_buf_list_host, communicate_mem_param.list_num * sizeof(uintptr_t), mem_dev.dst_buf_list_dev,
+                       communicate_mem_param.list_num * sizeof(uintptr_t), ACL_MEMCPY_DEVICE_TO_HOST);
+  if (aclRet != ACL_SUCCESS) {
+    HIXL_LOGE(FAILED, "aclrtMemcpy dst_buf_list_host faild");
+    return FAILED;
+  }
+  void **dst_buf_array = static_cast<void **>(dst_buf_list_host);
+  for (uint32_t i = 0; i < communicate_mem_param.list_num; ++i) {
     HIXL_LOGI("[JZY] dst_buf_list_host[%u] = %p", i, dst_buf_array[i]);
-}
-  //HIXL_CHK_ACL_RET(aclRet, "aclrtMemcpy dst_buf_list_dev faild");
- if (aclRet != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtMemcpy dst_buf_list_dev faild");
-      return FAILED;
+  }
+  if (aclRet != ACL_SUCCESS) {
+    HIXL_LOGE(FAILED, "aclrtMemcpy dst_buf_list_dev faild");
+    return FAILED;
   }
 
-  aclRet = aclrtMemcpy(memDev.src_buf_list_dev, communicate_mem_param.list_num * sizeof(uintptr_t),
+  aclRet = aclrtMemcpy(mem_dev.src_buf_list_dev, communicate_mem_param.list_num * sizeof(uintptr_t),
                        communicate_mem_param.src_buf_list, communicate_mem_param.list_num * sizeof(uintptr_t),
                        ACL_MEMCPY_HOST_TO_DEVICE);
- // HIXL_CHK_ACL_RET(aclRet, "aclrtMemcpy src_buf_list_dev faild");
- if (aclRet != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtMemcpy src_buf_list_dev faild");
-      return FAILED;
+  // HIXL_CHK_ACL_RET(aclRet, "aclrtMemcpy src_buf_list_dev faild");
+  if (aclRet != ACL_SUCCESS) {
+    HIXL_LOGE(FAILED, "aclrtMemcpy src_buf_list_dev faild");
+    return FAILED;
   }
   HIXL_LOGI("[JZY] communicate_mem_param.len_list=%p", communicate_mem_param.len_list);
 
-  aclRet = aclrtMemcpy(reinterpret_cast<void *>(memDev.len_list_dev), communicate_mem_param.list_num * sizeof(uint64_t),
-                       reinterpret_cast<void *>(communicate_mem_param.len_list), communicate_mem_param.list_num * sizeof(uint64_t),
-                       ACL_MEMCPY_HOST_TO_DEVICE);
- //HIXL_CHK_ACL_RET(aclRet, "aclrtMemcpy len_list_dev faild");
- if (aclRet != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtMemcpy len_list_dev faild");
-      return FAILED;
+  aclRet = aclrtMemcpy(reinterpret_cast<void *>(mem_dev.len_list_dev), communicate_mem_param.list_num * sizeof(uint64_t),
+                       reinterpret_cast<void *>(communicate_mem_param.len_list),
+                       communicate_mem_param.list_num * sizeof(uint64_t), ACL_MEMCPY_HOST_TO_DEVICE);
+  // HIXL_CHK_ACL_RET(aclRet, "aclrtMemcpy len_list_dev faild");
+  if (aclRet != ACL_SUCCESS) {
+    HIXL_LOGE(FAILED, "aclrtMemcpy len_list_dev faild");
+    return FAILED;
   }
   void *remote_flag = nullptr;
   HIXL_LOGI("[JZY] PrepareUbRemoteFlagAndKernel start");
@@ -709,7 +694,7 @@ for (uint32_t i = 0; i < communicate_mem_param.list_num; ++i) {
   CompletePool::SlotHandle slot{};
   HIXL_LOGI("[JZY] AcquireUbSlot start");
   ret = AcquireUbSlot(&slot);
-    HIXL_LOGI("[JZY] AcquireUbSlot end");
+  HIXL_LOGI("[JZY] AcquireUbSlot end");
 
   if (ret != SUCCESS) {
     return ret;
@@ -724,17 +709,15 @@ for (uint32_t i = 0; i < communicate_mem_param.list_num; ++i) {
   handle->magic = kUbCompleteMagic;
   handle->reserved = 0U;
   handle->slot = slot;
-  ret = FillUbBatchArgs(is_get, communicate_mem_param, memDev, slot, remote_flag, &handle->args);
+  handle->mem_dev = mem_dev;
+  ret = FillUbBatchArgs(is_get, communicate_mem_param, mem_dev, slot, remote_flag, &handle->args);
   if (ret != SUCCESS) {
     return ret;
   }
 
   HIXL_LOGI("[JZY] LaunchUbAndStageD2H start");
-  HIXL_LOGI("[JZY][UB] BatchTransferUB . is_get=%d list_num=%u slot=%u magic=%u",
-          static_cast<int32_t>(is_get),
-          handle->args.list_num,
-          handle->slot.slot_index,
-          handle->magic);
+  HIXL_LOGI("[JZY][UB] BatchTransferUB . is_get=%d list_num=%u slot=%u magic=%u", static_cast<int32_t>(is_get),
+            handle->args.list_num, handle->slot.slot_index, handle->magic);
   ret = LaunchUbAndStageD2H(is_get, handle, remote_flag);
   HIXL_LOGI("[JZY] LaunchUbAndStageD2H end");
   if (ret != SUCCESS) {
@@ -743,8 +726,8 @@ for (uint32_t i = 0; i < communicate_mem_param.list_num; ++i) {
   *queryhandle = static_cast<void *>(handle);
   HIXL_DISMISS_GUARD(handle_guard);
   HIXL_DISMISS_GUARD(slot_guard);
-  HIXL_LOGI("[HixlClient][UB] BatchTransferUB submitted. is_get=%d list_num=%u slot=%u",
-            static_cast<int32_t>(is_get), handle->args.list_num, slot.slot_index);
+  HIXL_LOGI("[HixlClient][UB] BatchTransferUB submitted. is_get=%d list_num=%u slot=%u", static_cast<int32_t>(is_get),
+            handle->args.list_num, slot.slot_index);
   return SUCCESS;
 }
 
@@ -1224,6 +1207,28 @@ Status HixlCSClient::Destroy() {
                 "Please QueryCompleteStatus until COMPLETED before Destroy.",
                 in_use);
       return FAILED;
+    }
+    // 释放 ub_dev_const_one_
+    {
+      std::lock_guard<std::mutex> ub_lock(ub_mu_);
+      if (ub_dev_const_one_ != nullptr) {
+        int32_t old_dev = -1;
+        aclrtGetDevice(&old_dev);
+
+        // 切换到分配该内存的 device
+        if (old_dev != ub_device_id_) {
+          aclrtSetDevice(ub_device_id_);
+        }
+
+        aclrtFree(ub_dev_const_one_);
+        ub_dev_const_one_ = nullptr;
+        HIXL_LOGI("[HixlClient] Destroy: released ub_dev_const_one_");
+
+        // 恢复之前的 device
+        if (old_dev != -1 && old_dev != ub_device_id_) {
+          aclrtSetDevice(old_dev);
+        }
+      }
     }
     GetCompletePool().ReleaseRefAndDeinitIfNeeded();
     is_device_ = false;

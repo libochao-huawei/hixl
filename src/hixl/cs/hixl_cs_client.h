@@ -75,6 +75,7 @@ struct UbCompleteHandle {
   uint32_t reserved;
   CompletePool::SlotHandle slot;
   UbBatchArgs args;
+  MemDev mem_dev;
 };
 
 struct CommunicateMem {
@@ -146,7 +147,7 @@ class HixlCSClient {
                          uint32_t *list_num);
   void FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
   Status ClearRemoteMemInfo();
-  Status ValidateUbInputs_(bool is_get,
+  Status ValidateUbInputs(bool is_get,
                           const CommunicateMem &mem_param,
                           void **query_handle) const;
 
@@ -210,6 +211,7 @@ class HixlCSClient {
   aclrtBinHandle ub_kernel_handle_ {nullptr};
   void *ub_stub_get_ {nullptr};
   void *ub_stub_put_ {nullptr};
+  void *ub_dev_const_one_{nullptr};
 
 };
 }  // namespace hixl
