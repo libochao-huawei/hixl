@@ -292,10 +292,10 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   } else {
     CHECK_ACL(aclrtMallocHost(&buffer, sizeof(int32_t)));
   }
-  auto addr = reinterpret_cast<int32_t*>(buffer);
+  auto addr = reinterpret_cast<uintptr_t>(buffer);
 
   int32_t dst_value = 2;
-  CHECK_ACL(aclrtMemcpy(addr, sizeof(int32_t), &dst_value, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
+  CHECK_ACL(aclrtMemcpy(reinterpret_cast<int32_t*>(addr), sizeof(int32_t), &dst_value, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
 
   // 通过TCP传输内存地址到Client侧
   TCPClient tcp_client;
