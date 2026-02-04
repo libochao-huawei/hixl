@@ -42,7 +42,7 @@ else()
     file(MAKE_DIRECTORY ${JSON_DOWNLOAD_PATH})
 
     if(EXISTS ${JSON_ARCHIVE})
-        message("json not found in ${JSON_INSTALL_PATH}, found archive at ${JSON_ARCHIVE}, extracting...")
+        message("json not found in ${JSON_INSTALL_PATH}, found archive at ${JSON_ARCHIVE}")
     else()
         message("json not found in ${JSON_INSTALL_PATH}, begin load from ${REQ_URL}")
         file(DOWNLOAD

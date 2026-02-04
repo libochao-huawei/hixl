@@ -72,7 +72,7 @@ else()
     file(MAKE_DIRECTORY ${GTEST_DOWNLOAD_PATH})
 
     if(EXISTS ${GTEST_ARCHIVE})
-        message("gtest not found in ${GTEST_INSTALL_PATH}, found archive at ${GTEST_ARCHIVE}, extracting...")
+        message("gtest not found in ${GTEST_INSTALL_PATH}, found archive at ${GTEST_ARCHIVE}")
         set(GTEST_URL "file://${GTEST_ARCHIVE}")
     else()
         message("gtest not found in ${GTEST_INSTALL_PATH}, begin load from ${REQ_URL}")

@@ -22,7 +22,7 @@ if (NOT EXISTS "${MAKESELF_PATH}/makeself-header.sh" OR NOT EXISTS "${MAKESELF_P
     file(MAKE_DIRECTORY ${CANN_3RD_LIB_PATH}/pkg)
 
     if(EXISTS ${MAKESELF_ARCHIVE})
-        message(STATUS "Found makeself archive at ${MAKESELF_ARCHIVE}, extracting...")
+        message(STATUS "Found makeself archive at ${MAKESELF_ARCHIVE}")
         set(MAKESELF_URL "file://${MAKESELF_ARCHIVE}")
     else()
         message(STATUS "Downloading ${MAKESELF_NAME} from ${MAKESELF_DOWNLOAD_URL}")

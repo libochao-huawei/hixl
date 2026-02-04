@@ -42,7 +42,7 @@ else()
     file(MAKE_DIRECTORY ${PYBIND11_DOWNLOAD_PATH})
 
     if(EXISTS ${PYBIND11_ARCHIVE})
-        message("pybind11 not found in ${PYBIND11_INSTALL_PATH}, found archive at ${PYBIND11_ARCHIVE}, extracting...")
+        message("pybind11 not found in ${PYBIND11_INSTALL_PATH}, found archive at ${PYBIND11_ARCHIVE}")
     else()
         message("pybind11 not found in ${PYBIND11_INSTALL_PATH}, begin load from ${REQ_URL}")
         file(DOWNLOAD
