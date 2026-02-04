@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <sstream>
 #include <vector>
 #include <map>
 #include "common/hixl_cs.h"
@@ -24,13 +25,13 @@
 
 namespace hixl {
 
-enum CommType {
-  COMM_TYPE_UB_D2D,
-  COMM_TYPE_UB_H2D,
-  COMM_TYPE_UB_D2H,
-  COMM_TYPE_UB_H2H,
-  COMM_TYPE_ROCE,
-  COMM_TYPE_HCCS
+enum class CommType : uint32_t {
+  COMM_TYPE_UB_D2D = 0U,
+  COMM_TYPE_UB_H2D = 1U,
+  COMM_TYPE_UB_D2H = 2U,
+  COMM_TYPE_UB_H2H = 3U,
+  COMM_TYPE_ROCE = 4U,
+  COMM_TYPE_HCCS = 5U
 };
 
 struct MatchKey {
@@ -40,17 +41,13 @@ struct MatchKey {
 
   // 添加ToString()方法
   std::string ToString() const {
-    return "MatchKey{"
-           "dst_eid=\"" +
-           dst_eid +
-           "\", "
-           "plane=\"" +
-           plane +
-           "\", "
-           "placement=\"" +
-           placement +
-           "\""
-           "}";
+    std::ostringstream oss;
+    oss << "MatchKey{";
+    oss << "dst_eid: " << dst_eid << ", ";
+    oss << "plane: " << plane << ", ";
+    oss << "placement: " << placement;
+    oss << "}";
+    return oss.str();
   }
 
   bool operator<(const MatchKey &other) const {
@@ -63,7 +60,7 @@ struct MatchKey {
     }
   }
 
-  bool matches(const MatchKey &query) const {
+  bool Matches(const MatchKey &query) const {
     // 规则：
     // 1. 如果 dst_eid 和 query 的 dst_eid 非空，必须相等；
     //    如果 dst_eid 或 query 的 dst_eid 为空，忽略 dst_eid 匹配；
@@ -94,8 +91,7 @@ class HixlClient {
    * @param [in] server_ip  服务端监听 IPv4 地址
    * @param [in] server_port  服务端监听端口号
    */
-  explicit HixlClient(const std::string &server_ip, uint32_t server_port)
-      : server_ip_(server_ip), server_port_(server_port) {};
+  HixlClient(const std::string &server_ip, uint32_t server_port) : server_ip_(server_ip), server_port_(server_port) {};
   ~HixlClient() = default;
 
   /**
@@ -114,7 +110,7 @@ class HixlClient {
 
   /**
    * @brief 建链
-   * @param [in] timeout_ms                   超时时间（ms）
+   * @param [in] timeout_ms       超时时间（ms）
    * @return 操作结果状态码
    */
   Status Connect(uint32_t timeout_ms);
@@ -126,7 +122,7 @@ class HixlClient {
   Status Finalize();
 
   /**
-   * @brief 同步批量读取
+   * @brief 同步传输
    * @param [in] op_descs         批量操作的本地以及远端地址以及读取内存大小，批量操作的个数
    * @param [in] operation        读操作/写操作
    * @param [in] timeout_ms       超时时间
