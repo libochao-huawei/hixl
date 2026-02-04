@@ -273,7 +273,34 @@ int32_t RunClient(const Args &args) {
     return -1;
   }
 
-  // 5. 解注册，释放内存，析构
+  // 5.传输完成后，拷贝内存到host侧
+  void *tmp = nullptr;
+  ret = aclrtMallocHost(&tmp, kTransferMemSize);
+  if (acl_ret != ACL_ERROR_NONE) {
+    (void)printf("[ERROR] Client transfer_data aclrtMalloc failed, ret = %d\n", acl_ret);
+    ret = aclrtFreeHost(tmp);
+    return -1;
+  }
+  uint32_t transfer_data = static_cast<uint32_t *>(tmp);
+  HIXL_LOGI("The client transfer_data addr is : %p",transfer_data);
+  for (uint32_t i = 0; i < kTransferMemSize; i++) {
+    transfer_data[i] = 0;
+  }
+  ret = aclrtMemcpy(transfer_data, kTransferMemSize, mem.addr, kTransferMemSize, ACL_MEMCPY_DEVICE_TO_HOST);
+  if (acl_ret != ACL_ERROR_NONE) {
+    (void)printf("[ERROR] Client transfer_data aclrtMemcpy failed, ret = %d\n", acl_ret);
+    return -1;
+  }
+  HIXL_LOGI("The client transfer_data have been copy to client_mem.");
+
+  uint32_t error_num = 0;
+  for (uint32_t i = 0; i < kTransferMemSize; i++) {
+    if (transfer_data[i] != 0) {
+      error_num++;
+    }
+  }
+  HIXL_LOGI("The error count for this data transfer task is %u", error_num);
+  // 6. 解注册，释放内存，析构
   ClientFinalize(client_handle, {mem_handle});
 
   // 通过TCP通知Server侧已传输完成
@@ -339,6 +366,26 @@ int32_t RunServer(const Args &args) {
   }
   HIXL_LOGI("The server memory has been registered.");
   (void)printf("[INFO] The server memory has been registered.\n");
+
+  // 3.申请host侧地址，初始化内容之后复制给第二步申请的内存
+  void *tmp = nullptr;
+  ret = aclrtMallocHost(&tmp, kTransferMemSize);
+  if (acl_ret != ACL_ERROR_NONE) {
+    (void)printf("[ERROR] transfer_data aclrtMalloc failed, ret = %d\n", acl_ret);
+    ret = aclrtFreeHost(tmp);
+    return -1;
+  }
+  uint32_t transfer_data = static_cast<uint32_t *>(tmp);
+  HIXL_LOGI("The transfer_data addr is : %p",transfer_data);
+  for (uint32_t i = 0; i < kTransferMemSize; i++) {
+    transfer_data[i] = 1;
+  }
+  ret = aclrtMemcpy(mem.addr, kTransferMemSize, transfer_data, kTransferMemSize, ACL_MEMCPY_HOST_TO_DEVICE);
+  if (acl_ret != ACL_ERROR_NONE) {
+    (void)printf("[ERROR] transfer_data aclrtMemcpy failed, ret = %d\n", acl_ret);
+    return -1;
+  }
+  HIXL_LOGI("The transfer_data have been copy to server_mem.");
 
   // 4. 等待client transfer
   TCPClient tcp_client;
