@@ -56,6 +56,7 @@ CompletePool::CompletePool()
     slot.host_flag = nullptr;
     slot.notify_mem_handle = nullptr;
     slot.notify_tag.fill('\0');
+    slot.remote_flag_memcpy = nullptr;
   }
 }
 
@@ -109,26 +110,8 @@ void CompletePool::RestoreAclContext(aclrtContext old_ctx) const {
   HIXL_CHK_ACL(aclrtSetCurrentContext(old_ctx), "restore acl context failed");
 }
 
-Status CompletePool::SwitchDeviceAndNeedRestore(int32_t target_device_id, int32_t *old_device_id,
-                                                bool *need_restore) const {
-  HIXL_CHECK_NOTNULL(old_device_id);
-  HIXL_CHECK_NOTNULL(need_restore);
-
-  *old_device_id = -1;
-  *need_restore = false;
-
-  HIXL_CHK_ACL_RET(aclrtGetDevice(old_device_id));
-  if (*old_device_id == target_device_id) {
-    return SUCCESS;
-  }
-
-  HIXL_CHK_ACL_RET(aclrtSetDevice(target_device_id));
-  *need_restore = true;
-  return SUCCESS;
-}
-
 Status CompletePool::AddRefAndInitIfNeeded(int32_t device_id, CommEngine engine, uint32_t thread_num,
-                                           uint32_t notify_num_per_thread, Endpoint *endpoint) {
+                                          uint32_t notify_num_per_thread, Endpoint *endpoint) {
   std::lock_guard<std::mutex> lock(mu_);
   HIXL_CHECK_NOTNULL(endpoint);
 
@@ -207,10 +190,11 @@ Status CompletePool::Acquire(SlotHandle *handle) {
   handle->notify = slot.notify;
   handle->host_flag = slot.host_flag;
   handle->notify_addr = slot.notify_addr;
+  handle->remote_flag_memcpy = slot.remote_flag_memcpy;
 
-  //TODO:临时 解决
+  // TODO:临时
   handle->notify_tag = slot.notify_tag;
-  HIXL_LOGI("[JZY] Acquire handle->notify_tag=%s", handle->notify_tag);
+  HIXL_LOGI("[JZY] Acquire handle->notify_tag=%s", handle->notify_tag.data());
   return SUCCESS;
 }
 
@@ -253,7 +237,6 @@ Status CompletePool::InitAllSlotsLocked(int32_t device_id, CommEngine engine, ui
 
   aclrtContext old_ctx = nullptr;
   HIXL_CHK_STATUS_RET(GetCurrentAclContext(&old_ctx), "[CompletePool] GetCurrentAclContext failed");
-
   HIXL_DISMISSABLE_GUARD(ctx_restore, [&]() { RestoreAclContext(old_ctx); });
 
   for (uint32_t i = 0U; i < kMaxSlots; ++i) {
@@ -268,18 +251,6 @@ Status CompletePool::InitAllSlotsLocked(int32_t device_id, CommEngine engine, ui
 
 Status CompletePool::InitOneSlotLocked(Slot &slot, uint32_t slot_index, int32_t device_id, CommEngine engine,
                                        uint32_t thread_num, uint32_t notify_num_per_thread) {
-  int32_t old_device_id = -1;
-  bool need_restore = false;
-
-  HIXL_CHK_STATUS_RET(SwitchDeviceAndNeedRestore(device_id, &old_device_id, &need_restore),
-                      "[CompletePool] SwitchDevice failed");
-
-  HIXL_DISMISSABLE_GUARD(dev_restore, [&]() {
-    if (need_restore) {
-      HIXL_CHK_ACL(aclrtSetDevice(old_device_id));
-    }
-  });
-
   HIXL_CHK_STATUS_RET(EnsureContextLocked(slot, device_id), "[CompletePool] EnsureContextLocked failed");
   HIXL_CHK_STATUS_RET(EnsureStreamLocked(slot), "[CompletePool] EnsureStreamLocked failed");
   HIXL_CHK_STATUS_RET(EnsureThreadLocked(slot, engine, thread_num, notify_num_per_thread),
@@ -383,8 +354,7 @@ Status CompletePool::GetNotifyAddrLocked(uint32_t notify_id, void **notify_addr)
   HIXL_CHK_BOOL_RET_STATUS(addr_info.resAddress != nullptr, FAILED,
                            "[CompletePool] rtGetDevResAddress returned null. notify_id=%u", notify_id);
 
-  //*notify_addr = addr_info.resAddress;
-  uintptr_t addr_value = static_cast<uintptr_t>(*addr_info.resAddress);
+  const uintptr_t addr_value = static_cast<uintptr_t>(*addr_info.resAddress);
   *notify_addr = reinterpret_cast<void *>(addr_value);
   return SUCCESS;
 }
@@ -417,20 +387,9 @@ Status CompletePool::RegisterNotifyMemLocked(Slot &slot, const char *tag, void *
 }
 
 void CompletePool::DeinitAllSlotsLocked() {
-  int32_t old_device_id = -1;
-  bool need_restore = false;
-
-  if (init_device_id_ >= 0) {
-    (void)SwitchDeviceAndNeedRestore(init_device_id_, &old_device_id, &need_restore);
-  }
-
   for (uint32_t i = 0U; i < kMaxSlots; ++i) {
     DestroySlotLocked(slots_[i]);
     slots_[i].in_use = false;
-  }
-
-  if (need_restore) {
-    HIXL_CHK_ACL(aclrtSetDevice(old_device_id));
   }
 
   free_list_.clear();
@@ -478,7 +437,6 @@ Status CompletePool::EnsureThreadLocked(Slot &slot, CommEngine engine, uint32_t 
     return SUCCESS;
   }
 
-  // HcommThreadAlloc returns HcclResult, convert to Status via macro you already have.
   HIXL_CHK_HCCL_RET(HcommThreadAlloc(engine, thread_num, notify_num_per_thread, &slot.thread));
   return SUCCESS;
 }
@@ -512,7 +470,6 @@ void CompletePool::DestroySlotLocked(Slot &slot) {
   }
 
   if (slot.thread != 0U) {
-    // HIXL_CHK_HCCL(HcommThreadFree(slot.thread));
     slot.thread = 0U;
   }
 
@@ -533,6 +490,7 @@ void CompletePool::DestroySlotLocked(Slot &slot) {
 
   slot.notify_addr = nullptr;
   slot.notify_tag.fill('\0');
+  slot.remote_flag_memcpy = nullptr;
 }
 
 }  // namespace hixl
