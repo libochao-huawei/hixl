@@ -24,11 +24,6 @@ using HixlServerHandle = void *;
 using HixlClientHandle = void *;
 using HixlStatus = uint32_t;
 using MemHandle = void *;
-  //TODO :delete this
-using FdHandle = void *;
-using EndpointHandle = void *;
-using ChannelHandle = uint64_t;
-using ThreadHandle = uint64_t;
 
 constexpr HixlStatus HIXL_SUCCESS = 0U;
 constexpr HixlStatus HIXL_PARAM_INVALID = 103900U;
@@ -67,11 +62,6 @@ enum HixlCompleteStatus {
   HIXL_COMPLETE_STATUS_WAITING,
   HIXL_COMPLETE_STATUS_COMPLETED
 };
-  //TODO:delete this
-  enum BatchTransferStatus : int32_t {
-    WAITING = 0,
-    COMPLETED = 1
-  };
 
 /**
  * @brief 创建Server
