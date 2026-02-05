@@ -162,7 +162,7 @@ Status LoadUbKernelAndResolveStubs(int32_t device_id, const char *func_get, cons
                       "[LoadKernel] SwitchDevice failed. target_dev=%d", device_id);
   HIXL_DISMISSABLE_GUARD(dev_restore, [&]() {
     if (need_restore) {
-      (void)rtSetDevice(old_device);
+      (void)aclrtSetDevice(old_device);
     }
   });
   if (bin_handle == nullptr) {
