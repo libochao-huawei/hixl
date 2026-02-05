@@ -24,12 +24,13 @@
 
 using namespace hixl;
 namespace {
-constexpr int32_t kExpectedArgCnt = 6;
+constexpr int32_t kExpectedArgCnt = 7;
 constexpr uint32_t kArgIndexDeviceId = 1;
 constexpr uint32_t kArgIndexLocalEngine = 2;
 constexpr uint32_t kArgIndexRemoteEngine = 3;
 constexpr uint32_t kArgIndexTcpPort = 4;
 constexpr uint32_t kArgIndexTransferMode = 5;
+constexpr uint32_t kArgIndexOpType = 6;
 constexpr int32_t kDstValue = 2;
 
 constexpr const char kServerJsonFilePath[] = "../../../examples/cpp/local_comm_res_server.json";
@@ -128,50 +129,15 @@ int Disconnect(Hixl &hixl_engine, const char *remote_engine) {
   return 0;
 }
 
-int32_t Transfer(Hixl &hixl_engine, int32_t *src_ptr, const char *remote_engine, uint64_t dst_addr) {
+int32_t Transfer(Hixl &hixl_engine, int32_t *src_ptr, const char *remote_engine, uint64_t dst_addr, std::string op_type) {
+  TransferOp type = op_type == "read" ? READ : WRITE;
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(src_ptr), reinterpret_cast<uintptr_t>(dst_addr), sizeof(int32_t)};
-  auto ret = hixl_engine.TransferSync(remote_engine, WRITE, {desc});
+  auto ret = hixl_engine.TransferSync(remote_engine, type, {desc});
   if (ret != SUCCESS) {
-    printf("[ERROR] TransferSync write failed, ret = %u\n", ret);
+    printf("[ERROR] TransferSync failed, ret = %u\n", ret);
     return -1;
   }
-  int32_t dst = 0;
-  CHECK_ACL(aclrtMemcpy(&dst, sizeof(int32_t), reinterpret_cast<int32_t*>(dst_addr), sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
-  if (dst != 0) {
-    printf("[INFO] get dst value succeed, dst:%d\n", dst);
-  } else {
-    printf("[ERROR] get dst value failed\n");
-    return -1;
-  }
-
-  int32_t src = 0;
-  CHECK_ACL(aclrtMemcpy(&src, sizeof(int32_t), src_ptr, sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
-  if (src != 0) {
-    printf("[INFO] get src value succeed, src:%d\n", src);
-  } else {
-    printf("[ERROR] get src value failed\n");
-    return -1;
-  }
-
-  if (dst != src) {
-    printf("[ERROR] Src and dst do not equal after writing. src:%d, dst:%d\n", src, dst);
-    return -1;
-  }
-  printf("[INFO] TransferSync write success, src = %d\n", src);
-
-  dst = kDstValue;
-  CHECK_ACL(aclrtMemcpy(reinterpret_cast<int32_t*>(dst_addr), sizeof(int32_t), &dst, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
-  ret = hixl_engine.TransferSync(remote_engine, READ, {desc});
-  if (ret != SUCCESS) {
-    printf("[ERROR] TransferSync read failed, ret = %u\n", ret);
-    return -1;
-  }
-  CHECK_ACL(aclrtMemcpy(&src, sizeof(int32_t), reinterpret_cast<int32_t*>(src_ptr), sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
-  if (src != dst) {
-    printf("[ERROR] Src and dst do not equal after reading. src:%d, dst:%d\n", src, dst);
-    return -1;
-  }
-  printf("[INFO] TransferSync read success, src = %d\n", src);
+  printf("[INFO] TransferSync succeed\n");
   return 0;
 }
 
@@ -198,7 +164,8 @@ void Finalize(Hixl &hixl_engine, bool is_host, const std::vector<MemHandle> &han
 }
 
 
-int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t tcp_port, const std::string &transfer_mode, bool is_client) {
+int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t tcp_port, const std::string &transfer_mode, 
+                  std::string op_type, bool is_client) {
   printf("[INFO] client start\n");
   // 通过TCP接收Server侧的内存地址
   TCPServer tcp_server;
@@ -258,10 +225,19 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   }
 
   // 4. 从server get内存，并向server put内存
-  if (Transfer(hixl_engine, src, remote_engine, remote_addr) != 0) {
+  if (Transfer(hixl_engine, src, remote_engine, remote_addr, op_type) != 0) {
     Disconnect(hixl_engine, remote_engine);
     Finalize(hixl_engine, is_host, {handle}, {src});
     return -1;
+  }
+
+  if (op_type == "read") {
+    CHECK_ACL(aclrtMemcpy(&src_value, sizeof(int32_t), src, sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
+    if (src_value != 2) {
+      printf("[ERROR] src value does not equal to dst after reading, src value: %d\n", src_value);
+    } else {
+      printf("[INFO] src value after reading: %d\n", src_value);
+    }
   }
 
   // 5. 断链并销毁
@@ -275,7 +251,8 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   return 0;
 }
 
-int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t tcp_port, std::string &transfer_mode, bool is_client) {
+int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t tcp_port, std::string &transfer_mode, 
+                  std::string op_type, bool is_client) {
   printf("[INFO] server start\n");
   // 1. 初始化
   Hixl hixl_engine;
@@ -324,6 +301,14 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   if (tcp_client.ReceiveTaskStatus()) {
     printf("[INFO] Wait transfer end\n");
   }
+  if (op_type == "write") {
+    CHECK_ACL(aclrtMemcpy(&dst_value, sizeof(int32_t), reinterpret_cast<int32_t*>(addr), sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
+    if (dst_value != 1) {
+      printf("[ERROR] dst value does not equal to src after writing, dst value: %d\n", dst_value);
+    } else {
+      printf("[INFO] dst value after writing: %d\n", dst_value);
+    }
+  }
   tcp_client.Disconnect();
 
   // 4. 释放Cache与llmDataDist
@@ -339,17 +324,19 @@ int main(int32_t argc, char **argv) {
   std::string remote_engine;
   std::string tcp_port_str;
   std::string transfer_mode;
+  std::string op_type;
   if (argc == kExpectedArgCnt) {
     device_id = argv[kArgIndexDeviceId];
     local_engine = argv[kArgIndexLocalEngine];
     remote_engine = argv[kArgIndexRemoteEngine];
     tcp_port_str = argv[kArgIndexTcpPort];
     transfer_mode = argv[kArgIndexTransferMode];
-    printf("[INFO] device_id = %s, local_engine = %s, remote_engine = %s, transfer_mode=%s\n", device_id.c_str(), local_engine.c_str(),
-           remote_engine.c_str(), transfer_mode.c_str());
+    op_type = argv[kArgIndexOpType];
+    printf("[INFO] device_id = %s, local_engine = %s, remote_engine = %s, transfer_mode=%s, op_type=%s\n", device_id.c_str(), local_engine.c_str(),
+           remote_engine.c_str(), transfer_mode.c_str(), op_type.c_str());
   } else {
     printf(
-        "[ERROR] Expect %d args(device_id, local_engine, remote_engine, transfer_mode), "
+        "[ERROR] Expect %d args(device_id, local_engine, remote_engine, transfer_mode, op_type), "
         "but got %d\n",
         (kExpectedArgCnt - 1), (argc - 1));
     return -1;
@@ -366,9 +353,9 @@ int main(int32_t argc, char **argv) {
 
   int32_t ret = 0;
   if (is_client) {
-    ret = RunClient(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, is_client);
+    ret = RunClient(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, op_type, is_client);
   } else {
-    ret = RunServer(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, is_client);
+    ret = RunServer(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, op_type, is_client);
   }
   CHECK_ACL(aclrtResetDevice(device));
   return ret;
