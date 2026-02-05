@@ -138,7 +138,7 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
   dst_endpoint_ = *dst_endpoint;
   CtrlMsgPlugin::Initialize();
   HIXL_LOGD("[HixlClient] CtrlMsgPlugin initialized");
-  EndPointHandle endpoint_handle = src_endpoint_->GetHandle();
+  EndpointHandle endpoint_handle = src_endpoint_->GetHandle();
   HIXL_EVENT("[HixlClient] Create success. server=%s:%u, src_ep_handle=%p", server_ip_.c_str(), server_port_,
              endpoint_handle);
   Status init_ret = InitFlagQueue();
@@ -1018,7 +1018,7 @@ void BuildTagPtrs(std::vector<std::vector<char>> &storage, std::vector<char*> &p
   }
 }
 
-void CloseImportedBufs(EndPointHandle ep_handle, std::vector<HixlMemDesc> &bufs) {
+void CloseImportedBufs(EndpointHandle ep_handle, std::vector<HixlMemDesc> &bufs) {
   if (ep_handle == nullptr) {
     bufs.clear();
     return;
@@ -1124,7 +1124,7 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list,
   ret = ValidateExportDescList(desc_list);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] ValidateExportDescList failed");
   HIXL_CHECK_NOTNULL(src_endpoint_);
-  EndPointHandle ep_handle = src_endpoint_->GetHandle();
+  EndpointHandle ep_handle = src_endpoint_->GetHandle();
   HIXL_CHK_BOOL_RET_STATUS(ep_handle != nullptr, FAILED, "[HixlClient] ImportRemoteMem: endpoint handle is null");
   ImportCtx ctx;
   ctx.ep = src_endpoint_.get();
@@ -1147,7 +1147,7 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list,
 }
 
 Status HixlCSClient::ClearRemoteMemInfo() {
-  EndPointHandle ep_handle = (src_endpoint_ != nullptr) ? src_endpoint_->GetHandle() : nullptr;
+  EndpointHandle ep_handle = (src_endpoint_ != nullptr) ? src_endpoint_->GetHandle() : nullptr;
   const size_t buf_cnt = imported_remote_bufs_.size();
   const size_t addr_cnt = recorded_remote_addrs_.size();
   if (buf_cnt > 0U || addr_cnt > 0U) {

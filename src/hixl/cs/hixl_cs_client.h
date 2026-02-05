@@ -92,7 +92,7 @@ struct Buffers {
 
 struct ImportCtx {
   Endpoint *ep{nullptr};
-  EndPointHandle ep_handle{nullptr};
+  EndpointHandle ep_handle{nullptr};
   HixlMemStore *store{nullptr};
   uint32_t num{0U};
   bool need_tag{false};
