@@ -160,7 +160,7 @@ int32_t Transfer(Hixl &hixl_engine, int32_t *src_ptr, const char *remote_engine,
   printf("[INFO] TransferSync write success, src = %d\n", src);
 
   dst = kDstValue;
-  CHECK_ACL(aclrtMemcpy(&dst, sizeof(int32_t), reinterpret_cast<int32_t*>(dst_addr), sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
+  CHECK_ACL(aclrtMemcpy(reinterpret_cast<int32_t*>(dst_addr), sizeof(int32_t), &dst, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
   ret = hixl_engine.TransferSync(remote_engine, READ, {desc});
   if (ret != SUCCESS) {
     printf("[ERROR] TransferSync read failed, ret = %u\n", ret);
