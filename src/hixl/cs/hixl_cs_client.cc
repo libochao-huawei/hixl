@@ -153,33 +153,7 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
   is_device_ = (ep.loc.locType == ENDPOINT_LOC_TYPE_DEVICE);
   is_ub_mode_ = ub_device_mode;
   if (ub_device_mode) {
-    if (ep.commAddr.type == COMM_ADDR_TYPE_ID) {
-      ub_device_id_ = static_cast<int32_t>(ep.commAddr.id);
-    } else {
-      ub_device_id_ = -1;
-    }
-    if (ub_device_id_ < 0) {
-      int32_t curDevId = -1;
-      const rtError_t rret = aclrtGetDevice(&curDevId);
-      if (rret != RT_ERROR_NONE) {
-        HIXL_LOGE(FAILED,
-                  "[HixlClient] aclrtGetDevice failed in Create. ret=%d",
-                  static_cast<int32_t>(rret));
-        return FAILED;
-      }
-      ub_device_id_ = curDevId;
-    }
-    {
-      int32_t old_ctx_dev_id = -1;
-      aclrtGetDevice(&old_ctx_dev_id);
-
-      if (old_ctx_dev_id != ub_device_id_) {
-        aclError acl_ret = aclrtSetDevice(ub_device_id_);
-        if (acl_ret != ACL_SUCCESS) {
-          HIXL_LOGE(FAILED, "[HixlClient] aclrtSetDevice failed. devId=%d", ub_device_id_);
-          return FAILED;
-        }
-      }
+    if (ub_dev_const_one_ == nullptr) {
       aclError acl_ret = aclrtMalloc(&ub_dev_const_one_, sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_ONLY);
       if (acl_ret != ACL_SUCCESS) {
         HIXL_LOGE(FAILED, "[HixlClient] aclrtMalloc ub_dev_const_one_ failed. ret=%d", acl_ret);
@@ -193,15 +167,15 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
         ub_dev_const_one_ = nullptr;
         return FAILED;
       }
-      HIXL_LOGI("[HixlClient] UB Device const one initialized at %p on dev %d", ub_dev_const_one_, ub_device_id_);
-
-      // 恢复之前的 Device
-      if (old_ctx_dev_id != -1 && old_ctx_dev_id != ub_device_id_) {
-        aclrtSetDevice(old_ctx_dev_id);
+      acl_ret = aclrtGetDevice(&ub_device_id_);
+      if (acl_ret != ACL_SUCCESS) {
+        HIXL_LOGE(FAILED, "[HixlClient] aclrtGetDevice failed. ret=%d", acl_ret);
+        return FAILED;
       }
+      HIXL_LOGI("[HixlClient] UB Device const one initialized at %p on dev %d", ub_dev_const_one_, ub_device_id_);
     }
-    Status pret = GetCompletePool().AddRefAndInitIfNeeded(ub_device_id_, kUbEngine, kUbThreadNum, kUbNotifyNumPerThread,
-                                                        src_endpoint_.get());
+    Status pret =
+        GetCompletePool().AddRefAndInitIfNeeded(ub_device_id_, kUbEngine, kUbThreadNum, kUbNotifyNumPerThread, src_endpoint_.get());
     if (pret != SUCCESS) {
       HIXL_LOGE(FAILED,
                 "[HixlClient] CompletePool AddRefAndInitIfNeeded failed. devId=%d ret=0x%X",
@@ -635,6 +609,35 @@ Status HixlCSClient::BatchTransferUB(bool is_get, const CommunicateMem &communic
   if (ret != SUCCESS) {
     return ret;
   }
+  // 1) 保存用户上下文
+  aclrtContext user_ctx = nullptr;
+  aclError acl_ret = aclrtGetCurrentContext(&user_ctx);
+  if (acl_ret != ACL_SUCCESS) {
+    HIXL_LOGE(FAILED, "[HixlClient][UB] aclrtGetCurrentContext failed. ret=%d", static_cast<int32_t>(acl_ret));
+    return FAILED;
+  }
+  CompletePool::SlotHandle slot{};
+  HIXL_LOGI("[JZY] AcquireUbSlot start");
+  ret = AcquireUbSlot(&slot);
+  HIXL_LOGI("[JZY] AcquireUbSlot end");
+
+  if (ret != SUCCESS) {
+    return ret;
+  }
+  // 2) 切到 slot.ctx，并保证函数任何路径退出都恢复用户 ctx
+  acl_ret = aclrtSetCurrentContext(slot.ctx);
+  if (acl_ret != ACL_SUCCESS) {
+    HIXL_LOGE(FAILED, "[HixlClient][UB] aclrtSetCurrentContext(slot.ctx) failed. ret=%d",
+              static_cast<int32_t>(acl_ret));
+    GetCompletePool().Release(slot.slot_index);
+    return FAILED;
+  }
+  HIXL_DISMISSABLE_GUARD(ctx_restore_guard, [&]() {
+    if (user_ctx != nullptr) {
+      (void)aclrtSetCurrentContext(user_ctx);
+    }
+  });
+  HIXL_DISMISSABLE_GUARD(slot_guard, [&]() { GetCompletePool().Release(slot.slot_index); });
   MemDev mem_dev{};
   aclError aclRet = aclrtMalloc(&mem_dev.dst_buf_list_dev, communicate_mem_param.list_num * sizeof(uintptr_t),
                                 ACL_MEM_MALLOC_HUGE_ONLY);
@@ -705,15 +708,8 @@ Status HixlCSClient::BatchTransferUB(bool is_get, const CommunicateMem &communic
   if (ret != SUCCESS) {
     return ret;
   }
-  CompletePool::SlotHandle slot{};
-  HIXL_LOGI("[JZY] AcquireUbSlot start");
-  ret = AcquireUbSlot(&slot);
-  HIXL_LOGI("[JZY] AcquireUbSlot end");
 
-  if (ret != SUCCESS) {
-    return ret;
-  }
-  HIXL_DISMISSABLE_GUARD(slot_guard, [&]() { GetCompletePool().Release(slot.slot_index); });
+
   UbCompleteHandle *handle = new (std::nothrow) UbCompleteHandle();
   if (handle == nullptr) {
     HIXL_LOGE(FAILED, "[HixlClient][UB] new UbCompleteHandle failed");

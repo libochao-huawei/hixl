@@ -74,8 +74,8 @@ class CompletePool {
 
     std::array<char, 64> notify_tag;
 
-    //TODO:临时兼容
-   void *remote_flag_memcpy;
+    // TODO:临时兼容
+    void *remote_flag_memcpy;
   };
 
  private:
@@ -93,8 +93,6 @@ class CompletePool {
 
   Status InitOneSlotLocked(Slot &slot, uint32_t slot_index, int32_t device_id, CommEngine engine, uint32_t thread_num,
                            uint32_t notify_num_per_thread);
-
-  Status SwitchDeviceAndNeedRestore(int32_t target_device_id, int32_t *old_device_id, bool *need_restore) const;
 
   Status EnsureNotifyRecordLocked(Slot &slot, uint32_t slot_index, int32_t device_id);
 
