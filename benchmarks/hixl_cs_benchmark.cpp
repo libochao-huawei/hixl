@@ -234,14 +234,17 @@ int32_t RunClient(const Args &args) {
   // 2. 注册内存地址
   MemHandle mem_handle = nullptr;
   HcommMem mem{};
+  aclrtMemcpyKind copy_kind;
   aclError acl_ret = ACL_ERROR_NONE;
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
   if (is_host) {
     acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize);
+    copy_kind = ACL_MEMCPY_HOST_TO_HOST;
     mem.type = HCCL_MEM_TYPE_HOST;
     mem.size = kTransferMemSize;
   } else {
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
+    copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
     mem.type = HCCL_MEM_TYPE_DEVICE;
     mem.size = kTransferMemSize;
   }
@@ -273,7 +276,7 @@ int32_t RunClient(const Args &args) {
     return -1;
   }
 
-  // 5.传输完成后，拷贝内存到host侧
+  // 5.传输完成后，基于copy_kind拷贝内存
   void *tmp = nullptr;
   ret = aclrtMallocHost(&tmp, kTransferMemSize);
   if (acl_ret != ACL_ERROR_NONE) {
@@ -286,7 +289,7 @@ int32_t RunClient(const Args &args) {
   for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
     transfer_data[i] = 0;
   }
-  ret = aclrtMemcpy(transfer_data, kTransferMemSize, mem.addr, kTransferMemSize, ACL_MEMCPY_DEVICE_TO_HOST);
+  ret = aclrtMemcpy(transfer_data, kTransferMemSize, mem.addr, kTransferMemSize, copy_kind);
   if (acl_ret != ACL_ERROR_NONE) {
     (void)printf("[ERROR] Client transfer_data aclrtMemcpy failed, ret = %d\n", acl_ret);
     return -1;
@@ -340,15 +343,18 @@ int32_t RunServer(const Args &args) {
 
   // 2. 注册内存地址
   MemHandle mem_handle = nullptr;
+  aclrtMemcpyKind copy_kind;
   HcommMem mem{};
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
   aclError acl_ret = ACL_ERROR_NONE;
   if (is_host) {
     acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize);
+    copy_kind = ACL_MEMCPY_HOST_TO_HOST;
     mem.type = HCCL_MEM_TYPE_HOST;
     mem.size = kTransferMemSize;
   } else {
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
+    copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     mem.type = HCCL_MEM_TYPE_DEVICE;
     mem.size = kTransferMemSize;
   }
@@ -380,7 +386,7 @@ int32_t RunServer(const Args &args) {
   for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
     transfer_data[i] = 1;
   }
-  ret = aclrtMemcpy(mem.addr, kTransferMemSize, transfer_data, kTransferMemSize, ACL_MEMCPY_HOST_TO_DEVICE);
+  ret = aclrtMemcpy(mem.addr, kTransferMemSize, transfer_data, kTransferMemSize, copy_kind);
   if (acl_ret != ACL_ERROR_NONE) {
     (void)printf("[ERROR] transfer_data aclrtMemcpy failed, ret = %d\n", acl_ret);
     return -1;
