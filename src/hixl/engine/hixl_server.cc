@@ -42,7 +42,7 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
   server_desc.server_port = static_cast<uint32_t>(port);
   server_desc.endpoint_list = endpoints;
   server_desc.endpoint_list_num = static_cast<uint32_t>(data_endpoint_config_list.size());
-  HIXL_CHK_STATUS_RET(HixlCSServerCreate(server_desc, &config, &server_handle_));
+  HIXL_CHK_STATUS_RET(HixlCSServerCreate(&server_desc, &config, &server_handle_));
   //port > 0 初始化hixl server，否则作为hixl client注册内存用
   if (port > 0) {
     //注册回调函数且监听端口
