@@ -9,6 +9,8 @@
  */
 
 #include "hixl_server.h"
+
+#include "../common/hixl_cs.h"
 #include "nlohmann/json.hpp"
 #include "cs/hixl_cs_server.h"
 #include "common/hixl_checker.h"
@@ -35,9 +37,12 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
   }
   const EndpointDesc *endpoints = data_end_point_list.data();
   HixlServerConfig config{};
-  HIXL_CHK_STATUS_RET(HixlCSServerCreate(ip.c_str(), static_cast<uint32_t>(port), endpoints,
-                      static_cast<uint32_t>(data_endpoint_config_list.size()),
-                      &config, &server_handle_));
+  HixlServerDesc server_desc{};
+  server_desc.server_ip = ip.c_str();
+  server_desc.server_port = static_cast<uint32_t>(port);
+  server_desc.endpoint_list = endpoints;
+  server_desc.endpoint_list_num = static_cast<uint32_t>(data_endpoint_config_list.size());
+  HIXL_CHK_STATUS_RET(HixlCSServerCreate(server_desc, &config, &server_handle_));
   //port > 0 初始化hixl server，否则作为hixl client注册内存用
   if (port > 0) {
     //注册回调函数且监听端口
