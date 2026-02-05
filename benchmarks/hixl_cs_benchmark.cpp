@@ -283,7 +283,7 @@ int32_t RunClient(const Args &args) {
   }
   uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
   HIXL_LOGI("The client transfer_data addr is : %p",transfer_data);
-  for (uint32_t i = 0; i < kTransferMemSize; i++) {
+  for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
     transfer_data[i] = 0;
   }
   ret = aclrtMemcpy(transfer_data, kTransferMemSize, mem.addr, kTransferMemSize, ACL_MEMCPY_DEVICE_TO_HOST);
@@ -294,7 +294,7 @@ int32_t RunClient(const Args &args) {
   HIXL_LOGI("The client transfer_data have been copy to client_mem.");
 
   uint32_t error_num = 0;
-  for (uint32_t i = 0; i < kTransferMemSize; i++) {
+  for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
     if (transfer_data[i] != 0) {
       error_num++;
     }
@@ -377,7 +377,7 @@ int32_t RunServer(const Args &args) {
   }
   uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
   HIXL_LOGI("The transfer_data addr is : %p",transfer_data);
-  for (uint32_t i = 0; i < kTransferMemSize; i++) {
+  for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
     transfer_data[i] = 1;
   }
   ret = aclrtMemcpy(mem.addr, kTransferMemSize, transfer_data, kTransferMemSize, ACL_MEMCPY_HOST_TO_DEVICE);
