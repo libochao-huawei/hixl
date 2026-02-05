@@ -794,11 +794,11 @@ Status HixlCSClient::CheckStatusHost(CompleteHandle *queryhandle, int32_t *statu
   // 查到flag变成1之后，就把其重置为0，之后告知用户读写任务已经完成。
   if (*atomic_flag == kFlagDoneValue) {
     *atomic_flag = kFlagResetValue;
-    *status = BatchTransferStatus::COMPLETED;
+    *status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED;
     HIXL_LOGI("The current transmission task has been completed.");
     return ReleaseCompleteHandle(queryhandle);  // 释放内存并回收索引
   }
-  *status = BatchTransferStatus::WAITING;
+  *status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
   HIXL_LOGI("The current transmission task has not been completed.");
   return SUCCESS;
 }
@@ -822,13 +822,13 @@ Status HixlCSClient::CheckStatusDevice(UbCompleteHandle *queryhandle, int32_t *s
   const uint64_t flag_val = *flag_ptr;
   if (flag_val == kUbFlagDoneValue) {
     *flag_ptr = kUbFlagInitValue;
-    *status = BatchTransferStatus::COMPLETED;
+    *status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED;
 
     HIXL_LOGI("[HixlClient][UB] Batch completed. slot=%u", queryhandle->slot.slot_index);
     return ReleaseUbCompleteHandle(queryhandle);
   }
 
-  *status = BatchTransferStatus::WAITING;
+  *status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
   return SUCCESS;
 }
 

@@ -720,9 +720,9 @@ Status HixlClient::GetTransferStatus(const TransferReq &req, TransferStatus &sta
       complete_handles_.erase(req);
       return ret;
     }
-    if (query_status == BatchTransferStatus::COMPLETED) {
+    if (query_status == HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED) {
       continue;
-    } else if (query_status == BatchTransferStatus::WAITING) {
+    } else if (query_status == HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING) {
       all_complete = false;
     }
   }
@@ -776,7 +776,7 @@ Status HixlClient::TransferSync(const std::vector<TransferOpDesc> &op_descs, Tra
         HIXL_CHK_STATUS_RET(HixlCSClientQueryCompleteStatus(client_handles_[type], complete_handle, &query_status),
                             "HixlClient QueryCompleteStatus failed");
       }
-      if (query_status == BatchTransferStatus::WAITING) {
+      if (query_status == HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING) {
         // 传输未完成，保存到剩余列表
         remaining_handles.push_back(type_with_complete_handle);
         all_complete = false;
