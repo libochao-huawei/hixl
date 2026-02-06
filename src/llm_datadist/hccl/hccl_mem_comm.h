@@ -16,11 +16,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
-// typedef enum {
-//   HCCL_MEM_TYPE_DEVICE,  // device
-//   HCCL_MEM_TYPE_HOST,    // host
-//   HCCL_MEM_TYPE_NUM
-// } HcclMemType;
 
 typedef struct {
   HcclMemType type;

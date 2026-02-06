@@ -114,10 +114,11 @@ HixlCSClient::~HixlCSClient() {
 }
 
 Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const EndpointDesc *src_endpoint,
-                            const EndpointDesc *dst_endpoint) {
+                            const EndpointDesc *dst_endpoint, const HixlClientConfig *config) {
   HIXL_CHECK_NOTNULL(server_ip);
   HIXL_CHECK_NOTNULL(src_endpoint);
   HIXL_CHECK_NOTNULL(dst_endpoint);
+  HIXL_CHECK_NOTNULL(config);
   HIXL_EVENT("[HixlClient] Create begin. Server=%s:%u. "
              "Src[Loc:%d, Proto:%d, Type:%d, Val:0x%x], "
              "Dst[Loc:%d, Proto:%d, Type:%d, Val:0x%x]",
@@ -781,7 +782,7 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
   return PARAM_INVALID;
 }
 
-Status HixlCSClient::CheckStatusHost(CompleteHandle *queryhandle, int32_t *status) {
+Status HixlCSClient::CheckStatusHost(CompleteHandle *queryhandle, HixlCompleteStatus *status) {
   // 检验queryhandle中的序号是否合规
   if (queryhandle->flag_index < 0 ||
       queryhandle->flag_index >= static_cast<int32_t>(kFlagQueueSize)) {
@@ -803,7 +804,7 @@ Status HixlCSClient::CheckStatusHost(CompleteHandle *queryhandle, int32_t *statu
   return SUCCESS;
 }
 
-Status HixlCSClient::CheckStatusDevice(UbCompleteHandle *queryhandle, int32_t *status) {
+Status HixlCSClient::CheckStatusDevice(UbCompleteHandle *queryhandle, HixlCompleteStatus *status) {
   HIXL_CHECK_NOTNULL(queryhandle);
   HIXL_CHECK_NOTNULL(status);
 
@@ -833,7 +834,7 @@ Status HixlCSClient::CheckStatusDevice(UbCompleteHandle *queryhandle, int32_t *s
 }
 
 // 通过已经建立好的channel，检查批量读写的状态。
-Status HixlCSClient::CheckStatus(void *queryhandle, int32_t *status) {
+Status HixlCSClient::CheckStatus(void *queryhandle, HixlCompleteStatus *status) {
   HIXL_CHECK_NOTNULL(queryhandle);
   HIXL_CHECK_NOTNULL(status);
 

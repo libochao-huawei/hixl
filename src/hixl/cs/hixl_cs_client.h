@@ -111,7 +111,7 @@ class HixlCSClient {
   Status InitFlagQueue() noexcept;
 
   Status Create(const char *server_ip, uint32_t server_port, const EndpointDesc *src_endpoint,
-                const EndpointDesc *dst_endpoint);
+                const EndpointDesc *dst_endpoint, const HixlClientConfig *config);
 
   Status Connect(uint32_t timeout_ms);
 
@@ -124,7 +124,7 @@ class HixlCSClient {
   Status BatchTransfer(bool is_get, const CommunicateMem &communicate_mem_param, void **queryhandle);
 
   // 通过已经建立好的channel，检查批量读写的状态。
-  Status CheckStatus(void *queryhandle, int32_t *status);
+  Status CheckStatus(void *queryhandle, HixlCompleteStatus *status);
 
   // 注册client的endpoint的内存信息到内存注册表中。
   Status UnRegMem(MemHandle mem_handle);
@@ -136,7 +136,8 @@ class HixlCSClient {
   int32_t AcquireFlagIndex();
   Status ReleaseCompleteHandle(CompleteHandle *queryhandle);
   Status ReleaseUbCompleteHandle(UbCompleteHandle *ub_handle);
-  Status CheckStatusHost(CompleteHandle *queryhandle, int32_t *status);
+  Status CheckStatusHost(CompleteHandle *queryhandle, HixlCompleteStatus *status);
+  Status CheckStatusDevice(UbCompleteHandle *queryhandle, HixlCompleteStatus *status);
   Status CheckStatusDevice(UbCompleteHandle *queryhandle, int32_t *status);
   Status BatchTransferRoce(bool is_get, const CommunicateMem& p, void** queryhandle);
   Status BatchTransferUB(bool is_get, const CommunicateMem& p, void** queryhandle);
