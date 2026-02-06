@@ -34,17 +34,17 @@ constexpr const char *kMemTypetHost = "HOST";
 
 const char *CommTypeToString(CommType type) {
   switch (type) {
-    case COMM_TYPE_UB_D2D:
+    case CommType::COMM_TYPE_UB_D2D:
       return "UB_D2D";
-    case COMM_TYPE_UB_H2D:
+    case CommType::COMM_TYPE_UB_H2D:
       return "UB_H2D";
-    case COMM_TYPE_UB_D2H:
+    case CommType::COMM_TYPE_UB_D2H:
       return "UB_D2H";
-    case COMM_TYPE_UB_H2H:
+    case CommType::COMM_TYPE_UB_H2H:
       return "UB_H2H";
-    case COMM_TYPE_ROCE:
+    case CommType::COMM_TYPE_ROCE:
       return "ROCE";
-    case COMM_TYPE_HCCS:
+    case CommType::COMM_TYPE_HCCS:
       return "HCCS";
     default:
       return "UNKNOWN";
@@ -190,7 +190,7 @@ Status HixlClient::FindMatchedEndPoints(const std::vector<EndPointConfig> &local
   }
   // 匹配创建UB链路
   std::map<CommType, bool> expected_pairs = {
-      {COMM_TYPE_UB_D2D, false}, {COMM_TYPE_UB_H2D, false}, {COMM_TYPE_UB_D2H, false}, {COMM_TYPE_UB_H2H, false}};
+      {CommType::COMM_TYPE_UB_D2D, false}, {CommType::COMM_TYPE_UB_H2D, false}, {CommType::COMM_TYPE_UB_D2H, false}, {CommType::COMM_TYPE_UB_H2H, false}};
   uint32_t count = 0;
   std::map<MatchKey, EndPointConfig> peer_match_endpoints;
   BuildEndpointsMatchMap(remote_endpoint_list, peer_match_endpoints);
@@ -235,7 +235,7 @@ Status HixlClient::TryMatchRoceEndpoints(const std::vector<EndPointConfig> &loca
   auto remote_it = std::find_if(remote_endpoint_list.begin(), remote_endpoint_list.end(),
                                 [](const EndPointConfig &endpoint) { return endpoint.protocol == kProtocolRoce; });
   if (local_it != local_endpoint_list.end() && remote_it != remote_endpoint_list.end()) {
-    return CreateCsClients(*local_it, *remote_it, COMM_TYPE_ROCE);
+    return CreateCsClients(*local_it, *remote_it, CommType::COMM_TYPE_ROCE);
   } else {
     HIXL_LOGE(FAILED, "Failed to find matched ROCE endpoints");
     return FAILED;
@@ -280,13 +280,13 @@ Status HixlClient::TryMatchUbEndpoints(const EndPointConfig &local_endpoint,
 // 解析通信类型
 CommType HixlClient::ParseCommType(const std::string &local_placement, const std::string &remote_placement) {
   if (local_placement == kPlacementDevice && remote_placement == kPlacementDevice) {
-    return COMM_TYPE_UB_D2D;
+    return CommType::COMM_TYPE_UB_D2D;
   } else if (local_placement == kPlacementDevice && remote_placement == kPlacementHost) {
-    return COMM_TYPE_UB_D2H;
+    return CommType::COMM_TYPE_UB_D2H;
   } else if (local_placement == kPlacementHost && remote_placement == kPlacementHost) {
-    return COMM_TYPE_UB_H2H;
+    return CommType::COMM_TYPE_UB_H2H;
   } else {
-    return COMM_TYPE_UB_H2D;
+    return CommType::COMM_TYPE_UB_H2D;
   }
 }
 
@@ -362,13 +362,13 @@ Status HixlClient::RegisterMemToCsClient(const MemDesc &mem, const MemType type)
   // 需要注册的通信类型列表
   std::vector<CommType> comm_types_to_register;
   if (type == MemType::MEM_DEVICE) {
-    comm_types_to_register.push_back(COMM_TYPE_UB_D2H);
-    comm_types_to_register.push_back(COMM_TYPE_UB_D2D);
+    comm_types_to_register.push_back(CommType::COMM_TYPE_UB_D2H);
+    comm_types_to_register.push_back(CommType::COMM_TYPE_UB_D2D);
   } else {
-    comm_types_to_register.push_back(COMM_TYPE_UB_H2D);
-    comm_types_to_register.push_back(COMM_TYPE_UB_H2H);
+    comm_types_to_register.push_back(CommType::COMM_TYPE_UB_H2D);
+    comm_types_to_register.push_back(CommType::COMM_TYPE_UB_H2H);
   }
-  comm_types_to_register.push_back(COMM_TYPE_ROCE);
+  comm_types_to_register.push_back(CommType::COMM_TYPE_ROCE);
 
   // 注册内存到对应的cs client
   std::lock_guard<std::mutex> lock(client_handles_mutex_);
@@ -398,7 +398,7 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
     return FAILED;
   }
 
-  HIXL_LOGI("HixlClient connect start")
+  HIXL_LOGI("HixlClient connect start");
   ThreadPool thread_pool("hixl_client_connect", client_handles_.size());
   std::vector<std::future<Status>> connect_futures;
   aclrtContext context = nullptr;
@@ -600,9 +600,9 @@ Status HixlClient::ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs
     // 如果是roce，直接将op_desc保存在op_descs_table中
     {
       std::lock_guard<std::mutex> lock(client_handles_mutex_);
-      if (client_handles_.find(COMM_TYPE_ROCE) != client_handles_.end()) {
-        op_descs_table[COMM_TYPE_ROCE].push_back(op_desc);
-        HIXL_LOGI("Current communication type: %s.", CommTypeToString(COMM_TYPE_ROCE));
+      if (client_handles_.find(CommType::COMM_TYPE_ROCE) != client_handles_.end()) {
+        op_descs_table[CommType::COMM_TYPE_ROCE].push_back(op_desc);
+        HIXL_LOGI("Current communication type: %s.", CommTypeToString(CommType::COMM_TYPE_ROCE));
         continue;
       }
     }
@@ -610,9 +610,9 @@ Status HixlClient::ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs
     // 判断通信类型，将op_desc保存在op_descs_table中
     CommType cur_type;
     if (local_mem_type == MEM_DEVICE) {
-      cur_type = (remote_mem_type == MEM_DEVICE) ? COMM_TYPE_UB_D2D : COMM_TYPE_UB_D2H;
+      cur_type = (remote_mem_type == MEM_DEVICE) ? CommType::COMM_TYPE_UB_D2D : CommType::COMM_TYPE_UB_D2H;
     } else {
-      cur_type = (remote_mem_type == MEM_DEVICE) ? COMM_TYPE_UB_H2D : COMM_TYPE_UB_H2H;
+      cur_type = (remote_mem_type == MEM_DEVICE) ? CommType::COMM_TYPE_UB_H2D : CommType::COMM_TYPE_UB_H2H;
     }
     op_descs_table[cur_type].push_back(op_desc);
     HIXL_LOGI("Current communication type: %s, local memory type: %s, remote memory type: %s.", CommTypeToString(cur_type),
