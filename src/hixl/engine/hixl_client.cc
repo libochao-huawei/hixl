@@ -306,7 +306,13 @@ Status HixlClient::CreateCsClients(const EndPointConfig &local_endpoint_config,
                       "HixlClient convert EndPointConfig to EndPointInfo failed");
   HIXL_LOGI("[XMX] remote_endpoint devPhyId: %u", remote_endpoint.loc.device.devPhyId);
   HixlClientHandle handle = nullptr;
-  HIXL_CHK_STATUS_RET(HixlCSClientCreate(server_ip_.c_str(), server_port_, &local_endpoint, &remote_endpoint, &handle),
+  HixlClientDesc desc{};
+  desc.server_ip = server_ip_.c_str();
+  desc.server_port = server_port_;
+  desc.src_endpoint = &local_endpoint;
+  desc.dst_endpoint = &remote_endpoint;
+  const HixlClientConfig config{};
+  HIXL_CHK_STATUS_RET(HixlCSClientCreate(&desc, &config, &handle),
                       "HixlClient create cs client failed for type %s", CommTypeToString(type));
   std::lock_guard<std::mutex> lock(client_handles_mutex_);
   client_handles_[type] = handle;
@@ -410,7 +416,7 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
       //  }
       //  return ret;
       try {
-        auto ret = HixlCSClientConnectSync(handle, timeout_ms);
+        auto ret = HixlCSClientConnect(handle, timeout_ms);
         if (ret != SUCCESS) {
           HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, timeout:%u", CommTypeToString(type), timeout_ms);
         }
@@ -633,8 +639,9 @@ Status HixlClient::BatchTransfer(const std::vector<TransferOpDesc> &op_descs, Tr
   std::lock_guard<std::mutex> lock(client_handles_mutex_);
   for (const auto &type_with_op_descs : op_descs_table) {
     auto type = type_with_op_descs.first;
-    const auto &op_descs = type_with_op_descs.second;
-    HIXL_LOGI("HixlClient BatchTransfer start, type:%s, op_descs size:%zu", CommTypeToString(type), op_descs.size());
+    const auto &op_descs_vec = type_with_op_descs.second;  // 避免变量名冲突，改个名
+    HIXL_LOGI("HixlClient BatchTransfer start, type:%s, op_descs size:%zu", CommTypeToString(type),
+              op_descs_vec.size());
     HixlClientHandle handle = nullptr;
     auto it = client_handles_.find(type);
     if (it == client_handles_.end()) {
@@ -643,26 +650,20 @@ Status HixlClient::BatchTransfer(const std::vector<TransferOpDesc> &op_descs, Tr
     } else {
       handle = it->second;
     }
-    uint32_t list_num = op_descs.size();
-    std::vector<void *> remote_buff_list(list_num);
-    std::vector<void *> local_buff_list(list_num);
-    std::vector<uint64_t> len_list(list_num);
-    for (size_t i = 0; i < op_descs.size(); i++) {
-      remote_buff_list[i] = reinterpret_cast<void *>(op_descs[i].remote_addr);
-      local_buff_list[i] = reinterpret_cast<void *>(op_descs[i].local_addr);
-      len_list[i] = op_descs[i].len;
+    uint32_t list_num = op_descs_vec.size();
+    std::vector<HixlOneSideOpDesc> hixl_descs(list_num);
+    for (size_t i = 0; i < list_num; i++) {
+      hixl_descs[i].remote_buf = reinterpret_cast<void *>(op_descs_vec[i].remote_addr);
+      hixl_descs[i].local_buf = reinterpret_cast<void *>(op_descs_vec[i].local_addr);
+      hixl_descs[i].len = op_descs_vec[i].len;
     }
-    void *complete_handle = nullptr;
+    CompleteHandle complete_handle = nullptr;
     if (operation == WRITE) {
-      HIXL_CHK_STATUS_RET(
-          HixlCSClientBatchPut(handle, list_num, remote_buff_list.data(),
-                               const_cast<const void **>(local_buff_list.data()), len_list.data(), &complete_handle),
-          "HixlClient BatchPut failed");
+      HIXL_CHK_STATUS_RET(HixlCSClientBatchPutAsync(handle, list_num, hixl_descs.data(), &complete_handle),
+                          "HixlClient BatchPutAsync failed");
     } else {
-      HIXL_CHK_STATUS_RET(
-          HixlCSClientBatchGet(handle, list_num, local_buff_list.data(),
-                               const_cast<const void **>(remote_buff_list.data()), len_list.data(), &complete_handle),
-          "HixlClient BatchGet failed");
+      HIXL_CHK_STATUS_RET(HixlCSClientBatchGetAsync(handle, list_num, hixl_descs.data(), &complete_handle),
+                          "HixlClient BatchGetAsync failed");
     }
     TransferCompleteInfo complete_info{type, complete_handle};
     complete_handle_list.push_back(complete_info);
@@ -706,11 +707,12 @@ Status HixlClient::GetTransferStatus(const TransferReq &req, TransferStatus &sta
   for (const auto &type_with_complete_handle : complete_handle_list) {
     auto type = type_with_complete_handle.type;
     auto complete_handle = type_with_complete_handle.complete_handle;
-    int32_t query_status = -1;
+    HixlCompleteStatus query_status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
     Status ret = SUCCESS;
     {
       std::lock_guard<std::mutex> client_lock(client_handles_mutex_);
-      ret = HixlCSClientQueryCompleteStatus(client_handles_[type], complete_handle, &query_status);
+      auto res = HixlCSClientQueryCompleteStatus(client_handles_[type], complete_handle, &query_status);
+      ret = static_cast<Status>(res);
     }
     if (ret != SUCCESS) {
       HIXL_LOGE(ret, "HixlClient QueryCompleteStatus failed");
@@ -768,7 +770,7 @@ Status HixlClient::TransferSync(const std::vector<TransferOpDesc> &op_descs, Tra
     for (const auto &type_with_complete_handle : complete_handle_list) {
       auto type = type_with_complete_handle.type;
       auto complete_handle = type_with_complete_handle.complete_handle;
-      int32_t query_status = -1;
+      HixlCompleteStatus query_status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
       {
         std::lock_guard<std::mutex> lock(client_handles_mutex_);
         HIXL_CHK_STATUS_RET(HixlCSClientQueryCompleteStatus(client_handles_[type], complete_handle, &query_status),
