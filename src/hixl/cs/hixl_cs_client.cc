@@ -1025,14 +1025,13 @@ void CloseImportedBufs(EndpointHandle ep_handle, std::vector<HixlMemDesc> &bufs)
     return;
   }
   for (const auto &b : bufs) {
-    HcommMem tmp{};
-    tmp.type = b.mem.type;
-    tmp.addr = b.mem.addr;
-    tmp.size = b.mem.size;
+    if (!b.is_imported) {
+      continue;
+    }
     const HcclResult ret = HcommMemUnimport(ep_handle, b.export_desc, b.export_len);
     if (ret != HCCL_SUCCESS) {
       HIXL_LOGW("[HixlClient] HcommMemUnimport failed. addr=%p size=%" PRIu64 " ret=0x%X",
-                tmp.addr, tmp.size, static_cast<uint32_t>(ret));
+                b.mem.addr, b.mem.size, static_cast<uint32_t>(ret));
     }
   }
   bufs.clear();
@@ -1060,7 +1059,7 @@ Status ImportOneDesc(ImportCtx &ctx, uint32_t idx, HixlMemDesc &desc) {
     return ret;
   }
   ctx.imported.emplace_back(buf);
-
+  desc.is_imported = true;
   HcommMem mem{};
   mem.type = desc.mem.type;
   mem.addr = desc.mem.addr;
@@ -1112,7 +1111,7 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list,
                                      HcommMem **remote_mem_list,
                                      char ***mem_tag_list,
                                      uint32_t *list_num) {
-  HIXL_MAKE_GUARD(free_export_desc, [&desc_list]() {
+  HIXL_DISMISSABLE_GUARD(free_export_desc, [&desc_list]() {
     FreeExportDesc(desc_list);
   });
   *list_num = static_cast<uint32_t>(desc_list.size());
@@ -1144,6 +1143,7 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list,
   }
   desc_list_ = desc_list;
   FillOutputParams(ctx, remote_mem_list, mem_tag_list, list_num);
+  HIXL_DISMISS_GUARD(free_export_desc);
   return SUCCESS;
 }
 
