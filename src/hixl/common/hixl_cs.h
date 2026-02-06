@@ -22,6 +22,7 @@ extern "C" {
 
 using HixlServerHandle = void *;
 using HixlClientHandle = void *;
+using CompleteHandle = void *;
 using HixlStatus = uint32_t;
 using MemHandle = void *;
 
@@ -109,15 +110,13 @@ HixlStatus HixlCSServerDestroy(HixlServerHandle server_handle);
 
 /**
  * @brief 创建 Client 实例
- * @param [in] server_ip 服务端的监听ip地址
- * @param [in] server_port 服务端的监听端口号
- * @param [in] src_endpoint 源端点
- * @param [in] dst_endpoint 目标端点
+ * @param [in] client_desc server的描述信息
+ * @param [in] config server的配置信息
  * @param [out] client_handle 输出的客户端句柄
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSClientCreate(const char *server_ip, uint32_t server_port, const EndpointDesc *src_endpoint,
-                              const EndpointDesc *dst_endpoint, HixlClientHandle *client_handle);
+HixlStatus HixlCSClientCreate(const HixlClientDesc *client_desc, const HixlClientConfig *config,
+                              HixlClientHandle *client_handle);
 
 /**
  * @brief 发起 Client 连接（同步建链入口）
@@ -125,7 +124,7 @@ HixlStatus HixlCSClientCreate(const char *server_ip, uint32_t server_port, const
  * @param [in] timeout_ms   连接超时时间（ms）
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSClientConnectSync(HixlClientHandle client_handle, uint32_t timeout_ms);
+HixlStatus HixlCSClientConnect(HixlClientHandle client_handle, uint32_t timeout_ms);
 
 /**
  * @brief 获取服务端共享内存信息
@@ -147,7 +146,7 @@ HixlStatus HixlCSClientGetRemoteMem(HixlClientHandle client_handle, HcommMem **r
  * @param [out] mem_handle client注册内存返回的handle信息
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSClientRegMem(HixlClientHandle client_handle, const char *mem_tag, const HcommMem *mem, void **mem_handle);
+HixlStatus HixlCSClientRegMem(HixlClientHandle client_handle, const char *mem_tag, const HcommMem *mem, MemHandle *mem_handle);
 
 /**
  * @brief 注销client给endpoint分配的内存
@@ -155,43 +154,43 @@ HixlStatus HixlCSClientRegMem(HixlClientHandle client_handle, const char *mem_ta
  * @param [in] mem_handle client注册内存返回的handle信息
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSClientUnregMem(HixlClientHandle client_handle, void *mem_handle);
+HixlStatus HixlCSClientUnregMem(HixlClientHandle client_handle, MemHandle mem_handle);
 
 /**
  * @brief 批量向server侧写入内存内容
  * @param [in] client_handle 客户端句柄
  * @param [in] list_num 本次传输任务的数目
- * @param [in] remote_buf_list 记录了本次传输任务中每组的server侧内存地址
- * @param [in] local_buf_list 记录了本次传输任务中每组的client侧内存地址
- * @param [in] len_list 记录了本次传输任务中每组任务的内存偏移量大小
+ * @param [in] desc_list->remote_buf 记录了本次传输任务中每组的server侧内存地址
+ * @param [in] desc_list->local_buf 记录了本次传输任务中每组的client侧内存地址
+ * @param [in] desc_list->len 记录了本次传输任务中每组任务的内存偏移量大小
  * @param [out] complete_handle 本次传输任务生成的句柄
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSClientBatchPut(HixlClientHandle client_handle, uint32_t list_num, void **remote_buf_list,
-                                const void **local_buf_list, uint64_t *len_list, void **complete_handle);
+HixlStatus HixlCSClientBatchPutAsync(HixlClientHandle client_handle, uint32_t list_num,
+                                     const HixlOneSideOpDesc *desc_list, CompleteHandle *complete_handle);
 
 /**
  * @brief 批量读取server侧的内存内容
  * @param [in] client_handle 客户端句柄
  * @param [in] list_num 本次传输任务的数目
- * @param [in] local_buf_list 记录了本次传输任务中每组的client侧内存地址
- * @param [in] remote_buf_list 记录了本次传输任务中每组的server侧内存地址
- * @param [in] len_list 记录了本次传输任务中每组任务的内存偏移量大小
+ * @param [in] desc_list->remote_buf 记录了本次传输任务中每组的server侧内存地址
+ * @param [in] desc_list->local_buf 记录了本次传输任务中每组的client侧内存地址
+ * @param [in] desc_list->len 记录了本次传输任务中每组任务的内存偏移量大小
  * @param [out] complete_handle 本次传输任务生成的句柄
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSClientBatchGet(HixlClientHandle client_handle, uint32_t list_num, void **local_buf_list,
-                                const void **remote_buf_list, uint64_t *len_list, void **complete_handle);
+HixlStatus HixlCSClientBatchGetAsync(HixlClientHandle client_handle, uint32_t list_num,
+                                     const HixlOneSideOpDesc *desc_list, CompleteHandle *complete_handle);
 
 /**
  * @brief 检查创建的批量读写任务的状态
  * @param [in] client_handle 客户端句柄
  * @param [in] complete_handle 先前传输任务生成的句柄
- * @param [out] status 记录了本次查询任务的完成情况
+ * @param [out] complete_status 记录了本次查询任务的完成情况
  * @return 成功:SUCCESS, 失败:其它.
  */
-HixlStatus HixlCSClientQueryCompleteStatus(HixlClientHandle client_handle, void *complete_handle, int32_t *status);
-
+HixlStatus HixlCSClientQueryCompleteStatus(HixlClientHandle client_handle, CompleteHandle complete_handle,
+                                           HixlCompleteStatus *complete_status);
 /**
  * @brief 销毁 Client 实例
  * @param [in] client_handle 客户端句柄
