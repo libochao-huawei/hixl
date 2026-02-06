@@ -9,6 +9,7 @@
  */
 
 #include <cstdio>
+#include <chrono>
 #include <thread>
 #include <iostream>
 #include <vector>
@@ -19,6 +20,7 @@
 #include "acl/acl.h"
 #include "hixl/common/hixl_cs.h"
 #include "hixl/common/hixl_log.h"
+#include "hixl/hixl_types.h"
 
 using json = nlohmann::json;
 
@@ -133,21 +135,27 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
     auto block_size = kBaseBlockSize * (1U << i);
     auto trans_num = kTransferMemSize / block_size;
     std::vector<const void *> local_addrs;
+    std::vector<void *> local_addrs1;
     std::vector<void *> remote_addrs;
+    std::vector<const void *> remote_addrs1;
     std::vector<uint64_t> lens;
     for (uint32_t j = 0; j < trans_num; j++) {
       local_addrs.emplace_back(local_addr + j * block_size);
       remote_addrs.emplace_back(remote_addr + j * block_size);
+      local_addrs1.emplace_back(local_addr + j * block_size);
+      remote_addrs1.emplace_back(remote_addr + j * block_size);
       lens.emplace_back(block_size);
     }
     void *complete_handle = nullptr;
     const auto start = std::chrono::steady_clock::now();
     if (transfer_op == "write") {
+      HIXL_LOGI("HixlCSClientBatchPut start, trans_num is:%u, remote_addrs is:%p, local_addrs is:%p, lens is:%u.", trans_num, &remote_addrs[0], &local_addrs[0], &lens[0]);
       ret =
           HixlCSClientBatchPut(client_handle, trans_num, &remote_addrs[0], &local_addrs[0], &lens[0], &complete_handle);
     } else {
+      HIXL_LOGI("HixlCSClientBatchGet start, trans_num is:%u, local_addrs is:%p, remote_addrs is:%p, lens is:%u.", trans_num, &local_addrs1[0], &remote_addrs1[0], &lens[0]);
       ret =
-          HixlCSClientBatchGet(client_handle, trans_num, &remote_addrs[0], &local_addrs[0], &lens[0], &complete_handle);
+          HixlCSClientBatchGet(client_handle, trans_num, &local_addrs1[0], &remote_addrs1[0], &lens[0], &complete_handle);
     }
     if (ret != HIXL_SUCCESS) {
       (void)printf("[ERROR] HixlCSClientBatchPut/HixlCSClientBatchGet failed, ret = %u\n", ret);
@@ -159,6 +167,7 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
       if (status == BatchTransferStatus::COMPLETED) {
         break;
       } else if (status == BatchTransferStatus::WAITING) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1)); //一毫秒查一次
         continue;
       }
       if (ret != HIXL_SUCCESS) {
@@ -238,21 +247,29 @@ int32_t RunClient(const Args &args) {
   aclError acl_ret = ACL_ERROR_NONE;
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
   if (is_host) {
-    acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize);
+    void *tmp  = nullptr;
+    tmp = malloc(kTransferMemSize);
+    // acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize); endpoint暂不支持该方式申请的内存
+    mem.addr = tmp;
     copy_kind = ACL_MEMCPY_HOST_TO_HOST;
     mem.type = HCCL_MEM_TYPE_HOST;
     mem.size = kTransferMemSize;
+    if (tmp == nullptr) {
+      HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Client host addr malloc failed.");
+      return hixl::RESOURCE_EXHAUSTED;
+    }
   } else {
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
     copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
     mem.type = HCCL_MEM_TYPE_DEVICE;
     mem.size = kTransferMemSize;
+    if (acl_ret != ACL_ERROR_NONE) {
+      (void)printf("[ERROR] aclrtMalloc failed, ret = %d\n", acl_ret);
+      ClientFinalize(client_handle, {mem_handle});
+      return -1;
+    }
   }
-  if (acl_ret != ACL_ERROR_NONE) {
-    (void)printf("[ERROR] aclrtMalloc failed, ret = %d\n", acl_ret);
-    ClientFinalize(client_handle, {mem_handle});
-    return -1;
-  }
+
   ret = HixlCSClientRegMem(client_handle, kClientMemTagName, &mem, &mem_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientRegMem failed, ret = %u\n", ret);
@@ -297,8 +314,9 @@ int32_t RunClient(const Args &args) {
   HIXL_LOGI("The client transfer_data have been copy to client_mem.");
 
   uint32_t error_num = 0;
+  HIXL_LOGI("The num of this data transfer task is %u", kTransferMemSize/sizeof(uint32_t));
   for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
-    if (transfer_data[i] != 0) {
+    if (transfer_data[i] != 1) {
       error_num++;
     }
   }
@@ -348,21 +366,30 @@ int32_t RunServer(const Args &args) {
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
   aclError acl_ret = ACL_ERROR_NONE;
   if (is_host) {
-    acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize);
+    void *tmp  = nullptr;
+    tmp = malloc(kTransferMemSize);
+    // acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize); endpoint暂不支持该方式申请的内存
+    mem.addr = tmp;
     copy_kind = ACL_MEMCPY_HOST_TO_HOST;
     mem.type = HCCL_MEM_TYPE_HOST;
     mem.size = kTransferMemSize;
+    if (tmp == nullptr) {
+      HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Server host addr malloc failed.");
+      return hixl::RESOURCE_EXHAUSTED;
+    }
   } else {
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
     copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     mem.type = HCCL_MEM_TYPE_DEVICE;
     mem.size = kTransferMemSize;
+    if (acl_ret != ACL_ERROR_NONE) {
+      (void)printf("[ERROR]Server host addr aclrtMalloc failed, ret = %d\n", acl_ret);
+      ServerFinalize(server_handle, {mem_handle});
+      return -1;
+    }
+    HIXL_LOGI("Server host addr malloc success. addr is %p, size is %u", mem.addr, mem.size);
   }
-  if (acl_ret != ACL_ERROR_NONE) {
-    (void)printf("[ERROR] aclrtMalloc failed, ret = %d\n", acl_ret);
-    ServerFinalize(server_handle, {mem_handle});
-    return -1;
-  }
+
 
   ret = HixlCSServerRegMem(server_handle, kServerMemTagName, &mem, &mem_handle);
   if (ret != HIXL_SUCCESS) {
