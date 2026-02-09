@@ -21,9 +21,11 @@
 
 namespace hixl {
 
+namespace {
 constexpr const int32_t kTimeOut = 1000;
 constexpr const int32_t kMaxRetryCount = 10;
 constexpr const int32_t kInterval = 10;
+}
 
 class HixlEngineTest : public ::testing::Test {
  protected:
