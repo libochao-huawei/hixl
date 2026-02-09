@@ -25,6 +25,8 @@ struct AddrInfo {
   MemType mem_type{MemType::MEM_DEVICE};
 };
 
+using CallbackProcessor = std::function<Status(int32_t fd, const char *msg, uint64_t msg_len, bool &keep_fd)>;
+
 class HixlServer {
   public:
     HixlServer() = default;
@@ -53,6 +55,8 @@ class HixlServer {
     * @return 成功:SUCCESS, 失败:其它.
     */
     Status DeregisterMem(MemHandle &mem_handle);
+
+    Status RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor);
 
     /**
     * @brief 销毁server
