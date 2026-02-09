@@ -18,6 +18,7 @@
 #include "common/llm_utils.h"
 #include "adxl/adxl_types.h"
 
+namespace hixl {
 namespace {
 void from_json(const nlohmann::json &j, hixl::EndPointConfig &ep) {
   j.at("protocol").get_to(ep.protocol);
@@ -34,7 +35,7 @@ void from_json(const nlohmann::json &j, hixl::EndPointConfig &ep) {
   }
 }
 }
-namespace hixl {
+
 bool HixlEngine::IsInitialized() const {
   return is_initialized_.load(std::memory_order::memory_order_relaxed);
 }
