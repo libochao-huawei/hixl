@@ -34,8 +34,9 @@ constexpr uint8_t kPushTensorNumPerLayer = 4;
 #define CHECK_ACL(x)                                                                  \
   do {                                                                                \
     aclError __ret = x;                                                               \
-    if (__ret != ACL_ERROR_NONE) {                                                    \
-      std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __ret << std::endl; \
+    if (__ret != ACL_ERROR_NONE) {                                                                              \
+      std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __ret << ", errmsg: " << aclGetRecentErrMsg() \
+                << std::endl;                                                                                   \
     }                                                                                 \
   } while (0)
 }  // namespace
@@ -46,7 +47,7 @@ int Initialize(LlmDataDist &llm_datadist, const std::string &device_id, const st
   options[OPTION_LISTEN_IP_INFO] = (local_ip + ":" + std::to_string(kPromptListenPort)).c_str();
   auto ret = llm_datadist.Initialize(options);
   if (ret != LLM_SUCCESS) {
-    printf("[ERROR] Initialize failed, ret = %u\n", ret);
+    printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, aclGetRecentErrMsg());
     return -1;
   }
   printf("[INFO] Initialize success\n");
@@ -57,7 +58,7 @@ int32_t SetRole(LlmDataDist &llm_datadist, LlmRole role) {
   std::map<AscendString, AscendString> options;
   auto ret = llm_datadist.SetRole(role, options);
   if (ret != LLM_SUCCESS) {
-    printf("[ERROR] SetRole failed, ret = %u\n", ret);
+    printf("[ERROR] SetRole failed, ret = %u, errmsg: %s\n", ret, aclGetRecentErrMsg());
     return -1;
   }
   printf("[INFO] SetRole success\n");
@@ -80,7 +81,7 @@ int Link(LlmDataDist &llm_datadist, const char *local_ip, const char *remote_ip)
   clusters.emplace_back(std::move(cluster_info));
   auto ret = llm_datadist.LinkLlmClusters(clusters, rets);
   if (ret != LLM_SUCCESS) {
-    printf("[ERROR] LinkLlmClusters failed, ret = %u\n", ret);
+    printf("[ERROR] LinkLlmClusters failed, ret = %u, errmsg: %s\n", ret, aclGetRecentErrMsg());
     return -1;
   }
   printf("[INFO] LinkLlmClusters success\n");
@@ -99,7 +100,7 @@ int Unlink(LlmDataDist &llm_datadist, const char *remote_ip) {
   clusters.emplace_back(std::move(cluster_info));
   auto ret = llm_datadist.UnlinkLlmClusters(clusters, rets);
   if (ret != LLM_SUCCESS) {
-    printf("[ERROR] UnlinkLlmClusters failed, ret = %u\n", ret);
+    printf("[ERROR] UnlinkLlmClusters failed, ret = %u, errmsg: %s\n", ret, aclGetRecentErrMsg());
     return -1;
   }
   printf("[INFO] UnlinkLlmClusters success\n");
@@ -123,7 +124,7 @@ int32_t PushCache(LlmDataDist &llm_datadist, int64_t cache_id) {
     param.tensor_num_per_layer = 1;
     ret = llm_datadist.PushKvBlocks(cache, cache_index, prompt_blocks, decoder_blocks, param);
     if (ret != LLM_SUCCESS) {
-      printf("[ERROR] PushKvBlocks failed, ret = %u\n", ret);
+      printf("[ERROR] PushKvBlocks failed, ret = %u, errmsg: %s\n", ret, aclGetRecentErrMsg());
       return -1;
     }
   }
@@ -140,7 +141,7 @@ int32_t PushCache(LlmDataDist &llm_datadist, int64_t cache_id) {
   param2.tensor_num_per_layer = kPushTensorNumPerLayer;
   ret = llm_datadist.PushKvCache(cache, cache_index2, kPushBatchIndex, -1, param2);
   if (ret != LLM_SUCCESS) {
-    printf("[ERROR] PushKvCache failed, ret = %u\n", ret);
+    printf("[ERROR] PushKvCache failed, ret = %u, errmsg: %s\n", ret, aclGetRecentErrMsg());
     return -1;
   }
   printf("[INFO] PushKvCache success\n");
@@ -160,7 +161,7 @@ void Finalize(LlmDataDist &llm_datadist, int64_t cache_id, bool linked, const ch
   if (cache_id > 0) {
     auto ret = llm_datadist.UnregisterKvCache(cache_id);
     if (ret != 0) {
-      printf("[ERROR] UnregisterKvCache failed, ret = %u\n", ret);
+      printf("[ERROR] UnregisterKvCache failed, ret = %u, errmsg: %s\n", ret, aclGetRecentErrMsg());
     } else {
       printf("[INFO] UnregisterKvCache success\n");
     }
@@ -192,7 +193,7 @@ int32_t RegisterCache(LlmDataDist &llm_datadist, std::vector<void *> &buffers, i
 
   auto ret = llm_datadist.RegisterKvCache(cache_desc, tensor_addrs, {}, cache_id);
   if (ret != LLM_SUCCESS) {
-    printf("[ERROR] RegisterKvCache failed, ret = %u\n", ret);
+    printf("[ERROR] RegisterKvCache failed, ret = %u, errmsg: %s\n", ret, aclGetRecentErrMsg());
     return -1;
   }
   // RegisterKvCache成功后，可以获取cache中各tensor的地址用于后续操作
