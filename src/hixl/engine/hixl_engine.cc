@@ -210,6 +210,12 @@ Status HixlEngine::GetNotifies(std::vector<NotifyDesc> &notifies) {
   return UNSUPPORTED;
 }
 
+Status HixlEngine::RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor) {
+  HIXL_CHK_STATUS_RET(server_.RegisterCallbackProcessor(msg_type, processor),
+                      "Failed to register msg callback, msg type:%d", msg_type);
+  return SUCCESS;
+}
+
 Status HixlEngine::ParseEndPoint(const std::string &local_comm_res, std::vector<EndPointConfig> &endpoint_list) {
   try {
     auto config = nlohmann::json::parse(local_comm_res);
