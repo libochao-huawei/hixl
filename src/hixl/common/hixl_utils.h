@@ -18,6 +18,8 @@
 #include "hccl/hccl_types.h"
 #include "hixl/hixl_types.h"
 #include "hixl_checker.h"
+#include "hixl_inner_types.h"
+#include "hccl_api.h"
 
 namespace hixl {
 template <typename _Tp, typename... _Args>
@@ -59,6 +61,12 @@ Status CheckIp(const std::string &ip);
 std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char delim);
 
 Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);
+
+Status ParseEidAddress(const std::string &eid_str, CommAddr &addr);
+
+Status ConvertToEndpointInfo(const EndpointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t devPhyId);
+
+Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str);
 
 }  // namespace hixl
 

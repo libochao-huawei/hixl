@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CANN_HIXL_INC_EXTERNAL_HIXL_HIXL_CS_H_
-#define CANN_HIXL_INC_EXTERNAL_HIXL_HIXL_CS_H_
+#ifndef CANN_HIXL_SRC_HIXL_COMMON_HIXL_CS_H_
+#define CANN_HIXL_SRC_HIXL_COMMON_HIXL_CS_H_
 
 #include <cstdint>
 #include <netinet/in.h>
@@ -110,4 +110,4 @@ HixlStatus HixlCSServerDestroy(HixlServerHandle server_handle);
 }
 #endif
 
-#endif  // CANN_HIXL_INC_EXTERNAL_HIXL_HIXL_CS_H_
+#endif  // CANN_HIXL_SRC_HIXL_COMMON_HIXL_CS_H_
