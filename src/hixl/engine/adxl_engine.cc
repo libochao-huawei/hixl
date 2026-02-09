@@ -47,7 +47,7 @@ Status AdxlEngine::TransferSync(const AscendString &remote_engine, TransferOp op
   std::vector<adxl::TransferOpDesc> adxl_op_descs;
   for (const auto &op_desc : op_descs) {
     adxl::TransferOpDesc temp{op_desc.local_addr, op_desc.remote_addr, op_desc.len};
-    adxl_op_descs.push_back(temp);
+    adxl_op_descs.emplace_back(temp);
   }
   return adxl_inner_engine_.TransferSync(remote_engine, adxl_operation, adxl_op_descs, timeout_in_millis);
 }
@@ -60,7 +60,7 @@ Status AdxlEngine::TransferAsync(const AscendString &remote_engine, TransferOp o
   std::vector<adxl::TransferOpDesc> adxl_op_descs;
   for (const auto &op_desc : op_descs) {
     adxl::TransferOpDesc temp{op_desc.local_addr, op_desc.remote_addr, op_desc.len};
-    adxl_op_descs.push_back(temp);
+    adxl_op_descs.emplace_back(temp);
   }
   adxl::TransferArgs adxl_optional_args;
   return adxl_inner_engine_.TransferAsync(remote_engine, adxl_operation, adxl_op_descs, adxl_optional_args, req);
@@ -83,7 +83,7 @@ Status AdxlEngine::GetNotifies(std::vector<NotifyDesc> &notifies) {
   auto ret = adxl_inner_engine_.GetNotifies(adxl_notifies);
   for (const auto &adxl_notify : adxl_notifies) {
     hixl::NotifyDesc notify{adxl_notify.name, adxl_notify.notify_msg};
-    notifies.push_back(notify);
+    notifies.emplace_back(notify);
   }
   return ret;
 }

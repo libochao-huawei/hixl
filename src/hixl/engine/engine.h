@@ -48,7 +48,7 @@ class Engine {
 
   virtual Status GetNotifies(std::vector<NotifyDesc> &notifies) = 0;
 
- private:
+ protected:
   std::string local_engine_;
 };
 }  // namespace hixl

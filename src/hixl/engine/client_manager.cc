@@ -40,13 +40,12 @@ ClientPtr ClientManager::GetClient(const std::string &remote_engine) {
 }
 
 Status ClientManager::DestroyClient(const std::string &remote_engine) {
-  auto ret = hixl::SUCCESS;
+  auto ret = SUCCESS;
   std::lock_guard<std::mutex> lock(mutex_);
   const auto &it = clients_.find(remote_engine);
   if (it != clients_.end()) {
     auto client = it->second;
-    auto client_ret = client->Finalize();
-    ret = client_ret != hixl::SUCCESS ? client_ret : ret;
+    ret = client->Finalize();
     clients_.erase(it);
     HIXL_LOGI("Destroy client end, remote_engine=%s", remote_engine.c_str());
   }
