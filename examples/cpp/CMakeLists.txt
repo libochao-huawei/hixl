@@ -25,17 +25,21 @@ set(targets_list
     "client_server_h2d"
     "server_server_d2d"
     "fabric_mem_d2d"
+    "hixl_roce_example"
 )
+
+file(GLOB COMMON_FILES "${HIXL_CODE_DIR}/benchmarks/common/*.cpp")
 
 foreach(target_name IN LISTS targets_list)
     # 自动构建源文件路径（目标名.cpp）
     set(source_file "${target_name}.cpp")
 
     if(NOT TARGET ${target_name})
-        add_executable(${target_name} ${source_file})
+        add_executable(${target_name} ${source_file} ${COMMON_FILES})
         target_include_directories(${target_name} PRIVATE
             ${HIXL_INC_DIR}
             ${CANN_INSTALL_PATH}/include
+            ${HIXL_CODE_DIR}/benchmarks
         )
         target_compile_options(${target_name} PRIVATE
             -ftrapv

@@ -11,6 +11,8 @@
 #ifndef INC_EXTERNAL_ACL_ACL_RT_STUB_H_
 #define INC_EXTERNAL_ACL_ACL_RT_STUB_H_
 
+#include "../../../../../../Ascend/ascend-toolkit/latest/include/acl/acl_base_rt.h"
+
 #include <stdint.h>
 #include <stddef.h>
 #include <vector>
@@ -107,6 +109,10 @@ public:
                                                      uint64_t flags, aclrtDrvMemHandle *handle);
   virtual aclError aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop, uint64_t flags);
   virtual aclError aclrtFreePhysical(aclrtDrvMemHandle handle);
+  virtual aclError aclrtCreateContext(aclrtContext *context, int32_t deviceId);
+  virtual aclError aclrtDestroyContext(aclrtContext context);
+  virtual aclError aclrtBinaryLoadFromFile(const char *fileName, aclrtBinaryLoadOptions *options, void **handle);
+  virtual aclError aclrtBinaryGetFunction(const aclrtBinHandle binHandle, const char *funcName, void **funcPtr);
 
 private:
   static std::mutex mutex_;

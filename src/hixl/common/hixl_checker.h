@@ -14,7 +14,6 @@
 #include "hixl/hixl_types.h"
 #include "base/err_msg.h"
 #include "acl/acl.h"
-#include "acl/acl.h"
 #include "hixl_log.h"
 
 // If expr is not SUCCESS, print the log and return the same value
