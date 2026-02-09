@@ -20,7 +20,7 @@ extern "C" {
 
 __attribute__((weak)) HcclResult HcommMemReg(EndpointHandle endPointHandle, const char *memTag, HcommMem mem, void **memHandle);
 __attribute__((weak)) HcclResult HcommMemUnreg(EndpointHandle endPointHandle, void *memHandle);
-__attribute__((weak)) HcclResult HcommMemExport(EndpointHandle endPointHandle, void *memHandle, void **memDesc, uint32_t *memDescLen);
+__attribute__((weak)) HcclResult HcommMemExport(EndpointHandle endPointHandle, const void *memHandle, void **memDesc, uint32_t *memDescLen);
 __attribute__((weak)) HcclResult HcommEndpointCreate(const EndpointDesc *endPoint, EndpointHandle *endPointHandle);
 __attribute__((weak)) HcclResult HcommEndpointDestroy(EndpointHandle endPointHandle);
 __attribute__((weak)) HcclResult HcommMemImport(EndpointHandle endpointHandle, const void *memDesc, uint32_t descLen, HcommMem *outMem);
