@@ -19,7 +19,7 @@
 #include "adxl/adxl_types.h"
 
 namespace hixl {
-namespace {
+
 void from_json(const nlohmann::json &j, hixl::EndPointConfig &ep) {
   j.at("protocol").get_to(ep.protocol);
   j.at("comm_id").get_to(ep.comm_id);
@@ -33,7 +33,6 @@ void from_json(const nlohmann::json &j, hixl::EndPointConfig &ep) {
   if (j.contains("_net_instance_id")) {
     j.at("_net_instance_id").get_to(ep.net_instance_id);
   }
-}
 }
 
 bool HixlEngine::IsInitialized() const {
