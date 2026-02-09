@@ -19,7 +19,7 @@
 #include "adxl/adxl_types.h"
 
 namespace {
-void from_json(const nlohmann::json &j, EndPointConfig &ep) {
+void from_json(const nlohmann::json &j, hixl::EndPointConfig &ep) {
   j.at("protocol").get_to(ep.protocol);
   j.at("comm_id").get_to(ep.comm_id);
   j.at("placement").get_to(ep.placement);
