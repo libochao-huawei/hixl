@@ -153,7 +153,8 @@ void Finalize(Hixl &hixl_engine, bool is_host, const std::vector<MemHandle> &han
   }
   if (is_host) {
     for (const auto &buffer : buffers) {
-      aclrtFreeHost(buffer);
+      free(buffer);
+      buffer = nullptr;
     }
   } else {
     for (const auto &buffer : buffers) {
@@ -194,13 +195,17 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   int32_t *src = nullptr;
   void *tmp = nullptr;
   if (mem_type == MEM_HOST) {
-    CHECK_ACL(aclrtMallocHost(&tmp, sizeof(int32_t)));
+    tmp = (void*)malloc(sizeof(int32_t));
   } else {
     CHECK_ACL(aclrtMalloc(&tmp, sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
   }
   src = static_cast<int32_t*>(tmp);
   int32_t src_value = 1;
-  CHECK_ACL(aclrtMemcpy(src, sizeof(int32_t), &src_value, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
+  if (mem_type == MEM_DEVICE) {
+    CHECK_ACL(aclrtMemcpy(src, sizeof(int32_t), &src_value, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
+  } else {
+    *src = src_value;
+  }
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(src);
   desc.len = sizeof(int32_t);
@@ -232,7 +237,11 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   }
 
   if (op_type == "read") {
-    CHECK_ACL(aclrtMemcpy(&src_value, sizeof(int32_t), src, sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
+    if (mem_type == MEM_DEVICE) {
+      CHECK_ACL(aclrtMemcpy(&src_value, sizeof(int32_t), src, sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
+    } else {
+      src_value = *src;
+    }
     if (src_value != 2) {
       printf("[ERROR] src value does not equal to dst after reading, src value: %d\n", src_value);
     } else {
@@ -263,26 +272,31 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   // 2. 注册内存地址
   MemType mem_type = (transfer_mode == "h2h" || transfer_mode == "d2h") ? MEM_HOST : MEM_DEVICE;
   bool is_host = mem_type == MEM_HOST;
+  int32_t *dst = nullptr;
   void *buffer = nullptr;
   if (mem_type == MEM_DEVICE) {
     CHECK_ACL(aclrtMalloc(&buffer, sizeof(int32_t), ACL_MEM_MALLOC_HUGE_ONLY));
   } else {
-    CHECK_ACL(aclrtMallocHost(&buffer, sizeof(int32_t)));
+    buffer = (void*)malloc(sizeof(int32_t));
   }
-  auto addr = reinterpret_cast<uintptr_t>(buffer);
+  dst = reinterpret_cast<int32_t*>(buffer);
 
   int32_t dst_value = 2;
-  CHECK_ACL(aclrtMemcpy(reinterpret_cast<int32_t*>(addr), sizeof(int32_t), &dst_value, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
-
+  if (mem_type == MEM_DEVICE) {
+    CHECK_ACL(aclrtMemcpy(dst, sizeof(int32_t), &dst_value, sizeof(int32_t), ACL_MEMCPY_HOST_TO_DEVICE));
+  } else {
+    *dst = dst_value;
+  }
+  
   // 通过TCP传输内存地址到Client侧
   TCPClient tcp_client;
   if (!tcp_client.ConnectToServer(remote_engine, tcp_port)) {
     return -1;
   }
-  (void)tcp_client.SendUint64(addr);
+  (void)tcp_client.SendUint64(buffer);
 
   MemDesc desc{};
-  desc.addr = addr;
+  desc.addr = reinterpret_cast<uintptr_t>(dst);
   desc.len = sizeof(int32_t);
   MemHandle handle = nullptr;
   auto ret = hixl_engine.RegisterMem(desc, mem_type, handle);
@@ -302,7 +316,12 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
     printf("[INFO] Wait transfer end\n");
   }
   if (op_type == "write") {
-    CHECK_ACL(aclrtMemcpy(&dst_value, sizeof(int32_t), reinterpret_cast<int32_t*>(addr), sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
+    if (mem_type == MEM_DEVICE) {
+      CHECK_ACL(aclrtMemcpy(&dst_value, sizeof(int32_t), dst, sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST));
+    } else {
+      dst_value = *dst;
+    }
+    
     if (dst_value != 1) {
       printf("[ERROR] dst value does not equal to src after writing, dst value: %d\n", dst_value);
     } else {
