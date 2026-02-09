@@ -111,8 +111,8 @@ Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in
   }
   HIXL_CHK_STATUS_RET(client_ptr->SetLocalMemInfo(mem_info_list), "Failed to set local memory info");
   HIXL_CHK_STATUS_RET(client_ptr->Connect(timeout_in_millis), "Failed to connect, local_engine:%s, remote_engine:%s, timeout:%d ms",
-                      local_engine.c_str(), remote_engine.GetString(), timeout_in_millis);
-                      HIXL_LOGI("[HixlEngine] Connection started, local_engine:%s, remote_engine:%s", 
+                      local_engine.c_str(), remote_engine_.GetString(), timeout_in_millis);
+  HIXL_LOGI("[HixlEngine] Connection started, local_engine:%s, remote_engine:%s", 
             local_engine_.c_str(), remote_engine.GetString());
   HIXL_LOGI("[HixlEngine] Connection succeeded, local_engine:%s, remote_engine:%s", 
             local_engine_.c_str(), remote_engine.GetString());
