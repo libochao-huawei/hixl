@@ -152,7 +152,7 @@ void Finalize(Hixl &hixl_engine, bool is_host, const std::vector<MemHandle> &han
     }
   }
   if (is_host) {
-    for (const auto &buffer : buffers) {
+    for (auto &buffer : buffers) {
       free(buffer);
       buffer = nullptr;
     }
