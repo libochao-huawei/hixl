@@ -42,7 +42,7 @@ int Initialize(LlmDataDist &llm_datadist, const std::string &device_id, const st
   options[OPTION_LISTEN_IP_INFO] = (local_ip + ":" + std::to_string(kPromptListenPort)).c_str();
   auto ret = llm_datadist.Initialize(options);
   if (ret != LLM_SUCCESS) {
-    printf("[ERROR] Initialize failed, ret = %u\n", ret);
+    printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, aclGetRecentErrMsg());
     return -1;
   }
   printf("[INFO] Initialize success\n");
@@ -53,7 +53,7 @@ void Finalize(LlmDataDist &llm_datadist, int64_t cache_id, const std::vector<voi
   if (cache_id > 0) {
     auto ret = llm_datadist.UnregisterKvCache(cache_id);
     if (ret != 0) {
-      printf("[ERROR] UnregisterKvCache failed, ret = %u\n", ret);
+      printf("[ERROR] UnregisterKvCache failed, ret = %u, errmsg: %s\n", ret, aclGetRecentErrMsg());
     } else {
       printf("[INFO] UnregisterKvCache success\n");
     }
@@ -94,7 +94,7 @@ int32_t RunPromptSample(const char *device_id, const char *local_ip) {
   int64_t cache_id = -1;
   auto ret = llm_datadist.RegisterKvCache(cache_desc, tensor_addrs, {}, cache_id);
   if (ret != LLM_SUCCESS) {
-    printf("[ERROR] RegisterKvCache failed, ret = %u\n", ret);
+    printf("[ERROR] RegisterKvCache failed, ret = %u, errmsg: %s\n", ret, aclGetRecentErrMsg());
     Finalize(llm_datadist, cache_id, buffers);
     return -1;
   }
