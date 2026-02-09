@@ -210,6 +210,54 @@ void ServerFinalize(HixlClientHandle server_handle, const std::vector<MemHandle>
   }
 }
 
+uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyKind copy_kind, HcommMem mem) {
+  void *tmp = nullptr;
+  std::string device;
+  if (is_client) {
+    device = "client";
+  } else {
+    device = "server";
+  }
+  auto ret = aclrtMallocHost(&tmp, kTransferMemSize);
+  if (ret != ACL_ERROR_NONE) {
+    (void)printf("[ERROR] %s transfer_data aclrtMalloc failed, ret = %d\n", device.c_str(), ret);
+    ret = aclrtFreeHost(tmp);
+  }
+  uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
+  HIXL_LOGI("The %s transfer_data addr is : %p", device, transfer_data);
+  // 如果是写数据，申请内存后，还需要设置内存为1，之后再复制给需要传输的内存
+  if ((transfer_op == "write" and is_client) || (transfer_op == "read" and not is_client)) {
+    for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
+      transfer_data[i] = 1;
+    }
+    ret = aclrtMemcpy(mem.addr, kTransferMemSize, transfer_data, kTransferMemSize, copy_kind);
+    if (ret != ACL_ERROR_NONE) {
+      (void)printf("[ERROR] %s transfer_data aclrtMemcpy failed, ret = %d\n", device.c_str(), ret);
+    }
+    HIXL_LOGI("The %s transfer_data have been copy to client_mem.", device);
+  }
+  if ((transfer_op == "read" and is_client )|| (transfer_op == "write" and not is_client)) {
+    for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
+      transfer_data[i] = 0;
+    }
+    ret = aclrtMemcpy(transfer_data, kTransferMemSize, mem.addr, kTransferMemSize, copy_kind);
+    if (ret != ACL_ERROR_NONE) {
+      (void)printf("[ERROR] %s transfer_data aclrtMemcpy failed, ret = %d\n", device.c_str(), ret);
+    }
+    HIXL_LOGI("The client transfer_data have been copy to client_mem.");
+
+    uint32_t error_num = 0;
+    HIXL_LOGI("The num of this data transfer task is %u", kTransferMemSize/sizeof(uint32_t));
+    for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
+      if (transfer_data[i] != 1) {
+        error_num++;
+      }
+    }
+    HIXL_LOGI("The error count for this data transfer task is %u", error_num);
+  }
+  return transfer_data;
+}
+
 int32_t RunClient(const Args &args) {
   (void)printf("[INFO] client start\n");
 
@@ -239,7 +287,7 @@ int32_t RunClient(const Args &args) {
     (void)printf("[ERROR] HixlCSClientCreate failed, ret = %u\n", ret);
     return -1;
   }
-
+  uint32_t *kClientTransferData =nullptr;
   // 2. 注册内存地址
   MemHandle mem_handle = nullptr;
   HcommMem mem{};
@@ -278,6 +326,10 @@ int32_t RunClient(const Args &args) {
   }
   HIXL_LOGI("The client memory has been registered.");
   (void)printf("[INFO] The client memory has been registered.\n");
+  // 如果是写数据，需要再传输开始之前复制初始化后的数据到mem中
+  if (args.transfer_op == "write") {
+    kClientTransferData = mem_alloc(args.transfer_op,true,copy_kind,mem);
+  }
 
   // 3. 建链
   ret = HixlCSClientConnectSync(client_handle, kClientConnectTimeoutMs);
@@ -293,36 +345,17 @@ int32_t RunClient(const Args &args) {
     return -1;
   }
 
-  // 5.传输完成后，基于copy_kind拷贝内存
-  void *tmp = nullptr;
-  ret = aclrtMallocHost(&tmp, kTransferMemSize);
-  if (acl_ret != ACL_ERROR_NONE) {
-    (void)printf("[ERROR] Client transfer_data aclrtMalloc failed, ret = %d\n", acl_ret);
-    ret = aclrtFreeHost(tmp);
-    return -1;
+  // 5.如果是读数据，传输完成后，基于copy_kind拷贝内存
+  if (args.transfer_op == "read") {
+    kClientTransferData = mem_alloc(args.transfer_op,true,copy_kind,mem);
   }
-  uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
-  HIXL_LOGI("The client transfer_data addr is : %p",transfer_data);
-  for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
-    transfer_data[i] = 0;
-  }
-  ret = aclrtMemcpy(transfer_data, kTransferMemSize, mem.addr, kTransferMemSize, copy_kind);
-  if (acl_ret != ACL_ERROR_NONE) {
-    (void)printf("[ERROR] Client transfer_data aclrtMemcpy failed, ret = %d\n", acl_ret);
-    return -1;
-  }
-  HIXL_LOGI("The client transfer_data have been copy to client_mem.");
 
-  uint32_t error_num = 0;
-  HIXL_LOGI("The num of this data transfer task is %u", kTransferMemSize/sizeof(uint32_t));
-  for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
-    if (transfer_data[i] != 1) {
-      error_num++;
-    }
-  }
-  HIXL_LOGI("The error count for this data transfer task is %u", error_num);
   // 6. 解注册，释放内存，析构
   ClientFinalize(client_handle, {mem_handle});
+  auto free_ret = aclrtFreeHost(kClientTransferData);
+  if (free_ret != ACL_ERROR_NONE) {
+    HIXL_LOGI("kClientTransferData rtFreeHost failed, ret=%d", free_ret);
+  }
 
   // 通过TCP通知Server侧已传输完成
   (void)tcp_server.SendTaskStatus();
@@ -341,6 +374,7 @@ int32_t RunServer(const Args &args) {
     return -1;
   }
 
+  uint32_t *kServerTransferData = nullptr;
   HixlServerHandle server_handle = nullptr;
   std::string ip = args.local_engine.substr(0, args.local_engine.find(':'));
   int32_t port = std::stoi(args.local_engine.substr(args.local_engine.find(':') + 1));
@@ -401,25 +435,9 @@ int32_t RunServer(const Args &args) {
   (void)printf("[INFO] The server memory has been registered.\n");
 
   // 3.申请host侧地址，初始化内容之后复制给第二步申请的内存
-  void *tmp = nullptr;
-  ret = aclrtMallocHost(&tmp, kTransferMemSize);
-  if (acl_ret != ACL_ERROR_NONE) {
-    (void)printf("[ERROR] transfer_data aclrtMalloc failed, ret = %d\n", acl_ret);
-    ret = aclrtFreeHost(tmp);
-    return -1;
+  if (args.transfer_op == "read") {
+    kServerTransferData = mem_alloc(args.transfer_op,false,copy_kind,mem);
   }
-  uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
-  HIXL_LOGI("The transfer_data addr is : %p",transfer_data);
-  for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
-    transfer_data[i] = 1;
-  }
-  ret = aclrtMemcpy(mem.addr, kTransferMemSize, transfer_data, kTransferMemSize, copy_kind);
-  if (acl_ret != ACL_ERROR_NONE) {
-    (void)printf("[ERROR] transfer_data aclrtMemcpy failed, ret = %d\n", acl_ret);
-    return -1;
-  }
-  HIXL_LOGI("The transfer_data have been copy to server_mem.");
-
   // 4. 等待client transfer
   TCPClient tcp_client;
   if (!tcp_client.ConnectToServer(args.remote_engine, args.tcp_port)) {
@@ -431,8 +449,17 @@ int32_t RunServer(const Args &args) {
   }
   tcp_client.Disconnect();
 
+  // 如果是写，则要再数据传输完成后再复制内存
+  if (args.transfer_op == "write") {
+    kServerTransferData = mem_alloc(args.transfer_op,false,copy_kind,mem);
+  }
+
   // 5. 解注册，释放内存，析构
   ServerFinalize(server_handle, {mem_handle});
+  auto free_ret = aclrtFreeHost(kServerTransferData);
+  if (free_ret != ACL_ERROR_NONE) {
+    HIXL_LOGI("kServerTransferData rtFreeHost failed, ret=%d", free_ret);
+  }
   (void)printf("[INFO] Server Sample end\n");
   return 0;
 }
