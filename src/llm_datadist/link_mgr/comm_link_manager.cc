@@ -17,7 +17,6 @@
 
 namespace llm {
 namespace {
-constexpr uint64_t kDefaultReqBufferSize = 112U * 1024U;
 constexpr uint64_t kDefaultRespBufferSize = 16U * 1024U;
 constexpr int64_t kDefaultSleepTime = 1;
 constexpr uint32_t kMaxLinkNum = 512;
@@ -52,7 +51,7 @@ ge::Status CommLinkManager::ExchangeMem(const EntityPtr &entity, uint32_t local_
   local_mem_info.cache_table_addr = PtrToValue(buffer_and_size.first);
   local_mem_info.cache_table_size = buffer_and_size.second;
   local_mem_info.req_addr = PtrToValue(entity->GetReq());
-  local_mem_info.req_size = kDefaultReqBufferSize;
+  local_mem_info.req_size = entity->GetReqSize();
   local_mem_info.resp_addr = PtrToValue(entity->GetResp());
   local_mem_info.resp_size = kDefaultRespBufferSize;
   std::string mem_info_str;
