@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <numeric>
 #include <cstdio>
+#include <cstdlib>
 #include <thread>
 #include <iostream>
 #include <fstream>
@@ -292,7 +293,7 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   if (!tcp_client.ConnectToServer(remote_engine, tcp_port)) {
     return -1;
   }
-  (void)tcp_client.SendUint64(buffer);
+  (void)tcp_client.SendUint64(reinterpret_cast<uintptr_t>(buffer));
 
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(dst);
