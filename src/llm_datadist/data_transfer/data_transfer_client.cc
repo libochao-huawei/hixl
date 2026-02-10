@@ -16,7 +16,6 @@
 namespace llm {
 namespace {
 constexpr size_t kSrcAndDstNum = 2U;
-constexpr uint64_t kDefaultReqBufferSize = 112U * 1024U;
 constexpr uint32_t kFlagSize = 8U;
 
 ge::Status SetBufferInfoCount(const PullCacheParam &pull_cache_param, uint32_t &buffer_info_count,
@@ -116,9 +115,10 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
   uint64_t request_size =
       sizeof(TransferCacheReq) + sizeof(TransferInfo) * (static_cast<uint64_t>(buffer_info_count) * kSrcAndDstNum +
                                                          cache_entry.cache_addrs.size());
-  LLM_CHK_BOOL_RET_STATUS(request_size <= (kDefaultReqBufferSize - kFlagSize), ge::LLM_PARAM_INVALID,
+  auto max_size = comm_entity_->GetReqSize();
+  LLM_CHK_BOOL_RET_STATUS(request_size <= (max_size - kFlagSize), ge::LLM_PARAM_INVALID,
                          "buffer info count[%u] is to large, request size[%lu] is out of range[0, %lu]",
-                         buffer_info_count, request_size, (kDefaultReqBufferSize - kFlagSize));
+                         buffer_info_count, request_size, (max_size - kFlagSize));
 
   request.cache_id = cache_key.prompt_cache_id;
   request.batch_index = cache_key.prompt_batch_index;
