@@ -23,8 +23,10 @@
 namespace llm {
 namespace {
 constexpr uint64_t kDefaultMsgBufferSize = 128U * 1024U;
+constexpr uint64_t kDefaultLargeMsgBufferSize = 1024U * 1024U;
 // evaluate with the maximum block number set to 1k and the maximum tensor number set to 1k.
 constexpr uint64_t kDefaultReqBufferSize = 112U * 1024U;
+constexpr uint64_t kDefaultLargeReqBufferSize = 1024U * 1024U - 8U;
 constexpr uint64_t kDefaultRespBufferSize = 16U * 1024U;
 constexpr uint32_t kFlagSize = 8U;
 constexpr size_t kMaxOpDescNum = 64U;
@@ -127,6 +129,9 @@ EntityMemInfo::EntityMemInfo(bool remote_cache_accessible,
 ge::Status EntityMemInfo::Initialize() {
   if (remote_cache_accessible_) {
     LLM_CHK_ACL_RET(rtMallocHost(&msg_buffer_, kDefaultMsgBufferSize, LLM_MODULE_NAME_U16));
+    req_ = msg_buffer_;
+    req_size_ = kDefaultLargeReqBufferSize;
+    resp_ = static_cast<uint8_t *>(msg_buffer_) + kDefaultLargeReqBufferSize;
   } else {
     LLM_CHECK_NOTNULL(host_reg_pool_);
     LLM_CHECK_NOTNULL(device_reg_pool_);
@@ -137,9 +142,10 @@ ge::Status EntityMemInfo::Initialize() {
     LLM_CHK_STATUS_RET(device_reg_pool_->Alloc(transfer_buffer_), "Failed to alloc dev reg buffer");
     transfer_req_ = transfer_buffer_;
     transfer_resp_ = static_cast<uint8_t *>(transfer_buffer_) + kDefaultReqBufferSize;
+    req_ = msg_buffer_;
+    req_size_ = kDefaultReqBufferSize;
+    resp_ = static_cast<uint8_t *>(msg_buffer_) + kDefaultReqBufferSize;
   }
-  req_ = msg_buffer_;
-  resp_ = static_cast<uint8_t *>(msg_buffer_) + kDefaultReqBufferSize;
   LLMLOGI("Mem info init success, remote_cache_accessible:%d", static_cast<int32_t>(remote_cache_accessible_));
   return ge::SUCCESS;
 }
@@ -440,6 +446,10 @@ bool CommEntity::CheckEntityInfo() const {
 
 void *CommEntity::GetReq() {
   return mem_info_ptr_->req_;
+}
+
+uint64_t CommEntity::GetReqSize() const {
+  return mem_info_ptr_->req_size_;
 }
 
 void *CommEntity::GetResp() {

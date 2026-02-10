@@ -23,7 +23,6 @@ namespace {
 constexpr uint32_t kMaxLinkNum = 512;
 constexpr const char kOptionRdmaTrafficClass[] = "llm.RdmaTrafficClass";
 constexpr const char kOptionRdmaServiceLevel[] = "llm.RdmaServiceLevel";
-constexpr uint64_t kDefaultReqBufferSize = 112U * 1024U;
 constexpr uint64_t kDefaultRespBufferSize = 16U * 1024U;
 }
 
@@ -200,7 +199,7 @@ ge::Status LinkMsgHandler::ProcessConnectRequest(int32_t fd, const std::vector<c
   exchange_info.comm_res = local_comm_res_;
   exchange_info.cluster_id = cluster_id_;
   exchange_info.req_addr = PtrToValue(mem_info_ptr->req_);
-  exchange_info.req_size = kDefaultReqBufferSize;
+  exchange_info.req_size = mem_info_ptr->req_size_;
   exchange_info.resp_addr = PtrToValue(mem_info_ptr->resp_);
   exchange_info.resp_size = kDefaultRespBufferSize;
   LLM_CHK_STATUS_RET(SendMsg(fd, LinkMsgType::kConnect, exchange_info), "Failed to send connect msg");
@@ -393,7 +392,7 @@ ge::Status LinkMsgHandler::LinkCluster(const ClusterInfo &cluster, int32_t timeo
   // The local comm does not exist; force the peer link if the peer comm exists.
   exchange_info.force_link = comm_entity_manager_->GetEntityByRemoteClusterId(cluster.remote_cluster_id) == nullptr;
   exchange_info.req_addr = PtrToValue(mem_info_ptr->req_);
-  exchange_info.req_size = kDefaultReqBufferSize;
+  exchange_info.req_size = mem_info_ptr->req_size_;
   exchange_info.resp_addr = PtrToValue(mem_info_ptr->resp_);
   exchange_info.resp_size = kDefaultRespBufferSize;
 
