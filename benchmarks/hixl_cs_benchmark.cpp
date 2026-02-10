@@ -83,7 +83,6 @@ constexpr int32_t kPortMaxValue = 65535;
 constexpr int32_t kBackLog = 1024;
 constexpr const char *kServerMemTagName = "server_mem";
 constexpr const char *kClientMemTagName = "client_mem";
-constexpr const int32_t kStatus = 0;
 
 #define CHECK_ACL_RETURN(x)                                                           \
   do {                                                                                \
@@ -134,39 +133,34 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
   for (uint32_t i = 0; i <= kExecuteRepeatNum; i++) {
     auto block_size = kBaseBlockSize * (1U << i);
     auto trans_num = kTransferMemSize / block_size;
-    std::vector<const void *> local_addrs;
-    std::vector<void *> local_addrs1;
-    std::vector<void *> remote_addrs;
-    std::vector<const void *> remote_addrs1;
+    std::vector<HixlOneSideOpDesc> desc_list(trans_num);
     std::vector<uint64_t> lens;
     for (uint32_t j = 0; j < trans_num; j++) {
-      local_addrs.emplace_back(local_addr + j * block_size);
-      remote_addrs.emplace_back(remote_addr + j * block_size);
-      local_addrs1.emplace_back(local_addr + j * block_size);
-      remote_addrs1.emplace_back(remote_addr + j * block_size);
-      lens.emplace_back(block_size);
+      desc_list[j].local_buf = local_addr + j * block_size;
+      desc_list[j].remote_buf = remote_addr + j * block_size;
+      desc_list[j].len = block_size;
     }
-    void *complete_handle = nullptr;
+    CompleteHandle *complete_handle = new CompleteHandle();
     const auto start = std::chrono::steady_clock::now();
     if (transfer_op == "write") {
-      HIXL_LOGI("HixlCSClientBatchPut start, trans_num is:%u, remote_addrs is:%p, local_addrs is:%p, lens is:%u.", trans_num, &remote_addrs[0], &local_addrs[0], &lens[0]);
+      HIXL_LOGI("HixlCSClientBatchPutAsync start, trans_num is:%u, remote_addrs is:%p, local_addrs is:%p, lens is:%u.", trans_num, desc_list[0].remote_buf, desc_list[0].local_buf, desc_list[0].len);
       ret =
-          HixlCSClientBatchPut(client_handle, trans_num, &remote_addrs[0], &local_addrs[0], &lens[0], &complete_handle);
+          HixlCSClientBatchPutAsync(client_handle, trans_num, desc_list.data(), complete_handle);
     } else {
-      HIXL_LOGI("HixlCSClientBatchGet start, trans_num is:%u, local_addrs is:%p, remote_addrs is:%p, lens is:%u.", trans_num, &local_addrs1[0], &remote_addrs1[0], &lens[0]);
+      HIXL_LOGI("HixlCSClientBatchGetAsync start, trans_num is:%u, local_addrs is:%p, remote_addrs is:%p, lens is:%u.", trans_num, desc_list[0].local_buf, desc_list[0].remote_buf, desc_list[0].len);
       ret =
-          HixlCSClientBatchGet(client_handle, trans_num, &local_addrs1[0], &remote_addrs1[0], &lens[0], &complete_handle);
+          HixlCSClientBatchGetAsync(client_handle, trans_num, desc_list.data(), complete_handle);
     }
     if (ret != HIXL_SUCCESS) {
-      (void)printf("[ERROR] HixlCSClientBatchPut/HixlCSClientBatchGet failed, ret = %u\n", ret);
+      (void)printf("[ERROR] HixlCSClientBatchPutAsync/HixlCSClientBatchGetAsync failed, ret = %u\n", ret);
       return -1;
     }
-    int32_t status = kStatus;
+    HixlCompleteStatus status = HIXL_COMPLETE_STATUS_WAITING;
     while (true) {
       ret = HixlCSClientQueryCompleteStatus(client_handle, complete_handle, &status);
-      if (status == BatchTransferStatus::COMPLETED) {
+      if (status == HIXL_COMPLETE_STATUS_COMPLETED) {
         break;
-      } else if (status == BatchTransferStatus::WAITING) {
+      } else if (status == HIXL_COMPLETE_STATUS_WAITING) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1)); //一毫秒查一次
         continue;
       }
@@ -182,6 +176,7 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
     (void)printf(
         "[INFO] Transfer success, block size: %u Bytes, transfer num: %u, time cost: %ld us, throughput: %.3lf GB/s\n",
         block_size, trans_num, time_cost, throughput);
+    delete complete_handle;
   }
   return 0;
 }
@@ -282,7 +277,13 @@ int32_t RunClient(const Args &args) {
   HixlClientHandle client_handle = nullptr;
   std::string ip = args.remote_engine.substr(0U, args.remote_engine.find(':'));
   int32_t port = std::stoi(args.remote_engine.substr(args.remote_engine.find(':') + 1U));
-  auto ret = HixlCSClientCreate(ip.c_str(), port, &local_ep, &remote_ep, &client_handle);
+  // 创建 HixlClientDesc 结构体
+  HixlClientDesc client_desc = {.server_ip = ip.c_str(),
+                                .server_port = static_cast<uint32_t>(port),
+                                .src_endpoint = &local_ep,
+                                .dst_endpoint = &remote_ep};
+  HixlClientConfig client_config{};
+  auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientCreate failed, ret = %u\n", ret);
     return -1;
@@ -332,10 +333,10 @@ int32_t RunClient(const Args &args) {
   }
 
   // 3. 建链
-  ret = HixlCSClientConnectSync(client_handle, kClientConnectTimeoutMs);
+  ret = HixlCSClientConnect(client_handle, kClientConnectTimeoutMs);
   if (ret != HIXL_SUCCESS) {
     ClientFinalize(client_handle, {});
-    (void)printf("[ERROR] HixlCSClientConnectSync failed, ret = %u\n", ret);
+    (void)printf("[ERROR] HixlCSClientConnect failed, ret = %u\n", ret);
     return -1;
   }
 
@@ -379,7 +380,12 @@ int32_t RunServer(const Args &args) {
   std::string ip = args.local_engine.substr(0, args.local_engine.find(':'));
   int32_t port = std::stoi(args.local_engine.substr(args.local_engine.find(':') + 1));
   HixlServerConfig config{};
-  auto ret = HixlCSServerCreate(ip.c_str(), static_cast<uint32_t>(port), &ep, 1U, &config, &server_handle);
+  // 创建 HixlClientDesc 结构体
+  HixlServerDesc server_desc = {.server_ip = ip.c_str(),
+                                .server_port = static_cast<uint32_t>(port),
+                                .endpoint_list = &ep,
+                                .endpoint_list_num = 1U};
+  auto ret = HixlCSServerCreate(&server_desc, &config, &server_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSServerCreate failed, ret = %u\n", ret);
     return -1;
