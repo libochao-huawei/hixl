@@ -86,6 +86,7 @@ class EntityMemInfo {
   bool remote_cache_accessible_;
   void *msg_buffer_ = nullptr;
   void *req_ = nullptr;
+  uint64_t req_size_ = 0U;
   void *transfer_buffer_ = nullptr;
   void *host_transfer_buffer_ = nullptr;
   void *resp_ = nullptr;
@@ -147,6 +148,7 @@ class CommEntity {
   int8_t *GetCacheInfoFlag() const;
 
   void *GetReq();
+  uint64_t GetReqSize() const;
   void *GetResp();
   aclrtStream  GetStream() const;
   aclrtContext GetCurrentContext() const;
