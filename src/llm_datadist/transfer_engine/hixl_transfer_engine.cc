@@ -186,8 +186,6 @@ ge::Status HixlTransferEngine::LinkClusters(const std::vector<ClusterInfo> &clus
 }
 
 ge::Status HixlTransferEngine::UnlinkCluster(const ClusterInfo &cluster, int32_t timeout) const {
-  LLM_CHK_BOOL_RET_STATUS(cluster.remote_ip_infos.size() == 1U, ge::LLM_PARAM_INVALID,
-                          "remote_ip_infos size != 1 is unsupported.");
   LLMLOGI("Start to unlink cluster, remote cluster_id:%lu, timeout:%d ms.",
           cluster.remote_cluster_id, timeout);
   LLM_CHK_STATUS_RET(comm_entity_manager_->DestroyEntity(cluster.remote_cluster_id),

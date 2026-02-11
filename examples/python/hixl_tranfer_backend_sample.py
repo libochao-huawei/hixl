@@ -44,7 +44,7 @@ def init_llm_datadist(role: LLMRole, cluster_id, device_id: int, local_host_ip, 
     llm_config = LLMConfig()
     llm_config.device_id = device_id
     llm_config.local_comm_res = ""
-    llm_config.tranfer_backend = "hixl"
+    llm_config.transfer_backend = "hixl"
     if role == LLMRole.PROMPT:
         llm_config.listen_ip_info = f"{local_host_ip}:26000"
     else:
