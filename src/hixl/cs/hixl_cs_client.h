@@ -25,6 +25,7 @@
 #include "channel.h"
 #include "hixl_mem_store.h"
 #include "complete_pool.h"
+#include "hcomm_compat.h"
 
 namespace hixl {
 namespace {

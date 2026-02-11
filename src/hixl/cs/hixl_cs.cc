@@ -77,7 +77,7 @@ HixlStatus HixlCSClientCreate(const HixlClientDesc *client_desc, const HixlClien
                       "Failed to create hixl cs client, "
                       "server_ip:%s, server_port:%u",
                       client_desc->server_ip, client_desc->server_port);
-  *client_handle = reinterpret_cast<HixlClientHandle>(client);
+  *client_handle = static_cast<HixlClientHandle>(client);
   HIXL_DISMISS_GUARD(rollback);
   return HIXL_SUCCESS;
 }
@@ -166,7 +166,7 @@ HixlStatus HixlCSClientQueryCompleteStatus(HixlClientHandle client_handle, Compl
 
 HixlStatus HixlCSClientConnect(HixlClientHandle client_handle, uint32_t timeout_ms) {
   HIXL_CHECK_NOTNULL(client_handle);
-  auto *client = reinterpret_cast<hixl::HixlCSClient *>(client_handle);
+  auto *client = static_cast<hixl::HixlCSClient *>(client_handle);
   HIXL_CHECK_NOTNULL(client);
   const auto ret = client->Connect(timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "HixlCSClientConnect failed, timeout:%u", timeout_ms);
@@ -176,7 +176,7 @@ HixlStatus HixlCSClientConnect(HixlClientHandle client_handle, uint32_t timeout_
 HixlStatus HixlCSClientGetRemoteMem(HixlClientHandle client_handle, HcommMem **remote_mem_list, char ***mem_tag_list,
                                     uint32_t *list_num, uint32_t timeout_ms) {
   HIXL_CHECK_NOTNULL(client_handle);
-  auto *client = reinterpret_cast<hixl::HixlCSClient *>(client_handle);
+  auto *client = static_cast<hixl::HixlCSClient *>(client_handle);
   HIXL_CHECK_NOTNULL(client);
   const auto ret = client->GetRemoteMem(remote_mem_list, mem_tag_list, list_num, timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "HixlCSClientGetRemoteMem failed, timeout:%u", timeout_ms);
@@ -185,7 +185,7 @@ HixlStatus HixlCSClientGetRemoteMem(HixlClientHandle client_handle, HcommMem **r
 
 HixlStatus HixlCSClientDestroy(HixlClientHandle client_handle) {
   HIXL_CHECK_NOTNULL(client_handle);
-  auto *client = reinterpret_cast<hixl::HixlCSClient *>(client_handle);
+  auto *client = static_cast<hixl::HixlCSClient *>(client_handle);
   HIXL_CHECK_NOTNULL(client);
   const auto ret = client->Destroy();
   delete client;

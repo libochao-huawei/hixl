@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CANN_HIXL_SRC_ENDPOINT_H_
-#define CANN_HIXL_SRC_ENDPOINT_H_
+#ifndef CANN_HIXL_SRC_HIXL_CS_ENDPOINT_H_
+#define CANN_HIXL_SRC_HIXL_CS_ENDPOINT_H_
 
 #include <map>
 #include <memory>
@@ -54,4 +54,4 @@ class Endpoint {
 using EndpointPtr = std::shared_ptr<Endpoint>;
 }  // namespace hixl
 
-#endif  // CANN_HIXL_SRC_ENDPOINT_H_
+#endif  // CANN_HIXL_SRC_HIXL_CS_ENDPOINT_H_

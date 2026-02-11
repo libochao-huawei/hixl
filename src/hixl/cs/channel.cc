@@ -59,9 +59,9 @@ Status Channel::GetStatus(ChannelHandle channel_handle, int32_t *status_out) {
     return 20;
   }
   *status_out = status_list[0];
-  // 底层约定：0 表示 ready，其它值表示“尚未 ready 或失败”
-  if (*status_out != 0) {
-    HIXL_LOGD("Channel query success but not ready. channel_handle=%p, status_out=%d",
+  // 底层约定：1 表示 ready，其它值表示“尚未 ready 或失败”
+  if (*status_out != 1) {
+    HIXL_LOGD("Channel query success but not ready. channel_handle=%lu, status_out=%d",
               channel_handle, *status_out);
   }
   return SUCCESS;

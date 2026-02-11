@@ -14,7 +14,7 @@
 #include <cstdint>
 #include <netinet/in.h>
 #include <string>
-#include "hcomm/hcomm_res.h"
+#include "hcomm/hcomm_res_defs.h"
 
 #ifdef __cplusplus
 extern "C" {
