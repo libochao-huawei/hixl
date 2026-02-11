@@ -595,6 +595,7 @@ class CacheManager(object):
         raise_if_false(len(dst_blocks) > 0, "dst_blocks can not be empty.")
 
         check_uint32("tensor_num_per_layer", tensor_num_per_layer)
+
         raise_if_false(tensor_num_per_layer > 0,
                        '[push_blocks] param check failed, tensor_num_per_layer ({0}) is invalid, should [1, {1}]',
                        tensor_num_per_layer, src_cache.cache_desc.num_tensors)
