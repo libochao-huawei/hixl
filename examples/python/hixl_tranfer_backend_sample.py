@@ -87,6 +87,12 @@ def run_prompt_sample(datadist, local_host_ip, remote_host_ip):
     logging.info(f'after decoder push, tensor={tensor.cpu()}')
     logging.info(f'after decoder push, tensor2={tensor2.cpu()}')
 
+    expect_tensor = torch.full((BLOCKS_NUM, KV_SHAPE), 0, dtype=torch.float).npu()
+    if not torch.equal(expect_tensor, tensor):
+        raise Exception(f"check tensor val failed, tensor={tensor.cpu()}, expect_tensor={expect_tensor.cpu()}")
+    if not torch.equal(expect_tensor, tensor2):
+        raise Exception(f"check tensor val failed, tensor2={tensor2.cpu()}, expect_tensor={expect_tensor.cpu()}")
+
     # 断链
     cluster = LLMClusterInfo()
     cluster.remote_cluster_id = DECODER_CLUSTER_ID
