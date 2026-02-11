@@ -27,7 +27,7 @@ class HixlEntity : public CommEntity {
       : CommEntity(0U, 0U, 0U, 0U, 0U), remote_ip_(remote_ip), remote_port_(remote_port), engine_(engine) {}
   ~HixlEntity() override = default;
   ge::Status Initialize(int32_t timeout_ms);
-  ge::Status Finalize() override;
+  ge::Status Finalize(bool force = false) override;
   ge::Status BatchTransfer(std::list<HcclOneSideOpDesc> &tasks, bool is_put, bool reversed, int32_t timeout_ms) override;
 
  private:

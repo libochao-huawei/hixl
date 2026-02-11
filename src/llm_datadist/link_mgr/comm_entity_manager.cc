@@ -38,7 +38,7 @@ ge::Status CommEntityManager::DestroyEntity(uint64_t peer_cluster_id) {
     auto entity_id = it->second;
     auto entity = entity_map_[entity_id];
     std::lock_guard<std::mutex> pull_lock(entity->GetPullMutex());
-    auto entity_ret = entity->Finalize();
+    auto entity_ret = entity->Finalize(true);
     ret = entity_ret != ge::SUCCESS ? entity_ret : ret;
     if (start_service_) {
       std::lock_guard<std::mutex> process_lock(entity->GetProcessMutex());

@@ -223,7 +223,6 @@ ge::Status HixlTransferEngine::UnlinkClusters(const std::vector<ClusterInfo> &cl
 
 void HixlTransferEngine::UnlinkAllClusters() {
   LLMLOGI("Begin to unlink all clusters.");
-  comm_entity_manager_->DeleteEntities();
   engine_->Disconnect();
 }
 
