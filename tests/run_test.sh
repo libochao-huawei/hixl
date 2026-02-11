@@ -190,8 +190,9 @@ run() {
 
   if [[ "X$ENABLE_PY_TEST" = "XON" ]]; then
       unset LD_PRELOAD
-      cp ${BUILD_PATH}/tests/depends/python/llm_datadist_wrapper.so ${BASEPATH}/src/python/llm_datadist/llm_datadist/
-      cp ${BUILD_PATH}/tests/depends/python/metadef_wrapper.so ${BASEPATH}/src/python/llm_datadist/llm_datadist/
+      cp ${BUILD_PATH}/src/python/llm_wrapper/llm_datadist_wrapper.so ${BASEPATH}/src/python/llm_datadist/llm_datadist/
+      cp ${BUILD_PATH}/src/python/metadef_wrapper/metadef_wrapper.so ${BASEPATH}/src/python/llm_datadist/llm_datadist/
+      cp -r ${BUILD_PATH}/tests/depends/slog/libslog_stub.so ${BASEPATH}/src/python/llm_datadist/llm_datadist/
       cp -r ${BASEPATH}/tests/python ./
       PYTHON_ORIGINAL_PATH=$PYTHONPATH
       export PYTHONPATH=${BASEPATH}/src/python/llm_datadist/
