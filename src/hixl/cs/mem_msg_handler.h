@@ -27,8 +27,8 @@ namespace hixl {
 
 class MemMsgHandler {
  public:
-  Status SendGetRemoteMemRequest(int32_t socket, uint64_t endpoint_handle, uint32_t timeout_ms = 0U);
-  Status RecvGetRemoteMemResponse(int32_t socket, std::vector<HixlMemDesc> &mem_descs, uint32_t timeout_ms = 0U);
+  static Status SendGetRemoteMemRequest(int32_t socket, uint64_t endpoint_handle, uint32_t timeout_ms = 0U);
+  static Status RecvGetRemoteMemResponse(int32_t socket, std::vector<HixlMemDesc> &mem_descs, uint32_t timeout_ms = 0U);
 };
 
 }  // namespace hixl
