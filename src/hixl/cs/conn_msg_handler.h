@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CANN_HIXL_SRC_HIXL_COMMON_HIXL_CONNECT_MSG_HANDLER_H_
-#define CANN_HIXL_SRC_HIXL_COMMON_HIXL_CONNECT_MSG_HANDLER_H_
+#ifndef CANN_HIXL_SRC_HIXL_CS_CONN_MSG_HANDLER_H_
+#define CANN_HIXL_SRC_HIXL_CS_CONN_MSG_HANDLER_H_
 
 #include <cstdint>
 
@@ -18,33 +18,18 @@
 #include "common/hixl_checker.h"
 #include "common/hixl_utils.h"
 #include "common/hixl_log.h"
-#include "common/ctrl_msg.h"  // CtrlMsgHeader / CtrlMsgType / CreateChannelReq / CreateChannelResp
+#include "common/ctrl_msg.h"
 
 namespace hixl {
 
-/**
- * CreateChannel 消息编解码（client 侧）
- *
- * Request:
- *   header.magic     = kMagicNumber;
- *   header.body_size = sizeof(CtrlMsgType) + sizeof(CreateChannelReq);
- *   body             = [CtrlMsgType::kCreateChannelReq][CreateChannelReq{ src, dst }]
- *
- * Response:
- *   header.magic     = kMagicNumber;
- *   header.body_size = sizeof(CtrlMsgType) + sizeof(CreateChannelResp);
- *   body             = [CtrlMsgType::kCreateChannelResp][CreateChannelResp{ result, dst_ep_handle }]
- */
 class ConnMsgHandler {
  public:
   // 发送 CreateChannelReq，携带本端 src_endpoint 和远端 dst_endpoint
-  static Status SendCreateChannelRequest(int32_t socket, const EndpointDesc &src_endpoint,
-                                         const EndpointDesc &dst_endpoint);
-
+  Status SendCreateChannelRequest(int32_t socket, const EndpointDesc &src_endpoint, const EndpointDesc &dst_endpoint);
   // 接收 CreateChannelResp，解析出对端 endpoint_handle
-  static Status RecvCreateChannelResponse(int32_t socket, uint64_t &dst_endpoint_handle, uint32_t timeout_ms);
+  Status RecvCreateChannelResponse(int32_t socket, uint64_t &dst_endpoint_handle, uint32_t timeout_ms);
 };
 
 }  // namespace hixl
 
-#endif  // CANN_HIXL_SRC_HIXL_COMMON_HIXL_CONNECT_MSG_HANDLER_H_
+#endif  // CANN_HIXL_SRC_HIXL_CS_CONN_MSG_HANDLER_H_

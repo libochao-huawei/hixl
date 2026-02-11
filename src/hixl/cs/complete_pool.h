@@ -19,6 +19,7 @@
 #include "runtime/runtime/rt.h"
 #include "common/hixl_cs.h"
 #include "common/hixl_checker.h"
+#include "hcomm_compat.h"
 
 namespace hixl {
 

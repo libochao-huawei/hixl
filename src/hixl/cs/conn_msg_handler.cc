@@ -16,8 +16,8 @@
 
 namespace hixl {
 
-static Status SendHeaderTypeBody(int32_t socket, const CtrlMsgHeader &header, CtrlMsgType msg_type,
-                                 const void *body, uint64_t body_size) {
+Status SendHeaderTypeBody(int32_t socket, const CtrlMsgHeader &header, CtrlMsgType msg_type, const void *body,
+                          uint64_t body_size) {
   HIXL_LOGI("Start sending header, type and body. socket: %d, body_size: %lu", socket, body_size);
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(socket, &header, static_cast<uint64_t>(sizeof(header))));
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(socket, &msg_type, static_cast<uint64_t>(sizeof(msg_type))));
@@ -26,20 +26,20 @@ static Status SendHeaderTypeBody(int32_t socket, const CtrlMsgHeader &header, Ct
   return SUCCESS;
 }
 
-static Status RecvAndCheckHeader(int32_t socket, uint64_t expect_body_size, CtrlMsgHeader &header, uint32_t timeout_ms) {
+Status RecvAndCheckHeader(int32_t socket, uint64_t expect_body_size, CtrlMsgHeader &header, uint32_t timeout_ms) {
   HIXL_LOGI("Start receiving and checking header. socket: %d, expect_body_size: %lu", socket, expect_body_size);
-  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(socket, &header, static_cast<uint32_t>(sizeof(header)), timeout_ms));
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(socket, &header, static_cast<uint32_t>(sizeof(header)), timeout_ms),
+                      "Failed to recv header. socket=%d, len=%lu, timeout=%u ms", socket, sizeof(header), timeout_ms);
   HIXL_LOGD("Header received. magic: 0x%X, body_size: %lu", header.magic, header.body_size);
   HIXL_CHK_BOOL_RET_STATUS(header.magic == kMagicNumber, PARAM_INVALID,
-                           "Invalid magic for CreateChannelResp, expect:0x%X, actual:0x%X",
-                           kMagicNumber, header.magic);
+                           "Invalid magic for CreateChannelResp, expect:0x%X, actual:0x%X", kMagicNumber, header.magic);
   HIXL_CHK_BOOL_RET_STATUS(header.body_size == expect_body_size, PARAM_INVALID,
                            "Invalid body_size in CreateChannelResp, expect:%" PRIu64 ", actual:%" PRIu64,
                            expect_body_size, header.body_size);
   return SUCCESS;
 }
 
-static Status RecvBody(int32_t socket, uint64_t body_size, std::vector<uint8_t> &body, uint32_t timeout_ms) {
+Status RecvBody(int32_t socket, uint64_t body_size, std::vector<uint8_t> &body, uint32_t timeout_ms) {
   HIXL_LOGI("Start receiving body. socket: %d, body_size: %lu", socket, body_size);
   body.resize(static_cast<size_t>(body_size));
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(socket, body.data(), static_cast<uint32_t>(body_size), timeout_ms));
@@ -47,11 +47,10 @@ static Status RecvBody(int32_t socket, uint64_t body_size, std::vector<uint8_t> 
   return SUCCESS;
 }
 
-static Status ParseMsgType(const std::vector<uint8_t> &body, size_t &offset, CtrlMsgType &msg_type) {
+Status ParseMsgType(const std::vector<uint8_t> &body, size_t &offset, CtrlMsgType &msg_type) {
   if (offset + sizeof(CtrlMsgType) > body.size()) {
-    HIXL_LOGE(PARAM_INVALID,
-              "CreateChannelResp body too short for msg_type, offset=%zu, need=%zu, body=%zu",
-              offset, offset + sizeof(CtrlMsgType), body.size());
+    HIXL_LOGE(PARAM_INVALID, "CreateChannelResp body too short for msg_type, offset=%zu, need=%zu, body=%zu", offset,
+              offset + sizeof(CtrlMsgType), body.size());
     return PARAM_INVALID;
   }
 
@@ -61,17 +60,15 @@ static Status ParseMsgType(const std::vector<uint8_t> &body, size_t &offset, Ctr
 
   offset += sizeof(CtrlMsgType);
   HIXL_CHK_BOOL_RET_STATUS(msg_type == CtrlMsgType::kCreateChannelResp, PARAM_INVALID,
-                           "Unexpected msg_type=%d in CreateChannelResp, expect=%d",
-                           static_cast<int32_t>(msg_type),
+                           "Unexpected msg_type=%d in CreateChannelResp, expect=%d", static_cast<int32_t>(msg_type),
                            static_cast<int32_t>(CtrlMsgType::kCreateChannelResp));
   return SUCCESS;
 }
 
-static Status ParseCreateChannelResp(const std::vector<uint8_t> &body, size_t offset, CreateChannelResp &resp) {
+Status ParseCreateChannelResp(const std::vector<uint8_t> &body, size_t offset, CreateChannelResp &resp) {
   if (offset + sizeof(CreateChannelResp) > body.size()) {
-    HIXL_LOGE(PARAM_INVALID,
-              "CreateChannelResp body too short, offset=%zu, need=%zu, body=%zu",
-              offset, offset + sizeof(CreateChannelResp), body.size());
+    HIXL_LOGE(PARAM_INVALID, "CreateChannelResp body too short, offset=%zu, need=%zu, body=%zu", offset,
+              offset + sizeof(CreateChannelResp), body.size());
     return PARAM_INVALID;
   }
 
@@ -82,7 +79,7 @@ static Status ParseCreateChannelResp(const std::vector<uint8_t> &body, size_t of
   return SUCCESS;
 }
 
-static Status CheckRespResultAndSetHandle(const CreateChannelResp &resp, uint64_t &dst_endpoint_handle) {
+Status CheckRespResultAndSetHandle(const CreateChannelResp &resp, uint64_t &dst_endpoint_handle) {
   HIXL_CHK_BOOL_RET_STATUS(resp.result == SUCCESS, FAILED, "CreateChannelResp result not SUCCESS, result=%u",
                            static_cast<uint32_t>(resp.result));
   dst_endpoint_handle = resp.dst_ep_handle;
@@ -139,4 +136,3 @@ Status ConnMsgHandler::RecvCreateChannelResponse(int32_t socket, uint64_t &dst_e
 }
 
 }  // namespace hixl
-

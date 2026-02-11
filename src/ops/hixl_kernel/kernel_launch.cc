@@ -16,9 +16,20 @@
 namespace hixl {
 
 extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *param) {
+  HIXL_LOGI("[JZY] HcclLaunchAicpuKernel start");
+  if (param == nullptr) {
+      HIXL_LOGE(FAILED, "[JZY] param is nullptr");
+      return FAILED;
+  }
+  HIXL_LOGI("[JZY][HcclLaunchAicpuKernel] HixlOneSideOpParam: thread=%p, channel=%p, list_num=%u",
+          param->thread, param->channel, param->list_num);
+  // 打印标志信息
+  HIXL_LOGI("[JZY][HcclLaunchAicpuKernel]   remote_flag=%p, local_flag=%p, flag_size=%u",
+          param->remote_flag, param->local_flag, param->flag_size);
   if (is_read) {
     // 批量提交读任务
     for (uint32_t i = 0; i < param->list_num; i++) {
+      HIXL_LOGI("[JZY] HcommWriteOnThread start");
       int ret = HcommReadOnThread(param->thread, param->channel, param->dst_buf_list[i],
                                   const_cast<void *>(param->src_buf_list[i]),
                                   param->len_list[i]);  // HcommReadNbi 没有返回值
@@ -32,6 +43,12 @@ extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *
   } else {
     // 批量提交写任务
     for (uint32_t i = 0; i < param->list_num; i++) {
+      HIXL_LOGI("[JZY] HcommWriteOnThread start");
+      HIXL_LOGI("[JZY] param->thread=%u", param->thread);
+      HIXL_LOGI("[JZY] param->channel=%u", param->channel);
+      HIXL_LOGI("[JZY] param->dst_buf_list=%p", param->dst_buf_list[i]);
+      HIXL_LOGI("[JZY] param->src_buf_list=%p", param->src_buf_list[i]);
+      HIXL_LOGI("[JZY] param->len_list=%p", param->len_list[i]);
       int ret = HcommWriteOnThread(param->thread, param->channel, param->dst_buf_list[i],
                                    const_cast<void *>(param->src_buf_list[i]),
                                    param->len_list[i]);  // HcommWriteNbi 没有返回值
@@ -43,6 +60,7 @@ extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *
       }
     }
   }
+  HIXL_LOGI("[JZY] param->flag_size=%u", param->flag_size);
   int ret = HcommReadOnThread(param->thread, param->channel, param->local_flag, param->remote_flag,
                               param->flag_size);  // HcommReadNbi 没有返回值
   if (ret != 0) {
@@ -54,13 +72,12 @@ extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *
 }
 
 extern "C" unsigned int HixlBatchPut(HixlOneSideOpParam *param) {
-  int ret = HcclLaunchAicpuKernel(true, param);
+  int ret = HcclLaunchAicpuKernel(false, param);
   return ret;
 }
 
 extern "C" unsigned int HixlBatchGet(HixlOneSideOpParam *param) {
-  int ret = HcclLaunchAicpuKernel(false, param);
+  int ret = HcclLaunchAicpuKernel(true, param);
   return ret;
 }
 }
-

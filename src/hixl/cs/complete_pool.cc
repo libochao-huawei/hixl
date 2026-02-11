@@ -16,6 +16,7 @@
 #include "endpoint.h"
 #include "common/hixl_utils.h"
 #include "common/scope_guard.h"
+#include "common/llm_utils.h"
 
 namespace hixl {
 CompletePool &GetCompletePool() {
@@ -111,7 +112,7 @@ void CompletePool::RestoreAclContext(aclrtContext old_ctx) const {
 }
 
 Status CompletePool::AddRefAndInitIfNeeded(int32_t device_id, CommEngine engine, uint32_t thread_num,
-                                          uint32_t notify_num_per_thread, Endpoint *endpoint) {
+                                           uint32_t notify_num_per_thread, Endpoint *endpoint) {
   std::lock_guard<std::mutex> lock(mu_);
   HIXL_CHECK_NOTNULL(endpoint);
 
@@ -401,17 +402,8 @@ Status CompletePool::EnsureContextLocked(Slot &slot, int32_t device_id) {
   if (slot.ctx != nullptr) {
     return SUCCESS;
   }
-
   aclrtContext ctx = nullptr;
   HIXL_CHK_ACL_RET(aclrtCreateContext(&ctx, device_id));
-
-  aclError set_ret = aclrtSetCurrentContext(ctx);
-  if (set_ret != ACL_SUCCESS) {
-    HIXL_CHK_ACL(aclrtDestroyContext(ctx), "destroy ctx after set current failed");
-    REPORT_INNER_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", "aclrtSetCurrentContext", static_cast<uint32_t>(set_ret));
-    HIXL_LOGE(FAILED, "Call acl api failed, ret: 0x%X", static_cast<uint32_t>(set_ret));
-    return FAILED;
-  }
 
   slot.ctx = ctx;
   return SUCCESS;
@@ -456,6 +448,7 @@ Status CompletePool::EnsurePinnedHostFlagLocked(Slot &slot) {
 }
 
 void CompletePool::DestroySlotLocked(Slot &slot) {
+  llm::TemporaryRtContext with_context(slot.ctx);
   if (slot.notify_mem_handle != nullptr) {
     if (endpoint_ != nullptr) {
       HIXL_CHK_STATUS(endpoint_->DeregisterMem(slot.notify_mem_handle), "[CompletePool] DeregisterMem failed. tag=%s",

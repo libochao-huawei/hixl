@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CANN_HIXL_SRC_CHANNEL_H_
-#define CANN_HIXL_SRC_CHANNEL_H_
+#ifndef CANN_HIXL_SRC_HIXL_CS_CHANNEL_H_
+#define CANN_HIXL_SRC_HIXL_CS_CHANNEL_H_
 
 #include <memory>
 #include "common/hixl_cs.h"
@@ -41,4 +41,4 @@ using ChannelPtr = std::shared_ptr<Channel>;
 
 }  // namespace hixl
 
-#endif  // CANN_HIXL_SRC_CHANNEL_H_
+#endif  // CANN_HIXL_SRC_HIXL_CS_CHANNEL_H_
