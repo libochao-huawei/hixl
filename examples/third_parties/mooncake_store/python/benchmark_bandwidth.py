@@ -20,7 +20,7 @@ from mooncake_sample_common import create_parser, setup_environment, validate_sc
 from mooncake_sample_base import MooncakeSampleBase
 from config import Config
 
-logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
+logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 
 class BandwidthBenchmark(MooncakeSampleBase):
@@ -30,15 +30,16 @@ class BandwidthBenchmark(MooncakeSampleBase):
         super().__init__(args, config)
         self.registered_addrs = []
         self.global_iter_counter = 0
-        self.tensor = None
-        self.target_tensor = None
     
     def run(self):
         self._log_startup_info()
-        self.store = self.init_mooncake_store()
+        
+        if self.args.register_size_gb is not None:
+            logging.info(f"Custom register size specified: {self.args.register_size_gb} GB (stress testing mode)")
         
         results = {}
         for block_size in self.args.block_sizes:
+            self.store = self.init_mooncake_store()
             self._prepare_buffers(block_size)
             addr, remote_addr = self._register_all_buffers()
             self.barrier()
@@ -46,8 +47,8 @@ class BandwidthBenchmark(MooncakeSampleBase):
             results[block_size] = self._run_benchmark(block_size, addr, remote_addr)
             
             self._unregister_all_buffers()
-        
-        self._cleanup()
+            self._cleanup()
+
         self._print_summary(results)
     
     def _log_startup_info(self):
@@ -58,10 +59,15 @@ class BandwidthBenchmark(MooncakeSampleBase):
     
     def _prepare_buffers(self, block_size_kb):
         buffer_size = block_size_kb * 1024 * self.args.num_blocks
-        buffer_size += self.ALIGNMENT * 2
         
-        self.tensor = self._create_tensor(buffer_size, fill_value=1)
-        self.target_tensor = self._create_tensor(buffer_size, fill_value=0)
+        if self.args.register_size_gb is not None:
+            tensor_size = int(self.args.register_size_gb * 1024 * 1024 * 1024) + self.ALIGNMENT * 2
+            logging.info(f"Creating tensor of size {tensor_size} bytes ({tensor_size / (1024 ** 3):.3f} GB) for stress testing")
+        else:
+            tensor_size = buffer_size + self.ALIGNMENT * 2
+        
+        self.tensor = self._create_tensor(tensor_size, fill_value=1)
+        self.target_tensor = self._create_tensor(tensor_size, fill_value=0)
     
     def _create_tensor(self, size, fill_value):
         is_host = self.args.schema.startswith("h")
@@ -83,18 +89,20 @@ class BandwidthBenchmark(MooncakeSampleBase):
         data_ptr = tensor.data_ptr()
         aligned_addr = self._align_address(data_ptr)
         total_size = tensor.numel() * tensor.element_size()
-        register_size = total_size - (aligned_addr - data_ptr)
+        
+        if self.args.register_size_gb is not None:
+            register_size = int(self.args.register_size_gb * 1024 * 1024 * 1024)
+        else:
+            register_size = total_size - (aligned_addr - data_ptr)
         
         if register_size <= 0:
-            raise ValueError(f"Invalid register size: {register_size}, data_ptr={data_ptr}, aligned_addr={aligned_addr}")
-        
-        if aligned_addr + register_size > data_ptr + total_size:
-            raise ValueError(f"Register exceeds buffer bounds: aligned_addr={aligned_addr}, register_size={register_size}, total_size={total_size}")
+            raise ValueError(f"Invalid register size: {register_size}, data_ptr={data_ptr}, aligned={aligned_addr}")
         
         self.store.register_buffer(aligned_addr, register_size)
         self.registered_addrs.append(aligned_addr)
         
-        logging.info(f"Registered {buffer_type} buffer: addr={data_ptr}, aligned={aligned_addr}, size={register_size}")
+        register_gb = register_size / (1024 ** 3)
+        logging.info(f"Registered {buffer_type} buffer: addr={data_ptr}, aligned={aligned_addr}, size={register_size} ({register_gb:.3f} GB)")
         return aligned_addr
     
     def _align_address(self, addr):
@@ -129,15 +137,11 @@ class BandwidthBenchmark(MooncakeSampleBase):
         iter_id = self._get_next_iter_id()
         
         logging.info("Performing warmup iteration...")
-        self._timed_put_operation(block_size_kb, addr, remote_addr, iter_id)
+        put_time = self._timed_put_operation(block_size_kb, addr, remote_addr, iter_id)
         self.barrier()
         self._timed_get_operation(block_size_kb, addr, remote_addr, iter_id)
         self.barrier()
         logging.info("Warmup completed")
-        
-        iter_id = self._get_next_iter_id()
-        put_time = self._timed_put_operation(block_size_kb, addr, remote_addr, iter_id)
-        self.barrier()
         
         get_times = []
         for _ in range(self.args.num_iters):
@@ -192,8 +196,6 @@ class BandwidthBenchmark(MooncakeSampleBase):
         data_multiplier = 1
         if self.args.transfer_mode == 'full_mesh':
             data_multiplier = self.config.world_size - 1
-        elif self.args.transfer_mode == 'one_to_many':
-            data_multiplier = self.config.world_size - 1
         
         put_data_gb = total_gb * data_multiplier
         get_data_gb = total_gb * data_multiplier
@@ -230,8 +232,10 @@ class BandwidthBenchmark(MooncakeSampleBase):
         
         start = time.time()
         results = self.store.batch_get_into(get_keys, remote_addrs, sizes)
+        end = time.time()
+        
         self._validate_results(get_keys, results)
-        return time.time() - start
+        return end - start
     
     def _timed_put_full_mesh(self, block_size_kb, addr, remote_addr, iter_id):
         my_rank = self.config.rank
@@ -247,15 +251,21 @@ class BandwidthBenchmark(MooncakeSampleBase):
         my_rank = self.config.rank
         world_size = self.config.world_size
         
-        start = time.time()
+        prepared_data = []
         for src_rank in range(world_size):
             if src_rank != my_rank:
                 get_keys = self._generate_keys(src_rank, iter_id, self.args.num_blocks)
                 remote_addrs = self._generate_addrs(remote_addr, block_size_kb, self.args.num_blocks)
                 sizes = [block_size_kb * 1024] * self.args.num_blocks
-                results = self.store.batch_get_into(get_keys, remote_addrs, sizes)
-                self._validate_results(get_keys, results)
-        return time.time() - start
+                prepared_data.append((get_keys, remote_addrs, sizes))
+        
+        total_time = 0
+        for get_keys, remote_addrs, sizes in prepared_data:
+            start = time.time()
+            results = self.store.batch_get_into(get_keys, remote_addrs, sizes)
+            total_time += time.time() - start
+            self._validate_results(get_keys, results)
+        return total_time
     
     def _timed_put_one_to_many(self, block_size_kb, addr, remote_addr, iter_id):
         if self.config.rank != 0:
@@ -279,8 +289,10 @@ class BandwidthBenchmark(MooncakeSampleBase):
         
         start = time.time()
         results = self.store.batch_get_into(get_keys, remote_addrs, sizes)
+        end = time.time()
+        
         self._validate_results(get_keys, results)
-        return time.time() - start
+        return end - start
     
     def _generate_keys(self, rank, iter_id, num_blocks):
         return [f"block_{rank}_{iter_id}_{i}" for i in range(num_blocks)]
@@ -302,11 +314,13 @@ class BandwidthBenchmark(MooncakeSampleBase):
         self.barrier()
         if self.store:
             self.close_store()
+        del self.target_tensor
+        del self.tensor
+        torch.npu.empty_cache()
+        import gc
+        gc.collect()
     
     def _print_summary(self, results):
-        if self.config.rank != 0:
-            return
-        
         logging.info(f"\n{'='*80}")
         logging.info("SUMMARY - Bandwidth Results")
         logging.info(f"Mode: {self.args.transfer_mode}")
@@ -334,6 +348,8 @@ def main():
                         help="Number of blocks per iteration")
     parser.add_argument("--num_iters", type=int, default=10,
                         help="Number of GET iterations after PUT")
+    parser.add_argument("--register_size_gb", type=float, default=None,
+                        help="Custom memory size to register in GB (for stress testing)")
     
     config = Config()
     args = config.parse_args(parser)
