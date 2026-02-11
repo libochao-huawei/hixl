@@ -10,6 +10,7 @@
 
 #include "hixl_server.h"
 
+#include "engine.h"
 #include "common/hixl_cs.h"
 #include "nlohmann/json.hpp"
 #include "cs/hixl_cs_server.h"
@@ -114,6 +115,17 @@ Status HixlServer::DeregisterMem(MemHandle &mem_handle) {
                       mem_handle);
   handle_to_addr_.erase(it);
   mem_handle = nullptr;
+  return SUCCESS;
+}
+
+Status HixlServer::RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor) {
+  MsgProcessor callback = [this, processor, msg_type](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
+    bool keep_fd = false;
+    HIXL_CHK_STATUS_RET(processor(fd, msg, msg_len, keep_fd), "Failed to process msg, type:%d", msg_type);
+    return SUCCESS;
+  };
+  HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, static_cast<CtrlMsgType>(msg_type), callback),
+                      "Failed to register send endpoint info processor.");
   return SUCCESS;
 }
 

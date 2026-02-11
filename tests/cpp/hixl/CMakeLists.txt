@@ -11,13 +11,23 @@
 set(HIXL_TEST_FILES
         cs/test_hixl_cs_server.cc
         engine/hixl_server_unittest.cpp
+        cs/test_hixl_cs_api.cc
+        cs/hixl_mem_store_basic_ut.cc
+        cs/hixl_cs_client_basic_ut.cc
         cs/hixl_cs_client_ut.cc
-)
+        cs/hixl_kernel_basic_ut.cc
+        cs/hixl_cs_client_ub_ut.cc
+        engine/hixl_server_unittest.cc
+        engine/hixl_client_unittest.cc
+        engine/hixl_utils_unittest.cc
+        engine/hixl_engine_unittest.cc
+        )
 
 file(GLOB HIXL_SRC_LIST
         "${HIXL_CODE_DIR}/src/hixl/common/*.cc"
         "${HIXL_CODE_DIR}/src/hixl/engine/*.cc"
         "${HIXL_CODE_DIR}/src/hixl/cs/*.cc"
+        "${HIXL_CODE_DIR}/src/ops/hixl_kernel/*.cc"
 )
 
 file(GLOB ADXL_SRC_LIST
@@ -70,6 +80,7 @@ target_link_libraries(hixl_test
         c_sec
         mmpa_headers
         hccl_headers
+        runtime_headers
         metadef_headers
         intf_pub
         json
@@ -77,6 +88,9 @@ target_link_libraries(hixl_test
         slog_stub
         mmpa_stub
         ascendcl_stub
+        hccl_stub
+        runtime_stub
+        ascendcl
         msprof_headers
         GTest::gtest GTest::gtest_main
         GTest::gmock
