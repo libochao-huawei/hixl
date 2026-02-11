@@ -142,7 +142,6 @@ inline bool LlmLogPrintStdout() {
   do {                                             \
     const bool b = (expr);                         \
     if (!b) {                                      \
-      REPORT_INNER_ERR_MSG("E19999", __VA_ARGS__);  \
       LLMLOGE((_status), __VA_ARGS__);              \
       return (_status);                            \
     }                                              \
