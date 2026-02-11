@@ -50,5 +50,10 @@ struct EndpointConfig {
   }
 };
 
+struct MemInfo {
+  MemHandle mem_handle;
+  MemDesc mem;
+  MemType type;
+};
 }  // namespace hixl
 #endif  // CANN_HIXL_SRC_HIXL_COMMON_HIXL_INNER_TYPES_H_

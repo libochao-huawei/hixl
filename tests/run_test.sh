@@ -186,6 +186,12 @@ run() {
           echo -e "\033[31m${RUN_TEST_CASE}\033[0m"
           exit 1;
       fi
+      RUN_TEST_CASE="${BUILD_PATH}/tests/cpp/hixl/hixl_test --gtest_output=xml:${report_dir}/hixl_test.xml" && ${RUN_TEST_CASE}
+      if [[ "$?" -ne 0 ]]; then
+          echo "!!! CPP TEST FAILED, PLEASE CHECK YOUR CHANGES !!!"
+          echo -e "\033[31m${RUN_TEST_CASE}\033[0m"
+          exit 1;
+      fi
   fi
 
   if [[ "X$ENABLE_PY_TEST" = "XON" ]]; then

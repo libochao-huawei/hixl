@@ -18,10 +18,28 @@ Status Channel::Create(EndpointHandle ep_handle, HcommChannelDesc &ch_desc, Comm
   HIXL_CHK_BOOL_RET_STATUS(ep_handle != nullptr, PARAM_INVALID, "Channel::Create called with null endpoint handle");
   constexpr uint32_t list_num = 1U;
   ChannelHandle ch_list[1] = {};
-  HIXL_LOGI("HcommChannelCreate start, protocol=%d, devPhyId=%u, ep_handle=%p",
+
+
+  HIXL_LOGI("[JZY]channel:protocol=%d", ch_desc.remoteEndpoint.protocol);
+  HIXL_LOGI("[JZY]ep_handle=%p",ep_handle);
+  Status ret = 0;
+  try {
+    HIXL_LOGI("[JZY]HcommChannelCreate start");
+    HIXL_LOGI("HcommChannelCreate start, protocol=%d, devPhyId=%u, ep_handle=%p",
             static_cast<int32_t>(ch_desc.remoteEndpoint.protocol),
             ch_desc.remoteEndpoint.loc.device.devPhyId, ep_handle);
-  HIXL_CHK_HCCL_RET(HcommChannelCreate(ep_handle, engine, &ch_desc, list_num, ch_list));
+    HIXL_LOGI("[JZY][channel.cc] ch_desc.remoteEndpoint.loc.device.devPhyId=%u", ch_desc.remoteEndpoint.loc.device.devPhyId);
+    ret = HcommChannelCreate(ep_handle, engine, &ch_desc, list_num, ch_list);
+    HIXL_LOGI("[JZY]HcommChannelCreate end");
+
+  } catch (const std::exception &e) {
+    HIXL_LOGE(FAILED, "[JZY] e=%s", e.what());
+  }
+  HIXL_LOGI("[JZY] HcommChannelCreate ret=%d", ret);
+  if (ret != HCCL_SUCCESS) {
+    HIXL_LOGE(FAILED, "[JZY] HcommChannelCreate ERROR");
+    return FAILED;
+  }
   channel_handle_ = ch_list[0];
   HIXL_LOGI("Channel::Create success, handle=%lu", channel_handle_);
   return SUCCESS;
@@ -41,9 +59,9 @@ Status Channel::GetStatus(ChannelHandle channel_handle, int32_t *status_out) {
     return 20;
   }
   *status_out = status_list[0];
-  // 底层约定：0 表示 ready，其它值表示“尚未 ready 或失败”
-  if (*status_out != 0) {
-    HIXL_LOGD("Channel query success but not ready. channel_handle=%p, status_out=%d",
+  // 底层约定：1 表示 ready，其它值表示“尚未 ready 或失败”
+  if (*status_out != 1) {
+    HIXL_LOGD("Channel query success but not ready. channel_handle=%lu, status_out=%d",
               channel_handle, *status_out);
   }
   return SUCCESS;

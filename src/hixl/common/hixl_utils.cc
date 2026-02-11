@@ -52,6 +52,68 @@ Status ParseIpAddress(const std::string &ip_str, CommAddr &addr) {
   return PARAM_INVALID;
 }
 
+Status ConvertToEndPointInfo(const EndpointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t devPhyId) {
+  static const std::map<std::string, EndpointLocType> placement_map = {{kPlacementHost, ENDPOINT_LOC_TYPE_HOST},
+                                                                       {kPlacementDevice, ENDPOINT_LOC_TYPE_DEVICE}};
+
+  static const std::map<std::string, CommProtocol> protocol_map = {{kProtocolRoce, COMM_PROTOCOL_ROCE},
+                                                                   {kProtocolUbCtp, COMM_PROTOCOL_UBC_CTP},
+                                                                   {kProtocolUbTp, COMM_PROTOCOL_UBC_TP}};
+
+  // 处理placement
+  auto placement_it = placement_map.find(endpoint_config.placement);
+  if (placement_it == placement_map.end()) {
+    HIXL_LOGE(PARAM_INVALID, "Unsupported placement: %s", endpoint_config.placement.c_str());
+    return PARAM_INVALID;
+  }
+  endpoint.loc.locType = placement_it->second;
+
+  // 处理protocol
+  auto protocol_it = protocol_map.find(endpoint_config.protocol);
+  if (protocol_it == protocol_map.end()) {
+    HIXL_LOGE(PARAM_INVALID, "Unsupported protocol: %s", endpoint_config.protocol.c_str());
+    return PARAM_INVALID;
+  }
+  endpoint.protocol = protocol_it->second;
+
+  // 处理ROCE协议的comm_id
+  if (endpoint_config.protocol == kProtocolRoce) {
+    HIXL_CHK_STATUS_RET(ParseIpAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseIpAddress failed");
+    return SUCCESS;
+  }
+
+  // 处理UB协议的comm_id
+  if (endpoint_config.protocol == kProtocolUbCtp || endpoint_config.protocol == kProtocolUbTp) {
+    HIXL_CHK_STATUS_RET(ParseEidAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseEidAddress failed");
+    // placement 为device则需要填写device结构体中的物理id
+    if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
+      endpoint.loc.device.devPhyId = devPhyId;
+    }
+    return SUCCESS;
+  }
+  return SUCCESS;
+}
+
+Status SerializeEndPointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str) {
+  nlohmann::json j = nlohmann::json::array();
+  try {
+    for (const auto &ep : list) {
+      nlohmann::json item;
+      item["protocol"] = ep.protocol;
+      item["comm_id"] = ep.comm_id;
+      item["placement"] = ep.placement;
+      item["plane"] = ep.plane;
+      item["dst_eid"] = ep.dst_eid;
+      item["net_instance_id"] = ep.net_instance_id;
+      j.push_back(item);
+    }
+    msg_str = j.dump();
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "Failed to dump endpoint list, exception:%s", e.what());
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
 
 Status CheckIp(const std::string &ip) {
   struct in_addr addr;
@@ -62,8 +124,8 @@ Status CheckIp(const std::string &ip) {
   return hixl::SUCCESS;
 }
 
-std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char delim) {
-  std::vector<std::string, std::allocator<std::string>> elems;
+std::vector<std::string> Split(const std::string &str, const char delim) {
+  std::vector<std::string> elems;
   if (str.empty()) {
     (void)elems.emplace_back("");
     return elems;
