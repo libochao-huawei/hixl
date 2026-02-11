@@ -39,7 +39,7 @@
         <file value="hixl" install_mod="550" entity="true" />
     </file_info>
     <file_info copy_type="delivery" src_path="" dst_path="hixl/aicpu_kernel" install_path="opp/built-in/op_impl/aicpu/kernel" install_type="all">
-        <file value="aicpu_hixl.tar.gz" install_mod="440" entity="true" />
+        <file value="cann-hixl-compat.tar.gz" install_mod="440" entity="true" />
     </file_info>
         <file_info copy_type="delivery" src_path="" dst_path="hixl/aicpu_kernel" install_path="opp/built-in/op_impl/aicpu/config" install_type="all">
         <file value="libscatter_hixl_kernel.json" install_mod="440" entity="true" />

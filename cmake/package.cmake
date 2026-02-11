@@ -101,7 +101,7 @@ install(TARGETS llm_datadist
         LIBRARY DESTINATION hixl/lib)
 
 install(FILES
-  ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_kernel/aicpu_hixl.tar.gz
+  ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_kernel/cann-hixl-compat.tar.gz
   DESTINATION hixl/aicpu_kernel
 )
 

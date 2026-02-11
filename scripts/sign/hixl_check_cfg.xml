@@ -22,5 +22,5 @@
 -->
 
 <hixl_check_cfg>
-    <item input="aicpu_hixl.tar.gz" output="aicpu_hixl.tar.gz" type="cms" sign_alg="PSS" tag="ascend_aicpu" nvcnt="0"></item>
+    <item input="cann-hixl-compat.tar.gz" output="cann-hixl-compat.tar.gz" type="cms" sign_alg="PSS" tag="ascend_aicpu" nvcnt="0"></item>
 </hixl_check_cfg>

@@ -39,13 +39,13 @@ endif()
 add_subdirectory(${HIXL_DIR}/src/ops ${CMAKE_BINARY_DIR}/src/ops)
 pack_targets_and_files(
     OUTPUT_TARGET "pack_aicpu_hixl"
-    OUTPUT aicpu_hixl.tar.gz
+    OUTPUT cann-hixl-compat.tar.gz
     FILES ""
     TARGETS hixl_kernel
 )
 
 sign_file(
-    INPUT "aicpu_hixl.tar.gz"
+    INPUT "cann-hixl-compat.tar.gz"
     CONFIG "${HIXL_DIR}/scripts/sign/hixl_check_cfg.xml"
     RESULT_VAR "aicpu_hixl_sign_file"
     DEPENDS pack_aicpu_hixl
