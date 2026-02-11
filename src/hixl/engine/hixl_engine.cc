@@ -20,7 +20,7 @@
 
 namespace hixl {
 
-void from_json(const nlohmann::json &j, hixl::EndPointConfig &ep) {
+void from_json(const nlohmann::json &j, hixl::EndpointConfig &ep) {
   j.at("protocol").get_to(ep.protocol);
   j.at("comm_id").get_to(ep.comm_id);
   j.at("placement").get_to(ep.placement);
@@ -216,7 +216,7 @@ Status HixlEngine::RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor
   return SUCCESS;
 }
 
-Status HixlEngine::ParseEndPoint(const std::string &local_comm_res, std::vector<EndPointConfig> &endpoint_list) {
+Status HixlEngine::ParseEndPoint(const std::string &local_comm_res, std::vector<EndpointConfig> &endpoint_list) {
   try {
     auto config = nlohmann::json::parse(local_comm_res);
     std::string net_id = config["net_instance_id"];

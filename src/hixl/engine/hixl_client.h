@@ -106,7 +106,7 @@ class HixlClient {
    * @param [in] local_endpoint_list 客户端本地 endpoint_list
    * @return 操作结果状态码
    */
-  Status Initialize(const std::vector<EndPointConfig> &local_endpoint_list);
+  Status Initialize(const std::vector<EndpointConfig> &local_endpoint_list);
 
   /**
    * @brief 建链
@@ -148,35 +148,35 @@ class HixlClient {
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
 
  private:
-  Status Deserialize(const std::string &json_str, std::vector<EndPointConfig> &endpoint_list);
+  Status Deserialize(const std::string &json_str, std::vector<EndpointConfig> &endpoint_list);
 
   Status ParseJsonField(const nlohmann::json &json_obj, const std::string &field_name, std::string &field_value);
 
   Status SendEndPointInfoReq(int32_t fd, CtrlMsgType msg_type);
 
-  Status RecvEndPointInfoResp(int32_t fd, std::vector<EndPointConfig> &remote_endpoint_list);
+  Status RecvEndPointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list);
 
   // 解析通信类型
   CommType ParseCommType(const std::string &local_placement, const std::string &remote_placement);
 
-  bool MustUseRoce(const std::vector<EndPointConfig> &local_endpoint_list,
-                   const std::vector<EndPointConfig> &remote_endpoint_list) const;
+  bool MustUseRoce(const std::vector<EndpointConfig> &local_endpoint_list,
+                   const std::vector<EndpointConfig> &remote_endpoint_list) const;
 
-  Status TryMatchRoceEndpoints(const std::vector<EndPointConfig> &local_endpoint_list,
-                               const std::vector<EndPointConfig> &remote_endpoint_list);
+  Status TryMatchRoceEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
+                               const std::vector<EndpointConfig> &remote_endpoint_list);
 
-  Status TryMatchUbEndpoints(const EndPointConfig &local_endpoint,
-                             const std::map<MatchKey, EndPointConfig> &peer_match_endpoints,
+  Status TryMatchUbEndpoints(const EndpointConfig &local_endpoint,
+                             const std::map<MatchKey, EndpointConfig> &peer_match_endpoints,
                              std::map<CommType, bool> &expected_pairs, uint32_t &count);
 
-  void BuildEndpointsMatchMap(const std::vector<EndPointConfig> &endpoint_list,
-                              std::map<MatchKey, EndPointConfig> &peer_match_endpoints) const;
+  void BuildEndpointsMatchMap(const std::vector<EndpointConfig> &endpoint_list,
+                              std::map<MatchKey, EndpointConfig> &peer_match_endpoints) const;
 
-  Status FindMatchedEndPoints(const std::vector<EndPointConfig> &local_endpoint_list,
-                              const std::vector<EndPointConfig> &remote_endpoint_list);
+  Status FindMatchedEndPoints(const std::vector<EndpointConfig> &local_endpoint_list,
+                              const std::vector<EndpointConfig> &remote_endpoint_list);
 
   // 创建cs_client
-  Status CreateCsClients(const EndPointConfig &local_endpoint_config, const EndPointConfig &remote_endpoint_config,
+  Status CreateCsClients(const EndpointConfig &local_endpoint_config, const EndpointConfig &remote_endpoint_config,
                          CommType type);
 
   Status GetMemType(const std::vector<SegmentPtr> &segments, uintptr_t addr, size_t len, MemType &mem_type);

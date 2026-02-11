@@ -11,6 +11,8 @@
 #ifndef CANN_HIXL_SRC_HIXL_ENGINE_HIXL_SERVER_H
 #define CANN_HIXL_SRC_HIXL_ENGINE_HIXL_SERVER_H
 
+#include "engine.h"
+
 #include <vector>
 #include <mutex>
 #include <map>
@@ -52,6 +54,8 @@ class HixlServer {
    * @brief 销毁server
    */
   Status Finalize();
+
+  Status RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor);
 
  private:
   void *server_handle_ = nullptr;

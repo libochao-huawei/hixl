@@ -52,44 +52,7 @@ Status ParseIpAddress(const std::string &ip_str, CommAddr &addr) {
   return PARAM_INVALID;
 }
 
-Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
-  // 检查字符串长度是否为32
-  if (eid_str.length() != 32) {
-    HIXL_LOGE(PARAM_INVALID, "Invalid EID format: %s. Expected 32 hexadecimal characters without colons.",
-              eid_str.c_str());
-    return PARAM_INVALID;
-  }
-
-  // 检查字符串是否只包含十六进制字符
-  if (!std::all_of(eid_str.begin(), eid_str.end(), [](unsigned char c) { return std::isxdigit(c); })) {
-    HIXL_LOGE(PARAM_INVALID, "Invalid EID: %s. Only hexadecimal characters are allowed.", eid_str.c_str());
-    return PARAM_INVALID;
-  }
-
-  (void)memset_s(addr.eid, COMM_ADDR_EID_LEN, 0, COMM_ADDR_EID_LEN);
-  // 每两个字符转换为一个uint8_t值
-  for (size_t i = 0; i < COMM_ADDR_EID_LEN; ++i) {
-    std::string segment = eid_str.substr(i * 2, 2);
-    try {
-      unsigned long value = std::stoul(segment, nullptr, 16);
-      if (value > UINT8_MAX) {
-        HIXL_LOGE(PARAM_INVALID, "Invalid segment %zu in EID: %s. Maximum value is 0xFF.", i, segment.c_str());
-        return PARAM_INVALID;
-      }
-      addr.eid[i] = static_cast<uint8_t>(value);
-    } catch (const std::invalid_argument &) {
-      HIXL_LOGE(PARAM_INVALID, "Failed to convert segment %zu of EID: %s to integer.", i, segment.c_str());
-      return PARAM_INVALID;
-    } catch (const std::out_of_range &) {
-      HIXL_LOGE(PARAM_INVALID, "Segment %zu of EID: %s is out of range.", i, segment.c_str());
-      return PARAM_INVALID;
-    }
-  }
-  addr.type = COMM_ADDR_TYPE_EID;
-  return SUCCESS;
-}
-
-Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t devPhyId) {
+Status ConvertToEndPointInfo(const EndpointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t devPhyId) {
   static const std::map<std::string, EndpointLocType> placement_map = {{kPlacementHost, ENDPOINT_LOC_TYPE_HOST},
                                                                        {kPlacementDevice, ENDPOINT_LOC_TYPE_DEVICE}};
 
@@ -131,7 +94,7 @@ Status ConvertToEndPointInfo(const EndPointConfig &endpoint_config, EndpointDesc
   return SUCCESS;
 }
 
-Status SerializeEndPointConfigList(const std::vector<EndPointConfig> &list, std::string &msg_str) {
+Status SerializeEndPointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str) {
   nlohmann::json j = nlohmann::json::array();
   try {
     for (const auto &ep : list) {

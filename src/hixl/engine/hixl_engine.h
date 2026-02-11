@@ -138,7 +138,7 @@ class HixlEngine : public hixl::Engine {
   void Finalize() override;
 
  private:
-  Status ParseEndPoint(const std::string &local_common_res, std::vector<EndPointConfig> &endpoint_list);
+  Status ParseEndPoint(const std::string &local_common_res, std::vector<EndpointConfig> &endpoint_list);
 
   std::mutex mutex_;
 
@@ -146,7 +146,7 @@ class HixlEngine : public hixl::Engine {
   ClientManager client_manager_;
   HixlServer server_;
   std::map<void *, MemInfo> mem_map_;
-  std::vector<EndPointConfig> endpoint_list_;
+  std::vector<EndpointConfig> endpoint_list_;
   std::map<uint64_t, AscendString> req2client_;
 };
 }  // namespace hixl
