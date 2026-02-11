@@ -13,27 +13,6 @@ set(HIXL_TEST_FILES
         engine/hixl_server_unittest.cpp
         )
 
-file(GLOB HIXL_SRC_LIST
-        "${HIXL_CODE_DIR}/src/hixl/common/*.cc"
-        "${HIXL_CODE_DIR}/src/hixl/engine/*.cc"
-        "${HIXL_CODE_DIR}/src/hixl/cs/*.cc"
-)
-
-file(GLOB ADXL_SRC_LIST
-        "${HIXL_CODE_DIR}/src/llm_datadist/api/adxl_engine_impl.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/statistic_manager.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/llm_datadist_timer.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/adxl/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/common/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/hccl/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/allocator/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/config/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/span/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/type/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/util/*.cc"
-)
-
 set(HIXL_STUB_SRC_FILES
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/ascend_string_stub.cc"
 )
@@ -41,8 +20,6 @@ set(HIXL_STUB_SRC_FILES
 add_executable(hixl_test
         ${HIXL_TEST_FILES}
         ${HIXL_STUB_SRC_FILES}
-        ${ADXL_SRC_LIST}
-        ${HIXL_SRC_LIST}
         )
 
 target_compile_options(hixl_test PRIVATE
@@ -82,7 +59,8 @@ target_link_libraries(hixl_test
         -Wl,--no-as-needed
         hccl_stub
         error_manager_stub
-        -Wl,--as-needed)
+        -Wl,--as-needed
+        cann_hixl)
 
 include(CTest)
 enable_testing()
