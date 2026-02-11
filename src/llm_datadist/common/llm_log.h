@@ -103,6 +103,10 @@ inline bool LlmLogPrintStdout() {
     }                                                                                            \
   } while (false)
 
+#ifdef __cplusplus
+}
+#endif
+
 #define LLM_LOGE_IF(condition, ...)     \
   if ((condition)) {                   \
     LLMLOGE((ge::FAILED), __VA_ARGS__); \
@@ -208,9 +212,6 @@ inline bool LlmLogPrintStdout() {
     }                                                                  \
   } while (false)
 
-#ifdef __cplusplus
-}
-#endif
 
 namespace llm {
 inline ge::Status ConvertAclError2Ge(int32_t ret) {
