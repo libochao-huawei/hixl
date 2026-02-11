@@ -15,3 +15,4 @@ target_link_libraries(slog_stub PRIVATE intf_pub
 )
 
 stub_module(slog slog_stub)
+stub_module(alog slog_stub)

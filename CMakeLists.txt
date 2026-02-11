@@ -36,6 +36,13 @@ add_custom_target(generate_hixl_version_info
 )
 
 if (ENABLE_TEST)
+    add_subdirectory(src)
+    if (BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
+        include(cmake/package.cmake)
+    endif()
+    add_custom_target(select_targets)
+    add_dependencies(select_targets llm_datadist cann_hixl llm_datadist_wrapper metadef_wrapper)
+
     add_subdirectory(tests)
 else ()
     add_subdirectory(src)
