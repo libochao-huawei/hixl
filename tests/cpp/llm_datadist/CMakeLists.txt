@@ -33,32 +33,9 @@ set(LLM_DATADIST_STUB_SRC_FILES
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/hccl_stub.cc"
 )
 
-file(GLOB LLM_V2_SRC_LIST
-        "${HIXL_CODE_DIR}/src/hixl/engine/*.cc"
-        "${HIXL_CODE_DIR}/src/hixl/common/*.cc"
-        "${HIXL_CODE_DIR}/src/hixl/cs/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/api/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/adxl/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/common/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/cache_mgr/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/link_mgr/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/transfer_engine/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/hccl/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/fsm/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/utils/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/data_transfer/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/allocator/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/config/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/span/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/type/*.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/memory/util/*.cc")
-
 add_executable(llm_datadist_test
         ${LLM_DATADIST_TEST_FILES}
         ${LLM_DATADIST_STUB_SRC_FILES}
-        ${LLM_V2_SRC_LIST}
         )
 
 target_compile_options(llm_datadist_test PRIVATE
@@ -97,6 +74,7 @@ target_link_libraries(llm_datadist_test
         GTest::gmock
         -Wl,--no-as-need
         error_manager_stub
+        llm_datadist
 )
 
 include(CTest)
