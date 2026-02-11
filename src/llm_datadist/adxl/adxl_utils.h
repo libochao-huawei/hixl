@@ -26,9 +26,6 @@ Status HcclError2AdxlStatus(HcclResult ret);
 Status AclError2AdxlStatus(aclError ret);
 Status LLMError2AdxlStatus(ge::Status ret);
 
-std::string MemTypeToString(MemType type);
-std::string TransferOpToString(TransferOp op);
-
 constexpr const char* OPTION_MAX_CHANNEL = "channel_pool.max_channel";
 constexpr const char* OPTION_HIGH_WATERLINE = "channel_pool.high_waterline";
 constexpr const char* OPTION_LOW_WATERLINE = "channel_pool.low_waterline";

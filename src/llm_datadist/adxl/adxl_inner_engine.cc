@@ -447,7 +447,8 @@ Status AdxlInnerEngine::GetTransferType(const ChannelPtr &channel, TransferOp op
       }
     }
     LLMLOGD("Cur transfer type:%d, local mem type:%s, remote mem type:%s.", static_cast<int32_t>(cur_type),
-            MemTypeToString(local_mem_type).c_str(), MemTypeToString(remote_mem_type).c_str());
+            hixl::MemTypeToString(static_cast<hixl::MemType>(local_mem_type)).c_str(),
+            hixl::MemTypeToString(static_cast<hixl::MemType>(remote_mem_type)).c_str());
     if (i > 0) {
       ADXL_CHK_BOOL_RET_STATUS(!need_buffer || (need_buffer && cur_type == type), PARAM_INVALID,
                                "All transfer type need be same in buffer transfer mode.");
