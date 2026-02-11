@@ -61,12 +61,11 @@ hixl::Status AppendTagStorage(std::vector<std::vector<char>> &storage, const std
         tag.c_str(), tag.size(), buf.size(), static_cast<int32_t>(rc));
   }
   storage.emplace_back(std::move(buf));
-  HIXL_LOGD("[HixlClient] AppendTagStorage success. tag: '%s', current_storage_size: %zu",
-              tag.c_str(), storage.size());
+  HIXL_LOGD("[HixlClient] AppendTagStorage success. tag: '%s', current_storage_size: %zu", tag.c_str(), storage.size());
   return hixl::SUCCESS;
 }
 
-void BuildTagPtrs(std::vector<std::vector<char>> &storage, std::vector<char*> &ptrs) {
+void BuildTagPtrs(std::vector<std::vector<char>> &storage, std::vector<char *> &ptrs) {
   ptrs.clear();
   ptrs.reserve(storage.size());
   for (auto &s : storage) {
@@ -84,14 +83,14 @@ void CloseImportedBufs(EndpointHandle ep_handle, std::vector<hixl::HixlMemDesc> 
     }
     const HcclResult ret = HcommMemUnimport(ep_handle, b.export_desc, b.export_len);
     if (ret != HCCL_SUCCESS) {
-      HIXL_LOGW("[HixlClient] HcommMemUnimport failed. addr=%p size=%" PRIu64 " ret=0x%X",
-                b.mem.addr, b.mem.size, static_cast<uint32_t>(ret));
+      HIXL_LOGW("[HixlClient] HcommMemUnimport failed. addr=%p size=%" PRIu64 " ret=0x%X", b.mem.addr, b.mem.size,
+                static_cast<uint32_t>(ret));
     }
   }
 }
 
 hixl::Status ImportOneDesc(hixl::ImportCtx &ctx, uint32_t idx, hixl::HixlMemDesc &desc) {
-  HcommMem  buf{};
+  HcommMem buf{};
   hixl::Status ret = ctx.ep->MemImport(desc.export_desc, desc.export_len, buf);
   if (ret != hixl::SUCCESS) {
     HIXL_LOGE(ret, "[HixlClient] MemImport failed, idx=%u, tag=%s", idx, desc.tag.c_str());
@@ -128,12 +127,13 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
   HIXL_CHECK_NOTNULL(src_endpoint);
   HIXL_CHECK_NOTNULL(dst_endpoint);
   HIXL_CHECK_NOTNULL(config);
-  HIXL_EVENT("[HixlClient] Create begin. Server=%s:%u. "
-             "SrcEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x], "
-             "DstEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x]",
-             server_ip, server_port,
-             src_endpoint->loc, src_endpoint->protocol, src_endpoint->commAddr.type, src_endpoint->commAddr.id,
-             dst_endpoint->loc, dst_endpoint->protocol, dst_endpoint->commAddr.type, dst_endpoint->commAddr.id);
+  HIXL_EVENT(
+      "[HixlClient] Create begin. Server=%s:%u. "
+      "SrcEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x], "
+      "DstEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x]",
+      server_ip, server_port, src_endpoint->loc, src_endpoint->protocol, src_endpoint->commAddr.type,
+      src_endpoint->commAddr.id, dst_endpoint->loc, dst_endpoint->protocol, dst_endpoint->commAddr.type,
+      dst_endpoint->commAddr.id);
   std::lock_guard<std::mutex> lock(mutex_);
   server_ip_ = server_ip;
   server_port_ = server_port;
@@ -173,11 +173,11 @@ Status HixlCSClient::Connect(uint32_t timeout_ms) {
 
 Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms) {
   const EndpointDesc &src_ep = src_endpoint_->GetEndpoint();
-  HIXL_LOGD("[HixlClient] Sending CreateChannelReq. socket: %d, timeout: %u ms, "
-            "Src[protocol:%u, type:%u, id:%u], Dst[protocol:%u, type:%u, id:%u]",
-            socket_, timeout_ms,
-            src_ep.protocol, src_ep.commAddr.type, src_ep.commAddr.id,
-            dst_endpoint_.protocol, dst_endpoint_.commAddr.type, dst_endpoint_.commAddr.id);
+  HIXL_LOGD(
+      "[HixlClient] Sending CreateChannelReq. socket: %d, timeout: %u ms, "
+      "Src[protocol:%u, type:%u, id:%u], Dst[protocol:%u, type:%u, id:%u]",
+      socket_, timeout_ms, src_ep.protocol, src_ep.commAddr.type, src_ep.commAddr.id, dst_endpoint_.protocol,
+      dst_endpoint_.commAddr.type, dst_endpoint_.commAddr.id);
   Status ret = ConnMsgHandler().SendCreateChannelRequest(socket_, src_ep, dst_endpoint_);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendCreateChannelRequest failed. fd=%d", socket_);
   ChannelHandle channel_handle = 0UL;
@@ -231,13 +231,9 @@ void HixlCSClient::FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, 
   *list_num = static_cast<uint32_t>(remote_mems_out_.size());
 }
 
-Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list,
-                                     HcommMem **remote_mem_list,
-                                     char ***mem_tag_list,
-                                     uint32_t *list_num) {
-  HIXL_DISMISSABLE_GUARD(free_export_desc, [&desc_list]() {
-    FreeExportDesc(desc_list);
-  });
+Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcommMem **remote_mem_list,
+                                     char ***mem_tag_list, uint32_t *list_num) {
+  HIXL_DISMISSABLE_GUARD(free_export_desc, [&desc_list]() { FreeExportDesc(desc_list); });
   *list_num = static_cast<uint32_t>(desc_list.size());
   Status ret = ClearRemoteMemInfo();
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] ClearRemoteMemInfo before ImportRemoteMem failed");
@@ -281,8 +277,7 @@ Status HixlCSClient::ClearRemoteMemInfo() {
     if (ep_handle != nullptr) {
       CloseImportedBufs(ep_handle, desc_list_);
     } else {
-      HIXL_LOGW("[HixlClient] ClearRemoteMemInfo: endpoint handle null, skip MemClose for %zu bufs",
-                desc_list_.size());
+      HIXL_LOGW("[HixlClient] ClearRemoteMemInfo: endpoint handle null, skip MemClose for %zu bufs", desc_list_.size());
     }
     for (auto &desc : desc_list_) {
       if (desc.export_desc != nullptr) {
@@ -300,19 +295,17 @@ Status HixlCSClient::ClearRemoteMemInfo() {
 }
 
 Status HixlCSClient::Destroy() {
-  HIXL_EVENT("[HixlClient] Destroy start. fd=%d, imported_bufs=%zu, recorded_addrs=%zu",
-             socket_, imported_remote_bufs_.size(), recorded_remote_addrs_.size());
+  HIXL_EVENT("[HixlClient] Destroy start. fd=%d, imported_bufs=%zu, recorded_addrs=%zu", socket_,
+             imported_remote_bufs_.size(), recorded_remote_addrs_.size());
   std::lock_guard<std::mutex> lock(mutex_);
   Status first_error = SUCCESS;
   Status ret = ClearRemoteMemInfo();
   if (ret != SUCCESS) {
-    HIXL_LOGW("[HixlClient] ClearRemoteMemInfo failed. fd=%d, ret=%u",
-              socket_, static_cast<uint32_t>(ret));
+    HIXL_LOGW("[HixlClient] ClearRemoteMemInfo failed. fd=%d, ret=%u", socket_, static_cast<uint32_t>(ret));
     if (first_error == SUCCESS) {
       first_error = ret;
     }
   }
-
   if (socket_ != -1) {
     HIXL_LOGI("[HixlClient] Closing socket. fd=%d", socket_);
     close(socket_);

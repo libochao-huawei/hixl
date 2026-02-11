@@ -43,7 +43,6 @@ hixl::Status ExtractTypeAndJsonPtr(const std::vector<uint8_t> &body, hixl::CtrlM
   return hixl::SUCCESS;
 }
 
-
 void FreeExportDesc(std::vector<hixl::HixlMemDesc> &descs) {
   for (auto &d : descs) {
     if (d.export_desc != nullptr) {
@@ -62,8 +61,8 @@ hixl::Status RecvAndCheckHeader(int32_t socket, uint64_t &body_size, uint32_t ti
   HIXL_EVENT("[HixlClient] RecvGetRemoteMemResp header ok. fd=%d, body_size=%" PRIu64, socket, header.body_size);
   HIXL_LOGD("[HixlClient] Header received. magic: 0x%X, body_size: %lu", header.magic, header.body_size);
   HIXL_CHK_BOOL_RET_STATUS(header.magic == hixl::kMagicNumber, hixl::PARAM_INVALID,
-                           "[HixlClient] Invalid magic in GetRemoteMemResp, expect:0x%X, actual:0x%X", hixl::kMagicNumber,
-                           header.magic);
+                           "[HixlClient] Invalid magic in GetRemoteMemResp, expect:0x%X, actual:0x%X",
+                           hixl::kMagicNumber, header.magic);
 
   HIXL_CHK_BOOL_RET_STATUS(
       header.body_size > sizeof(hixl::CtrlMsgType) && header.body_size <= kMaxGetRemoteMemBodySize, hixl::PARAM_INVALID,
@@ -175,8 +174,8 @@ hixl::Status FillExportDescFromJsonField(const nlohmann::json &j_export, hixl::H
 hixl::Status ParseOneMemDesc(const nlohmann::json &item, uint32_t idx, hixl::HixlMemDesc &out) {
   try {
     if (!item.contains("tag") || !item.contains("export_desc") || !item.contains("mem") || !item["mem"].is_object()) {
-      HIXL_LOGE(hixl::PARAM_INVALID, "[HixlClient] GetRemoteMemResp.mem_descs[%u] missing 'tag' / 'export_desc' or 'mem'",
-                idx);
+      HIXL_LOGE(hixl::PARAM_INVALID,
+                "[HixlClient] GetRemoteMemResp.mem_descs[%u] missing 'tag' / 'export_desc' or 'mem'", idx);
       return hixl::PARAM_INVALID;
     }
     HcommMem mem{};
@@ -257,7 +256,6 @@ Status MemMsgHandler::SendGetRemoteMemRequest(int32_t socket, uint64_t endpoint_
   HIXL_EVENT("[HixlClient] SendGetRemoteMemRequest success. fd=%d", socket);
   return SUCCESS;
 }
-
 
 Status MemMsgHandler::RecvGetRemoteMemResponse(int32_t socket, std::vector<HixlMemDesc> &mem_descs,
                                                uint32_t timeout_ms) {
