@@ -31,7 +31,7 @@ class HixlEntity : public CommEntity {
   ge::Status BatchTransfer(std::list<HcclOneSideOpDesc> &tasks, bool is_put, bool reversed, int32_t timeout_ms) override;
 
  private:
-  ge::Status RecvCacheTableResp(int32_t fd, CacheTableInfo &cache_table_info, int32_t timeout_ms);
+  static ge::Status RecvCacheTableResp(int32_t fd, CacheTableInfo &cache_table_info, int32_t timeout_ms);
 
   std::string remote_ip_;
   uint32_t remote_port_ = 0U;
