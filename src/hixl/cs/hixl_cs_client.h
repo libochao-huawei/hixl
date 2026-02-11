@@ -28,12 +28,6 @@
 #include "hcomm_compat.h"
 
 namespace hixl {
-namespace {
-constexpr uint32_t kUbThreadNum = 1U;
-constexpr uint32_t kUbNotifyNumPerThread = 1U;
-constexpr CommEngine kUbEngine = CommEngine::COMM_ENGINE_AICPU;
-}  // namespace
-
 struct CompleteHandle {
   uint32_t magic;
   int32_t flag_index;

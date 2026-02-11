@@ -28,6 +28,9 @@
 #include <common/llm_utils.h>
 
 namespace {
+constexpr uint32_t kUbThreadNum = 1U;
+constexpr uint32_t kUbNotifyNumPerThread = 1U;
+constexpr CommEngine kUbEngine = CommEngine::COMM_ENGINE_AICPU;
 constexpr uint32_t kUbCompleteMagic = 0x55425548U;
 constexpr uint32_t kRoceCompleteMagic = 0x524F4345U;
 constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";
@@ -952,12 +955,12 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
       "Src[protocol:%u, type:%u, id:%u], Dst[protocol:%u, type:%u, id:%u]",
       socket_, timeout_ms, src_ep.protocol, src_ep.commAddr.type, src_ep.commAddr.id, dst_endpoint_.protocol,
       dst_endpoint_.commAddr.type, dst_endpoint_.commAddr.id);
-  Status ret = ConnMsgHandler().SendCreateChannelRequest(socket_, src_ep, dst_endpoint_);
+  Status ret = ConnMsgHandler::SendCreateChannelRequest(socket_, src_ep, dst_endpoint_);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendCreateChannelRequest failed. fd=%d", socket_);
   ChannelHandle channel_handle = 0UL;
   ret = src_endpoint_->CreateChannel(dst_endpoint_, channel_handle);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] Endpoint CreateChannel failed. Dst[id:0x%x]", dst_endpoint_.commAddr.id);
-  ret = ConnMsgHandler().RecvCreateChannelResponse(socket_, dst_endpoint_handle_, timeout_ms);
+  ret = ConnMsgHandler::RecvCreateChannelResponse(socket_, dst_endpoint_handle_, timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] RecvCreateChannelResponse failed. fd=%d, timeout=%u ms", socket_, timeout_ms);
   HIXL_LOGI("[HixlClient] Connect: remote endpoint handle = %" PRIu64, dst_endpoint_handle_);
   client_channel_handle_ = channel_handle;
@@ -976,11 +979,11 @@ Status HixlCSClient::GetRemoteMem(HcommMem **remote_mem_list, char ***mem_tag_li
   *mem_tag_list = nullptr;
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHECK_NOTNULL(src_endpoint_);
-  Status ret = MemMsgHandler().SendGetRemoteMemRequest(socket_, dst_endpoint_handle_, timeout_ms);
+  Status ret = MemMsgHandler::SendGetRemoteMemRequest(socket_, dst_endpoint_handle_, timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendGetRemoteMemRequest failed. fd=%d, remote_ep_handle=%" PRIu64, socket_,
                       dst_endpoint_handle_);
   std::vector<HixlMemDesc> mem_descs;
-  ret = MemMsgHandler().RecvGetRemoteMemResponse(socket_, mem_descs, timeout_ms);
+  ret = MemMsgHandler::RecvGetRemoteMemResponse(socket_, mem_descs, timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] RecvGetRemoteMemResponse failed. fd=%d, timeout=%u ms", socket_, timeout_ms);
   HIXL_LOGD("[HixlClient] Recv remote mem descs success. Count=%zu", mem_descs.size());
   ret = ImportRemoteMem(mem_descs, remote_mem_list, mem_tag_list, list_num);
