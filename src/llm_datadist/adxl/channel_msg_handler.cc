@@ -254,7 +254,7 @@ Status ChannelMsgHandler::RegisterMem(const MemDesc &mem, MemType type, MemHandl
     ADXL_CHK_HCCL_RET(llm::HcclAdapter::GetInstance().HcclRegisterGlobalMem(&hccl_mem, &mem_handle));
   }
   LLMLOGI("Add local mem range start:%lu, end:%lu, type:%s.", mem.addr, mem.addr + mem.len,
-          MemTypeToString(type).c_str());
+          hixl::MemTypeToString(static_cast<hixl::MemType>(type)).c_str());
   // keep same lock order with DeregisterMem
   std::lock_guard<std::mutex> lock(mutex_);
   ADXL_CHK_BOOL_RET_STATUS(segment_table_ != nullptr, FAILED, "Segment table is null.");
@@ -333,7 +333,7 @@ Status ChannelMsgHandler::CreateChannel(const ChannelInfo &channel_info, bool is
   // add remote addr to segment table
   for (const auto &remote_addr : peer_channel_info.addrs) {
     LLMLOGI("Add remote mem range start:%lu, end:%lu, type:%s.", remote_addr.start_addr, remote_addr.end_addr,
-            MemTypeToString(remote_addr.mem_type).c_str());
+            hixl::MemTypeToString(static_cast<hixl::MemType>(remote_addr.mem_type)).c_str());
     ADXL_CHK_BOOL_RET_STATUS(segment_table_ != nullptr, FAILED, "Segment table is null.");
     segment_table_->AddRange(channel->GetChannelId(), remote_addr.start_addr, remote_addr.end_addr,
                              remote_addr.mem_type);
