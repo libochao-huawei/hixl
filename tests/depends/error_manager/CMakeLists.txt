@@ -16,3 +16,6 @@ target_link_libraries(error_manager_stub
     PUBLIC
         metadef_headers
 )
+
+stub_module(error_manager error_manager_stub)
+stub_module(metadef error_manager_stub)
