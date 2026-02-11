@@ -52,7 +52,7 @@ const char *CommTypeToString(CommType type) {
 }
 
 // 自定义查找函数
-std::map<MatchKey, EndPointConfig>::const_iterator FindMatchingKey(const std::map<MatchKey, EndPointConfig> &map,
+std::map<MatchKey, EndpointConfig>::const_iterator FindMatchingKey(const std::map<MatchKey, EndpointConfig> &map,
                                                                    const MatchKey &query_key) {
   for (auto it = map.begin(); it != map.end(); ++it) {
     if (it->first.Matches(query_key)) {
@@ -63,9 +63,9 @@ std::map<MatchKey, EndPointConfig>::const_iterator FindMatchingKey(const std::ma
 }
 }  // namespace
 
-Status HixlClient::Initialize(const std::vector<EndPointConfig> &local_endpoint_list) {
+Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_list) {
   // 创建socket，与server建链，发送请求，获取remote_endpoint_list
-  std::vector<EndPointConfig> remote_endpoint_list;
+  std::vector<EndpointConfig> remote_endpoint_list;
   CtrlMsgPlugin::Initialize();
   {
     int32_t socket = -1;
@@ -100,7 +100,7 @@ Status HixlClient::SendEndPointInfoReq(int32_t fd, CtrlMsgType msg_type) {
   return SUCCESS;
 }
 
-Status HixlClient::RecvEndPointInfoResp(int32_t fd, std::vector<EndPointConfig> &remote_endpoint_list) {
+Status HixlClient::RecvEndPointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) {
   CtrlMsgHeader header{};
   HIXL_LOGI("Receiving header from fd=%d", fd);
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, &header, static_cast<uint32_t>(sizeof(header)), kCtrlMsgPluginTimeoutMs));
@@ -136,7 +136,7 @@ Status HixlClient::RecvEndPointInfoResp(int32_t fd, std::vector<EndPointConfig> 
   return SUCCESS;
 }
 
-Status HixlClient::Deserialize(const std::string &json_str, std::vector<EndPointConfig> &endpoint_list) {
+Status HixlClient::Deserialize(const std::string &json_str, std::vector<EndpointConfig> &endpoint_list) {
   nlohmann::json j;
   try {
     j = nlohmann::json::parse(json_str);
@@ -151,7 +151,7 @@ Status HixlClient::Deserialize(const std::string &json_str, std::vector<EndPoint
   }
 
   for (const auto &item : j) {
-    EndPointConfig endpoint{};
+    EndpointConfig endpoint{};
     // 解析字段
     HIXL_CHK_STATUS_RET(ParseJsonField(item, "protocol", endpoint.protocol), "Failed to parse protocol");
     HIXL_CHK_STATUS_RET(ParseJsonField(item, "comm_id", endpoint.comm_id), "Failed to parse comm_id");
@@ -169,7 +169,7 @@ Status HixlClient::Deserialize(const std::string &json_str, std::vector<EndPoint
 Status HixlClient::ParseJsonField(const nlohmann::json &json_obj, const std::string &field_name,
                                   std::string &field_value) {
   if (!json_obj.contains(field_name)) {
-    HIXL_LOGE(PARAM_INVALID, "Missing required field '%s' in EndPointConfig", field_name.c_str());
+    HIXL_LOGE(PARAM_INVALID, "Missing required field '%s' in EndpointConfig", field_name.c_str());
     return PARAM_INVALID;
   }
 
@@ -182,8 +182,8 @@ Status HixlClient::ParseJsonField(const nlohmann::json &json_obj, const std::str
   }
 }
 
-Status HixlClient::FindMatchedEndPoints(const std::vector<EndPointConfig> &local_endpoint_list,
-                                        const std::vector<EndPointConfig> &remote_endpoint_list) {
+Status HixlClient::FindMatchedEndPoints(const std::vector<EndpointConfig> &local_endpoint_list,
+                                        const std::vector<EndpointConfig> &remote_endpoint_list) {
   // 如果必须使用ROCE，直接匹配并创建ROCE链路
   if (MustUseRoce(local_endpoint_list, remote_endpoint_list)) {
     return TryMatchRoceEndpoints(local_endpoint_list, remote_endpoint_list);
@@ -192,7 +192,7 @@ Status HixlClient::FindMatchedEndPoints(const std::vector<EndPointConfig> &local
   std::map<CommType, bool> expected_pairs = {
       {CommType::COMM_TYPE_UB_D2D, false}, {CommType::COMM_TYPE_UB_H2D, false}, {CommType::COMM_TYPE_UB_D2H, false}, {CommType::COMM_TYPE_UB_H2H, false}};
   uint32_t count = 0;
-  std::map<MatchKey, EndPointConfig> peer_match_endpoints;
+  std::map<MatchKey, EndpointConfig> peer_match_endpoints;
   BuildEndpointsMatchMap(remote_endpoint_list, peer_match_endpoints);
   for (const auto &local_endpoint : local_endpoint_list) {
     HIXL_LOGI("local_endpoint:%s", local_endpoint.ToString().c_str());
@@ -212,8 +212,8 @@ Status HixlClient::FindMatchedEndPoints(const std::vector<EndPointConfig> &local
 }
 
 // 是否必须使用ROCE
-bool HixlClient::MustUseRoce(const std::vector<EndPointConfig> &local_endpoint_list,
-                             const std::vector<EndPointConfig> &remote_endpoint_list) const {
+bool HixlClient::MustUseRoce(const std::vector<EndpointConfig> &local_endpoint_list,
+                             const std::vector<EndpointConfig> &remote_endpoint_list) const {
   // 是否开启HCCL_INTRA_ROCE_ENABLE
   std::string env_roce_enable;
   const char *env_ret = std::getenv("HCCL_INTRA_ROCE_ENABLE");
@@ -228,12 +228,12 @@ bool HixlClient::MustUseRoce(const std::vector<EndPointConfig> &local_endpoint_l
 }
 
 // 尝试匹配ROCE端点
-Status HixlClient::TryMatchRoceEndpoints(const std::vector<EndPointConfig> &local_endpoint_list,
-                                         const std::vector<EndPointConfig> &remote_endpoint_list) {
+Status HixlClient::TryMatchRoceEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
+                                         const std::vector<EndpointConfig> &remote_endpoint_list) {
   auto local_it = std::find_if(local_endpoint_list.begin(), local_endpoint_list.end(),
-                               [](const EndPointConfig &endpoint) { return endpoint.protocol == kProtocolRoce; });
+                               [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolRoce; });
   auto remote_it = std::find_if(remote_endpoint_list.begin(), remote_endpoint_list.end(),
-                                [](const EndPointConfig &endpoint) { return endpoint.protocol == kProtocolRoce; });
+                                [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolRoce; });
   if (local_it != local_endpoint_list.end() && remote_it != remote_endpoint_list.end()) {
     return CreateCsClients(*local_it, *remote_it, CommType::COMM_TYPE_ROCE);
   } else {
@@ -242,8 +242,8 @@ Status HixlClient::TryMatchRoceEndpoints(const std::vector<EndPointConfig> &loca
   }
 }
 
-void HixlClient::BuildEndpointsMatchMap(const std::vector<EndPointConfig> &endpoint_list,
-                                        std::map<MatchKey, EndPointConfig> &peer_match_endpoints) const {
+void HixlClient::BuildEndpointsMatchMap(const std::vector<EndpointConfig> &endpoint_list,
+                                        std::map<MatchKey, EndpointConfig> &peer_match_endpoints) const {
   for (const auto &endpoint : endpoint_list) {
     if (endpoint.protocol == kProtocolUbCtp || endpoint.protocol == kProtocolUbTp) {
       MatchKey key = {endpoint.dst_eid, endpoint.plane, endpoint.placement};
@@ -252,8 +252,8 @@ void HixlClient::BuildEndpointsMatchMap(const std::vector<EndPointConfig> &endpo
   }
 }
 
-Status HixlClient::TryMatchUbEndpoints(const EndPointConfig &local_endpoint,
-                                       const std::map<MatchKey, EndPointConfig> &peer_match_endpoints,
+Status HixlClient::TryMatchUbEndpoints(const EndpointConfig &local_endpoint,
+                                       const std::map<MatchKey, EndpointConfig> &peer_match_endpoints,
                                        std::map<CommType, bool> &expected_pairs, uint32_t &count) {
   if (local_endpoint.protocol != kProtocolUbCtp && local_endpoint.protocol != kProtocolUbTp) {
     return SUCCESS;
@@ -291,8 +291,8 @@ CommType HixlClient::ParseCommType(const std::string &local_placement, const std
 }
 
 // 创建cs_client
-Status HixlClient::CreateCsClients(const EndPointConfig &local_endpoint_config,
-                                   const EndPointConfig &remote_endpoint_config, CommType type) {
+Status HixlClient::CreateCsClients(const EndpointConfig &local_endpoint_config,
+                                   const EndpointConfig &remote_endpoint_config, CommType type) {
   int32_t devLogicId = 0;
   int32_t devPhyId = 0;
   HIXL_CHK_ACL_RET(aclrtGetDevice(&devLogicId));
@@ -300,10 +300,10 @@ Status HixlClient::CreateCsClients(const EndPointConfig &local_endpoint_config,
   EndpointDesc local_endpoint{};
   EndpointDesc remote_endpoint{};
   HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(local_endpoint_config, local_endpoint, static_cast<uint32_t>(devPhyId)),
-                      "HixlClient convert EndPointConfig to EndPointInfo failed");
+                      "HixlClient convert EndpointConfig to EndPointInfo failed");
   HIXL_LOGI("[XMX] local_endpoint devPhyId: %u", local_endpoint.loc.device.devPhyId);
   HIXL_CHK_STATUS_RET(ConvertToEndPointInfo(remote_endpoint_config, remote_endpoint),
-                      "HixlClient convert EndPointConfig to EndPointInfo failed");
+                      "HixlClient convert EndpointConfig to EndPointInfo failed");
   HIXL_LOGI("[XMX] remote_endpoint devPhyId: %u", remote_endpoint.loc.device.devPhyId);
   HixlClientHandle handle = nullptr;
   HixlClientDesc desc{};

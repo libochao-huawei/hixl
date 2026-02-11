@@ -15,7 +15,7 @@
 #include "client_manager.h"
 
 namespace hixl {
-Status ClientManager::CreateClient(const std::vector<EndPointConfig> &endpoint_list,
+Status ClientManager::CreateClient(const std::vector<EndpointConfig> &endpoint_list,
                                    const std::string &remote_engine,
                                    ClientPtr &client_ptr) {
   std::string ip;
