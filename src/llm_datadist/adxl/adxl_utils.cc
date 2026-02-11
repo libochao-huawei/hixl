@@ -63,6 +63,28 @@ Status LLMError2AdxlStatus(ge::Status ret) {
   return FAILED;
 }
 
+std::string TransferOpToString(TransferOp op) {
+  switch (op) {
+    case READ:
+      return "read";
+    case WRITE:
+      return "write";
+    default:
+      return "unknown";
+  }
+}
+
+std::string MemTypeToString(MemType type) {
+  switch (type) {
+    case MEM_DEVICE:
+      return "device";
+    case MEM_HOST:
+      return "host";
+    default:
+      return "unknown";
+  }
+}
+
 Status LoadJsonConfig(const std::string& json_string, std::map<AscendString, AscendString>& options) {
   try {
     nlohmann::json j = nlohmann::json::parse(json_string);
