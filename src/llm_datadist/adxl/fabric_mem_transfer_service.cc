@@ -95,7 +95,7 @@ Status FabricMemTransferService::RegisterMem(const MemDesc &mem, MemType type, M
                                                        ACL_MEM_SHARE_HANDLE_TYPE_FABRIC, &share_handle));
     share_handles_[pa_handle] = ShareHandleInfo{mem.addr, mem.len, share_handle};
     mem_handle = pa_handle;
-    LLMLOGI("Export suc, mem type:%d, mem addr:%lu.", type, mem.addr);
+    LLMLOGI("Export suc, mem type:%s, mem addr:%lu.", MemTypeToString(type).c_str(), mem.addr);
     LLM_DISMISS_GUARD(pa_guard);
   }
   if (type == MEM_HOST) {
