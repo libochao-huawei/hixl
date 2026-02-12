@@ -100,6 +100,7 @@ HcclResult HcommChannelGetStatus(const ChannelHandle *channelList, uint32_t list
 
 void HcommChannelFence(ChannelHandle channel) {
   (void)channel;
+  return;
 }
 
 void HcommWriteNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
