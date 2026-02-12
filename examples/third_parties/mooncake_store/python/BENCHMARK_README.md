@@ -36,19 +36,7 @@ mooncake_master \
   --http_metadata_server_port=8080
 ```
 
-### 2. 配置传输方式
-
-在 `run.sh` 中设置环境变量选择传输方式：
-
-```bash
-# RDMA 传输
-export HCCL_INTRA_ROCE_ENABLE=1
-
-# PCIe 传输
-export HCCL_INTRA_PCIE_ENABLE=1
-```
-
-### 3. 运行 Benchmark
+### 2. 运行 Benchmark
 
 使用 `run.sh` 脚本运行 benchmark：
 
@@ -72,6 +60,7 @@ bash run.sh benchmark_bandwidth.py [参数]
 - `--block_sizes`: （可选）要测试的 block 大小列表（KB），默认为 "1,4,16,64,144,256,512,1024"
 - `--num_blocks`: （可选）每次迭代的 block 数量，默认为 100
 - `--num_iters`: （可选）每个 block 大小的迭代次数，默认为 10
+- `--register_size_gb`: （可选）自定义要注册的内存大小（GB），用于压力测试模式
 
 ### 分布式参数
 
@@ -166,13 +155,36 @@ mooncake:
 然后使用配置文件运行：
 
 ```bash
-bash runr.sh benchmark_bandwidth.py \
+bash run.sh benchmark_bandwidth.py \
   --device_id=0 \
   --config=benchmark_config.yaml \
   --transfer_mode="full_mesh"
 ```
 
+### 示例 5：压力测试模式
+
+使用 `--register_size_gb` 参数进行压力测试：
+
+```bash
+bash run.sh benchmark_bandwidth.py \
+  --device_id=0 \
+  --schema="d2d" \
+  --transfer_mode="pairwise" \
+  --register_size_gb=10 \
+  --block_sizes="1024" \
+  --num_blocks=10
+```
+
 ## 输出说明
+
+### 启动信息
+
+```
+Starting bandwidth benchmark
+Schema: d2d
+Transfer mode: pairwise
+World size: 1
+```
 
 ### 单个 Block Size 的输出
 
@@ -181,17 +193,18 @@ bash runr.sh benchmark_bandwidth.py \
 Benchmark Configuration:
   Block Size: 144 KB
   Number of Blocks: 100
-  Number of Iterations: 10
+  Iterations: 10
   Transfer Mode: pairwise
-  Schema: d2d
-  World Size: 1
 ================================================================================
 
+Performing warmup iteration...
+Warmup completed
+
 ================================================================================
-Benchmark Results for Block Size 144 KB:
-  Total Time: 2.345 seconds
-  Total Data Transferred: 0.137 GB
-  Average Bandwidth: 0.059 GB/s
+Results for 144 KB:
+  Total Data per operation: 0.137 GB
+  Put: 0.012s => 11.417 GB/s (0.137 GB)
+  Get (avg over 10 iters): 0.011s => 12.454 GB/s (0.137 GB)
 ================================================================================
 ```
 
@@ -199,66 +212,19 @@ Benchmark Results for Block Size 144 KB:
 
 ```
 ================================================================================
-SUMMARY - Bandwidth vs Block Size:
-Transfer Mode: pairwise
+SUMMARY - Bandwidth Results
+Mode: pairwise
 World Size: 1
-Schema: d2d
 ================================================================================
-Block Size (KB)      Bandwidth (GB/s)    
-----------------------------------------
-1                    0.010               
-4                    0.035               
-16                   0.120               
-64                   0.450               
-144                  0.059               
-256                  0.980               
-512                  1.850               
-1024                 3.200               
-================================================================================
-Benchmark completed successfully!
+Block (KB)        Put (GB/s)        Get (GB/s)        
+--------------------------------------------------------------------------------
+1                 0.010             0.011             
+4                 0.035             0.036             
+16                0.120             0.125             
+64                0.450             0.460             
+144               11.417            12.454            
+256               0.980             1.000             
+512               1.850             1.900             
+1024              3.200             3.300             
 ================================================================================
 ```
-
-## 性能分析建议
-
-1. **Block Size 影响**：
-   - 小 block size 可能导致频繁的传输开销
-   - 大 block size 可以更好地利用带宽
-   - 测试不同 block size 可以找到最优的传输块大小
-
-2. **传输模式选择**：
-   - `pairwise`: 适合点对点通信场景
-   - `full_mesh`: 适合 all-to-all 通信场景，但网络开销大
-   - `one_to_many`: 适合广播场景，适合测试主从架构
-
-3. **迭代次数**：
-   - 增加迭代次数可以获得更稳定的平均值
-   - 建议至少运行 10 次迭代以获得可靠结果
-
-4. **分布式环境**：
-   - 在分布式环境中，所有 rank 的结果只有 rank 0 会输出汇总
-   - 确保所有 rank 都正确启动并同步
-
-## 注意事项
-
-1. 在调用零拷贝接口前，必须完成 buffer 的注册
-2. 确保 Mooncake master 正在运行
-3. 不要同时禁用 ROCE 和 PCIE
-4. 对于 `full_mesh` 和 `one_to_many` 模式，建议使用分布式环境
-5. 确保有足够的内存来分配测试 buffer
-
-## 故障排查
-
-### 问题：Buffer 注册失败
-- 检查内存是否足够
-- 检查 buffer 大小是否超过限制
-
-### 问题：数据传输失败
-- 检查 Mooncake master 是否正常运行
-- 检查网络连接
-- 检查 RDMA/PCIE 配置
-
-### 问题：分布式性能异常
-- 检查所有 rank 是否正确启动
-- 检查网络拓扑和延迟
-- 检查是否有网络拥塞
