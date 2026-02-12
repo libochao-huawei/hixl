@@ -27,7 +27,7 @@
 #include "hixl_mem_store.h"
 
 namespace hixl {
-struct Completedesc {
+struct CompleteHandle {
   int32_t flag_index;
   uint64_t *flag_address;
 };
@@ -79,7 +79,7 @@ class HixlCSClient {
   Status BatchTransfer(bool is_get, const CommunicateMem &communicate_mem_param, void **queryhandle);
 
   // 通过已经建立好的channel，检查批量读写的状态。
-  Status CheckStatus(Completedesc *queryhandle, HixlCompleteStatus *status);
+  Status CheckStatus(CompleteHandle *queryhandle, HixlCompleteStatus *status);
 
   // 注册client的endpoint的内存信息到内存注册表中。
   Status UnRegMem(MemHandle mem_handle);
@@ -89,7 +89,7 @@ class HixlCSClient {
  private:
   Status ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms);
   int32_t AcquireFlagIndex();
-  Status ReleaseCompleteHandle(Completedesc *queryhandle);
+  Status ReleaseCompleteHandle(CompleteHandle *queryhandle);
   Status ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcommMem **remote_mem_list, char ***mem_tag_list,
                          uint32_t *list_num);
   void FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
@@ -110,7 +110,7 @@ class HixlCSClient {
   std::array<uint32_t, kFlagQueueSize> available_indices_{};
   size_t top_index_ = 0;                                           // 栈顶指针
   std::mutex indices_mutex_;
-  std::array<Completedesc*, kFlagQueueSize> live_handles_{}; // 用来记录读写生成的queryhandle
+  std::array<CompleteHandle*, kFlagQueueSize> live_handles_{}; // 用来记录读写生成的queryhandle
   int32_t socket_ = -1;
   std::map<std::string, HcommMem> tag_mem_descs_;
   std::vector<HcommMem> remote_mems_out_;

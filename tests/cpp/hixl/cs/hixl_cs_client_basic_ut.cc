@@ -80,7 +80,7 @@ void PrepareConnectionAndImport(hixl::HixlCSClient& cli, const char* client_ip, 
   ASSERT_EQ(cli.Create(client_ip, port, &src, &dst, &config), SUCCESS);
 
   std::vector<HixlMemDesc> descs;
-  descs.push_back(MakeRemoteDesc("_hixl_builtin_dev_trans_flag",
+  descs.push_back(MakeRemoteDesc("_hixl_builtin_host_trans_flag",
   &kTransFlagAddr, kFlagSizeBytes));
   descs.push_back(MakeRemoteDesc("server_data",
   &kServerDataAddr, kBlockSizeBytes));
@@ -132,7 +132,7 @@ TEST_F(HixlCSClientFixture, ImportRemoteMemAndClearRemoteMemInfo) {
   // 构造两个远端内存描述并导入
   std::vector<HixlMemDesc> descs;
   descs.push_back(
-      MakeRemoteDesc("_hixl_builtin_dev_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
+      MakeRemoteDesc("_hixl_builtin_host_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
   descs.push_back(MakeRemoteDesc("server_data", &kServerDataAddr, kBlockSizeBytes));
 
   HcommMem *remote_mem_list = nullptr;
@@ -190,7 +190,7 @@ TEST_F(HixlCSClientFixture, BatchPutSuccessWithStubbedHccl) {
   EXPECT_EQ(cli.BatchTransfer(false, com_mem, &query_handle), SUCCESS);
   std::cout << "执行批量写入，返回queryhandle" << std::endl;
   EXPECT_NE(query_handle, nullptr);
-  Completedesc *task_flag = static_cast<Completedesc *>(query_handle);
+  CompleteHandle *task_flag = static_cast<CompleteHandle *>(query_handle);
   // 首次检查通常为 NOT_READY（flag 还未被置 1)
   HixlCompleteStatus status_out = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
   uint64_t* flag = task_flag->flag_address;
@@ -219,7 +219,7 @@ TEST_F(HixlCSClientFixture, BatchGetSuccessWithStubbedHccl) {
   CommunicateMem com_mem{1, local_list, remote_list, len_list};
   EXPECT_EQ(cli.BatchTransfer(true, com_mem, &query_handle), SUCCESS);
   EXPECT_NE(query_handle, nullptr);
-  Completedesc *task_flag = static_cast<Completedesc *>(query_handle);
+  CompleteHandle *task_flag = static_cast<CompleteHandle *>(query_handle);
   HixlCompleteStatus status_out = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
   EXPECT_EQ(cli.CheckStatus(task_flag, &status_out), SUCCESS);
   EXPECT_EQ(status_out, HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED);
