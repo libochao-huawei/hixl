@@ -120,7 +120,12 @@ HixlStatus HixlCSClientBatchPutAsync(HixlClientHandle client_handle, uint32_t li
   com_mem.dst_buf_list = remote_bufs.data();  // Put 操作：dst 是 remote
   com_mem.src_buf_list = local_bufs.data();   // Put 操作：src 是 local
   com_mem.len_list = lens.data();
-  const auto ret = client->BatchTransfer(false, com_mem, complete_handle);
+  void * raw_handle = nullptr;
+  const auto ret = client->BatchTransfer(false, com_mem, &raw_handle);
+  if (raw_handle != nullptr) {
+    *complete_handle = raw_handle;
+    HIXL_LOGI("HixlCSClientBatchPutAsync complete_handle create");
+  }
   HIXL_CHK_STATUS_RET(ret, "HixlCSClientBatchPutAsync failed, list_num:%u", list_num);
   return HIXL_SUCCESS;
 }
@@ -146,20 +151,25 @@ HixlStatus HixlCSClientBatchGetAsync(HixlClientHandle client_handle, uint32_t li
   com_mem.dst_buf_list = local_bufs.data();      // Get: 写入本地
   com_mem.src_buf_list = remote_bufs.data();     // Get: 读取远端
   com_mem.len_list = lens.data();
-  const auto ret = client->BatchTransfer(true, com_mem, complete_handle);
+  void * raw_handle = nullptr;
+  const auto ret = client->BatchTransfer(true, com_mem, &raw_handle);
+  if (raw_handle != nullptr) {
+    *complete_handle = raw_handle;
+    HIXL_LOGI("HixlCSClientBatchGetAsync complete_handle create");
+  }
   HIXL_CHK_STATUS_RET(ret,
                       "HixlCSClientBatchGetAsync failed, list_num:%u",
                       list_num);
   return HIXL_SUCCESS;
 }
 
-HixlStatus HixlCSClientQueryCompleteStatus(HixlClientHandle client_handle, hixl::Completedesc *complete_handle,
+HixlStatus HixlCSClientQueryCompleteStatus(HixlClientHandle client_handle, CompleteHandle complete_handle,
                                            HixlCompleteStatus *complete_status) {
   HIXL_CHECK_NOTNULL(client_handle);
   HIXL_CHECK_NOTNULL(complete_handle);
   HIXL_CHECK_NOTNULL(complete_status);
   auto client = static_cast<hixl::HixlCSClient *>(client_handle);
-  const auto ret = client->CheckStatus(complete_handle, complete_status);
+  const auto ret = client->CheckStatus(static_cast<hixl::CompleteHandle *>(complete_handle), complete_status);
   HIXL_CHK_STATUS_RET(ret, "HixlCSClientQueryCompleteStatus failed");
   return HIXL_SUCCESS;
 }
