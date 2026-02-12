@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ----------------------------------------------------------------------------
-# This program is free software, you can redistribute it and/or modify it.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This file is a part of the CANN Open Software.
-# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
@@ -60,7 +59,9 @@ class BandwidthBenchmark(MooncakeSampleBase):
         
         if self.args.register_size_gb is not None:
             tensor_size = int(self.args.register_size_gb * 1024 * 1024 * 1024) + ALIGNMENT * 2
-            logging.info(f"Creating tensor of size {tensor_size} bytes ({tensor_size / (1024 ** 3):.3f} GB) for stress testing")
+            logging.info(
+                f"Creating tensor of size {tensor_size} bytes "
+                f"({tensor_size / (1024 ** 3):.3f} GB) for stress testing")
         else:
             tensor_size = buffer_size + ALIGNMENT * 2
         
@@ -98,7 +99,9 @@ class BandwidthBenchmark(MooncakeSampleBase):
         self.registered_addrs.append(aligned_addr)
         
         register_gb = register_size / (1024 ** 3)
-        logging.info(f"Registered {buffer_type} buffer: addr={data_ptr}, aligned={aligned_addr}, size={register_size} ({register_gb:.3f} GB)")
+        logging.info(
+            f"Registered {buffer_type} buffer: addr={data_ptr}, "
+            f"aligned={aligned_addr}, size={register_size} ({register_gb:.3f} GB)")
         return aligned_addr
     
     def _align_address(self, addr):
@@ -203,7 +206,9 @@ class BandwidthBenchmark(MooncakeSampleBase):
         logging.info(f"Results for {block_size_kb} KB:")
         logging.info(f"  Total Data per operation: {total_gb:.3f} GB")
         logging.info(f"  Put: {put_time:.6f}s => {put_bw:.3f} GB/s ({put_data_gb:.3f} GB)")
-        logging.info(f"  Get (avg over {self.args.num_iters} iters): {avg_get:.6f}s => {get_bw:.3f} GB/s ({get_data_gb:.3f} GB)")
+        logging.info(
+            f"  Get (avg over {self.args.num_iters} iters): {avg_get:.6f}s"
+            f" => {get_bw:.3f} GB/s ({get_data_gb:.3f} GB)")
         logging.info(f"{'='*80}\n")
         
         return {'put_bandwidth': put_bw, 'get_bandwidth': get_bw}
