@@ -141,8 +141,6 @@ constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";
 constexpr const char *kTransFlagNameDevice = "_hixl_builtin_dev_trans_flag";
 
 HixlCSClient::HixlCSClient() : mem_store_() {
-  flag_queue_ = nullptr;
-  top_index_ = 0;  // 未初始化时为空栈
   for (size_t i = 0; i < kFlagQueueSize; ++i) {
     available_indices_[i] = static_cast<int32_t>(i);
     live_handles_[i] = nullptr;
@@ -231,13 +229,22 @@ Status HixlCSClient::RegMem(const char *mem_tag, const HcommMem *mem, MemHandle 
   HIXL_CHECK_NOTNULL(mem);
   auto check_result = mem_store_.CheckMemoryForRegister(false, mem->addr, mem->size);
   if (check_result) {
-    HIXL_LOGE(PARAM_INVALID, "[HixlClient] Memory registration failed. The provided memory has already been registered. Please check Mem, mem_adrr: %p, mem_size: %u.", mem->addr, mem->size);
+    HIXL_LOGE(PARAM_INVALID,
+              "[HixlClient] Memory registration failed. The provided memory has already been registered. Please check "
+              "Mem, mem_adrr: %p, mem_size: %u.",
+              mem->addr, mem->size);
     return PARAM_INVALID;
   }
   MemHandle ep_mem_handle = nullptr;
-  HIXL_CHK_STATUS_RET(src_endpoint_->RegisterMem(mem_tag, *mem, ep_mem_handle), "[HixlClient] Failed to register client endpoint mem.");
+  HIXL_CHK_STATUS_RET(src_endpoint_->RegisterMem(mem_tag, *mem, ep_mem_handle),
+                      "[HixlClient] Failed to register client endpoint mem.");
   *mem_handle = ep_mem_handle;
-  mem_store_.RecordMemory(false, mem->addr, mem->size);  // 记录client侧给endpoint分配的内存信息
+  Status ret = mem_store_.RecordMemory(false, mem->addr, mem->size);  // 记录client侧给endpoint分配的内存信息
+  if (ret != SUCCESS) {
+    HIXL_LOGE(FAILED,
+              "[HixlClient] Client record memory failed. mem_addr = %p, mem_size = %u",mem->addr, mem->size);
+    return FAILED;
+  }
   HIXL_LOGI("[HixlClient] Memory registration success. ");
   return SUCCESS;
 }
@@ -245,24 +252,22 @@ Status HixlCSClient::RegMem(const char *mem_tag, const HcommMem *mem, MemHandle 
 // 获取列表中有效的flag，考虑多线程调用，加上线程锁
 int32_t HixlCSClient::AcquireFlagIndex() {
   std::lock_guard<std::mutex> lock(indices_mutex_);
-  if (top_index_ == size_t{0}) {
+  if (top_index_ == 0U) {
     return -1;
   }
-  size_t idx = top_index_ - size_t{1};
-  top_index_ = idx;
-  return available_indices_[idx];
+  --top_index_;
+  return available_indices_[top_index_];
 }
 
-Status HixlCSClient::ReleaseCompleteHandle(CompleteHandle *queryhandle) {
-  HIXL_CHECK_NOTNULL(queryhandle);
+Status HixlCSClient::ReleaseCompleteHandle(CompleteHandle *query_handle) {
+  HIXL_CHECK_NOTNULL(query_handle);
   std::lock_guard<std::mutex> lock(indices_mutex_);
   if (top_index_ < kFlagQueueSize) {
-    size_t idx = top_index_ + size_t{1};
-    top_index_ = idx;
-    available_indices_[idx] = queryhandle->flag_index; // 回收索引
-    live_handles_[queryhandle->flag_index] = nullptr;
+    ++top_index_;
+    available_indices_[top_index_] = query_handle->flag_index;  // 回收索引
+    live_handles_[query_handle->flag_index] = nullptr;
   }
-  delete queryhandle;
+  delete query_handle;
   return SUCCESS;
 }
 
@@ -270,8 +275,7 @@ Buffers SelectBuffers(bool is_get, const void *src, const void *dst) noexcept {
   return is_get ? Buffers{src, dst} : Buffers{dst, src};
 }
 
-// 通过已经建立好的channel，从用户提取的地址列表中，批量读取server内存地址中的内容
-Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicate_mem_param, void **queryhandle) {
+Status HixlCSClient::ValidateAddress(bool is_get, const CommunicateMem &communicate_mem_param) {
   if (flag_queue_ == nullptr) {
     HIXL_LOGE(RESOURCE_EXHAUSTED, "Client not initialized: flag queue is null.");
     return RESOURCE_EXHAUSTED;
@@ -290,18 +294,25 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
       return PARAM_INVALID;
     }
   }
+  return SUCCESS;
+}
 
+// 通过已经建立好的channel，从用户提取的地址列表中，批量读取server内存地址中的内容
+Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicate_mem_param, void **query_handle) {
+  Status ret = ValidateAddress(is_get, communicate_mem_param);
+  HIXL_CHK_STATUS_RET(ret, "[HixlClient] ValidateAddress failed.");
   if (is_get) {
     // 批量提交读任务
     for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      HcommReadNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i], const_cast<void *>(communicate_mem_param.src_buf_list[i]),
+      HcommReadNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
+                   const_cast<void *>(communicate_mem_param.src_buf_list[i]),
                    communicate_mem_param.len_list[i]);  // HcommReadNbi 没有返回值
     }
-  }
-  else {
+  } else {
     // 批量提交写任务
     for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      HcommWriteNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i], const_cast<void *>(communicate_mem_param.src_buf_list[i]),
+      HcommWriteNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
+                    const_cast<void *>(communicate_mem_param.src_buf_list[i]),
                     communicate_mem_param.len_list[i]);  // HcommWriteNbi 没有返回值
     }
   }
@@ -310,7 +321,9 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
 
   int32_t flag_index = AcquireFlagIndex();
   if (flag_index == -1) {
-    HIXL_LOGE(PARAM_INVALID, "There are a large number of transfer tasks with no query results, making it impossible to create new transfer tasks.");
+    HIXL_LOGE(PARAM_INVALID,
+              "There are a large number of transfer tasks with no query results, making it impossible to create new "
+              "transfer tasks.");
     return PARAM_INVALID;
   }
   uint64_t *flag_addr = &flag_queue_[flag_index];
@@ -322,15 +335,19 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
     kTransFlagName = kTransFlagNameDevice;
   }
   HcommReadNbi(client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes);
-  CompleteHandle* query_mem_handle = new (std::nothrow) CompleteHandle();
-  if (query_mem_handle != nullptr ) {
+  CompleteHandle *query_mem_handle = new (std::nothrow) CompleteHandle();
+  if (query_mem_handle != nullptr) {
     query_mem_handle->flag_index = flag_index;
     query_mem_handle->flag_address = flag_addr;
-    // 需要先创建queryhandle实体，之后再传给指针。
-    *queryhandle = query_mem_handle;
+    // 需要先创建query_handle实体，之后再传给指针。
+    *query_handle = query_mem_handle;
     live_handles_[flag_index] = query_mem_handle;
-  }
-  else {
+  } else {
+    if (top_index_ < kFlagQueueSize) {
+      ++top_index_;
+      available_indices_[top_index_] = query_mem_handle->flag_index;  // 回收索引
+      live_handles_[query_mem_handle->flag_index] = nullptr;
+    }
     HIXL_LOGE(PARAM_INVALID, "Memory allocation failed; unable to generate query handle.");
     return PARAM_INVALID;
   }
@@ -338,23 +355,25 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
 }
 
 // 通过已经建立好的channel，检查批量读写的状态。
-Status HixlCSClient::CheckStatus(CompleteHandle *queryhandle, HixlCompleteStatus *status) {
-  HIXL_CHECK_NOTNULL(queryhandle);
-  // 检验queryhandle中的序号是否合规
-  if (queryhandle->flag_index < 0 ||
-      queryhandle->flag_index >= static_cast<int32_t>(kFlagQueueSize)) {
-    HIXL_LOGE(PARAM_INVALID, "The value of queryhandle->flag_index is outside the valid verification range; please check the queryhandle. queryhandle->flag_index：%d", queryhandle->flag_index);
+Status HixlCSClient::CheckStatus(CompleteHandle *query_handle, HixlCompleteStatus *status) {
+  HIXL_CHECK_NOTNULL(query_handle);
+  // 检验query_handle中的序号是否合规
+  if (query_handle->flag_index < 0 || query_handle->flag_index >= static_cast<int32_t>(kFlagQueueSize)) {
+    HIXL_LOGE(PARAM_INVALID,
+              "The value of query_handle->flag_index is outside the valid verification range; please check the "
+              "query_handle. query_handle->flag_index：%d",
+              query_handle->flag_index);
     return PARAM_INVALID;
-      }
-  // 通过读取queryhandle中地址的值，来判断任务的完成状态
-  uint64_t* atomic_flag = queryhandle->flag_address;
+  }
+  // 通过读取query_handle中地址的值，来判断任务的完成状态
+  uint64_t *atomic_flag = query_handle->flag_address;
   HIXL_CHECK_NOTNULL(atomic_flag);
   // 查到flag变成1之后，就把其重置为0，之后告知用户读写任务已经完成。
   if (*atomic_flag == kFlagDoneValue) {
     *atomic_flag = kFlagResetValue;
     *status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED;
     HIXL_LOGI("The current transmission task has been completed.");
-    return ReleaseCompleteHandle(queryhandle);  // 释放内存并回收索引
+    return ReleaseCompleteHandle(query_handle);  // 释放内存并回收索引
   }
   *status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
   HIXL_LOGI("The current transmission task has not been completed.");
@@ -371,7 +390,12 @@ Status HixlCSClient::UnRegMem(MemHandle mem_handle) {
   }
   Status result = src_endpoint_->DeregisterMem(mem_handle);
   if (result == SUCCESS) {
-    mem_store_.UnrecordMemory(false, desc.mem.addr);  // 删掉记录中client侧给endpoint分配的内存信息
+    Status ret = mem_store_.UnrecordMemory(false, desc.mem.addr);  // 删掉记录中client侧给endpoint分配的内存信息
+    if (ret != SUCCESS) {
+      HIXL_LOGE(FAILED,
+                "[HixlClient] Client record memory failed. mem_addr = %p",desc.mem.addr);
+      return FAILED;
+    }
     return SUCCESS;
   }
   return PARAM_INVALID;

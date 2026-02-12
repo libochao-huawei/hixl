@@ -82,12 +82,14 @@ HixlStatus HixlCSClientCreate(const HixlClientDesc *client_desc, const HixlClien
   return HIXL_SUCCESS;
 }
 
-HixlStatus HixlCSClientRegMem(HixlClientHandle client_handle, const char *mem_tag, const HcommMem *mem, MemHandle *mem_handle) {
+HixlStatus HixlCSClientRegMem(HixlClientHandle client_handle, const char *mem_tag, const HcommMem *mem,
+                              MemHandle *mem_handle) {
   HIXL_CHECK_NOTNULL(client_handle);
   HIXL_CHECK_NOTNULL(mem);
   auto client = static_cast<hixl::HixlCSClient *>(client_handle);
   const auto ret = client->RegMem(mem_tag, mem, mem_handle);
-  HIXL_CHK_STATUS_RET(ret, "HixlCSClientRegMem failed, mem_tag: %s, mem_adrr: %p, mem_size: %u.", mem_tag, mem->addr, mem->size);
+  HIXL_CHK_STATUS_RET(ret, "HixlCSClientRegMem failed, mem_tag: %s, mem_adrr: %p, mem_size: %u.",
+                      (mem_tag != nullptr ? mem_tag : "(null)"), mem->addr, mem->size);
   return HIXL_SUCCESS;
 }
 
@@ -120,7 +122,7 @@ HixlStatus HixlCSClientBatchPutAsync(HixlClientHandle client_handle, uint32_t li
   com_mem.dst_buf_list = remote_bufs.data();  // Put 操作：dst 是 remote
   com_mem.src_buf_list = local_bufs.data();   // Put 操作：src 是 local
   com_mem.len_list = lens.data();
-  void * raw_handle = nullptr;
+  void *raw_handle = nullptr;
   const auto ret = client->BatchTransfer(false, com_mem, &raw_handle);
   if (raw_handle != nullptr) {
     *complete_handle = raw_handle;
@@ -139,7 +141,7 @@ HixlStatus HixlCSClientBatchGetAsync(HixlClientHandle client_handle, uint32_t li
   HIXL_CHECK_NOTNULL(complete_handle);
   auto client = static_cast<hixl::HixlCSClient *>(client_handle);
   std::vector<void *> local_bufs(list_num);
-  std::vector<const void *> remote_bufs(list_num); // Get 操作：从 remote 读，所以 remote 是 source (const)
+  std::vector<const void *> remote_bufs(list_num);  // Get 操作：从 remote 读，所以 remote 是 source (const)
   std::vector<uint64_t> lens(list_num);
   for (uint32_t i = 0; i < list_num; ++i) {
     remote_bufs[i] = desc_list[i].remote_buf;
@@ -148,18 +150,16 @@ HixlStatus HixlCSClientBatchGetAsync(HixlClientHandle client_handle, uint32_t li
   }
   hixl::CommunicateMem com_mem;
   com_mem.list_num = list_num;
-  com_mem.dst_buf_list = local_bufs.data();      // Get: 写入本地
-  com_mem.src_buf_list = remote_bufs.data();     // Get: 读取远端
+  com_mem.dst_buf_list = local_bufs.data();   // Get: 写入本地
+  com_mem.src_buf_list = remote_bufs.data();  // Get: 读取远端
   com_mem.len_list = lens.data();
-  void * raw_handle = nullptr;
+  void *raw_handle = nullptr;
   const auto ret = client->BatchTransfer(true, com_mem, &raw_handle);
   if (raw_handle != nullptr) {
     *complete_handle = raw_handle;
     HIXL_LOGI("HixlCSClientBatchGetAsync complete_handle create");
   }
-  HIXL_CHK_STATUS_RET(ret,
-                      "HixlCSClientBatchGetAsync failed, list_num:%u",
-                      list_num);
+  HIXL_CHK_STATUS_RET(ret, "HixlCSClientBatchGetAsync failed, list_num:%u", list_num);
   return HIXL_SUCCESS;
 }
 
