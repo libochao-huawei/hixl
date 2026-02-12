@@ -16,7 +16,7 @@ import logging
 import torch
 import torch_npu
 
-from mooncake_sample_common import create_parser, setup_environment, validate_schema
+from mooncake_sample_common import create_parser, setup_environment, validate_schema, ALIGNMENT
 from mooncake_sample_base import MooncakeSampleBase
 from config import Config
 
@@ -24,8 +24,6 @@ logging.basicConfig(format="%(message)s", level=logging.INFO)
 
 
 class BandwidthBenchmark(MooncakeSampleBase):
-    ALIGNMENT = 2 * 1024 * 1024
-    
     def __init__(self, args, config):
         super().__init__(args, config)
         self.registered_addrs = []
@@ -37,18 +35,18 @@ class BandwidthBenchmark(MooncakeSampleBase):
         if self.args.register_size_gb is not None:
             logging.info(f"Custom register size specified: {self.args.register_size_gb} GB (stress testing mode)")
         
+        max_block_size_kb = max(self.args.block_sizes)
+        self.store = self.init_mooncake_store()
+        self._prepare_buffers(max_block_size_kb)
+        addr, remote_addr = self._register_all_buffers()
+        self.barrier()
+        
         results = {}
         for block_size in self.args.block_sizes:
-            self.store = self.init_mooncake_store()
-            self._prepare_buffers(block_size)
-            addr, remote_addr = self._register_all_buffers()
-            self.barrier()
-            
             results[block_size] = self._run_benchmark(block_size, addr, remote_addr)
             
-            self._unregister_all_buffers()
-            self._cleanup()
-
+        self._unregister_all_buffers()
+        self._cleanup()
         self._print_summary(results)
     
     def _log_startup_info(self):
@@ -61,24 +59,22 @@ class BandwidthBenchmark(MooncakeSampleBase):
         buffer_size = block_size_kb * 1024 * self.args.num_blocks
         
         if self.args.register_size_gb is not None:
-            tensor_size = int(self.args.register_size_gb * 1024 * 1024 * 1024) + self.ALIGNMENT * 2
+            tensor_size = int(self.args.register_size_gb * 1024 * 1024 * 1024) + ALIGNMENT * 2
             logging.info(f"Creating tensor of size {tensor_size} bytes ({tensor_size / (1024 ** 3):.3f} GB) for stress testing")
         else:
-            tensor_size = buffer_size + self.ALIGNMENT * 2
+            tensor_size = buffer_size + ALIGNMENT * 2
         
-        self.tensor = self._create_tensor(tensor_size, fill_value=1)
-        self.target_tensor = self._create_tensor(tensor_size, fill_value=0)
-    
-    def _create_tensor(self, size, fill_value):
         is_host = self.args.schema.startswith("h")
         target_is_host = self.args.schema.endswith("h")
         
-        if is_host and target_is_host:
+        self.tensor = self._create_single_tensor(tensor_size, 1, is_host)
+        self.target_tensor = self._create_single_tensor(tensor_size, 0, target_is_host)
+    
+    def _create_single_tensor(self, size, fill_value, is_host):
+        if is_host:
             return torch.full((size,), fill_value, dtype=torch.int8, pin_memory=True).cpu()
-        elif not is_host and not target_is_host:
-            return torch.full((size,), fill_value, dtype=torch.int8).npu()
         else:
-            raise ValueError(f"Unsupported schema: {self.args.schema}")
+            return torch.full((size,), fill_value, dtype=torch.int8).npu()
     
     def _register_all_buffers(self):
         addr = self._register_buffer(self.tensor, "write")
@@ -106,7 +102,7 @@ class BandwidthBenchmark(MooncakeSampleBase):
         return aligned_addr
     
     def _align_address(self, addr):
-        return (addr + self.ALIGNMENT - 1) // self.ALIGNMENT * self.ALIGNMENT
+        return (addr + ALIGNMENT - 1) // ALIGNMENT * ALIGNMENT
     
     def _unregister_all_buffers(self):
         for addr in self.registered_addrs:
