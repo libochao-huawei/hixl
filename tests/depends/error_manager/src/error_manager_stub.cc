@@ -50,7 +50,7 @@ struct StubErrorItem {
   std::string error_message;
   std::string possible_cause;
   std::string solution;
-  std::map<std::string, std::string> args_map;
+  // std::map<std::string, std::string> args_map;
   std::string report_time;
 
   friend bool operator==(const StubErrorItem &lhs, const StubErrorItem &rhs) noexcept {
