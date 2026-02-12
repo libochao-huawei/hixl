@@ -29,10 +29,10 @@ struct HixlOneSideOpParam {
   ChannelHandle channel;
   uint32_t list_num;
   void **dst_buf_list;
-  const void **src_buf_list;
+  void **src_buf_list;
   uint64_t *len_list;
-  void *remote_flag;
-  void *local_flag;
+  uint64_t remote_flag;
+  uint64_t local_flag;
   uint32_t flag_size;
 };
 extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *param);

@@ -16,10 +16,10 @@
 #include <vector>
 
 #include "acl/acl.h"
-#include "runtime/runtime/rt.h"
-#include "common/hixl_cs.h"
 #include "common/hixl_checker.h"
+#include "common/hixl_cs.h"
 #include "hcomm_compat.h"
+#include "runtime/runtime/rt.h"
 
 namespace hixl {
 
@@ -35,12 +35,12 @@ class CompletePool {
     aclrtStream stream;
     ThreadHandle thread;
     rtNotify_t notify;
-    void *host_flag;  // pinned host
+    void *host_flag;
     // TODO:临时兼容
     void *remote_flag_memcpy;
     std::array<char, 64> notify_tag;
-
-    void *notify_addr;  // device addr (notify record address)
+    uint64_t notify_addr;
+    uint32_t notify_len;
   };
 
   CompletePool();
@@ -68,13 +68,11 @@ class CompletePool {
     aclrtStream stream;
     ThreadHandle thread;
     rtNotify_t notify;
-
-    void *notify_addr;
+    uint64_t notify_addr;
+    uint32_t notify_len;
     void *host_flag;
     MemHandle notify_mem_handle;
-
     std::array<char, 64> notify_tag;
-
     // TODO:临时兼容
     void *remote_flag_memcpy;
   };
@@ -99,9 +97,9 @@ class CompletePool {
 
   void ResetNotifyResourcesLocked(Slot &slot);
   Status CreateNotifyLocked(Slot &slot, int32_t device_id, uint32_t *notify_id);
-  Status GetNotifyAddrLocked(uint32_t notify_id, void **notify_addr) const;
+  Status GetNotifyAddrLocked(uint32_t notify_id, uint64_t &notify_addr, uint32_t &notify_len) const;
   Status BuildNotifyTagLocked(uint32_t slot_index, std::array<char, 64> *tag) const;
-  Status RegisterNotifyMemLocked(Slot &slot, const char *tag, void *notify_addr);
+  Status RegisterNotifyMemLocked(Slot &slot, const char *tag, uint64_t notify_addr, uint32_t notify_len);
 
   Status InitAllSlotsLocked(int32_t device_id, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread);
 

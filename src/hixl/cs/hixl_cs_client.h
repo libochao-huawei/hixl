@@ -52,10 +52,10 @@ struct UbBatchArgs {
   ChannelHandle channel;
   uint32_t list_num;
   void **dst_buf_list;
-  const void **src_buf_list;
+  void **src_buf_list;
   uint64_t *len_list;
-  void *remote_flag;
-  void *local_flag;
+  uint64_t remote_flag;
+  uint64_t local_flag;
   uint32_t flag_size;
 };
 
@@ -151,21 +151,11 @@ class HixlCSClient {
 
   Status AcquireUbSlot(CompletePool::SlotHandle *slot);
 
-  Status SelectUbLists(bool is_get,
-                      const CommunicateMem &mem_param,
-                      const void **local_list,
-                      void **remote_list);
-
-  Status FillUbBatchArgs(bool is_get,
-                        const CommunicateMem &mem_param,
+  Status FillUbBatchArgs(const CommunicateMem &mem_param,
                         MemDev &mem_dev,
                         const CompletePool::SlotHandle &slot,
                         void *remote_flag,
                         UbBatchArgs *args);
-
-  Status GetCurrentAclContext(aclrtContext *old_ctx) const;
-  void RestoreAclContext(aclrtContext old_ctx) const;
-  Status SetAclContext(aclrtContext new_ctx) const;
 
   Status LaunchUbAndStageD2H(bool is_get,
                               UbCompleteHandle *handle,
