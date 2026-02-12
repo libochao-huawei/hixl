@@ -15,7 +15,7 @@
 
 namespace hixl {
 
-extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *param) {
+extern "C" uint32_t HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *param) {
   HIXL_LOGI("[JZY] HcclLaunchAicpuKernel start");
   if (param == nullptr) {
       HIXL_LOGE(FAILED, "[JZY] param is nullptr");
@@ -28,7 +28,7 @@ extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *
           param->remote_flag, param->local_flag, param->flag_size);
           const char *batchTag = "HixlKernel";
     HIXL_LOGI("[JZY] HcommBatchModeStart start");
-    int ret = HcommBatchModeStart(batchTag);
+    int32_t ret = HcommBatchModeStart(batchTag);
     HIXL_LOGI("[JZY] HcommBatchModeStart end");
     if (ret != 0) {
         HIXL_LOGE(FAILED,"[JZY] HcommBatchModeStart faild");
@@ -44,7 +44,7 @@ extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *
       HIXL_LOGI("[JZY] param->dst_buf_list=%p", param->dst_buf_list[i]);
       HIXL_LOGI("[JZY] param->src_buf_list=%p", param->src_buf_list[i]);
       HIXL_LOGI("[JZY] param->len_list=%p", param->len_list[i]);
-      int ret = HcommReadOnThread(param->thread, param->channel, param->dst_buf_list[i],
+      int32_t ret = HcommReadOnThread(param->thread, param->channel, param->dst_buf_list[i],
                                   const_cast<void *>(param->src_buf_list[i]),
                                   param->len_list[i]);  // HcommReadNbi 没有返回值
       if (ret != 0) {
@@ -64,7 +64,7 @@ extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *
       HIXL_LOGI("[JZY] param->dst_buf_list=%p", param->dst_buf_list[i]);
       HIXL_LOGI("[JZY] param->src_buf_list=%p", param->src_buf_list[i]);
       HIXL_LOGI("[JZY] param->len_list=%p", param->len_list[i]);
-      int ret = HcommWriteOnThread(param->thread, param->channel, param->dst_buf_list[i],
+      int32_t ret = HcommWriteOnThread(param->thread, param->channel, param->dst_buf_list[i],
                                    const_cast<void *>(param->src_buf_list[i]),
                                    param->len_list[i]);  // HcommWriteNbi 没有返回值
       if (ret != 0) {
@@ -105,13 +105,13 @@ extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *
   return SUCCESS;
 }
 
-extern "C" unsigned int HixlBatchPut(HixlOneSideOpParam *param) {
-  int ret = HcclLaunchAicpuKernel(false, param);
+extern "C" uint32_t HixlBatchPut(HixlOneSideOpParam *param) {
+  int32_t ret = HcclLaunchAicpuKernel(false, param);
   return ret;
 }
 
-extern "C" unsigned int HixlBatchGet(HixlOneSideOpParam *param) {
-  int ret = HcclLaunchAicpuKernel(true, param);
+extern "C" uint32_t HixlBatchGet(HixlOneSideOpParam *param) {
+  int32_t ret = HcclLaunchAicpuKernel(true, param);
   return ret;
 }
 }

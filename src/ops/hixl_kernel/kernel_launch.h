@@ -12,7 +12,7 @@
 #define CANN_HIXL_SRC_HIXL_OPS_HIXL_KERNEL_KERNEL_LAUNCH_H
 
 /**
-* @brief 批量读取server侧的内存内容
+* @brief HixlOneSideOpParam 记录了调用算子函数时的入参信息
 * @param [in] thread 线程句柄
 * @param [in] channel 通道句柄
 * @param [in] list_num 本次传输任务的数目
@@ -22,7 +22,6 @@
 * @param [in] remote_flag 记录了本次传输任务中remote_flag的内存地址
 * @param [in] local_flag 记录了本次传输任务中local_flag的内存地址
 * @param [in] flag_size 记录了本次传输任务中flag的内存大小
-* @return 成功:SUCCESS, 失败:其它.
   */
 struct HixlOneSideOpParam {
   ThreadHandle thread;
@@ -35,9 +34,9 @@ struct HixlOneSideOpParam {
   uint64_t local_flag;
   uint32_t flag_size;
 };
-extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *param);
+extern "C" uint32_t HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *param);
 
-extern "C" unsigned int HixlBatchPut(HixlOneSideOpParam *param);
+extern "C" uint32_t HixlBatchPut(HixlOneSideOpParam *param);
 
-extern "C" unsigned int HixlBatchGet(HixlOneSideOpParam *param);
+extern "C" uint32_t HixlBatchGet(HixlOneSideOpParam *param);
 #endif
