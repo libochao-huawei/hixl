@@ -22,7 +22,9 @@ include(cmake/variables.cmake)
 include(cmake/dependencies.cmake)
 
 include(version.cmake)
-check_pkg_build_deps("hixl")
+if(BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
+    check_pkg_build_deps("hixl")
+endif()
 add_version_info_targets()
 
 if (ENABLE_TEST)
