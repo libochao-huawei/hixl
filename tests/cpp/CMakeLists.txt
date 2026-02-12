@@ -10,3 +10,4 @@
 
 add_subdirectory(llm_datadist)
 add_subdirectory(hixl)
+add_subdirectory(ops)
