@@ -16,11 +16,11 @@
 
 namespace hixl {
 struct MemoryRegion {
-  const void* addr = nullptr;  // 内存起始地址
+  const void *addr = nullptr;  // 内存起始地址
   size_t size = 0U;            // 内存区域大小
 
   MemoryRegion() = default;
-  MemoryRegion(const void* a, size_t s) noexcept : addr(a), size(s) {}
+  MemoryRegion(const void *a, size_t s) noexcept : addr(a), size(s) {}
 };
 
 /**
@@ -56,10 +56,10 @@ class HixlMemStore {
    */
   Status ValidateMemoryAccess(const void *server_addr, size_t mem_size, const void *client_addr);
   bool CheckMemoryForRegister(bool is_server, const void *check_addr, size_t check_size);
-  bool CheckMemoryForAccess(bool is_server, const void *check_addr, size_t check_size);
-  bool CheckRegionNull(bool is_server);
+
 
  private:
+  bool CheckMemoryForAccess(bool is_server, const void *check_addr, size_t check_size);
   // 内存区域信息结构体
   std::map<const void *, MemoryRegion> server_regions_;
   std::map<const void *, MemoryRegion> client_regions_;
