@@ -76,16 +76,18 @@ bool HixlMemStore::CheckMemoryForRegister(bool is_server, const void *check_addr
   auto it = regions.lower_bound(check_addr);
   if (it != regions.end() && overlaps(it->second)) {
     HIXL_LOGE(PARAM_INVALID,
-                "Memory registration failed; the parameters overlap with the already registered memory. Overlapping memory information: buf_addr:%p, buf_len:%u",
-                it->second.addr, it->second.size);
-    return true;    // 与后一个起点>=s的区间重叠
+              "%s memory registration failed; the parameters overlap with the already registered memory. "
+              "Overlapping memory information: buf_addr:%p, buf_len:%u",
+              is_server ? "Server" : "Client", it->second.addr, it->second.size);
+    return true;  // 与后一个起点>=s的区间重叠
   }
   if (it != regions.begin()) {
-    const auto& prev = std::prev(it)->second;                        // 与前一个区间可能重叠
+    const auto &prev = std::prev(it)->second;  // 与前一个区间可能重叠
     if (overlaps(prev)) {
       HIXL_LOGE(PARAM_INVALID,
-                "Memory registration failed; the parameters overlap with the already registered memory. Overlapping memory information: buf_addr:%p, buf_len:%u",
-                prev.addr, prev.size);
+                "%s memory registration failed; the parameters overlap with the already registered memory. "
+                "Overlapping memory information: buf_addr:%p, buf_len:%u",
+                is_server ? "Server" : "Client", it->second.addr, it->second.size);
       return true;
     }
   }

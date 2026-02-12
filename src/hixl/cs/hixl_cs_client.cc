@@ -107,6 +107,15 @@ hixl::Status ImportOneDesc(hixl::ImportCtx &ctx, uint32_t idx, hixl::HixlMemDesc
   ctx.mems.emplace_back(mem);
   ctx.tag_mem_map[desc.tag] = mem;
   HIXL_LOGD("[HixlClient] Imported mem[%u]: tag='%s', addr=%p, size=%llu", idx, desc.tag.c_str(), mem.addr, mem.size);
+  ret = ctx.store->RecordMemory(true, mem.addr, static_cast<size_t>(mem.size));
+  if (ret == hixl::SUCCESS) {
+    ctx.recorded_addrs.emplace_back(mem.addr);
+  } else {
+    HIXL_LOGE(ret,
+              "[HixlClient] RecordMemory(server) failed! This memory may have been registered. idx=%u, tag=%s, addr=%p, size=%llu",
+              idx, desc.tag.c_str(), mem.addr, mem.size);
+    return ret;
+  }
   return AppendTagStorage(ctx.tag_storage, desc.tag);
 }
 
@@ -129,6 +138,7 @@ constexpr uint32_t kWaitChannelPollIntervalMs = 1U;
 constexpr uint64_t kFlagDoneValue = 1ULL;
 constexpr uint64_t kFlagResetValue = 0ULL;
 constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";
+constexpr const char *kTransFlagNameDevice = "_hixl_builtin_dev_trans_flag";
 
 HixlCSClient::HixlCSClient() : mem_store_() {
   flag_queue_ = nullptr;
@@ -208,6 +218,11 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
   EndpointHandle endpoint_handle = src_endpoint_->GetHandle();
   HIXL_EVENT("[HixlClient] Create success. server=%s:%u, src_ep_handle=%p", server_ip_.c_str(), server_port_,
              endpoint_handle);
+  Status init_ret = InitFlagQueue();
+  if (init_ret != SUCCESS) {
+    HIXL_LOGE(init_ret, "[HixlClient] Failed to initialize flag queue.");
+    return init_ret;
+  }
   return SUCCESS;
 }
 
@@ -238,7 +253,7 @@ int32_t HixlCSClient::AcquireFlagIndex() {
   return available_indices_[idx];
 }
 
-Status HixlCSClient::ReleaseCompleteHandle(Completedesc *queryhandle) {
+Status HixlCSClient::ReleaseCompleteHandle(CompleteHandle *queryhandle) {
   HIXL_CHECK_NOTNULL(queryhandle);
   std::lock_guard<std::mutex> lock(indices_mutex_);
   if (top_index_ < kFlagQueueSize) {
@@ -299,8 +314,15 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
     return PARAM_INVALID;
   }
   uint64_t *flag_addr = &flag_queue_[flag_index];
-  HcommReadNbi(client_channel_handle_, flag_addr, tag_mem_descs_["_hixl_builtin_dev_trans_flag"].addr, kFlagSizeBytes);
-  Completedesc* query_mem_handle = new (std::nothrow) Completedesc();
+  EndpointDesc endpoint = src_endpoint_->GetEndpoint();
+  const char *kTransFlagName = nullptr;
+  if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_HOST) {
+    kTransFlagName = kTransFlagNameHost;
+  } else {
+    kTransFlagName = kTransFlagNameDevice;
+  }
+  HcommReadNbi(client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes);
+  CompleteHandle* query_mem_handle = new (std::nothrow) CompleteHandle();
   if (query_mem_handle != nullptr ) {
     query_mem_handle->flag_index = flag_index;
     query_mem_handle->flag_address = flag_addr;
@@ -316,7 +338,7 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
 }
 
 // 通过已经建立好的channel，检查批量读写的状态。
-Status HixlCSClient::CheckStatus(Completedesc *queryhandle, HixlCompleteStatus *status) {
+Status HixlCSClient::CheckStatus(CompleteHandle *queryhandle, HixlCompleteStatus *status) {
   HIXL_CHECK_NOTNULL(queryhandle);
   // 检验queryhandle中的序号是否合规
   if (queryhandle->flag_index < 0 ||
@@ -450,6 +472,7 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcommM
   ImportCtx ctx;
   ctx.ep = src_endpoint_.get();
   ctx.ep_handle = ep_handle;
+  ctx.store = &mem_store_;
   ctx.num = *list_num;
   ctx.imported.reserve(ctx.num);
   ctx.recorded_addrs.reserve(ctx.num);
@@ -465,6 +488,20 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcommM
   FillOutputParams(ctx, remote_mem_list, mem_tag_list, list_num);
   HIXL_DISMISS_GUARD(free_export_desc);
   return SUCCESS;
+}
+
+void UnrecordAddrs(HixlMemStore &store, std::vector<void*> &addrs) {
+  for (auto *addr : addrs) {
+    if (addr == nullptr) {
+      continue;
+    }
+
+    const Status ret = store.UnrecordMemory(true, addr);
+    if (ret != SUCCESS) {
+      HIXL_LOGW("[HixlClient] UnrecordMemory failed. addr=%p ret=%u", addr, static_cast<uint32_t>(ret));
+    }
+  }
+  addrs.clear();
 }
 
 Status HixlCSClient::ClearRemoteMemInfo() {
@@ -488,12 +525,16 @@ Status HixlCSClient::ClearRemoteMemInfo() {
     }
     desc_list_.clear();
   }
+  if (!recorded_remote_addrs_.empty()) {
+    UnrecordAddrs(mem_store_, recorded_remote_addrs_);
+  }
   tag_mem_descs_.clear();
   remote_mems_out_.clear();
   remote_tag_ptrs_.clear();
   remote_tag_storage_.clear();
   return SUCCESS;
 }
+
 
 Status HixlCSClient::Destroy() {
   HIXL_EVENT("[HixlClient] Destroy start. fd=%d, imported_bufs=%zu, recorded_addrs=%zu", socket_,
