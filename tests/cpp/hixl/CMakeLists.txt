@@ -13,6 +13,7 @@ set(HIXL_TEST_FILES
         cs/hixl_cs_client_ut.cc
         cs/hixl_mem_store_basic_ut.cc
         cs/hixl_cs_client_basic_ut.cc
+        cs/hixl_cs_client_ub_ut.cc
         engine/hixl_server_unittest.cpp
 )
 
@@ -63,6 +64,7 @@ target_include_directories(hixl_test PRIVATE
         ${HIXL_CODE_DIR}/src/hixl/engine
         ${HIXL_CODE_DIR}/src/ops
         ${HIXL_CODE_DIR}/tests
+        ${HIXL_CODE_DIR}/tests/depends/ascendcl/src
         )
 
 set_target_properties(hixl_test PROPERTIES CXX_STANDARD 17)
