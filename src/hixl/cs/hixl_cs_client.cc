@@ -592,7 +592,7 @@ Status HixlCSClient::FillUbBatchArgs(const CommunicateMem &mem_param, MemDev &me
   args->len_list = memDev.len_list_dev;
   args->remote_flag = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(remote_flag));
   args->local_flag = slot.notify_addr;
-  args->flag_size = 4;
+  args->flag_size = slot.notify_len;
   return SUCCESS;
 }
 
