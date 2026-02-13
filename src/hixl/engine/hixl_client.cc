@@ -102,15 +102,17 @@ Status HixlClient::SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) {
   CtrlMsgHeader header{};
   header.magic = kMagicNumber;
   header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType));
-  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &header, static_cast<uint64_t>(sizeof(header))));
-  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))));
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &header, static_cast<uint64_t>(sizeof(header))),
+                      "HixlClient send header failed, fd:%d", fd);
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))),
+                      "HixlClient send msg_type failed, fd:%d", fd);
   return SUCCESS;
 }
 
 Status HixlClient::RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) {
   CtrlMsgHeader header{};
-  HIXL_LOGI("Receiving header from fd=%d", fd);
-  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, &header, static_cast<uint32_t>(sizeof(header)), kCtrlMsgPluginTimeoutMs));
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, &header, static_cast<uint32_t>(sizeof(header)), kCtrlMsgPluginTimeoutMs),
+                      "HixlClient receive header failed, fd:%d", fd);
   HIXL_CHK_BOOL_RET_STATUS(header.magic == kMagicNumber, PARAM_INVALID,
                            "Invalid magic for HixlClient RecvEndpointInfoResp, expect:0x%X, actual:0x%X", kMagicNumber,
                            header.magic);
@@ -139,7 +141,8 @@ Status HixlClient::RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> 
 
   const size_t json_len = static_cast<size_t>(body_size - sizeof(CtrlMsgType));
   std::string json_str(reinterpret_cast<const char *>(body.data() + sizeof(msg_type)), json_len);
-  HIXL_CHK_STATUS_RET(Deserialize(json_str, remote_endpoint_list), "Failed to deserialize json_str");
+  HIXL_CHK_STATUS_RET(Deserialize(json_str, remote_endpoint_list), "Failed to deserialize json_str, json_str:%s",
+                      json_str.c_str());
   return SUCCESS;
 }
 
@@ -309,10 +312,12 @@ Status HixlClient::CreateCsClients(const EndpointConfig &local_endpoint_config,
   EndpointDesc local_endpoint{};
   EndpointDesc remote_endpoint{};
   HIXL_CHK_STATUS_RET(ConvertToEndpointDesc(local_endpoint_config, local_endpoint, static_cast<uint32_t>(dev_phy_id)),
-                      "HixlClient convert EndpointConfig to EndpointInfo failed");
+                      "HixlClient convert EndpointConfig to EndpointInfo failed, local_endpoint_config:%s",
+                      local_endpoint_config.ToString().c_str());
   HIXL_LOGI("Local_endpoint dev_phy_id: %u", local_endpoint.loc.device.devPhyId);
   HIXL_CHK_STATUS_RET(ConvertToEndpointDesc(remote_endpoint_config, remote_endpoint),
-                      "HixlClient convert EndpointConfig to EndpointInfo failed");
+                      "HixlClient convert EndpointConfig to EndpointInfo failed, remote_endpoint_config:%s",
+                      remote_endpoint_config.ToString().c_str());
   HIXL_LOGI("Remote_endpoint dev_phy_id: %u", remote_endpoint.loc.device.devPhyId);
   HixlClientHandle handle = nullptr;
   HixlClientDesc desc{};
@@ -323,9 +328,9 @@ Status HixlClient::CreateCsClients(const EndpointConfig &local_endpoint_config,
   const HixlClientConfig config{};
   HIXL_CHK_STATUS_RET(HixlCSClientCreate(&desc, &config, &handle), "HixlCSClientCreate failed for type %s",
                       CommTypeToString(type));
+  HIXL_LOGI("HixlCSClientCreate success for type %s, handle:%p", CommTypeToString(type), handle);
   std::lock_guard<std::mutex> lock(client_handles_mutex_);
   client_handles_[type] = handle;
-  HIXL_LOGI("HixlCSClientCreate success for type %s, handle:%p", CommTypeToString(type), handle);
   return SUCCESS;
 }
 
@@ -346,18 +351,24 @@ Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {
       auto seg_it = std::find_if(local_segments_.begin(), local_segments_.end(),
                                  [type](const SegmentPtr &seg) { return seg->GetMemType() == type; });
       if (seg_it != local_segments_.end()) {
-        HIXL_CHK_STATUS_RET((*seg_it)->AddRange(mem.addr, mem.len), "Failed to add range to local_segments_");
+        HIXL_CHK_STATUS_RET((*seg_it)->AddRange(mem.addr, mem.len),
+                            "Failed to add range to local_segments_, addr: 0x%lx, size: %lu, type: %s", mem.addr,
+                            mem.len, (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
       } else {
         auto new_segment = MakeShared<Segment>(type);
         HIXL_CHK_BOOL_RET_STATUS(new_segment != nullptr, FAILED, "Failed to create new segment for type:%s",
                                  (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
-        HIXL_CHK_STATUS_RET(new_segment->AddRange(mem.addr, mem.len), "Failed to add range to local_segments_");
+        HIXL_CHK_STATUS_RET(new_segment->AddRange(mem.addr, mem.len),
+                            "Failed to add range to local_segments_, addr: 0x%lx, size: %lu, type: %s", mem.addr,
+                            mem.len, (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
         local_segments_.push_back(new_segment);
       }
     }
 
     // 注册内存到对应的cs client
-    HIXL_CHK_STATUS_RET(RegisterMemToCsClient(mem, type), "Failed to register memory to cs client");
+    HIXL_CHK_STATUS_RET(RegisterMemToCsClient(mem, type),
+                        "Failed to register memory to cs client, addr: 0x%lx, size: %lu, type: %s", mem.addr, mem.len,
+                        (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
   }
   return SUCCESS;
 }
@@ -388,15 +399,17 @@ Status HixlClient::RegisterMemToCsClient(const MemDesc &mem, const MemType type)
     }
     MemHandle mem_handle = nullptr;
     HIXL_CHK_STATUS_RET(HixlCSClientRegMem(handle_it->second, nullptr, &hccl_mem, &mem_handle),
-                        "HixlClient register memory failed, addr: 0x%lx, size: %lu, type: %s", mem.addr, mem.len,
+                        "HixlClient register memory failed, client_handle: %p, addr: 0x%lx, size: %lu, type: %s",
+                        handle_it->second, mem.addr, mem.len,
                         (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+    HIXL_LOGI("HixlClient register memory success, client_handle: %p, mem_handle: %p, addr: 0x%lx, size: %lu, type: %s",
+              handle_it->second, mem_handle, mem.addr, mem.len,
+              (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
     {
       std::lock_guard<std::mutex> lock(mem_handles_mutex_);
       client_mem_handles_[comm_type].push_back(mem_handle);
     }
   }
-  HIXL_LOGI("HixlClient register memory success, addr: 0x%lx, size: %lu, type: %s", mem.addr, mem.len,
-            (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
   return SUCCESS;
 }
 
@@ -407,22 +420,23 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
     return FAILED;
   }
 
-  HIXL_LOGI("HixlClient connect start");
+  HIXL_LOGI("HixlClient connect start, timeout:%u", timeout_ms);
   ThreadPool thread_pool("hixl_client_connect", client_handles_.size());
   std::vector<std::future<Status>> connect_futures;
   aclrtContext context = nullptr;
   HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&context));
-  HIXL_LOGI("[XMX] aclrtGetCurrentContext, context: %p", context);
+  HIXL_LOGI("HixlClient aclrtGetCurrentContext, context: %p", context);
   for (const auto &pair : client_handles_) {
     auto type = pair.first;
     auto handle = pair.second;
     auto future = thread_pool.commit([handle, timeout_ms, type, context]() -> Status {
       HIXL_CHK_ACL_RET(aclrtSetCurrentContext(context));
-      HIXL_LOGI("[XMX] aclrtSetCurrentContext, context: %p", context);
+      HIXL_LOGI("HixlClient aclrtSetCurrentContext, context: %p", context);
       try {
         auto ret = HixlCSClientConnect(handle, timeout_ms);
         if (ret != SUCCESS) {
-          HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, timeout:%u", CommTypeToString(type), timeout_ms);
+          HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, client_handle: %p, timeout:%u", CommTypeToString(type),
+                    handle, timeout_ms);
         }
         return ret;
       } catch (const std::exception &e) {
@@ -438,7 +452,7 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
   for (auto &future : connect_futures) {
     HIXL_CHK_STATUS_RET(future.get(), "HixlClient Connect failed, timeout:%u", timeout_ms);
   }
-  HIXL_LOGI("HixlClient Connect success");
+  HIXL_LOGI("HixlClient Connect success, timeout:%u", timeout_ms);
 
   HIXL_CHK_STATUS_RET(ProcessRemoteMem(timeout_ms), "HixlClient ProcessRemoteMem failed, timeout:%u", timeout_ms);
   std::lock_guard<std::mutex> status_lock(status_mutex_);
@@ -453,7 +467,7 @@ Status HixlClient::ProcessRemoteMem(uint32_t timeout_ms) {
     char **mem_tag_list = nullptr;
     uint32_t list_num = 0;
     HIXL_CHK_STATUS_RET(HixlCSClientGetRemoteMem(handle, &remote_mem_list, &mem_tag_list, &list_num, timeout_ms),
-                        "HixlClient get remote memories failed, timeout:%u ms", timeout_ms);
+                        "HixlClient get remote memories failed, client_handle: %p, timeout:%u ms", handle, timeout_ms);
     std::lock_guard<std::mutex> seg_lock(remote_segments_mutex_);
     for (uint32_t i = 0; i < list_num; i++) {
       MemType type = (remote_mem_list[i].type == HCCL_MEM_TYPE_DEVICE) ? MEM_DEVICE : MEM_HOST;
@@ -462,14 +476,18 @@ Status HixlClient::ProcessRemoteMem(uint32_t timeout_ms) {
       if (it != remote_segments_.end()) {
         HIXL_CHK_STATUS_RET(
             (*it)->AddRange(reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size),
-            "Failed to add range to remote_segments_");
+            "Failed to add range to remote_segments_, addr: 0x%lx, size: %lu, type: %s",
+            reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size,
+            (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
       } else {
         auto new_segment = MakeShared<Segment>(type);
         HIXL_CHK_BOOL_RET_STATUS(new_segment != nullptr, FAILED, "Failed to create new segment for type:%s",
                                  (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
         HIXL_CHK_STATUS_RET(
             new_segment->AddRange(reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size),
-            "Failed to add range to remote_segments_");
+            "Failed to add range to remote_segments_, addr: 0x%lx, size: %lu, type: %s",
+            reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size,
+            (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
         remote_segments_.push_back(new_segment);
       }
     }
@@ -655,10 +673,10 @@ Status HixlClient::BatchTransfer(const std::vector<TransferOpDesc> &op_descs, Tr
     CompleteHandle complete_handle = nullptr;
     if (operation == WRITE) {
       HIXL_CHK_STATUS_RET(HixlCSClientBatchPutAsync(handle, list_num, hixl_descs.data(), &complete_handle),
-                          "HixlClient BatchPutAsync failed");
+                          "HixlClient BatchPutAsync failed, client_handle: %p", handle);
     } else {
       HIXL_CHK_STATUS_RET(HixlCSClientBatchGetAsync(handle, list_num, hixl_descs.data(), &complete_handle),
-                          "HixlClient BatchGetAsync failed");
+                          "HixlClient BatchGetAsync failed, client_handle: %p", handle);
     }
     TransferCompleteInfo complete_info{type, complete_handle};
     complete_handle_list.push_back(complete_info);
@@ -722,12 +740,12 @@ Status HixlClient::GetTransferStatus(const TransferReq &req, TransferStatus &sta
     }
   }
   if (all_complete) {
-    HIXL_LOGI("Transfer async request completed");
+    HIXL_LOGI("BatchTransfer is completed");
     status = TransferStatus::COMPLETED;
     complete_handles_.erase(req);
     return SUCCESS;
   } else {
-    HIXL_LOGI("Transfer async request not completed");
+    HIXL_LOGI("BatchTransfer is running");
     status = TransferStatus::WAITING;
     return SUCCESS;
   }
@@ -769,7 +787,8 @@ Status HixlClient::TransferSync(const std::vector<TransferOpDesc> &op_descs, Tra
       {
         std::lock_guard<std::mutex> lock(client_handles_mutex_);
         HIXL_CHK_STATUS_RET(HixlCSClientQueryCompleteStatus(client_handles_[type], complete_handle, &query_status),
-                            "HixlClient QueryCompleteStatus failed");
+                            "HixlClient QueryCompleteStatus failed, client_handle: %p, complete_handle: %p",
+                            client_handles_[type], complete_handle);
       }
       if (query_status == HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING) {
         // 传输未完成，保存到剩余列表
