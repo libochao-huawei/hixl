@@ -93,6 +93,7 @@ class HixlCSClient {
   Status ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, HcommMem **remote_mem_list, char ***mem_tag_list,
                          uint32_t *list_num);
   Status ValidateAddress(bool is_get, const CommunicateMem &communicate_mem_param);
+  Status BatchTransferTask(bool is_get, const CommunicateMem &communicate_mem_param);
   void FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
   Status ClearRemoteMemInfo();
  private:
