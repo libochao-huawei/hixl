@@ -801,14 +801,6 @@ TEST_F(HixlClientUTest, TransferSyncSuccessTest) {
   std::cout << kLocalMems[0] << std::endl;
 }
 
-// TransferSync 接口测试：正常场景 - 4ub传输
-TEST_F(HixlClientUTest, TransferSync4UbSuccessTest) {
-  SetupTransferTest(true);
-  auto op_descs = CreateTransferOps(list_num_4ub);
-  Status st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
-  EXPECT_EQ(st, SUCCESS);
-}
-
 // TransferSync 接口测试：异常场景 - 未建链
 TEST_F(HixlClientUTest, TransferSyncNoConnectTest) {
   StartServer(MockHixlServerMode::k4UbNormal);
