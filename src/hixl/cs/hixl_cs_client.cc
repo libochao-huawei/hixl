@@ -299,25 +299,37 @@ Status HixlCSClient::ValidateAddress(bool is_get, const CommunicateMem &communic
 // 通过已经建立好的channel，从用户提取的地址列表中，批量读取server内存地址中的内容
 Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicate_mem_param, void **query_handle) {
   Status ret = ValidateAddress(is_get, communicate_mem_param);
+  int32_t hccl_ret = 0;//hccl_ret值为0时表示hccl接口执行成功
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] ValidateAddress failed.");
   if (is_get) {
     // 批量提交读任务
     for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      HIXL_CHK_HCCL_RET(HcommReadNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
+      hccl_ret = HcommReadNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
                                      const_cast<void *>(communicate_mem_param.src_buf_list[i]),
-                                     communicate_mem_param.len_list[i]));
+                                     communicate_mem_param.len_list[i]);
+      if (hccl_ret != 0) {
+        HIXL_LOGE(FAILED,"[HixlClient] HcommReadNbi failed");
+        return FAILED;
+      }
     }
   } else {
     // 批量提交写任务
     for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      HIXL_CHK_HCCL_RET(HcommWriteNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
+      hccl_ret = HcommWriteNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
                                       const_cast<void *>(communicate_mem_param.src_buf_list[i]),
-                                      communicate_mem_param.len_list[i]));
+                                      communicate_mem_param.len_list[i]);
+      if (hccl_ret != 0) { //ret值为0时表示执行成功
+        HIXL_LOGE(FAILED,"[HixlClient] HcommWriteNbi failed");
+        return FAILED;
+      }
     }
   }
   // 创建内存隔断，等到通道上所有的读任务执行结束后才会接着执行之后创建的读写任务
-  HIXL_CHK_HCCL_RET(HcommChannelFence(client_channel_handle_));
-
+  hccl_ret = HcommChannelFence(client_channel_handle_);
+  if (hccl_ret != 0) { //ret值为0时表示执行成功
+    HIXL_LOGE(FAILED,"[HixlClient] HcommChannelFence failed");
+    return FAILED;
+  }
   int32_t flag_index = AcquireFlagIndex();
   if (flag_index == -1) {
     HIXL_LOGE(PARAM_INVALID,
@@ -333,8 +345,11 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
   } else {
     kTransFlagName = kTransFlagNameDevice;
   }
-  HIXL_CHK_HCCL_RET(
-      HcommReadNbi(client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes));
+  hccl_ret = HcommReadNbi(client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes);
+  if (hccl_ret != 0) { //ret值为0时表示执行成功
+    HIXL_LOGE(FAILED,"[HixlClient] HcommReadNbi failed");
+    return FAILED;
+  }
   CompleteHandle *query_mem_handle = new (std::nothrow) CompleteHandle();
   if (query_mem_handle != nullptr) {
     query_mem_handle->flag_index = flag_index;
