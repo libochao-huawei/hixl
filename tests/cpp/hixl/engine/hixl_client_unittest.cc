@@ -321,25 +321,13 @@ class EnvGuard {
 class HixlClientUTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    // [新增] 打开 Stub 的特殊开关
-    setenv("HIXL_UT_UB_FLAG_HACK", "1", 1);
-    // [新增] 1. 创建一个空的 dummy json 文件，专门为了过 realpath 的检查
-    std::ofstream outfile("scatter_hixl_kernel.json");
-    if (outfile.is_open()) {
-      outfile << "{}" << std::endl;
-      outfile.close();
-    }
     server_ = MakeUnique<MockHixlServer>();
     client_ = MakeUnique<HixlClient>("127.0.0.1", kServerPort);
   }
 
   void TearDown() override {
-    // [新增] 关闭开关，确保不影响后续运行的其他测试用例
-    unsetenv("HIXL_UT_UB_FLAG_HACK");
     client_->Finalize();
     server_->DestroyServerAndUnreg();
-    // [新增] 2. 测试结束后清理掉这个临时文件，保持环境干净
-    remove("libcann_hixl_kernel.json");
   }
 
   void StartServer(MockHixlServerMode mode) {

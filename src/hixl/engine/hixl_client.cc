@@ -433,12 +433,10 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
       HIXL_CHK_ACL_RET(aclrtSetCurrentContext(context));
       HIXL_LOGI("HixlClient aclrtSetCurrentContext, context: %p", context);
       try {
-        auto ret = HixlCSClientConnect(handle, timeout_ms);
-        if (ret != SUCCESS) {
-          HIXL_LOGE(ret, "HixlClient Connect failed for type:%s, client_handle: %p, timeout:%u", CommTypeToString(type),
-                    handle, timeout_ms);
-        }
-        return ret;
+        HIXL_CHK_STATUS_RET(HixlCSClientConnect(handle, timeout_ms),
+                            "HixlClient Connect failed for type:%s, client_handle: %p, timeout:%u",
+                            CommTypeToString(type), handle, timeout_ms);
+        return SUCCESS;
       } catch (const std::exception &e) {
         HIXL_LOGE(FAILED, "Exception in HixlCSClientConnectSync: %s", e.what());
         return FAILED;
