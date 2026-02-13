@@ -105,10 +105,7 @@ HcclResult HcommChannelFence(ChannelHandle channel) {
 
 HcclResult HcommWriteNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
   (void)channel;
-  if (len == 0) {
-    return HCCL_E_PARA;
-  }
-  if (dst == nullptr || src == nullptr) {
+  if (dst == nullptr || src == nullptr || len == 0) {
     return HCCL_E_PARA;
   }
   memcpy_s(dst, len, src, len);
@@ -117,10 +114,7 @@ HcclResult HcommWriteNbi(ChannelHandle channel, void *dst, void *src, uint64_t l
 
 HcclResult HcommReadNbi(ChannelHandle channel, void *dst, void *src, uint64_t len) {
   (void)channel;
-  if (len == 0) {
-    return HCCL_E_PARA;
-  }
-  if (dst == nullptr || src == nullptr) {
+  if (dst == nullptr || src == nullptr || len == 0) {
     return HCCL_E_PARA;
   }
   memcpy_s(dst, len, src, len);
