@@ -475,7 +475,7 @@ TEST_F(LlmDataDistSTest, TestUseHixlBackendA5) {
   std::map<AscendString, AscendString> options_d;
   options_d[llm_datadist::OPTION_LISTEN_IP_INFO] = "127.0.0.1:26001";
   options_d[llm_datadist::OPTION_DEVICE_ID] = "1";
-  options_d[llm_datadist::OPTION_TRANSFER_BACKEND] = "hixl";
+  // options_d[llm_datadist::OPTION_TRANSFER_BACKEND] = "hixl";
   options_d[llm_datadist::OPTION_LOCAL_COMM_RES] = R"(
   {
       "net_instance_id": "superpod2_1",
