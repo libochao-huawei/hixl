@@ -42,7 +42,7 @@
         <file value="cann-hixl-compat.tar.gz" install_mod="440" entity="true" />
     </file_info>
         <file_info copy_type="delivery" src_path="" dst_path="hixl/aicpu_kernel" install_path="opp/built-in/op_impl/aicpu/config" install_type="all">
-        <file value="libscatter_hixl_kernel.json" install_mod="440" entity="true" />
+        <file value="libcann_hixl_kernel.json" install_mod="440" entity="true" />
     </file_info>
     <file_info value="hixl_lib" copy_type="delivery" src_path="" dst_path="hixl/lib" install_path="$(TARGET_ENV)/lib64" install_mod="440">
         <file value="libllm_datadist.so" file_type="shared" />

@@ -106,7 +106,7 @@ install(FILES
 )
 
 install(FILES
-  ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_kernel/libscatter_hixl_kernel.json
+  ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_kernel/libcann_hixl_kernel.json
   DESTINATION hixl/aicpu_kernel
 )
 
