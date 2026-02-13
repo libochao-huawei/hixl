@@ -18,6 +18,7 @@
 #include <mutex>
 #include "mmpa/mmpa_api.h"
 #include "acl/acl.h"
+#include "acl/acl_base_rt.h"
 
 namespace llm {
 std::string &GetAclStubMock();
@@ -107,6 +108,8 @@ public:
                                                      uint64_t flags, aclrtDrvMemHandle *handle);
   virtual aclError aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop, uint64_t flags);
   virtual aclError aclrtFreePhysical(aclrtDrvMemHandle handle);
+  virtual aclError aclrtBinaryLoadFromFile(const char *fileName, aclrtBinaryLoadOptions *options, void **handle);
+  virtual aclError aclrtBinaryGetFunction(const aclrtBinHandle binHandle, const char *funcName, void **funcPtr);
 
 private:
   static std::mutex mutex_;
