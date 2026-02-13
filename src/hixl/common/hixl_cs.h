@@ -20,15 +20,16 @@
 extern "C" {
 #endif
 
-using HixlServerHandle = void *;
-using HixlClientHandle = void *;
-using CompleteHandle = void *;
-using HixlStatus = uint32_t;
-using MemHandle = void *;
-constexpr HixlStatus HIXL_SUCCESS = 0U;
-constexpr HixlStatus HIXL_PARAM_INVALID = 103900U;
-constexpr HixlStatus HIXL_TIMEOUT = 103901U;
-constexpr HixlStatus HIXL_FAILED = 503900U;
+typedef void *HixlServerHandle;
+typedef void *HixlClientHandle;
+typedef void *CompleteHandle;
+typedef uint32_t HixlStatus;
+typedef void *MemHandle;
+#define HIXL_SUCCESS 0U
+#define HIXL_PARAM_INVALID 103900U
+#define HIXL_TIMEOUT 103901U
+#define HIXL_FAILED 503900U
+
 
 struct HixlServerConfig {
   uint8_t reserved[128] = {};

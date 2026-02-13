@@ -41,8 +41,8 @@ struct CommunicateMem {
 };
 
 struct Buffers {
-  const void* remote;
-  const void* local;
+  const void *remote;
+  const void *local;
 };
 
 struct ImportCtx {
