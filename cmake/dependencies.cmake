@@ -9,7 +9,6 @@
 # ----------------------------------------------------------------------------
 
 include(cmake/find_3rd_party_packages.cmake)
-include(cmake/function.cmake)
 if(BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
     include(cmake/intf_pub_linux.cmake)
     include(cmake/find_cann_packages.cmake)
