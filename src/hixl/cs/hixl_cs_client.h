@@ -134,12 +134,11 @@ class HixlCSClient {
   Status ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms);
   int32_t AcquireFlagIndex();
   Status ReleaseCompleteHandle(CompleteHandle *queryhandle);
-  Status ReleaseUbCompleteHandle(UbCompleteHandle *ub_handle);
-  Status CheckStatusHost(CompleteHandle *queryhandle, HixlCompleteStatus *status);
-  Status CheckStatusDevice(UbCompleteHandle *queryhandle, HixlCompleteStatus *status);
-  Status CheckStatusDevice(UbCompleteHandle *queryhandle, int32_t *status);
-  Status BatchTransferRoce(bool is_get, const CommunicateMem& p, void** queryhandle);
-  Status BatchTransferUB(bool is_get, const CommunicateMem& p, void** queryhandle);
+  Status ReleaseUbCompleteHandle(UbCompleteHandle &ub_handle);
+  Status CheckStatusHost(CompleteHandle &queryhandle, HixlCompleteStatus &status);
+  Status CheckStatusDevice(UbCompleteHandle &queryhandle, HixlCompleteStatus &status);
+  Status BatchTransferHost(bool is_get, const CommunicateMem& p, void** queryhandle);
+  Status BatchTransferDevice(bool is_get, const CommunicateMem& p, void** queryhandle);
   Status EnsureUbRemoteFlagInitedLocked();
   Status EnsureUbKernelLoadedLocked();
   void *UbGetKernelStubFunc(bool is_get);
@@ -147,23 +146,14 @@ class HixlCSClient {
                          uint32_t *list_num);
   void FillOutputParams(ImportCtx &ctx, HcommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
   Status ClearRemoteMemInfo();
-  Status ValidateUbInputs(bool is_get,
-                          const CommunicateMem &mem_param,
-                          void **query_handle) const;
-
-  Status PrepareUbRemoteFlagAndKernel(void **remote_flag);
-
-  Status AcquireUbSlot(CompletePool::SlotHandle *slot);
-
-  Status FillUbBatchArgs(const CommunicateMem &mem_param,
-                        MemDev &mem_dev,
-                        const CompletePool::SlotHandle &slot,
-                        void *remote_flag,
-                        UbBatchArgs *args);
-
-  Status LaunchUbAndStageD2H(bool is_get,
-                              UbCompleteHandle *handle,
-                              void *remote_flag);
+  Status ValidateUbInputs(bool is_get, const CommunicateMem &mem_param, void *&query_handle) const;
+  Status PrepareUbRemoteFlagAndKernel(void *&remote_flag);
+  Status AcquireUbSlot(CompletePool::SlotHandle &slot);
+  Status FillUbBatchArgs(const CommunicateMem &mem_param, MemDev &mem_dev, const CompletePool::SlotHandle &slot,
+                         void *remote_flag, UbBatchArgs &args);
+  Status LaunchUbAndStageD2H(bool is_get, UbCompleteHandle &handle, void *remote_flag);
+  void ReleaseLegacyHandlesLocked();
+  Status ReleaseUbResourcesLocked();
  private:
   std::mutex mutex_;
   // 用于记录内存地址的分配情况
@@ -199,9 +189,10 @@ class HixlCSClient {
   // UB kernel load cache
   bool ub_kernel_loaded_ {false};
   aclrtBinHandle ub_kernel_handle_ {nullptr};
-  void *ub_stub_get_ {nullptr};
-  void *ub_stub_put_ {nullptr};
+  void *ub_func_get_ {nullptr};
+  void *ub_func_put_ {nullptr};
   void *ub_dev_const_one_{nullptr};
+  std::array<MemHandle, CompletePool::kMaxSlots> ub_notify_mem_handles_{};
 
 };
 }  // namespace hixl

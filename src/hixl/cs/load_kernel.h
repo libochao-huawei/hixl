@@ -1,5 +1,5 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -16,18 +16,14 @@
 
 namespace hixl {
 
-struct UbKernelStubs {
+struct UbFuncHandles {
   aclrtFuncHandle batchGet;
   aclrtFuncHandle batchPut;
 };
 
-Status LoadUbKernelAndResolveStubs(int32_t device_id,
-                                  const char *func_get,
-                                  const char *func_put,
-                                  aclrtBinHandle &bin_handle,
-                                  UbKernelStubs &stubs);
+Status LoadUbKernelAndGetHandles(const char *func_get, const char *func_put, aclrtBinHandle &bin_handle,
+                                 UbFuncHandles &func_handles);
 
 }  // namespace hixl
 
 #endif  // CANN_HIXL_SRC_HIXL_CS_LOAD_KERNEL_H_
-

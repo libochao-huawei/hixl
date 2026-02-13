@@ -16,8 +16,6 @@
 #include "acl/acl.h"
 #include "hixl_log.h"
 
-namespace hixl {
-
 inline hixl::Status ConvertAclRetToStatus(int32_t acl_ret) {
   if (acl_ret == ACL_SUCCESS) {
     return hixl::SUCCESS;
@@ -47,8 +45,6 @@ inline hixl::Status ConvertAclRetToStatus(int32_t acl_ret) {
       return hixl::FAILED;
   }
 }
-
-}  // namespace hixl
 
 // If expr is not SUCCESS, print the log and return the same value
 #define HIXL_CHK_STATUS_RET(expr, ...)       \

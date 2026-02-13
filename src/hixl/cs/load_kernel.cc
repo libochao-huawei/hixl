@@ -26,55 +26,7 @@
 
 namespace hixl {
 namespace {
-
 constexpr uint32_t kCpuKernelMode = 0U;
-
-Status SwitchDevice(int32_t target_device, int32_t &old_device, bool &need_restore) {
-  old_device = -1;
-  need_restore = false;
-
-  rtError_t rret = rtGetDevice(&old_device);
-  if (rret != RT_ERROR_NONE) {
-    HIXL_LOGE(FAILED, "[LoadKernel] rtGetDevice failed. ret=%d", static_cast<int32_t>(rret));
-    return FAILED;
-  }
-
-  if (old_device == target_device) {
-    return SUCCESS;
-  }
-
-  rret = rtSetDevice(target_device);
-  if (rret != RT_ERROR_NONE) {
-    HIXL_LOGE(FAILED, "[LoadKernel] rtSetDevice failed. target=%d ret=%d",
-              target_device, static_cast<int32_t>(rret));
-    return FAILED;
-  }
-
-  need_restore = true;
-  return SUCCESS;
-}
-
-Status CanonicalizePath(const char *path, char *out_real, uint32_t out_real_size) {
-  if (path == nullptr) {
-    return PARAM_INVALID;
-  }
-  if (out_real == nullptr) {
-    return PARAM_INVALID;
-  }
-  if (out_real_size == 0U) {
-    return PARAM_INVALID;
-  }
-
-  errno = 0;
-
-  char *p = realpath(path, out_real);
-  if (p == nullptr) {
-    HIXL_LOGE(FAILED, "[LoadKernel] realpath failed. path=%s errno=%d", path, errno);
-    return FAILED;
-  }
-
-  return SUCCESS;
-}
 
 Status GetKernelFilePath(std::string &json_path) {
   // 获取二进制文件路径
@@ -99,33 +51,33 @@ Status LoadBinaryFromJson(const char *json_path, aclrtBinHandle &bin_handle) {
   if (json_path == nullptr) {
     return PARAM_INVALID;
   }
-
-  char real_path[PATH_MAX] = {0};
-
-  Status pret = CanonicalizePath(json_path, real_path, static_cast<uint32_t>(sizeof(real_path)));
-  if (pret != SUCCESS) {
-    return pret;
+  char resolved_path[MMPA_MAX_PATH] = {0};
+  auto mm_ret = mmRealPath(json_path, resolved_path, MMPA_MAX_PATH);
+  if (mm_ret != EN_OK) {
+    HIXL_LOGE(PARAM_INVALID, "[LoadKernel] mmRealPath failed. path=%s, ret=%d", json_path, mm_ret);
+    return PARAM_INVALID;
   }
-
+  if (mmAccess(resolved_path) != EN_OK) {
+    HIXL_LOGE(FAILED, "[LoadKernel] Can not access file: %s", resolved_path);
+    return FAILED;
+  }
   aclrtBinaryLoadOptions load_options{};
   aclrtBinaryLoadOption option{};
   option.type = ACL_RT_BINARY_LOAD_OPT_CPU_KERNEL_MODE;
   option.value.cpuKernelMode = kCpuKernelMode;
   load_options.numOpt = 1U;
   load_options.options = &option;
-
-  aclError aerr = aclrtBinaryLoadFromFile(real_path, &load_options, &bin_handle);
+  aclError aerr = aclrtBinaryLoadFromFile(resolved_path, &load_options, &bin_handle);
   if (aerr != ACL_SUCCESS) {
     HIXL_LOGE(FAILED, "[LoadKernel] aclrtBinaryLoadFromFile failed. path=%s ret=%d",
-              real_path, static_cast<int32_t>(aerr));
+              resolved_path, static_cast<int32_t>(aerr));
     return FAILED;
   }
-
-  HIXL_LOGI("[LoadKernel] aclrtBinaryLoadFromFile success. path=%s handle=%p", real_path, bin_handle);
+  HIXL_LOGI("[LoadKernel] aclrtBinaryLoadFromFile success. path=%s handle=%p", resolved_path, bin_handle);
   return SUCCESS;
 }
 
-Status GetFuncStub(aclrtBinHandle bin_handle, const char *func_name, aclrtFuncHandle &func_handle) {
+Status GetFuncHandle(aclrtBinHandle bin_handle, const char *func_name, aclrtFuncHandle &func_handle) {
 
 
   if (bin_handle == nullptr) {
@@ -150,16 +102,15 @@ Status GetFuncStub(aclrtBinHandle bin_handle, const char *func_name, aclrtFuncHa
 
 }  // namespace
 
-Status LoadUbKernelAndResolveStubs(int32_t device_id, const char *func_get, const char *func_put,
-                                   aclrtBinHandle &bin_handle, UbKernelStubs &stubs) {
-  stubs.batchGet = nullptr;
-  stubs.batchPut = nullptr;
+Status LoadUbKernelAndGetHandles(const char *func_get, const char *func_put,
+                                 aclrtBinHandle &bin_handle, UbFuncHandles &func_handles) {
+  func_handles.batchGet = nullptr;
+  func_handles.batchPut = nullptr;
+
   int32_t old_device = -1;
   bool need_restore = false;
   std::string json_path;
   HIXL_CHK_STATUS_RET(GetKernelFilePath(json_path), "[LoadKernel] GetKernelFilePath failed");
-  HIXL_CHK_STATUS_RET(SwitchDevice(device_id, old_device, need_restore),
-                      "[LoadKernel] SwitchDevice failed. target_dev=%d", device_id);
   HIXL_DISMISSABLE_GUARD(dev_restore, [&]() {
     if (need_restore) {
       (void)aclrtSetDevice(old_device);
@@ -169,10 +120,12 @@ Status LoadUbKernelAndResolveStubs(int32_t device_id, const char *func_get, cons
     HIXL_CHK_STATUS_RET(LoadBinaryFromJson(json_path.c_str(), bin_handle),
                         "[LoadKernel] LoadBinaryFromJson failed. path=%s", json_path.c_str());
   }
-  HIXL_CHK_STATUS_RET(GetFuncStub(bin_handle, func_get, stubs.batchGet),
-                      "[LoadKernel] GetFuncStub failed for get_func. func=%s", func_get);
-  HIXL_CHK_STATUS_RET(GetFuncStub(bin_handle, func_put, stubs.batchPut),
-                      "[LoadKernel] GetFuncStub failed for put_func. func=%s", func_put);
+
+  HIXL_CHK_STATUS_RET(GetFuncHandle(bin_handle, func_get, func_handles.batchGet),
+                      "[LoadKernel] GetFuncHandle failed for get_func. func=%s", func_get);
+  HIXL_CHK_STATUS_RET(GetFuncHandle(bin_handle, func_put, func_handles.batchPut),
+                      "[LoadKernel] GetFuncHandle failed for put_func. func=%s", func_put);
+
   return SUCCESS;
 }
 

@@ -21,9 +21,9 @@
 #include "hcomm_compat.h"
 #include "runtime/runtime/rt.h"
 
-namespace hixl {
+#include <deque>
 
-class Endpoint;
+namespace hixl {
 
 class CompletePool {
  public:
@@ -36,8 +36,6 @@ class CompletePool {
     ThreadHandle thread;
     rtNotify_t notify;
     void *host_flag;
-    // TODO:临时兼容
-    void *remote_flag_memcpy;
     std::array<char, kNotifyTagSize> notify_tag;
     uint64_t notify_addr;
     uint32_t notify_len;
@@ -45,21 +43,18 @@ class CompletePool {
 
   CompletePool();
   ~CompletePool();
-
   CompletePool(const CompletePool &) = delete;
   CompletePool &operator=(const CompletePool &) = delete;
-
   Status AddRefAndInitIfNeeded(int32_t device_id, CommEngine engine, uint32_t thread_num,
-                               uint32_t notify_num_per_thread, Endpoint *endpoint);
-
+                               uint32_t notify_num_per_thread);
   void ReleaseRefAndDeinitIfNeeded();
-
   Status Acquire(SlotHandle *handle);
   void Release(uint32_t slot_index);
-
   bool IsComplete(const SlotHandle &handle) const;
   void ResetHostFlag(const SlotHandle &handle) const;
   uint32_t GetInUseCount() const;
+  Status GetSlotNotifyInfo(uint32_t slot_index, uint64_t &notify_addr, uint32_t &notify_len,
+                           std::array<char, kNotifyTagSize> &tag) const;
 
  private:
   struct Slot {
@@ -71,43 +66,27 @@ class CompletePool {
     uint64_t notify_addr;
     uint32_t notify_len;
     void *host_flag;
-    MemHandle notify_mem_handle;
     std::array<char, kNotifyTagSize> notify_tag;
-    // TODO:临时兼容
-    void *remote_flag_memcpy;
   };
 
  private:
   bool IsInitedParamsSame(int32_t device_id, CommEngine engine, uint32_t thread_num,
                           uint32_t notify_num_per_thread) const;
-
-  void SaveInitParams(int32_t device_id, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread,
-                      Endpoint *endpoint);
-
+  void SaveInitParams(int32_t device_id, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread);
   void ResetInitParamsLocked();
   void InitFreeListLocked();
-  Status GetCurrentAclContext(aclrtContext &old_ctx) const;
-  void RestoreAclContext(aclrtContext old_ctx) const;
-
   Status InitOneSlotLocked(Slot &slot, uint32_t slot_index, int32_t device_id, CommEngine engine, uint32_t thread_num,
                            uint32_t notify_num_per_thread);
-
-  Status EnsureNotifyRecordLocked(Slot &slot, uint32_t slot_index, int32_t device_id);
-
+  Status EnsureNotifyRecordLocked(Slot &slot, uint32_t slot_index);
   void ResetNotifyResourcesLocked(Slot &slot);
-  Status CreateNotifyLocked(Slot &slot, int32_t device_id, uint32_t &notify_id);
+  Status CreateNotifyLocked(Slot &slot, uint32_t &notify_id);
   Status GetNotifyAddrLocked(uint32_t notify_id, uint64_t &notify_addr, uint32_t &notify_len) const;
   Status BuildNotifyTagLocked(uint32_t slot_index, std::array<char, kNotifyTagSize> &tag) const;
-  Status RegisterNotifyMemLocked(Slot &slot, const char *tag, uint64_t notify_addr, uint32_t notify_len);
-
   Status InitAllSlotsLocked(int32_t device_id, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread);
-
   void DeinitAllSlotsLocked();
-
   Status EnsureContextLocked(Slot &slot, int32_t device_id);
   Status EnsureStreamLocked(Slot &slot);
   Status EnsureThreadLocked(Slot &slot, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread);
-
   Status EnsurePinnedHostFlagLocked(Slot &slot);
   void DestroySlotLocked(Slot &slot);
 
@@ -115,11 +94,8 @@ class CompletePool {
   mutable std::mutex mu_;
   uint32_t ref_cnt_;
   bool inited_;
-  std::vector<uint32_t> free_list_;
+  std::deque<uint32_t> free_list_;
   std::array<Slot, kMaxSlots> slots_;
-
-  Endpoint *endpoint_;
-
   int32_t init_device_id_;
   CommEngine init_engine_;
   uint32_t init_thread_num_;
