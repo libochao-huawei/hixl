@@ -7,11 +7,13 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
 #include <cstring>
 #include <cstdint>
 #include "hixl/hixl_types.h"
 #include "common/hixl_checker.h"
 #include "hixl_mem_store.h"
+
 namespace hixl {
 Status HixlMemStore::RecordMemory(bool is_server, const void *addr, size_t size) {
   std::lock_guard<std::mutex> lock(mutex_);

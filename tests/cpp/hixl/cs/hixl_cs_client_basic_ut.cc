@@ -14,7 +14,6 @@
 #include "gtest/gtest.h"
 #include "hixl_cs_client.h"
 #include "hccl/hccl_types.h"
-#include "hixl_test.h"
 namespace hixl {
 
 // 初始化源endpoint和本地endpoint
@@ -243,12 +242,13 @@ TEST_F(HixlCSClientFixture, BatchPutFailsOnMultrecorded) {
   const char *client_ip = "127.0.0.1";
   uint32_t port = 22337;
   PrepareConnectionAndImport(cli, client_ip, port);
-  HcommMem local = MakeMem(&kClientBufAddr, kClientBufSizeBytes, HCCL_MEM_TYPE_HOST);
+  HcommMem local = {HCCL_MEM_TYPE_HOST, &kClientBufAddr, kClientBufSizeBytes};
   MemHandle local_handle = nullptr;
-  HcommMem local2 = MakeMem(&kClientBufAddr + size_t{100}, kClientBufSizeBytes2, HCCL_MEM_TYPE_HOST); //地址偏移4*100
+  HcommMem local2 = {HCCL_MEM_TYPE_HOST, &kClientBufAddr + size_t{100}, kClientBufSizeBytes2};
   MemHandle local_handle2 = nullptr;
-  HcommMem local3 = MakeMem(&kClientBufAddr + size_t{100}, kClientBufSizeBytes, HCCL_MEM_TYPE_HOST);//地址偏移4*100
+  HcommMem local3 = {HCCL_MEM_TYPE_HOST, &kClientBufAddr + size_t{100}, kClientBufSizeBytes};
   MemHandle local_handle3 = nullptr;
+
   ASSERT_EQ(cli.RegMem("client_buf", &local, &local_handle), SUCCESS);
   ASSERT_EQ(cli.RegMem("client_buf", &local2, &local_handle2), PARAM_INVALID);
   ASSERT_EQ(cli.RegMem("client_buf", &local3, &local_handle3), PARAM_INVALID);
