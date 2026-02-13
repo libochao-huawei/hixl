@@ -35,7 +35,7 @@ def read_pkg_version(recv: Receiver, ascend_install_path: str, name: str) -> Opt
     """读取包版本。"""
     filepath = os.path.join(ascend_install_path, 'share', 'info', name, 'version.info')
     if not os.path.isfile(filepath):
-        recv.err_msgs.append(f'{filepath} does not exist in read_pkg_version!')
+        recv.warn_msgs.append(f'{filepath} does not exist in read_pkg_version!')
         return None
 
     with open(filepath, encoding='utf-8') as file:
