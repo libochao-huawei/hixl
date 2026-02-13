@@ -42,6 +42,8 @@ constexpr const char *kUbKernelJson =
 constexpr const char *kUbFuncGet = "HixlBatchGet";
 constexpr const char *kUbFuncPut = "HixlBatchPut";
 
+
+
 hixl::Buffers SelectBuffers(bool is_get, const void *src, const void *dst) noexcept {
   return is_get ? hixl::Buffers{src, dst} : hixl::Buffers{dst, src};
 }
@@ -250,6 +252,7 @@ Status HixlCSClient::InitFlagQueue() noexcept {
 }
 
 HixlCSClient::~HixlCSClient() {
+  (void)Destroy();
   if (flag_queue_ != nullptr) {
     // rtError_t ret = rtFreeHost(flag_queue_);
     // if (ret != RT_ERROR_NONE) {
@@ -266,6 +269,65 @@ HixlCSClient::~HixlCSClient() {
   }
 }
 
+Status HixlCSClient::InitBaseClient(const char *server_ip, uint32_t server_port, const EndpointDesc &src_endpoint,
+                                    const EndpointDesc &dst_endpoint) {
+  server_ip_ = server_ip;
+  server_port_ = server_port;
+  src_endpoint_ = MakeShared<Endpoint>(src_endpoint);
+  HIXL_CHECK_NOTNULL(src_endpoint_);
+  Status ret = src_endpoint_->Initialize();
+  HIXL_CHK_STATUS_RET(ret,
+                      "[HixlClient] Failed to initialize src endpoint. "
+                      "Check Config: [Loc:%d, protocol:%d, AddrVal:0x%x]",
+                      src_endpoint.loc.locType, src_endpoint.protocol, src_endpoint.commAddr.id);
+  HIXL_LOGI("[HixlClient] src_endpoint initialized. ep_handle=%p", src_endpoint_->GetHandle());
+  dst_endpoint_ = dst_endpoint;
+  CtrlMsgPlugin::Initialize();
+  HIXL_LOGD("[HixlClient] CtrlMsgPlugin initialized");
+  Status init_ret = InitFlagQueue();
+  HIXL_CHK_STATUS_RET(init_ret, "[HixlClient] Failed to initialize flag queue.");
+  return SUCCESS;
+}
+
+Status HixlCSClient::InitUbConstMemory() {
+  HIXL_CHK_ACL_RET(aclrtMalloc(&ub_dev_const_one_, sizeof(uint64_t), ACL_MEM_MALLOC_NORMAL_ONLY),
+                   "[HixlClient] aclrtMalloc ub_dev_const_one_ failed");
+  HIXL_DISMISSABLE_GUARD(mem_guard, [this]() {
+    if (this->ub_dev_const_one_ != nullptr) {
+      aclrtFree(this->ub_dev_const_one_);
+      this->ub_dev_const_one_ = nullptr;
+    }
+  });
+  constexpr uint64_t host_one = 1U;
+  HIXL_CHK_ACL_RET(
+      aclrtMemcpy(ub_dev_const_one_, sizeof(uint64_t), &host_one, sizeof(uint64_t), ACL_MEMCPY_HOST_TO_DEVICE),
+      "[HixlClient] aclrtMemcpy ub_dev_const_one_ failed");
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&ub_device_id_), "[HixlClient] aclrtGetDevice failed");
+  HIXL_DISMISS_GUARD(mem_guard);
+  return SUCCESS;
+}
+
+Status HixlCSClient::InitUbResource() {
+  const EndpointDesc &ep = src_endpoint_->GetEndpoint();
+  const bool ub_device_mode = (ep.protocol == COMM_PROTOCOL_UBC_CTP || ep.protocol == COMM_PROTOCOL_UBC_TP) &&
+                              (ep.loc.locType == ENDPOINT_LOC_TYPE_DEVICE);
+  is_device_ = (ep.loc.locType == ENDPOINT_LOC_TYPE_DEVICE);
+  is_ub_mode_ = ub_device_mode;
+  if (!ub_device_mode) {
+    ub_device_id_ = -1;
+    return SUCCESS;
+  }
+  if (ub_dev_const_one_ == nullptr) {
+    Status ret = InitUbConstMemory();
+    HIXL_CHK_STATUS_RET(ret, "[HixlClient] InitUbConstMemory failed");
+    HIXL_LOGI("[HixlClient] UB Device const one initialized at %p on dev %d", ub_dev_const_one_, ub_device_id_);
+  }
+  Status pret = GetCompletePool().AddRefAndInitIfNeeded(ub_device_id_, kUbEngine, kUbThreadNum, kUbNotifyNumPerThread,
+                                                        src_endpoint_.get());
+  HIXL_CHK_STATUS_RET(pret, "[HixlClient] CompletePool AddRefAndInitIfNeeded failed. devId=%d", ub_device_id_);
+  return SUCCESS;
+}
+
 Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const EndpointDesc *src_endpoint,
                             const EndpointDesc *dst_endpoint, const HixlClientConfig *config) {
   HIXL_CHECK_NOTNULL(server_ip);
@@ -276,69 +338,16 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
       "[HixlClient] Create begin. Server=%s:%u. "
       "SrcEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x], "
       "DstEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x]",
-      server_ip, server_port, src_endpoint->loc, src_endpoint->protocol, src_endpoint->commAddr.type,
-      src_endpoint->commAddr.id, dst_endpoint->loc, dst_endpoint->protocol, dst_endpoint->commAddr.type,
+      server_ip, server_port, src_endpoint->loc.locType, src_endpoint->protocol, src_endpoint->commAddr.type,
+      src_endpoint->commAddr.id, dst_endpoint->loc.locType, dst_endpoint->protocol, dst_endpoint->commAddr.type,
       dst_endpoint->commAddr.id);
   std::lock_guard<std::mutex> lock(mutex_);
-  server_ip_ = server_ip;
-  server_port_ = server_port;
-  src_endpoint_ = MakeShared<Endpoint>(*src_endpoint);
-  HIXL_CHECK_NOTNULL(src_endpoint_);
-  Status ret = src_endpoint_->Initialize();
-  HIXL_CHK_STATUS_RET(ret,
-                      "[HixlClient] Failed to initialize src endpoint. "
-                      "Check Config: [Loc:%d, protocol:%d, AddrVal:0x%x]",
-                      src_endpoint->loc, src_endpoint->protocol, src_endpoint->commAddr.id);
-  HIXL_LOGI("[HixlClient] src_endpoint initialized. ep_handle=%p", src_endpoint_->GetHandle());
-  dst_endpoint_ = *dst_endpoint;
-  CtrlMsgPlugin::Initialize();
-  HIXL_LOGD("[HixlClient] CtrlMsgPlugin initialized");
+  HIXL_CHK_STATUS_RET(InitBaseClient(server_ip, server_port, *src_endpoint, *dst_endpoint),
+                      "[HixlClient] InitBaseClient failed");
   EndpointHandle endpoint_handle = src_endpoint_->GetHandle();
-  HIXL_EVENT("[HixlClient] Create success. server=%s:%u, src_ep_handle=%p", server_ip_.c_str(), server_port_,
+  HIXL_EVENT("[HixlClient] Create success (Base). server=%s:%u, src_ep_handle=%p", server_ip_.c_str(), server_port_,
              endpoint_handle);
-  Status init_ret = InitFlagQueue();
-  if (init_ret != SUCCESS) {
-    HIXL_LOGE(init_ret, "[HixlClient] Failed to initialize flag queue.");
-    return init_ret;
-  }
-  const EndpointDesc &ep = src_endpoint_->GetEndpoint();
-  const bool ub_device_mode = (ep.protocol == COMM_PROTOCOL_UBC_CTP || ep.protocol == COMM_PROTOCOL_UBC_TP) &&
-                              (ep.loc.locType == ENDPOINT_LOC_TYPE_DEVICE);
-  is_device_ = (ep.loc.locType == ENDPOINT_LOC_TYPE_DEVICE);
-  is_ub_mode_ = ub_device_mode;
-  if (ub_device_mode) {
-    if (ub_dev_const_one_ == nullptr) {
-      aclError acl_ret = aclrtMalloc(&ub_dev_const_one_, sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_ONLY);
-      if (acl_ret != ACL_SUCCESS) {
-        HIXL_LOGE(FAILED, "[HixlClient] aclrtMalloc ub_dev_const_one_ failed. ret=%d", acl_ret);
-        return FAILED;
-      }
-      uint64_t host_one = 1U;
-      acl_ret =
-          aclrtMemcpy(ub_dev_const_one_, sizeof(uint64_t), &host_one, sizeof(uint64_t), ACL_MEMCPY_HOST_TO_DEVICE);
-      if (acl_ret != ACL_SUCCESS) {
-        HIXL_LOGE(FAILED, "[HixlClient] aclrtMemcpy ub_dev_const_one_ failed. ret=%d", acl_ret);
-        aclrtFree(ub_dev_const_one_);
-        ub_dev_const_one_ = nullptr;
-        return FAILED;
-      }
-      acl_ret = aclrtGetDevice(&ub_device_id_);
-      if (acl_ret != ACL_SUCCESS) {
-        HIXL_LOGE(FAILED, "[HixlClient] aclrtGetDevice failed. ret=%d", acl_ret);
-        return FAILED;
-      }
-      HIXL_LOGI("[HixlClient] UB Device const one initialized at %p on dev %d", ub_dev_const_one_, ub_device_id_);
-    }
-    Status pret = GetCompletePool().AddRefAndInitIfNeeded(ub_device_id_, kUbEngine, kUbThreadNum, kUbNotifyNumPerThread,
-                                                          src_endpoint_.get());
-    if (pret != SUCCESS) {
-      HIXL_LOGE(FAILED, "[HixlClient] CompletePool AddRefAndInitIfNeeded failed. devId=%d ret=0x%X", ub_device_id_,
-                static_cast<uint32_t>(pret));
-      return FAILED;
-    }
-  } else {
-    ub_device_id_ = -1;
-  }
+  HIXL_CHK_STATUS_RET(InitUbResource(), "[HixlClient] InitUbResource failed");
   return SUCCESS;
 }
 
@@ -507,8 +516,8 @@ Status HixlCSClient::EnsureUbKernelLoadedLocked() {
     HIXL_LOGE(ret, "[HixlClient][UB] LoadUbKernelAndResolveStubs failed. dev=%d json=%s", ub_device_id_, kUbKernelJson);
     return ret;
   }
-  HIXL_CHK_BOOL_RET_STATUS(stubs.batchGet != nullptr, FAILED, "[HixlClient][UB] batchGet stub is null");
-  HIXL_CHK_BOOL_RET_STATUS(stubs.batchPut != nullptr, FAILED, "[HixlClient][UB] batchPut stub is null");
+  HIXL_CHECK_NOTNULL(stubs.batchGet, "[HixlClient][UB] batchGet stub is null");
+  HIXL_CHECK_NOTNULL(stubs.batchPut, "[HixlClient][UB] batchPut stub is null");
   ub_stub_get_ = stubs.batchGet;
   ub_stub_put_ = stubs.batchPut;
   ub_kernel_loaded_ = true;

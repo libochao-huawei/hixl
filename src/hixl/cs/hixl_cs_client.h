@@ -127,6 +127,10 @@ class HixlCSClient {
   Status Destroy();
 
  private:
+  Status InitBaseClient(const char *server_ip, uint32_t server_port,
+                        const EndpointDesc &src_endpoint, const EndpointDesc &dst_endpoint);
+  Status InitUbResource();
+  Status InitUbConstMemory();
   Status ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms);
   int32_t AcquireFlagIndex();
   Status ReleaseCompleteHandle(CompleteHandle *queryhandle);

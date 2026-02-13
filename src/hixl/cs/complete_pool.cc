@@ -99,9 +99,8 @@ void CompletePool::InitFreeListLocked() {
   }
 }
 
-Status CompletePool::GetCurrentAclContext(aclrtContext *old_ctx) const {
-  HIXL_CHECK_NOTNULL(old_ctx);
-  HIXL_CHK_ACL_RET(aclrtGetCurrentContext(old_ctx));
+Status CompletePool::GetCurrentAclContext(aclrtContext &old_ctx) const {
+  HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&old_ctx));
   return SUCCESS;
 }
 
@@ -229,9 +228,7 @@ void CompletePool::ResetHostFlag(const SlotHandle &handle) const {
 Status CompletePool::InitAllSlotsLocked(int32_t device_id, CommEngine engine, uint32_t thread_num,
                                         uint32_t notify_num_per_thread) {
   InitFreeListLocked();
-  aclrtContext old_ctx = nullptr;
-  HIXL_CHK_STATUS_RET(GetCurrentAclContext(&old_ctx), "[CompletePool] GetCurrentAclContext failed");
-  HIXL_DISMISSABLE_GUARD(ctx_restore, [&]() { RestoreAclContext(old_ctx); });
+  llm::TemporaryRtContext ctx_guard(nullptr);
   for (uint32_t i = 0U; i < kMaxSlots; ++i) {
     Status ret = InitOneSlotLocked(slots_[i], i, device_id, engine, thread_num, notify_num_per_thread);
     if (ret != SUCCESS) {
@@ -264,16 +261,15 @@ Status CompletePool::EnsureNotifyRecordLocked(Slot &slot, uint32_t slot_index, i
   }
   ResetNotifyResourcesLocked(slot);
   uint32_t notify_id = 0U;
-  HIXL_CHK_STATUS_RET(CreateNotifyLocked(slot, device_id, &notify_id), "[CompletePool] CreateNotifyLocked failed");
-  // [修改] 获取地址的同时获取长度
+  HIXL_CHK_STATUS_RET(CreateNotifyLocked(slot, device_id, notify_id), "[CompletePool] CreateNotifyLocked failed");
   uint32_t notify_len = 0U;
   HIXL_CHK_STATUS_RET(GetNotifyAddrLocked(notify_id, slot.notify_addr, notify_len),
                       "[CompletePool] GetNotifyAddrLocked failed");
   slot.notify_len = notify_len;
-  std::array<char, 64> tag{};
-  HIXL_CHK_STATUS_RET(BuildNotifyTagLocked(slot_index, &tag), "[CompletePool] BuildNotifyTagLocked failed");
+  std::array<char, kNotifyTagSize> tag{};
+  HIXL_CHK_STATUS_RET(BuildNotifyTagLocked(slot_index, tag), "[CompletePool] BuildNotifyTagLocked failed");
   slot.notify_tag = tag;
-  // [修改] 传递长度给注册函数
+
   HIXL_CHK_STATUS_RET(RegisterNotifyMemLocked(slot, slot.notify_tag.data(), slot.notify_addr, slot.notify_len),
                       "[CompletePool] RegisterNotifyMemLocked failed");
   return SUCCESS;
@@ -286,7 +282,6 @@ void CompletePool::ResetNotifyResourcesLocked(Slot &slot) {
   }
   if (slot.notify_mem_handle != nullptr) {
     if (endpoint_ != nullptr) {
-      // [优化] 检查返回值并打印警告
       Status ret = endpoint_->DeregisterMem(slot.notify_mem_handle);
       if (ret != SUCCESS) {
         HIXL_LOGW("[CompletePool] DeregisterMem(notify) failed. tag=%s ret=%u",
@@ -300,12 +295,11 @@ void CompletePool::ResetNotifyResourcesLocked(Slot &slot) {
   slot.notify_tag.fill('\0');
 }
 
-Status CompletePool::CreateNotifyLocked(Slot &slot, int32_t device_id, uint32_t *notify_id) {
-  HIXL_CHECK_NOTNULL(notify_id);
-  *notify_id = 0U;
+Status CompletePool::CreateNotifyLocked(Slot &slot, int32_t device_id, uint32_t &notify_id) {
+  notify_id = 0U;
   HIXL_CHK_ACL_RET(rtNotifyCreateWithFlag(device_id, &slot.notify, kNotifyCreateFlag));
-  HIXL_CHK_ACL_RET(rtGetNotifyID(slot.notify, notify_id));
-  HIXL_LOGD("[CompletePool] Created notify. notify_id=%u", *notify_id);
+  HIXL_CHK_ACL_RET(rtGetNotifyID(slot.notify, &notify_id)); // API 仍需要指针
+  HIXL_LOGD("[CompletePool] Created notify. notify_id=%u", notify_id);
   return SUCCESS;
 }
 
@@ -323,27 +317,18 @@ Status CompletePool::GetNotifyAddrLocked(uint32_t notify_id, uint64_t &notify_ad
   HIXL_LOGI("rtGetDevResAddress end");
   HIXL_LOGI("[CompletePool] rtDevResInfo: dieId=%u, procType=%d, resType=%d, resId=%u, flag=%u", res_info.dieId,
             static_cast<int>(res_info.procType), static_cast<int>(res_info.resType), res_info.resId, res_info.flag);
-
-  if (addr_info.resAddress != nullptr && addr_info.len != nullptr) {
-    HIXL_LOGI("[HixlClient] rtDevResAddrInfo: resAddress=%p[0]=%lu, len=%p, *len=%u", addr_info.resAddress,
-              *addr_info.resAddress,  // 打印指针指向的第一个64位值
-              addr_info.len, *addr_info.len);
-  } else {
-    HIXL_LOGI("[HixlClient] rtDevResAddrInfo: resAddress=%p, len=%p", addr_info.resAddress, addr_info.len);
-  }
-
-  HIXL_CHK_BOOL_RET_STATUS(addr_info.resAddress != nullptr, FAILED,
-                           "[CompletePool] rtGetDevResAddress returned null addr. notify_id=%u", notify_id);
-  HIXL_CHK_BOOL_RET_STATUS(addr_info.len != nullptr, FAILED,
-                           "[CompletePool] rtGetDevResAddress returned null len. notify_id=%u", notify_id);
+  HIXL_CHECK_NOTNULL(addr_info.resAddress, "[CompletePool] rtGetDevResAddress returned null addr. notify_id=%u",
+                     notify_id);
+  HIXL_CHECK_NOTNULL(addr_info.len, "[CompletePool] rtGetDevResAddress returned null len. notify_id=%u", notify_id);
+  HIXL_LOGI("[HixlClient] rtDevResAddrInfo: resAddress=%p[0]=%lu, len=%p, *len=%u", addr_info.resAddress,
+            *addr_info.resAddress, addr_info.len, *addr_info.len);
   return SUCCESS;
 }
 
-Status CompletePool::BuildNotifyTagLocked(uint32_t slot_index, std::array<char, 64> *tag) const {
-  HIXL_CHECK_NOTNULL(tag);
-  tag->fill('\0');
+Status CompletePool::BuildNotifyTagLocked(uint32_t slot_index, std::array<char, kNotifyTagSize> &tag) const {
+  tag.fill('\0');
   const int nret =
-      snprintf_s(tag->data(), tag->size(), tag->size() - 1U, "%s_%03u", kUbLocalNotifyTagPrefix, slot_index);
+      snprintf_s(tag.data(), tag.size(), tag.size() - 1U, "%s_%03u", kUbLocalNotifyTagPrefix, slot_index);
   HIXL_CHK_BOOL_RET_STATUS(nret >= 0, FAILED, "[CompletePool] snprintf_s notify tag failed. slot=%u", slot_index);
   return SUCCESS;
 }
@@ -392,7 +377,17 @@ Status CompletePool::EnsureStreamLocked(Slot &slot) {
     return SUCCESS;
   }
   aclrtStream stream = nullptr;
-  HIXL_CHK_ACL_RET(aclrtCreateStream(&stream));
+  HIXL_CHK_ACL_RET(aclrtCreateStream(&stream), "[CompletePool] aclrtCreateStream failed");
+
+  HIXL_DISMISSABLE_GUARD(stream_guard, [&]() {
+    aclrtDestroyStream(stream);
+  });
+  aclrtStreamAttrValue attr_val = {0};
+  attr_val.failureMode = 1; // 1: 遇错即停
+  HIXL_CHK_ACL_RET(
+      aclrtSetStreamAttribute(stream, ACL_STREAM_ATTR_FAILURE_MODE, &attr_val),
+      "[CompletePool] Set stream failure mode failed");
+  HIXL_DISMISS_GUARD(stream_guard);
   slot.stream = stream;
   return SUCCESS;
 }

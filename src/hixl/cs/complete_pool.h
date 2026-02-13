@@ -28,7 +28,7 @@ class Endpoint;
 class CompletePool {
  public:
   static constexpr uint32_t kMaxSlots = 128U;
-
+  static constexpr uint32_t kNotifyTagSize = 64U;
   struct SlotHandle {
     uint32_t slot_index;
     aclrtContext ctx;
@@ -38,7 +38,7 @@ class CompletePool {
     void *host_flag;
     // TODO:临时兼容
     void *remote_flag_memcpy;
-    std::array<char, 64> notify_tag;
+    std::array<char, kNotifyTagSize> notify_tag;
     uint64_t notify_addr;
     uint32_t notify_len;
   };
@@ -72,7 +72,7 @@ class CompletePool {
     uint32_t notify_len;
     void *host_flag;
     MemHandle notify_mem_handle;
-    std::array<char, 64> notify_tag;
+    std::array<char, kNotifyTagSize> notify_tag;
     // TODO:临时兼容
     void *remote_flag_memcpy;
   };
@@ -86,8 +86,7 @@ class CompletePool {
 
   void ResetInitParamsLocked();
   void InitFreeListLocked();
-
-  Status GetCurrentAclContext(aclrtContext *old_ctx) const;
+  Status GetCurrentAclContext(aclrtContext &old_ctx) const;
   void RestoreAclContext(aclrtContext old_ctx) const;
 
   Status InitOneSlotLocked(Slot &slot, uint32_t slot_index, int32_t device_id, CommEngine engine, uint32_t thread_num,
@@ -96,9 +95,9 @@ class CompletePool {
   Status EnsureNotifyRecordLocked(Slot &slot, uint32_t slot_index, int32_t device_id);
 
   void ResetNotifyResourcesLocked(Slot &slot);
-  Status CreateNotifyLocked(Slot &slot, int32_t device_id, uint32_t *notify_id);
+  Status CreateNotifyLocked(Slot &slot, int32_t device_id, uint32_t &notify_id);
   Status GetNotifyAddrLocked(uint32_t notify_id, uint64_t &notify_addr, uint32_t &notify_len) const;
-  Status BuildNotifyTagLocked(uint32_t slot_index, std::array<char, 64> *tag) const;
+  Status BuildNotifyTagLocked(uint32_t slot_index, std::array<char, kNotifyTagSize> &tag) const;
   Status RegisterNotifyMemLocked(Slot &slot, const char *tag, uint64_t notify_addr, uint32_t notify_len);
 
   Status InitAllSlotsLocked(int32_t device_id, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread);
