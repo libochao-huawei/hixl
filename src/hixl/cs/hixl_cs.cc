@@ -88,7 +88,7 @@ HixlStatus HixlCSClientRegMem(HixlClientHandle client_handle, const char *mem_ta
   HIXL_CHECK_NOTNULL(mem);
   auto client = static_cast<hixl::HixlCSClient *>(client_handle);
   const auto ret = client->RegMem(mem_tag, mem, mem_handle);
-  HIXL_CHK_STATUS_RET(ret, "HixlCSClientRegMem failed, mem_tag: %s, mem_adrr: %p, mem_size: %u.",
+  HIXL_CHK_STATUS_RET(ret, "HixlCSClientRegMem failed, mem_tag: %s, mem_adrr: %p, mem_size: %lu.",
                       (mem_tag != nullptr ? mem_tag : "(null)"), mem->addr, mem->size);
   return HIXL_SUCCESS;
 }

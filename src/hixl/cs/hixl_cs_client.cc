@@ -23,7 +23,6 @@
 #include "common/ctrl_msg_plugin.h"
 #include "conn_msg_handler.h"
 #include "mem_msg_handler.h"
-#include "hccl/hcomm_primitives.h"
 #include <common/llm_utils.h>
 
 
@@ -168,7 +167,7 @@ Status HixlCSClient::InitFlagQueue() noexcept {
   mem.size = kFlagQueueSize * sizeof(uint64_t);
   MemHandle flag_handle = nullptr;
   HIXL_CHK_STATUS_RET(RegMem(kTransFlagNameHost, &mem, &flag_handle),
-                      "Failed to reg HOST trans finished flag, mem.addr: %p, mem.size: %u.", mem.addr, mem.size);
+                      "Failed to reg HOST trans finished flag, mem.addr: %p, mem.size: %lu.", mem.addr, mem.size);
   return SUCCESS;
 }
 
@@ -304,20 +303,20 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
   if (is_get) {
     // 批量提交读任务
     for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      HcommReadNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-                   const_cast<void *>(communicate_mem_param.src_buf_list[i]),
-                   communicate_mem_param.len_list[i]);  // HcommReadNbi 没有返回值
+      HIXL_CHK_HCCL_RET(HcommReadNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
+                                     const_cast<void *>(communicate_mem_param.src_buf_list[i]),
+                                     communicate_mem_param.len_list[i]));
     }
   } else {
     // 批量提交写任务
     for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      HcommWriteNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-                    const_cast<void *>(communicate_mem_param.src_buf_list[i]),
-                    communicate_mem_param.len_list[i]);  // HcommWriteNbi 没有返回值
+      HIXL_CHK_HCCL_RET(HcommWriteNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
+                                      const_cast<void *>(communicate_mem_param.src_buf_list[i]),
+                                      communicate_mem_param.len_list[i]));
     }
   }
   // 创建内存隔断，等到通道上所有的读任务执行结束后才会接着执行之后创建的读写任务
-  HcommChannelFence(client_channel_handle_);
+  HIXL_CHK_HCCL_RET(HcommChannelFence(client_channel_handle_));
 
   int32_t flag_index = AcquireFlagIndex();
   if (flag_index == -1) {
@@ -334,7 +333,8 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
   } else {
     kTransFlagName = kTransFlagNameDevice;
   }
-  HcommReadNbi(client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes);
+  HIXL_CHK_HCCL_RET(
+      HcommReadNbi(client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes));
   CompleteHandle *query_mem_handle = new (std::nothrow) CompleteHandle();
   if (query_mem_handle != nullptr) {
     query_mem_handle->flag_index = flag_index;
