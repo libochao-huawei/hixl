@@ -35,7 +35,7 @@ struct HixlOneSideOpParam {
   void *local_flag;
   uint32_t flag_size;
 };
-extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *param);
+extern "C" unsigned int HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param);
 
 extern "C" unsigned int HixlBatchPut(HixlOneSideOpParam *param);
 

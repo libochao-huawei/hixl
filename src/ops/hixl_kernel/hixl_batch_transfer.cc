@@ -10,13 +10,13 @@
 #include <string>
 #include <memory>
 #include "common/hixl_log.h"
-#include "HixlBatchPutAndGet.h"
+#include "hixl_batch_transfer.h"
 #include "hixl/hixl.h"
 
 namespace hixl {
 
-extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *param) {
-  HIXL_LOGI("[HixlBatchPutAndGet] HcclLaunchAicpuKernel start");
+extern "C" unsigned int HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
+  HIXL_LOGI("[HixlBatchPutAndGet] HixlBatchTransfer start");
   if (param == nullptr) {
     HIXL_LOGE(FAILED, "[HixlBatchPutAndGet] param is nullptr");
     return FAILED;
@@ -24,6 +24,7 @@ extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *
   HIXL_LOGI("[HixlBatchPutAndGet] HixlOneSideOpParam: thread=%p, channel=%p, list_num=%u",
           param->thread, param->channel, param->list_num);
   HIXL_LOGI("[HixlBatchPutAndGet] HcommBatchModeStart start");
+  const char *batchTag = "HixlKernel";
   int32_t ret = HcommBatchModeStart(batchTag);
   HIXL_LOGI("[HixlBatchPutAndGet] HcommBatchModeStart end");
   if (ret != 0) {
@@ -94,12 +95,12 @@ extern "C" unsigned int HcclLaunchAicpuKernel(bool is_read, HixlOneSideOpParam *
 }
 
 extern "C" unsigned int HixlBatchPut(HixlOneSideOpParam *param) {
-  int ret = HcclLaunchAicpuKernel(true, param);
+  unsigned int ret = HixlBatchTransfer(true, param);
   return ret;
 }
 
 extern "C" unsigned int HixlBatchGet(HixlOneSideOpParam *param) {
-  int ret = HcclLaunchAicpuKernel(false, param);
+  unsigned int ret = HixlBatchTransfer(false, param);
   return ret;
 }
 }
