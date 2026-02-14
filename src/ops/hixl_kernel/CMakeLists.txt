@@ -16,7 +16,7 @@ set(INCLUDE_LIST
         ${ASCEND_CANN_PACKAGE_PATH}/${AARCH_PREFIX}-linux/include/hccl
 )
 add_library(hixl_kernel SHARED
-        HixlBatchPutAndGet.cc
+        hixl_batch_transfer.cc
 )
 
 target_include_directories(hixl_kernel PRIVATE
@@ -50,13 +50,13 @@ target_link_libraries(hixl_kernel PRIVATE
 
 # 基于ini生成json文件
 message(STATUS "HIXL_DIR = ${HIXL_DIR}")
-add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libscatter_hixl_kernel.json
-        COMMAND python3 ${HIXL_DIR}/scripts/kernel/parser_ini.py ${HIXL_DIR}/src/ops/libcann_hixl_kernel.ini ${CMAKE_CURRENT_BINARY_DIR}/libscatter_hixl_kernel.json
+add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
+        COMMAND python3 ${HIXL_DIR}/scripts/kernel/parser_ini.py ${HIXL_DIR}/src/ops/libcann_hixl_kernel.ini ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
 )
-add_custom_target(aicpu_kernel_json DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libscatter_hixl_kernel.json)
+add_custom_target(aicpu_kernel_json DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json)
 add_dependencies(hixl_kernel aicpu_kernel_json)
 
 install(FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/libscatter_hixl_kernel.json
+        ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
         DESTINATION hixl/aicpu_kernel OPTIONAL
 )
