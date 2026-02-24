@@ -7,37 +7,25 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "hcomm_compat.h"
 #ifndef CANN_HIXL_SRC_HIXL_OPS_HIXL_KERNEL_KERNEL_LAUNCH_H
 #define CANN_HIXL_SRC_HIXL_OPS_HIXL_KERNEL_KERNEL_LAUNCH_H
 
-/**
-* @brief 批量读取server侧的内存内容
-* @param [in] thread 线程句柄
-* @param [in] channel 通道句柄
-* @param [in] list_num 本次传输任务的数目
-* @param [in] dst_buf_list 记录了本次传输任务中每组的目标侧内存地址
-* @param [in] src_buf_list 记录了本次传输任务中每组的源侧内存地址
-* @param [in] len_list 记录了本次传输任务中每组任务的内存偏移量大小
-* @param [in] remote_flag 记录了本次传输任务中remote_flag的内存地址
-* @param [in] local_flag 记录了本次传输任务中local_flag的内存地址
-* @param [in] flag_size 记录了本次传输任务中flag的内存大小
-* @return 成功:SUCCESS, 失败:其它.
-  */
-struct HixlOneSideOpParam {
-  ThreadHandle thread;
-  ChannelHandle channel;
-  uint32_t list_num;
-  void **dst_buf_list;
-  void **src_buf_list;
-  uint64_t *len_list;
-  uint64_t remote_flag;
-  uint64_t local_flag;
-  uint32_t flag_size;
-};
-extern "C" uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param);
+#include "hcomm_compat.h"
 
-extern "C" uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param);
+/**
+ * @brief 批量读取server侧的内存内容
+ */
+struct HixlOneSideOpParam {
+  ThreadHandle thread;          ///< [in] 线程句柄
+  ChannelHandle channel;        ///< [in] 通道句柄
+  uint32_t list_num;            ///< [in] 本次传输任务的数目
+  void **dst_buf_list;          ///< [in] 记录了本次传输任务中每组的目标侧内存地址
+  void **src_buf_list;          ///< [in] 记录了本次传输任务中每组的源侧内存地址
+  uint64_t *len_list;           ///< [in] 记录了本次传输任务中每组任务的内存块大小
+  uint64_t remote_flag;         ///< [in] 记录了本次传输任务中remote_flag的内存地址
+  uint64_t local_flag;          ///< [in] 记录了本次传输任务中local_flag的内存地址
+  uint32_t flag_size;           ///< [in] 记录了本次传输任务中flag的内存大小
+};
 
 extern "C" uint32_t HixlBatchPut(HixlOneSideOpParam *param);
 
