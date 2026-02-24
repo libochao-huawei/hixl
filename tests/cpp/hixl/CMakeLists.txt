@@ -14,6 +14,7 @@ set(HIXL_TEST_FILES
         cs/hixl_mem_store_basic_ut.cc
         cs/hixl_cs_client_basic_ut.cc
         cs/hixl_cs_client_ub_ut.cc
+        cs/hixl_kernel_basic_ut.cc
         engine/hixl_server_unittest.cpp
         engine/hixl_client_unittest.cc
         engine/hixl_utils_unittest.cc
@@ -24,6 +25,7 @@ file(GLOB HIXL_SRC_LIST
         "${HIXL_CODE_DIR}/src/hixl/common/*.cc"
         "${HIXL_CODE_DIR}/src/hixl/engine/*.cc"
         "${HIXL_CODE_DIR}/src/hixl/cs/*.cc"
+        "${HIXL_CODE_DIR}/src/ops/hixl_kernel/*.cc"
 )
 
 file(GLOB ADXL_SRC_LIST

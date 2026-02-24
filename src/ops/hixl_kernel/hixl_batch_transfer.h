@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "hccl/hcomm_primitives.h"
+#include "hcomm_compat.h"
 #ifndef CANN_HIXL_SRC_HIXL_OPS_HIXL_KERNEL_KERNEL_LAUNCH_H
 #define CANN_HIXL_SRC_HIXL_OPS_HIXL_KERNEL_KERNEL_LAUNCH_H
 
@@ -29,15 +29,17 @@ struct HixlOneSideOpParam {
   ChannelHandle channel;
   uint32_t list_num;
   void **dst_buf_list;
-  const void **src_buf_list;
+  void **src_buf_list;
   uint64_t *len_list;
-  void *remote_flag;
-  void *local_flag;
+  uint64_t remote_flag;
+  uint64_t local_flag;
   uint32_t flag_size;
 };
-extern "C" unsigned int HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param);
+extern "C" uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param);
 
-extern "C" unsigned int HixlBatchPut(HixlOneSideOpParam *param);
+extern "C" uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param);
 
-extern "C" unsigned int HixlBatchGet(HixlOneSideOpParam *param);
+extern "C" uint32_t HixlBatchPut(HixlOneSideOpParam *param);
+
+extern "C" uint32_t HixlBatchGet(HixlOneSideOpParam *param);
 #endif
