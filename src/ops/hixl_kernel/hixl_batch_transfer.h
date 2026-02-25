@@ -10,10 +10,9 @@
 #ifndef CANN_HIXL_SRC_HIXL_OPS_HIXL_KERNEL_KERNEL_LAUNCH_H
 #define CANN_HIXL_SRC_HIXL_OPS_HIXL_KERNEL_KERNEL_LAUNCH_H
 
-#include "hcomm_compat.h"
+#include "cs/hcomm_compat.h"
 
 #ifdef __cplusplus
-extern "C" {
 #endif
 
 /**
@@ -35,7 +34,6 @@ extern "C" uint32_t HixlBatchPut(HixlOneSideOpParam *param);
 
 extern "C" uint32_t HixlBatchGet(HixlOneSideOpParam *param);
 #ifdef __cplusplus
-}
 #endif
 
 #endif
