@@ -90,6 +90,7 @@ extern "C" uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
         param->local_flag, param->remote_flag, param->flag_size, ret);
     return FAILED;
   }
+  HIXL_LOGI("[HixlBatchPutAndGet] HcommBatchModeEnd start");
   ret = HcommBatchModeEnd(kBatchTag);
   if (ret != 0) {
     HIXL_LOGE(FAILED, "[HixlBatchPutAndGet] HcommBatchModeEnd faild, ret is %d", ret);

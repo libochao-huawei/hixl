@@ -58,9 +58,6 @@ target_link_options(hixl_kernel PRIVATE
         $<BUILD_INTERFACE:${link_options}>
 )
 
-target_compile_definitions(hixl_kernel PRIVATE
-        -DAICPU_COMPILE
-)
 
 target_link_libraries(hixl_kernel PRIVATE
         -Wl,--no-as-needed
@@ -75,7 +72,6 @@ add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
         COMMAND python3 ${HIXL_DIR}/scripts/kernel/parser_ini.py ${HIXL_DIR}/src/ops/libcann_hixl_kernel.ini ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
 )
 add_custom_target(aicpu_kernel_json DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json)
-add_dependencies(hixl_kernel aicpu_kernel_json)
 
 install(FILES
         ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
