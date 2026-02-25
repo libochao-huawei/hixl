@@ -43,6 +43,22 @@ HixlOneSideOpParam CreateTestParamFixed(std::array<std::array<uint8_t, 8>, kN> &
 
   return param;
 }
+
+// 新增：创建空参数/异常参数的辅助函数（提升复用性）
+HixlOneSideOpParam CreateInvalidParam() {
+  HixlOneSideOpParam param{};
+  // 初始化全空参数
+  param.thread = 0ULL;
+  param.channel = 0ULL;
+  param.list_num = 0;
+  param.dst_buf_addr_list = nullptr;
+  param.src_buf_addr_list = nullptr;
+  param.len_list = nullptr;
+  param.remote_flag_addr = 0ULL;
+  param.local_flag_addr = 0ULL;
+  param.flag_size = 0;
+  return param;
+}
 }  // namespace
 
 using namespace hixl;
@@ -85,6 +101,39 @@ TEST(HixlKernelBasicTest, BatchGetSuccess) {
   auto param =
       CreateTestParamFixed<3>(remote_src, local_dst, lens_storage, reinterpret_cast<uint64_t>(&remote_flag_addr),
                               reinterpret_cast<uint64_t>(&local_flag_addr));
+  uint32_t ret = HixlBatchGet(&param);
+  EXPECT_EQ(ret, SUCCESS);
+}
+
+// 新增5：单任务场景（list_num=1，覆盖小批量场景）
+TEST(HixlKernelBasicTest, BatchPutSingleTask) {
+  std::array<std::array<uint8_t, 8>, 1> local_src{};
+  std::array<std::array<uint8_t, 8>, 1> remote_dst{};
+  std::array<uint64_t, 1> lens_storage{8};
+
+  uint64_t remote_flag_addr = 1ULL;
+  uint64_t local_flag_addr = 0ULL;
+  auto param = CreateTestParamFixed<1>(
+      local_src, remote_dst, lens_storage,
+      reinterpret_cast<uint64_t>(&remote_flag_addr),
+      reinterpret_cast<uint64_t>(&local_flag_addr));
+
+  uint32_t ret = HixlBatchPut(&param);
+  EXPECT_EQ(ret, SUCCESS);
+}
+
+TEST(HixlKernelBasicTest, BatchGetSingleTask) {
+  std::array<std::array<uint8_t, 8>, 1> remote_src{};
+  std::array<std::array<uint8_t, 8>, 1> local_dst{};
+  std::array<uint64_t, 1> lens_storage{8};
+
+  uint64_t remote_flag_addr = 1ULL;
+  uint64_t local_flag_addr = 0ULL;
+  auto param = CreateTestParamFixed<1>(
+      remote_src, local_dst, lens_storage,
+      reinterpret_cast<uint64_t>(&remote_flag_addr),
+      reinterpret_cast<uint64_t>(&local_flag_addr));
+
   uint32_t ret = HixlBatchGet(&param);
   EXPECT_EQ(ret, SUCCESS);
 }
