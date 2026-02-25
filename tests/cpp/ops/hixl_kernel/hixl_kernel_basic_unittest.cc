@@ -16,9 +16,9 @@ namespace {
 template <size_t kN>
 HixlOneSideOpParam CreateTestParamFixed(std::array<std::array<uint8_t, 8>, kN> &src_buffers,
                                         std::array<std::array<uint8_t, 8>, kN> &dst_buffers,
-                                        std::array<uint64_t, kN> &lens_storage, ThreadHandle thread = 0ULL,
-                                        ChannelHandle channel = 0ULL, uint64_t remote_flag = 1ULL,
-                                        uint64_t local_flag = 0ULL) {
+                                        std::array<uint64_t, kN> &lens_storage, uint64_t remote_flag_addr,
+                                        uint64_t local_flag_addr, ThreadHandle thread = 0ULL,
+                                        ChannelHandle channel = 0ULL) {
   // 在调用者栈上创建数组，通过引用传递
   static std::array<void *, kN> src_ptrs;
   static std::array<void *, kN> dst_ptrs;
@@ -34,11 +34,11 @@ HixlOneSideOpParam CreateTestParamFixed(std::array<std::array<uint8_t, 8>, kN> &
   param.thread = thread;
   param.channel = channel;
   param.list_num = static_cast<uint32_t>(kN);
-  param.dst_buf_list = dst_ptrs.data();
-  param.src_buf_list = src_ptrs.data();
+  param.dst_buf_addr_list = dst_ptrs.data();
+  param.src_buf_addr_list = src_ptrs.data();
   param.len_list = lens.data();
-  param.remote_flag = remote_flag;
-  param.local_flag = local_flag;
+  param.remote_flag_addr = remote_flag_addr;
+  param.local_flag_addr = local_flag_addr;
   param.flag_size = sizeof(uint64_t);
 
   return param;
@@ -59,8 +59,11 @@ TEST(HixlKernelBasicTest, BatchPutSuccess) {
   for (auto &arr : remote_dst) {
     std::fill(arr.begin(), arr.end(), 0xBB);
   }
-
-  auto param = CreateTestParamFixed<3>(local_src, remote_dst, lens_storage);
+  uint64_t remote_flag_addr = 1ULL;
+  uint64_t local_flag_addr = 0ULL;
+  auto param =
+      CreateTestParamFixed<3>(local_src, remote_dst, lens_storage, reinterpret_cast<uint64_t>(&remote_flag_addr),
+                              reinterpret_cast<uint64_t>(&local_flag_addr));
   uint32_t ret = HixlBatchPut(&param);
   EXPECT_EQ(ret, SUCCESS);
 }
@@ -77,8 +80,11 @@ TEST(HixlKernelBasicTest, BatchGetSuccess) {
   for (auto &arr : local_dst) {
     std::fill(arr.begin(), arr.end(), 0xBB);
   }
-
-  auto param = CreateTestParamFixed<3>(remote_src, local_dst, lens_storage);
+  uint64_t remote_flag_addr = 1ULL;
+  uint64_t local_flag_addr = 0ULL;
+  auto param =
+      CreateTestParamFixed<3>(remote_src, local_dst, lens_storage, reinterpret_cast<uint64_t>(&remote_flag_addr),
+                              reinterpret_cast<uint64_t>(&local_flag_addr));
   uint32_t ret = HixlBatchGet(&param);
   EXPECT_EQ(ret, SUCCESS);
 }
