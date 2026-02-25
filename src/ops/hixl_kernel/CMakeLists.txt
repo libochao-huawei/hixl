@@ -8,33 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-add_library(base_headers INTERFACE)
-target_include_directories(base_headers INTERFACE
-        ${ASCEND_CANN_PACKAGE_PATH}/${AARCH_PREFIX}-linux/pkg_inc/base
-)
-
-add_library(cann_headers INTERFACE)
-target_include_directories(cann_headers INTERFACE
-        ${ASCEND_CANN_PACKAGE_PATH}/${AARCH_PREFIX}-linux/include
-        ${ASCEND_CANN_PACKAGE_PATH}/${AARCH_PREFIX}-linux/include/hccl
-)
-
-add_library(compile_options INTERFACE)
-target_compile_options(compile_options INTERFACE
-        $<$<CONFIG:Debug>:-g>
-        $<$<CONFIG:Debug>:-O0>
-        $<$<CONFIG:Release>:-O3>
-        -fstack-protector-all
-)
-
-add_library(link_options INTERFACE)
-target_link_options(link_options INTERFACE
-        -Wl,-z,relro
-        -Wl,-z,now
-        -Wl,-z,noexecstack
-        $<$<CONFIG:Release>:-s>
-)
-
 set(INCLUDE_LIST
         ${HIXL_DIR}/src/hixl
         ${HIXL_DIR}/include
@@ -46,20 +19,11 @@ add_library(hixl_kernel SHARED
 
 target_include_directories(hixl_kernel PRIVATE
         ${INCLUDE_LIST}
-        $<BUILD_INTERFACE:${base_headers}>
-        $<BUILD_INTERFACE:${cann_headers}>
 )
-
-target_compile_options(hixl_kernel PRIVATE
-        $<BUILD_INTERFACE:${compile_options}>
-)
-
-target_link_options(hixl_kernel PRIVATE
-        $<BUILD_INTERFACE:${link_options}>
-)
-
 
 target_link_libraries(hixl_kernel PRIVATE
+        $<BUILD_INTERFACE:intf_pub>
+        $<BUILD_INTERFACE:hccl_headers>
         -Wl,--no-as-needed
         ccl_kernel
         slog
