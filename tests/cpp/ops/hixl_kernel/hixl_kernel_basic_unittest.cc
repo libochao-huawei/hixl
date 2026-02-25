@@ -88,3 +88,33 @@ TEST(HixlKernelBasicTest, BatchGetSuccess) {
   uint32_t ret = HixlBatchGet(&param);
   EXPECT_EQ(ret, SUCCESS);
 }
+
+TEST(HixlKernelBasicTest, BatchPutSingleTask) {
+  std::array<std::array<uint8_t, 8>, 1> local_src{};
+  std::array<std::array<uint8_t, 8>, 1> remote_dst{};
+  std::array<uint64_t, 1> lens_storage{8};
+
+  uint64_t remote_flag_addr = 1ULL;
+  uint64_t local_flag_addr = 0ULL;
+  auto param =
+      CreateTestParamFixed<1>(local_src, remote_dst, lens_storage, reinterpret_cast<uint64_t>(&remote_flag_addr),
+                              reinterpret_cast<uint64_t>(&local_flag_addr));
+
+  uint32_t ret = HixlBatchPut(&param);
+  EXPECT_EQ(ret, SUCCESS);
+}
+
+TEST(HixlKernelBasicTest, BatchGetSingleTask) {
+  std::array<std::array<uint8_t, 8>, 1> remote_src{};
+  std::array<std::array<uint8_t, 8>, 1> local_dst{};
+  std::array<uint64_t, 1> lens_storage{8};
+
+  uint64_t remote_flag_addr = 1ULL;
+  uint64_t local_flag_addr = 0ULL;
+  auto param =
+      CreateTestParamFixed<1>(remote_src, local_dst, lens_storage, reinterpret_cast<uint64_t>(&remote_flag_addr),
+                              reinterpret_cast<uint64_t>(&local_flag_addr));
+
+  uint32_t ret = HixlBatchGet(&param);
+  EXPECT_EQ(ret, SUCCESS);
+}
