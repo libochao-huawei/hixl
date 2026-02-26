@@ -27,16 +27,6 @@ set(CMAKE_OBJCOPY        "${TOOLCHAIN_DIR}/bin/aarch64-target-linux-gnu-objcopy"
 set(CMAKE_C_COMPILE_OBJECT "<CMAKE_C_COMPILER> <DEFINES> -D__FILE__='\"$(notdir $(abspath <SOURCE>))\"' -Wno-builtin-macro-redefined <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
 set(CMAKE_CXX_COMPILE_OBJECT "<CMAKE_CXX_COMPILER> <DEFINES> -D__FILE__='\"$(notdir $(abspath <SOURCE>))\"' -Wno-builtin-macro-redefined <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
 
-#remove default options from cmake
-set(CMAKE_C_FLAGS_DEBUG "" CACHE STRING "c debug flag" FORCE)
-set(CMAKE_C_FLAGS_RELEASE "" CACHE STRING "c release flag" FORCE)
-
-set(CMAKE_CXX_FLAGS_DEBUG "" CACHE STRING "cxx debug flag" FORCE)
-set(CMAKE_CXX_FLAGS_RELEASE "" CACHE STRING "cxx release flag" FORCE)
-
-set(CMAKE_ASM_FLAGS_DEBUG "" CACHE STRING "asm debug flag" FORCE)
-set(CMAKE_ASM_FLAGS_RELEASE "" CACHE STRING "asm release flag" FORCE)
-
 #删除静态库中的时间戳
 set(CMAKE_C_ARCHIVE_CREATE "<CMAKE_AR> qcD <TARGET> <LINK_FLAGS> <OBJECTS>")
 set(CMAKE_C_ARCHIVE_APPEND "<CMAKE_AR> qD <TARGET> <LINK_FLAGS> <OBJECTS>")
