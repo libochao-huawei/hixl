@@ -24,6 +24,7 @@ target_include_directories(hixl_kernel PRIVATE
 target_link_libraries(hixl_kernel PRIVATE
         $<BUILD_INTERFACE:intf_pub>
         $<BUILD_INTERFACE:hccl_headers>
+        $<BUILD_INTERFACE:slog_headers>
         -Wl,--no-as-needed
         slog
         -Wl,--no-as-needed

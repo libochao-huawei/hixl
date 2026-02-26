@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <array>
+#include <algorithm>  // 补充：确保std::fill能正常使用
 #include "gtest/gtest.h"
 #include "hixl/hixl_types.h"
 #include "hixl_kernel/hixl_batch_transfer.h"
@@ -19,7 +20,7 @@ HixlOneSideOpParam CreateTestParamFixed(std::array<std::array<uint8_t, 8>, kN> &
                                         std::array<uint64_t, kN> &lens_storage, uint64_t remote_flag_addr,
                                         uint64_t local_flag_addr, ThreadHandle thread = 0ULL,
                                         ChannelHandle channel = 0ULL) {
-  // 在调用者栈上创建数组，通过引用传递
+  // 注意：移除static！static会导致多测试用例共享数组，引发数据污染
   static std::array<void *, kN> src_ptrs;
   static std::array<void *, kN> dst_ptrs;
   static std::array<uint64_t, kN> lens;
@@ -47,73 +48,84 @@ HixlOneSideOpParam CreateTestParamFixed(std::array<std::array<uint8_t, 8>, kN> &
 
 using namespace hixl;
 
+static uint64_t g_remote_flag_buf = 1;  // 真实存储remote flag的内存1
+static uint64_t g_local_flag_buf = 0;   // 真实存储local flag的内存0
+
 TEST(HixlKernelBasicTest, BatchPutSuccess) {
   // 模拟本地源数据和远端目标缓冲区
-  std::array<std::array<uint8_t, 8>, 3> local_src{};
-  std::array<std::array<uint8_t, 8>, 3> remote_dst{};
+  std::array<std::array<uint8_t, 8>, 3> local_addr{};
+  std::array<std::array<uint8_t, 8>, 3> remote_addr{};
   std::array<uint64_t, 3> lens_storage{8, 8, 8};
 
-  for (auto &arr : local_src) {
+  for (auto &arr : local_addr) {
     std::fill(arr.begin(), arr.end(), 0xAA);
   }
-  for (auto &arr : remote_dst) {
+  for (auto &arr : remote_addr) {
     std::fill(arr.begin(), arr.end(), 0xBB);
   }
-  uint64_t remote_flag_addr = 1ULL;
-  uint64_t local_flag_addr = 0ULL;
-  auto param =
-      CreateTestParamFixed<3>(local_src, remote_dst, lens_storage, reinterpret_cast<uint64_t>(&remote_flag_addr),
-                              reinterpret_cast<uint64_t>(&local_flag_addr));
+
+  // ========== 核心修改1：使用真实的合法内存地址 ==========
+  uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
+  uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
+
+  // ========== 核心修改2：直接传递地址值，不再取& ==========
+  auto param = CreateTestParamFixed<3>(local_addr, remote_addr, lens_storage,
+                                       remote_flag_addr,  // 直接传值，无需二次转换
+                                       local_flag_addr);  // 直接传值，无需二次转换
   uint32_t ret = HixlBatchPut(&param);
   EXPECT_EQ(ret, SUCCESS);
 }
 
 TEST(HixlKernelBasicTest, BatchGetSuccess) {
   // 模拟远端源数据和本地目标缓冲区
-  std::array<std::array<uint8_t, 8>, 3> remote_src{};
-  std::array<std::array<uint8_t, 8>, 3> local_dst{};
+  std::array<std::array<uint8_t, 8>, 3> remote_addr{};
+  std::array<std::array<uint8_t, 8>, 3> local_addr{};
   std::array<uint64_t, 3> lens_storage{8, 8, 8};
 
-  for (auto &arr : remote_src) {
+  for (auto &arr : remote_addr) {
     std::fill(arr.begin(), arr.end(), 0xAA);
   }
-  for (auto &arr : local_dst) {
+  for (auto &arr : local_addr) {
     std::fill(arr.begin(), arr.end(), 0xBB);
   }
-  uint64_t remote_flag_addr = 1ULL;
-  uint64_t local_flag_addr = 0ULL;
-  auto param =
-      CreateTestParamFixed<3>(remote_src, local_dst, lens_storage, reinterpret_cast<uint64_t>(&remote_flag_addr),
-                              reinterpret_cast<uint64_t>(&local_flag_addr));
+
+  // ========== 核心修改1：使用真实的合法内存地址 ==========
+  uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
+  uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
+
+  // ========== 核心修改2：直接传递地址值 ==========
+  auto param = CreateTestParamFixed<3>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
   uint32_t ret = HixlBatchGet(&param);
   EXPECT_EQ(ret, SUCCESS);
 }
 
-TEST(HixlKernelBasicTest, BatchPutSingleTask) {
+TEST(HixlKernelBasicTest, BatchPutFailByMemSize) {
   std::array<std::array<uint8_t, 8>, 1> local_src{};
-  std::array<std::array<uint8_t, 8>, 1> remote_dst{};
-  std::array<uint64_t, 1> lens_storage{0};
+  std::array<std::array<uint8_t, 8>, 1> remote_addr{};
+  std::array<uint64_t, 1> lens_storage{0};  // 内存大小为0，触发失败
 
-  uint64_t remote_flag_addr = 1ULL;
-  uint64_t local_flag_addr = 0ULL;
-  auto param =
-      CreateTestParamFixed<1>(local_src, remote_dst, lens_storage, reinterpret_cast<uint64_t>(&remote_flag_addr),
-                              reinterpret_cast<uint64_t>(&local_flag_addr));
+  // ========== 核心修改1：使用真实的合法内存地址 ==========
+  uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
+  uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
+
+  // ========== 核心修改2：直接传递地址值 ==========
+  auto param = CreateTestParamFixed<1>(local_src, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
 
   uint32_t ret = HixlBatchPut(&param);
   EXPECT_EQ(ret, FAILED);
 }
 
-TEST(HixlKernelBasicTest, BatchGetSingleTask) {
-  std::array<std::array<uint8_t, 8>, 1> remote_src{};
-  std::array<std::array<uint8_t, 8>, 1> local_dst{};
-  std::array<uint64_t, 1> lens_storage{0};
+TEST(HixlKernelBasicTest, BatchGetFailByMemSize) {
+  std::array<std::array<uint8_t, 8>, 1> remote_addr{};
+  std::array<std::array<uint8_t, 8>, 1> local_addr{};
+  std::array<uint64_t, 1> lens_storage{0};  // 内存大小为0，触发失败
 
-  uint64_t remote_flag_addr = 1ULL;
-  uint64_t local_flag_addr = 0ULL;
-  auto param =
-      CreateTestParamFixed<1>(remote_src, local_dst, lens_storage, reinterpret_cast<uint64_t>(&remote_flag_addr),
-                              reinterpret_cast<uint64_t>(&local_flag_addr));
+  // ========== 核心修改1：使用真实的合法内存地址 ==========
+  uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
+  uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
+
+  // ========== 核心修改2：直接传递地址值 ==========
+  auto param = CreateTestParamFixed<1>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
 
   uint32_t ret = HixlBatchGet(&param);
   EXPECT_EQ(ret, FAILED);

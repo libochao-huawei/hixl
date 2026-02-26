@@ -92,7 +92,8 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
 }
 }  // namespace
 
-extern "C" uint32_t HixlBatchPut(HixlOneSideOpParam *param) {
+extern "C" {
+uint32_t HixlBatchPut(HixlOneSideOpParam *param) {
   uint32_t ret = HixlBatchTransfer(true, param);
   if (ret != 0) {
     HIXL_LOGE(FAILED, "[HixlBatchPut] HixlBatchPut faild, ret is %u", ret);
@@ -101,7 +102,7 @@ extern "C" uint32_t HixlBatchPut(HixlOneSideOpParam *param) {
   return ret;
 }
 
-extern "C" uint32_t HixlBatchGet(HixlOneSideOpParam *param) {
+uint32_t HixlBatchGet(HixlOneSideOpParam *param) {
   uint32_t ret = HixlBatchTransfer(false, param);
   if (ret != 0) {
     HIXL_LOGE(FAILED, "[HixlBatchGet] HixlBatchGet faild, ret is %u", ret);
@@ -109,4 +110,5 @@ extern "C" uint32_t HixlBatchGet(HixlOneSideOpParam *param) {
   }
   return ret;
 }
+}  // extern "C"
 }  // namespace hixl
