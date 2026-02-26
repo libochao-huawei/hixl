@@ -13,10 +13,19 @@ project (device_hixl_ops)
 
 set(PRODUCT_SIDE device)
 include(../function.cmake)
+include(../intf_pub_linux.cmake)
+
 
 set(CMAKE_CXX_STANDARD 17)
 set(HIXL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../" CACHE PATH "Project top directory")
 set(TARGET_SYSTEM_NAME Linux)
+
+set(PROJECT_SOURCE_DIR ${HIXL_DIR})
+include(../variables.cmake)
+
+find_package_if_target_not_exists(hccl MODULE REQUIRED)
+find_package_if_target_not_exists(slog MODULE REQUIRED)
+
 
 set(STUBS
     slog

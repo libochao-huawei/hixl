@@ -9,8 +9,8 @@
 # ----------------------------------------------------------------------------
 
 set(INCLUDE_LIST
-        ${HIXL_CODE_DIR}/src/hixl
-        ${HIXL_CODE_DIR}/include
+        ${HIXL_DIR}/src/hixl
+        ${HIXL_DIR}/include
 )
 
 add_library(hixl_kernel SHARED
@@ -32,9 +32,10 @@ target_link_libraries(hixl_kernel PRIVATE
 # 基于ini生成json文件
 message(STATUS "HIXL_DIR = ${HIXL_DIR}")
 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
-        COMMAND python3 ${HIXL_DIR}/scripts/kernel/parser_ini.py ${HIXL_DIR}/src/ops/libcann_hixl_kernel.ini ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
+        COMMAND python3 ${HIXL_DIR}/scripts/kernel/parser_ini.py ${HIXL_DIR}/src/ops/hixl_kernel/libcann_hixl_kernel.ini ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
 )
 add_custom_target(aicpu_kernel_json DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json)
+add_dependencies(hixl_kernel aicpu_kernel_json)
 
 install(FILES
         ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
