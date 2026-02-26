@@ -43,8 +43,10 @@ else ()
 endif()
 
 message(STATUS "start build device")
-message(STATUS $ENV{TOOLCHAIN_DIR})
-set(TOOLCHAIN_DIR $ENV{TOOLCHAIN_DIR})
+if(NOT EXISTS "${CANN_INSTALL_PATH}/toolkit/toolchain/hcc")
+    message(FATAL_ERROR "CANN toolchain path does not exist: ${CANN_INSTALL_PATH}/toolkit/toolchain/hcc")
+endif()
+set(TOOLCHAIN_DIR "${CANN_INSTALL_PATH}/toolkit/toolchain/hcc")
 # 对于libc_sec，只有makefile，需要传递编译器路径
 set(CMAKE_CXX_COMPILER_ "${TOOLCHAIN_DIR}/bin/aarch64-target-linux-gnu-g++")
 set(CMAKE_C_COMPILER_ "${TOOLCHAIN_DIR}/bin/aarch64-target-linux-gnu-gcc")
