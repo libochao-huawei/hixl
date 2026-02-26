@@ -9,8 +9,8 @@
 # ----------------------------------------------------------------------------
 
 set(INCLUDE_LIST
-        ${HIXL_CODE_DIR}/src/hixl
-        ${HIXL_CODE_DIR}/include
+        ${HIXL_DIR}/src/hixl
+        ${HIXL_DIR}/include
 )
 
 add_library(hixl_kernel SHARED
