@@ -71,5 +71,5 @@
         <path value="opp/built-in/op_impl/aicpu"/>
         <path value="opp/built-in/op_impl/aicpu/kernel"/>
         <path value="opp/built-in/op_impl/aicpu/config"/>
-    </dir_info>
+ 	</dir_info>
 </config>
