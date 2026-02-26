@@ -13,12 +13,6 @@ set(CMAKE_SYSTEM_PROCESSOR aarch64)
 set(TARGET_LINUX_DISTRIBUTOR_ID euleros)
 set(TARGET_LINUX_DISTRIBUTOR_RELEASE 2.8)
 
-if(NOT EXISTS "${CANN_INSTALL_PATH}/toolkit/toolchain/hcc")
-    message(FATAL_ERROR "CANN toolchain path does not exist: ${CANN_INSTALL_PATH}/toolkit/toolchain/hcc")
-endif()
-
-set(TOOLCHAIN_DIR "${CANN_INSTALL_PATH}/toolkit/toolchain/hcc")
-
 set(CPU_TYPE aarch64)
 set(CMAKE_C_COMPILER     "${TOOLCHAIN_DIR}/bin/aarch64-target-linux-gnu-gcc"     CACHE PATH "C Compiler")
 set(CMAKE_CXX_COMPILER   "${TOOLCHAIN_DIR}/bin/aarch64-target-linux-gnu-g++"    CACHE PATH "C++ Compiler")
