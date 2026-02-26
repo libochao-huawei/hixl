@@ -67,29 +67,13 @@ checkopts() {
   ENABLE_ASAN=OFF
   ENABLE_GCOV=OFF
   ENABLE_SIGN=OFF
-  CUSTOM_SIGN_SCRIPT="${BASEPATH}/../vendor/hisi/build/scripts/sign_and_add_header.sh"
-
-  ARCH=$(uname -m)
-  if [[ $ARCH == "x86_64" || $ARCH == "i386" || $ARCH == "i686" ]]; then
-      AARCH_PREFIX=x86_64
-  elif [[ $ARCH == "aarch64" || $ARCH == "armv8l" || $ARCH == "armv7l" ]]; then
-      AARCH_PREFIX=aarch64
-  else
-      echo "UnKnown Arch: $ARCH"
-  fi
+  CUSTOM_SIGN_SCRIPT="${BASEPATH}/scripts/sign/community_sign_build.py"
 
   # Process the options
   parsed_args=$(getopt -a -o j:hv -l help,verbose,pkg,examples,cann_3rd_lib_path:,cann-3rd-lib-path:,output_path:,output-path:,build_type:,build-type:,sign-script:,sign_script:,asan,cov,enable_sign,enable-sign -- "$@") || {
     usage
     exit 1
   }
-
-  if [[ -n "${ASCEND_HOME_PATH}" ]] && [[ -d "${ASCEND_HOME_PATH}/toolkit/toolchain/hcc" ]]; then
-    echo "env exists ASCEND_HOME_PATH : ${ASCEND_HOME_PATH}"
-    export TOOLCHAIN_DIR=${ASCEND_HOME_PATH}/toolkit/toolchain/hcc
-  else
-    echo "env ASCEND_HOME_PATH not exists: ${ASCEND_HOME_PATH}"
-  fi
 
   eval set -- "$parsed_args"
 
@@ -177,7 +161,6 @@ build() {
         -D ENABLE_GCOV=${ENABLE_GCOV} \
         -D ENABLE_SIGN=${ENABLE_SIGN} \
         -D CUSTOM_SIGN_SCRIPT=${CUSTOM_SIGN_SCRIPT} \
-        -D AARCH_PREFIX=${AARCH_PREFIX} \
         ${CANN_3RD_LIB_PATH:+-D CANN_3RD_LIB_PATH=${CANN_3RD_LIB_PATH}} \
         ..
 

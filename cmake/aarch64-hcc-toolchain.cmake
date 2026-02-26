@@ -13,8 +13,8 @@ set(CMAKE_SYSTEM_PROCESSOR aarch64)
 set(TARGET_LINUX_DISTRIBUTOR_ID euleros)
 set(TARGET_LINUX_DISTRIBUTOR_RELEASE 2.8)
 
-if(NOT DEFINED ENV{TOOLCHAIN_DIR})
-    message(FATAL_ERROR "TOOLCHAIN_DIR is not defined. Please set -DTOOLCHAIN_DIR=...")
+if(NOT EXISTS "${CANN_INSTALL_PATH}/toolkit/toolchain/hcc")
+    message(FATAL_ERROR "CANN toolchain path does not exist: ${CANN_INSTALL_PATH}/toolkit/toolchain/hcc")
 endif()
 
 
