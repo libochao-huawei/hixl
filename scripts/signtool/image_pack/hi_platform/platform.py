@@ -310,9 +310,9 @@ def __add_magic_number_and_file_size(
         out.write(code_len.to_bytes(8, "little"))
 
 
-def write_extern(args, out, list):
+def write_extern(args, out, data_list):
     before_header = True if (args.position == "before_header") else False
-    code_len = list[0] if before_header else 0
+    code_len = data_list[0] if before_header else 0
     if before_header:
         __write_header_hash(out, args.S, 0, args.sm, code_len, before_header)
     __add_magic_number_and_file_size(

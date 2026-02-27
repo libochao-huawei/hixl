@@ -236,6 +236,16 @@ class IniParser(object):
                 json_file_real_path,
             )
 
+    @staticmethod
+    def _is_io_section(op_sec):
+        """Check if op_sec is an input/output section name."""
+        return (
+            (op_sec.startswith("input") and op_sec[5:].isdigit())
+            or (op_sec.startswith("output") and op_sec[6:].isdigit())
+            or (op_sec.startswith("dynamic_input") and op_sec[13:].isdigit())
+            or (op_sec.startswith("dynamic_output") and op_sec[14:].isdigit())
+        )
+
     def parse(self, ini_paths: list, out_file_path, custom=False):
         """
         Total parse function: get info from ini files, write into out_file(in json)

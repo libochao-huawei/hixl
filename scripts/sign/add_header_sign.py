@@ -29,17 +29,18 @@
 # 日期    ：2025年11月25日
 # 修改内容  ：创建文件
 """
-from collections import namedtuple
-from typing import Dict, Iterator, List, Tuple
-import os
-import sys
-import shutil
-import subprocess
+import shlex
 import argparse
 import logging
+import os
+import shutil
+import subprocess
+import sys
 import xml.etree.ElementTree as ET
+from collections import namedtuple
+from typing import Dict, List, Tuple
+
 import common_log as COMM_LOG
-import shlex
 
 
 def _run_cmd(cmd: str) -> Tuple[int, str]:
@@ -469,7 +470,7 @@ def convert_der_file(crl_file: str, der_file: str) -> int:
             return 1
         # 调用 openssl 转换
         cmd = f"openssl crl -in {crl_file} -outform DER -out {der_file}"
-        result = subprocess.getstatusoutput(cmd)
+        result = _run_cmd(cmd)
         if result[0] != 0:
             logging.error("OpenSSL conversion failed: %s", result[1])
             return 1
