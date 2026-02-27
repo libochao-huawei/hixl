@@ -13,11 +13,32 @@
 #
 
 import binascii
-from ctypes import *
 import os
 import struct
 import sys
+from dataclasses import dataclass
 from tools import cal_bin_hash, to_bytes
+
+
+@dataclass
+class HeaderConfig:
+    """头配置类，封装头构造相关参数"""
+    n_buf: bytes
+    e_buf: bytes
+    hash_buf: bytes
+    code_len: int
+    suffix: bool
+    head_type: int
+    version: str
+    tag: str
+    certtype: int
+    before_header: bool = False
+    large_packet: bool = False
+    enc: bool = False
+    pss: bool = False
+    bcm: bool = False
+    gcm: bool = False
+    gm: bool = False
 
 
 def __construct_header(
@@ -295,12 +316,6 @@ def __add_magic_number_and_file_size(
     out.seek(offset, 0)
     out.write(stream)
 
-    # Write additional nvcnt to head
-    # nvcnt_offset : 0x0x590
-    # [
-    #     U32 nvcnt_magic : 0x5A5AA5A5
-    #     U32 nvcnt
-    # ] nvcnt_s
     if args.nvcnt:
         s = struct.Struct("II")
         nvcnt_magic = 0x5A5AA5A5
@@ -316,9 +331,10 @@ def __add_magic_number_and_file_size(
         out.write(code_len.to_bytes(8, "little"))
 
 
-def write_extern(args, out, list):
+def write_extern(args, out, extern_list):
+    """写入外部数据到输出文件"""
     before_header = True if (args.position == "before_header") else False
-    code_len = list[0] if before_header else 0
+    code_len = extern_list[0] if before_header else 0
     if before_header:
         __write_header_hash(out, args.S, 0, args.sm, code_len, before_header)
     __add_magic_number_and_file_size(

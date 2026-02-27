@@ -119,8 +119,10 @@ def _run_sign(inputfiles, rootdir):
         cmd = get_sign_cmd(file, rootdir)
 
         logging.info("run sign cmd %s in %s", cmd, mypath)
+        # 将命令字符串拆分为列表以避免使用 shell=True
+        cmd_list = cmd.split()
         result = subprocess.run(
-            cmd, cwd=mypath, shell=True, check=False, stdout=PIPE, stderr=STDOUT
+            cmd_list, cwd=mypath, shell=False, check=False, stdout=PIPE, stderr=STDOUT
         )
         if 0 != result.returncode:
             logging.error(result.stdout.decode())

@@ -125,6 +125,21 @@ class IniParser(object):
         subset = set(io_sec_info.keys()).difference(self.input_output_info_keys)
         return not subset
 
+    @staticmethod
+    def _is_io_section(op_sec: str) -> bool:
+        """
+        Check if the section is an input/output section.
+        """
+        if op_sec[:5] == "input" and op_sec[5:].isdigit():
+            return True
+        if op_sec[:6] == "output" and op_sec[6:].isdigit():
+            return True
+        if op_sec[:13] == "dynamic_input" and op_sec[13:].isdigit():
+            return True
+        if op_sec[:14] == "dynamic_output" and op_sec[14:].isdigit():
+            return True
+        return False
+
     def check_op_info_setting(self):
         """
         Check ini op info setting correct or enough
@@ -141,12 +156,7 @@ class IniParser(object):
                     self.check_op_info(op_name, sec_info)
                     op_info_flag = True
 
-                elif (
-                    (op_sec[:5] == "input" and op_sec[5:].isdigit())
-                    or (op_sec[:6] == "output" and op_sec[6:].isdigit())
-                    or (op_sec[:13] == "dynamic_input" and op_sec[13:].isdigit())
-                    or (op_sec[:14] == "dynamic_output" and op_sec[14:].isdigit())
-                ):
+                elif self._is_io_section(op_sec):
                     ret = self.check_op_input_output(sec_info)
                     if not ret:
                         logging.error(
@@ -156,7 +166,7 @@ class IniParser(object):
                             sec_info,
                         )
                         raise KeyError("bad op_sets key")
-                    op_io_flag = False
+                    op_io_flag = True
 
                 else:
                     logging.error(

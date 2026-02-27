@@ -19,6 +19,7 @@ import textwrap
 import os
 import logging
 
+# 标准日志配置 - 与项目中其他脚本保持一致
 logging.basicConfig(
     format="[%(asctime)s] [%(levelname)s] [%(pathname)s] [line:%(lineno)d] %(message)s",
     level=logging.INFO,
@@ -133,30 +134,37 @@ def gen_ini():
 
 
 def update_hash():
+    """更新哈希值到哈希列表文件"""
     args = get_args()
     tree = ET.ElementTree(file=args.inFilePath)
     logging.info("update_hash")
+
     if tree.getroot().tag != "image_info":
         logging.error("error in input xml file")
-    if args.new_image_name:
-        hash_list_path = args.hash_list_img_path
-        if os.path.exists(hash_list_path):
-            for elem in tree.iter(tag="image"):
-                if elem.attrib["tag"] == args.new_image_name:
-                    hash_val = cal_image_hash(elem.attrib["path"])
-                    with open(hash_list_path, "a+") as f:
-                        line_elem = [elem.attrib["tag"], hash_val]
-                        line = "{};".format(",".join(line_elem))
-                        f.write(line)
-                        logging.info(
-                            "add %s hash val %s to %s",
-                            args.new_image_name,
-                            hash_val,
-                            hash_list_path,
-                        )
-        else:
-            logging.error("input hashlist file not exist")
-            return 1
+        return 1
+
+    if not args.new_image_name:
+        return 0
+
+    hash_list_path = args.hash_list_img_path
+    if not os.path.exists(hash_list_path):
+        logging.error("input hashlist file not exist")
+        return 1
+
+    for elem in tree.iter(tag="image"):
+        if elem.attrib["tag"] == args.new_image_name:
+            hash_val = cal_image_hash(elem.attrib["path"])
+            with open(hash_list_path, "a+") as f:
+                line_elem = [elem.attrib["tag"], hash_val]
+                line = "{};".format(",".join(line_elem))
+                f.write(line)
+                logging.info(
+                    "add %s hash val %s to %s",
+                    args.new_image_name,
+                    hash_val,
+                    hash_list_path,
+                )
+            break
     return 0
 
 

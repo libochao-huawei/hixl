@@ -59,20 +59,22 @@ def cilog_print_element(cilog_element):
     修改记录：1.日期    : 2012年7月25日
                 修改内容: 创建函数
     """
-    print("[" + cilog_element + "]", end=" ")
+    logging.info("[" + cilog_element + "]")
     return
 
 
 def cilog_logmsg(log_level, filename, line_no, log_msg, *log_paras):
+    """使用logging模块输出日志信息"""
     log_timestamp = cilog_get_timestamp()
-
-    cilog_print_element(log_timestamp)
-    cilog_print_element(log_level)
-    cilog_print_element(filename)
-    cilog_print_element(str(line_no))
-
-    print(log_msg % log_paras[0])
-
+    log_format = "[%s] [%s] [%s] [%s] %s" % (
+        log_timestamp, log_level, filename, line_no, log_msg
+    )
+    if log_level == "ERROR":
+        logging.error(log_format, *log_paras)
+    elif log_level == "WARNING":
+        logging.warning(log_format, *log_paras)
+    else:
+        logging.info(log_format, *log_paras)
     return
 
 

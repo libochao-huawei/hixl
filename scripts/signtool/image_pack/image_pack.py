@@ -26,7 +26,8 @@ logging.basicConfig(
 )
 
 
-def get_args():
+def _create_base_parser():
+    """创建基础参数解析器"""
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent(
@@ -34,6 +35,7 @@ def get_args():
                                      A tool to pack image with new structure"""
         ),
     )
+    # 添加基础参数
     parser.add_argument(
         "-raw_img", required=False, dest="raw", help="INPUT: The raw image"
     )
@@ -50,22 +52,31 @@ def get_args():
         choices=["ascend"],
         help="INPUT: platform : ascend",
     )
+    return parser
 
-    # input for cms
+
+def _add_cms_arguments(parser):
+    """添加CMS相关参数"""
     parser.add_argument("-cms", required=False, dest="cms", help="INPUT: The cms file")
     parser.add_argument("-ini", required=False, dest="ini", help="INPUT: The ini file")
     parser.add_argument("-crl", required=False, dest="crl", help="INPUT: The crl file")
+    parser.add_argument("--addcms", help="choose whether add cms", action="store_true")
 
-    # 1910_version
+
+def _add_version_arguments(parser):
+    """添加版本相关参数"""
     parser.add_argument(
         "-version", required=False, dest="ver", help="INPUT: The version number"
     )
 
-    # flag cmd
+
+def _add_flag_arguments(parser):
+    """添加标志参数"""
     parser.add_argument("-S", help="choose whether Onchiprom", action="store_true")
 
-    parser.add_argument("--addcms", help="choose whether add cms", action="store_true")
 
+def _add_position_arguments(parser):
+    """添加位置相关参数"""
     parser.add_argument(
         "-position",
         required=False,
@@ -89,7 +100,9 @@ def get_args():
         help="INPUT: The rootfs/app.img total size(M)",
     )
 
-    # nvcnt
+
+def _add_nvcnt_arguments(parser):
+    """添加nvcnt相关参数"""
     parser.add_argument(
         "-nvcnt",
         required=False,
@@ -107,6 +120,9 @@ def get_args():
         help="INPUT: tag for driver images",
     )
 
+
+def _add_cert_arguments(parser):
+    """添加证书相关参数"""
     parser.add_argument(
         "-certtype",
         required=False,
@@ -116,6 +132,17 @@ def get_args():
         type=int,
         help="INPUT: 0x1:Community Certificate, 0x2:Client Certificate, 0xFFFFFFFF:HW Certificate",
     )
+
+
+def get_args():
+    """获取命令行参数"""
+    parser = _create_base_parser()
+    _add_cms_arguments(parser)
+    _add_version_arguments(parser)
+    _add_flag_arguments(parser)
+    _add_position_arguments(parser)
+    _add_nvcnt_arguments(parser)
+    _add_cert_arguments(parser)
     return parser.parse_args()
 
 
