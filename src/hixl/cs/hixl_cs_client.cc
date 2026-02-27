@@ -39,11 +39,13 @@ constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";
 constexpr const char *kTransFlagNameDevice = "_hixl_builtin_dev_trans_flag";
 constexpr uint64_t kUbFlagDoneValue = 1ULL;
 constexpr uint64_t kUbFlagInitValue = 0ULL;
-constexpr const char *kUbKernelJson =
-    "/home/hixl/Ascend/cann/opp/built-in/op_impl/aicpu/config/libscatter_hixl_kernel.json";
 constexpr const char *kUbFuncGet = "HixlBatchGet";
 constexpr const char *kUbFuncPut = "HixlBatchPut";
-
+constexpr uint32_t kFlagSizeBytes = 8;
+constexpr uint64_t kFlagDoneValue = 1ULL;
+constexpr uint64_t kFlagResetValue = 0ULL;
+constexpr uint32_t kCustomTimeoutMs = 1800;
+constexpr uint16_t kNotifyDefaultWaitTimeMs = 27 * 68;  // notifywait默认1836ms等待时长
 void FreeExportDesc(std::vector<hixl::HixlMemDesc> &desc_list) {
   for (auto &d : desc_list) {
     if (d.export_desc != nullptr && d.export_len > 0U) {
@@ -122,8 +124,9 @@ void UnrecordAddrs(hixl::HixlMemStore &store, std::vector<void *> &addrs) {
 hixl::Status ImportOneDesc(hixl::ImportCtx &ctx, uint32_t idx, hixl::HixlMemDesc &desc) {
   HcommMem buf{};
   hixl::Status ret = ctx.ep->MemImport(desc.export_desc, desc.export_len, buf);
+  const char* safe_tag = desc.tag.empty() ? "<empty>" : desc.tag.c_str();
   if (ret != hixl::SUCCESS) {
-    HIXL_LOGE(ret, "[HixlClient] MemImport failed, idx=%u, tag=%s", idx, desc.tag.c_str());
+    HIXL_LOGE(ret, "[HixlClient] MemImport failed, idx=%u, tag=%s", idx, safe_tag);
     return ret;
   }
   ctx.imported.emplace_back(buf);
@@ -132,10 +135,12 @@ hixl::Status ImportOneDesc(hixl::ImportCtx &ctx, uint32_t idx, hixl::HixlMemDesc
   mem.type = desc.mem.type;
   mem.addr = desc.mem.addr;
   mem.size = desc.mem.size;
-  HIXL_LOGI("[HixlClient] ImportOneDesc desc.tag=%s mem.addr=%p", desc.tag.c_str(), mem.addr);
+  HIXL_LOGI("[HixlClient] ImportOneDesc desc.tag=%s mem.addr=%p", safe_tag, mem.addr);
   ctx.mems.emplace_back(mem);
-  ctx.tag_mem_map[desc.tag] = mem;
-  HIXL_LOGD("[HixlClient] Imported mem[%u]: tag='%s', addr=%p, size=%llu", idx, desc.tag.c_str(), mem.addr, mem.size);
+  if (!desc.tag.empty()) {
+    ctx.tag_mem_map[desc.tag] = mem;
+  }
+  HIXL_LOGD("[HixlClient] Imported mem[%u]: tag='%s', addr=%p, size=%llu", idx, safe_tag, mem.addr, mem.size);
   ret = ctx.store->RecordMemory(true, mem.addr, static_cast<size_t>(mem.size));
   if (ret == hixl::SUCCESS) {
     ctx.recorded_addrs.emplace_back(mem.addr);
@@ -143,10 +148,13 @@ hixl::Status ImportOneDesc(hixl::ImportCtx &ctx, uint32_t idx, hixl::HixlMemDesc
     HIXL_LOGE(ret,
               "[HixlClient] RecordMemory(server) failed! This memory may have been registered. idx=%u, tag=%s, "
               "addr=%p, size=%llu",
-              idx, desc.tag.c_str(), mem.addr, mem.size);
+              idx, safe_tag, mem.addr, mem.size);
     return ret;
   }
-  return AppendTagStorage(ctx.tag_storage, desc.tag);
+  if (!desc.tag.empty()) {
+    return AppendTagStorage(ctx.tag_storage, desc.tag);
+  }
+  return hixl::SUCCESS;
 }
 
 hixl::Status ImportAllDescs(hixl::ImportCtx &ctx, std::vector<hixl::HixlMemDesc> &desc_list) {
@@ -195,14 +203,6 @@ void FreeMemDev(hixl::MemDev &mem_dev) {
 }  // namespace
 
 namespace hixl {
-constexpr uint32_t kFlagSizeBytes = 8;
-constexpr uint32_t kWaitChannelPollIntervalMs = 1U;
-constexpr uint64_t kFlagDoneValue = 1ULL;
-constexpr uint64_t kFlagResetValue = 0ULL;
-constexpr uint16_t kRtMallocModuleId = 0;
-constexpr uint32_t kCustomTimeout = 1800;
-constexpr uint16_t kNotifyDefaultWaitTime = 27 * 68;  // notifywait默认1836等待时长
-
 HixlCSClient::HixlCSClient() : mem_store_() {
   for (size_t i = 0U; i < kFlagQueueSize; ++i) {
     available_indices_[i] = i;
@@ -309,14 +309,14 @@ Status HixlCSClient::InitUbResource() {
     HIXL_CHK_STATUS_RET(ret, "[HixlClient] InitUbConstMemory failed");
     HIXL_LOGI("[HixlClient] UB Device const one initialized at %p on dev %d", ub_dev_const_one_, ub_device_id_);
   }
-  Status pret = GetCompletePool().AddRefAndInitIfNeeded(ub_device_id_, kUbEngine, kUbThreadNum, kUbNotifyNumPerThread);
+  Status pret = CompletePool::GetInstance().AddRefAndInitIfNeeded(ub_device_id_, kUbEngine, kUbThreadNum, kUbNotifyNumPerThread);
   HIXL_CHK_STATUS_RET(pret, "[HixlClient] CompletePool AddRefAndInitIfNeeded failed. devId=%d", ub_device_id_);
   for (uint32_t i = 0; i < CompletePool::kMaxSlots; ++i) {
     uint64_t notify_addr = 0;
     uint32_t notify_len = 0;
     std::array<char, CompletePool::kNotifyTagSize> tag{};
 
-    HIXL_CHK_STATUS_RET(GetCompletePool().GetSlotNotifyInfo(i, notify_addr, notify_len, tag),
+    HIXL_CHK_STATUS_RET(CompletePool::GetInstance().GetSlotNotifyInfo(i, notify_addr, notify_len, tag),
                         "Failed to get slot notify info");
 
     HcommMem mem{};
@@ -554,7 +554,7 @@ Status HixlCSClient::ReleaseUbCompleteHandle(UbCompleteHandle &h) {
   }
   FreeMemDev(h.mem_dev);
   h.magic = 0U;
-  GetCompletePool().Release(h.slot.slot_index);
+  CompletePool::GetInstance().Release(h.slot.slot_index);
   delete &h;
   HIXL_LOGI("[HixlCSClient] ReleaseUbCompleteHandle end");
   return SUCCESS;
@@ -569,13 +569,13 @@ Status HixlCSClient::EnsureUbKernelLoadedLocked() {
   hixl::UbFuncHandles func_handles{};
   Status ret = hixl::LoadUbKernelAndGetHandles(kUbFuncGet, kUbFuncPut, ub_kernel_handle_, func_handles);
   if (ret != SUCCESS) {
-    HIXL_LOGE(ret, "[HixlClient][UB] LoadUbKernelAndResolveStubs failed. dev=%d json=%s", ub_device_id_, kUbKernelJson);
+    HIXL_LOGE(ret, "[HixlClient][UB] LoadUbKernelAndResolveStubs failed. dev=%d", ub_device_id_);
     return ret;
   }
-  HIXL_CHECK_NOTNULL(func_handles.batchGet, "[HixlClient][UB] batchGet stub is null");
-  HIXL_CHECK_NOTNULL(func_handles.batchPut, "[HixlClient][UB] batchPut stub is null");
-  ub_func_get_ = func_handles.batchGet;
-  ub_func_put_ = func_handles.batchPut;
+  HIXL_CHECK_NOTNULL(func_handles.batch_get, "[HixlClient][UB] batchGet stub is null");
+  HIXL_CHECK_NOTNULL(func_handles.batch_put, "[HixlClient][UB] batchPut stub is null");
+  ub_func_get_ = func_handles.batch_get;
+  ub_func_put_ = func_handles.batch_put;
   ub_kernel_loaded_ = true;
   HIXL_LOGI("[HixlClient][UB] UB Kernels loaded successfully. dev=%d handle=%p get=%p put=%p", ub_device_id_,
             ub_kernel_handle_, ub_func_get_, ub_func_put_);
@@ -619,11 +619,11 @@ Status HixlCSClient::PrepareUbRemoteFlagAndKernel(void *&remote_flag) {
 }
 
 Status HixlCSClient::AcquireUbSlot(CompletePool::SlotHandle &slot) {
-  Status acquire_ret = GetCompletePool().Acquire(&slot);
+  Status acquire_ret = CompletePool::GetInstance().Acquire(&slot);
   HIXL_CHK_STATUS_RET(acquire_ret, "[HixlClient][UB] CompletePool Acquire failed.");
   HIXL_CHECK_NOTNULL(slot.host_flag, "[HixlClient][UB] slot.host_flag is null");
   HIXL_CHK_BOOL_RET_STATUS(slot.notify_addr != 0, FAILED, "[HixlClient][UB] slot.notify_addr is 0");
-  GetCompletePool().ResetHostFlag(slot);
+  CompletePool::GetInstance().ResetHostFlag(slot);
   return SUCCESS;
 }
 
@@ -664,14 +664,14 @@ Status HixlCSClient::LaunchUbAndStageD2H(bool is_get, UbCompleteHandle &handle, 
   aclrtLaunchKernelCfg cfg;
   aclrtLaunchKernelAttr attr;
   attr.id = ACL_RT_LAUNCH_KERNEL_ATTR_TIMEOUT;
-  attr.value.timeout = kNotifyDefaultWaitTime;
+  attr.value.timeout = kNotifyDefaultWaitTimeMs;
   cfg.numAttrs = 1;
   cfg.attrs = &attr;
 
   HIXL_CHK_ACL_RET(aclrtLaunchKernelWithConfig(funcHandle, block_dim, handle.slot.stream, &cfg, argsHandle, nullptr),
                    "[HixlClient] aclrtLaunchKernelWithConfig failed");
 
-  HIXL_CHK_ACL_RET(aclrtWaitAndResetNotify(handle.slot.notify, handle.slot.stream, kCustomTimeout),
+  HIXL_CHK_ACL_RET(aclrtWaitAndResetNotify(handle.slot.notify, handle.slot.stream, kCustomTimeoutMs),
                    "[HixlClient] aclrtWaitAndResetNotify failed");
 
   HIXL_CHK_ACL_RET(aclrtMemcpyAsync(handle.slot.host_flag, sizeof(uint64_t), ub_dev_const_one_, sizeof(uint64_t),
@@ -687,7 +687,7 @@ Status HixlCSClient::BatchTransferDevice(bool is_get, const CommunicateMem &comm
   HIXL_CHK_STATUS_RET(ValidateUbInputs(is_get, communicate_mem_param, handle_ptr), "ValidateUbInputs failed");
   CompletePool::SlotHandle slot{};
   HIXL_CHK_STATUS_RET(AcquireUbSlot(slot), "AcquireUbSlot failed");
-  HIXL_DISMISSABLE_GUARD(slot_guard, [slot]() { GetCompletePool().Release(slot.slot_index); });
+  HIXL_DISMISSABLE_GUARD(slot_guard, [slot]() { CompletePool::GetInstance().Release(slot.slot_index); });
   llm::TemporaryRtContext with_context(slot.ctx);
   MemDev mem_dev{};
   HIXL_DISMISSABLE_GUARD(mem_guard, [&mem_dev]() { FreeMemDev(mem_dev); });
@@ -1030,7 +1030,7 @@ Status HixlCSClient::ReleaseUbResourcesLocked() {
   if (!is_ub_mode_) {
     return SUCCESS;
   }
-  const uint32_t in_use = GetCompletePool().GetInUseCount();
+  const uint32_t in_use = CompletePool::GetInstance().GetInUseCount();
   if (in_use != 0U) {
     HIXL_LOGE(FAILED,
               "[HixlClient] Destroy: %u UB slots still in use. "
@@ -1058,7 +1058,7 @@ Status HixlCSClient::ReleaseUbResourcesLocked() {
       ub_notify_mem_handles_[i] = nullptr;
     }
   }
-  GetCompletePool().ReleaseRefAndDeinitIfNeeded();
+  CompletePool::GetInstance().ReleaseRefAndDeinitIfNeeded();
   if (ub_kernel_loaded_) {
     if (ub_kernel_handle_ != nullptr) {
       aclrtBinaryUnLoad(ub_kernel_handle_);

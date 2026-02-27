@@ -192,7 +192,7 @@ TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceNotifyWaitFail) {
   const Status ret = cli_.BatchTransfer(false, mem, &qh);
   EXPECT_EQ(ret, SUCCESS);
   ASSERT_NE(qh, nullptr);
-  EXPECT_EQ(GetCompletePool().GetInUseCount(), 1U); // 确认占用了 1 个
+  EXPECT_EQ(CompletePool::GetInstance().GetInUseCount(), 1U); // 确认占用了 1 个
 
   // 2. 给底层的 Wait 注入一个失败的返回值
   g_Stub_aclrtWaitAndResetNotify_RETURN.push_back(static_cast<aclError>(-1));
@@ -205,7 +205,7 @@ TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceNotifyWaitFail) {
   EXPECT_EQ(check_ret, SUCCESS);
 
   // 5. 核心验证：池子里的 Slot 必须被释放归零了！这证明它确实走到了错误处理分支。
-  EXPECT_EQ(GetCompletePool().GetInUseCount(), 0U);
+  EXPECT_EQ(CompletePool::GetInstance().GetInUseCount(), 0U);
 
   // 6. 清理打桩状态
   g_Stub_aclrtWaitAndResetNotify_RETURN.clear();
