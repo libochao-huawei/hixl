@@ -34,7 +34,6 @@ inline hixl::Status ConvertAclRetToStatus(int32_t acl_ret) {
       return hixl::RESOURCE_EXHAUSTED;
 
     case ACL_ERROR_WAIT_CALLBACK_TIMEOUT:
-    case 507011:  // ACL_ERROR_RT_STREAM_SYNC_TIMEOUT (常见值，视具体版本而定)
       return hixl::TIMEOUT;
 
     case ACL_ERROR_API_NOT_SUPPORT:
