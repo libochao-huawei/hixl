@@ -71,6 +71,8 @@ class MagicNumberParams:
     large_packet: bool = False
 
 
+# ==================== 私有函数 (相当于类的私有方法) ====================
+
 def __init_header_values(config: HeaderConfig):
     """初始化头部基本值"""
     code_len = 0 if config.before_header and config.large_packet else config.code_len
@@ -301,26 +303,6 @@ def __write_single_header(args, out, hash_buf, code_len, head_type=0):
     __write_header(out, header, HeaderWriteParams(args.S, head_type, code_len, before_header))
 
 
-def write_header_huawei(args, out, hash_buf, code_len):
-    __write_single_header(args, out, hash_buf, code_len)
-
-
-def write_image(args, out):
-    __write_raw_img(out, args.raw, args.S, False)
-    __write_header_hash(out, HeaderHashParams(args.S, 0, False, 0, False))
-
-
-def write_cms(args, out, code_len):
-    if args.addcms:
-        out.seek(code_len + 0x2000)
-        if args.position == "before_header":
-            __write_cms(out, args.cms, 0)
-        else:
-            __write_cms(out, args.cms, 32 - code_len % 16)
-        __write_ini(out, args.ini)
-        __write_crl(out, args.crl)
-
-
 def __add_magic_number_and_file_size(args, out, params: MagicNumberParams):
     if params.cms_flag and params.suffix:
         raise RuntimeError(
@@ -354,6 +336,28 @@ def __add_magic_number_and_file_size(args, out, params: MagicNumberParams):
         offset = params.code_len + 0x4E0
         out.seek(offset, 0)
         out.write(params.code_len.to_bytes(8, "little"))
+
+
+# ==================== 公共函数 ====================
+
+def write_header_huawei(args, out, hash_buf, code_len):
+    __write_single_header(args, out, hash_buf, code_len)
+
+
+def write_image(args, out):
+    __write_raw_img(out, args.raw, args.S, False)
+    __write_header_hash(out, HeaderHashParams(args.S, 0, False, 0, False))
+
+
+def write_cms(args, out, code_len):
+    if args.addcms:
+        out.seek(code_len + 0x2000)
+        if args.position == "before_header":
+            __write_cms(out, args.cms, 0)
+        else:
+            __write_cms(out, args.cms, 32 - code_len % 16)
+        __write_ini(out, args.ini)
+        __write_crl(out, args.crl)
 
 
 def write_extern(args, out, data_list):
