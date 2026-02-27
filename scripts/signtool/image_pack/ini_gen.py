@@ -83,6 +83,16 @@ def cal_fs_image_hash(filepath, roothash):
     return hash_val
 
 
+def _get_hash_for_elem(elem):
+    """Calculate hash for an element based on its position attribute."""
+    position = elem.get("position", "after_header")
+    if position == "before_header":
+        roothash = elem.get("roothash")
+        return cal_fs_image_hash(elem.attrib["path"], roothash)
+    else:
+        return cal_image_hash(elem.attrib["path"])
+
+
 def gen_ini():
     args = get_args()
     tree = ET.ElementTree(file=args.inFilePath)
@@ -97,24 +107,14 @@ def gen_ini():
         for elem in tree.iter(tag="image"):
             if elem.attrib["tag"] == "hashlist":
                 continue
-            position = elem.get("position", "after_header")
-            if position == "before_header":
-                roothash = elem.get("roothash")
-                hash_val = cal_fs_image_hash(elem.attrib["path"], roothash)
-            else:
-                hash_val = cal_image_hash(elem.attrib["path"])
+            hash_val = _get_hash_for_elem(elem)
             with open(hash_list_path, "a+") as f:
                 line_elem = [elem.attrib["tag"], hash_val]
                 line = "{};".format(",".join(line_elem))
                 f.write(line)
     else:
         for elem in tree.iter(tag="image"):
-            position = elem.get("position", "after_header")
-            if position == "before_header":
-                roothash = elem.get("roothash")
-                hash_val = cal_fs_image_hash(elem.attrib["path"], roothash)
-            else:
-                hash_val = cal_image_hash(elem.attrib["path"])
+            hash_val = _get_hash_for_elem(elem)
             if hash_val == "":
                 return -1
             if "ini_name" in elem.attrib:

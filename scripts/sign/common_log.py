@@ -50,29 +50,22 @@ def cilog_get_timestamp():
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
 
 
-def cilog_print_element(cilog_element):
-    """
-    功能描述：以指定格式输出
-    参数：需要显示的字符串
-    返回值：
-    异常描述：
-    修改记录：1.日期    : 2012年7月25日
-                修改内容: 创建函数
-    """
-    print("[" + cilog_element + "]", end=" ")
-    return
-
-
 def cilog_logmsg(log_level, filename, line_no, log_msg, *log_paras):
     log_timestamp = cilog_get_timestamp()
-
-    cilog_print_element(log_timestamp)
-    cilog_print_element(log_level)
-    cilog_print_element(filename)
-    cilog_print_element(str(line_no))
-
-    print(log_msg % log_paras[0])
-
+    msg = "[%s] [%s] [%s] [%s] %s" % (
+        log_timestamp,
+        log_level,
+        filename,
+        line_no,
+        log_msg % log_paras[0] if log_paras else log_msg,
+    )
+    log_methods = {
+        "ERROR": logging.error,
+        "WARNING": logging.warning,
+        "INFO": logging.info,
+    }
+    log_func = log_methods.get(log_level, logging.info)
+    log_func(msg)
     return
 
 

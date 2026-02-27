@@ -13,7 +13,6 @@
 #
 
 import binascii
-from ctypes import *
 import os
 import struct
 import sys
@@ -295,12 +294,7 @@ def __add_magic_number_and_file_size(
     out.seek(offset, 0)
     out.write(stream)
 
-    # Write additional nvcnt to head
-    # nvcnt_offset : 0x0x590
-    # [
-    #     U32 nvcnt_magic : 0x5A5AA5A5
-    #     U32 nvcnt
-    # ] nvcnt_s
+    # Write additional nvcnt to head at offset 0x590
     if args.nvcnt:
         s = struct.Struct("II")
         nvcnt_magic = 0x5A5AA5A5

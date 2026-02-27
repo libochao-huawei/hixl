@@ -39,6 +39,22 @@ import argparse
 import logging
 import xml.etree.ElementTree as ET
 import common_log as COMM_LOG
+import shlex
+
+
+def _run_cmd(cmd: str) -> Tuple[int, str]:
+    """Run command without shell=True, returns (exitcode, output)."""
+    try:
+        result = subprocess.run(
+            shlex.split(cmd),
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        return (result.returncode, result.stdout)
+    except Exception as e:
+        return (1, str(e))
 
 logging.basicConfig(
     format="[%(asctime)s] [%(levelname)s] [%(pathname)s] [line:%(lineno)d] %(message)s",
@@ -292,7 +308,7 @@ def build_inifile(
     if add_sign == "true" and cms_flag:
         COMM_LOG.cilog_info(THIS_FILE_NAME, "------------------------------------")
         COMM_LOG.cilog_info(THIS_FILE_NAME, "execute:%s", cmd)
-        ret = subprocess.getstatusoutput(cmd)
+        ret = _run_cmd(cmd)
         if ret[0] != 0:
             COMM_LOG.cilog_error(
                 THIS_FILE_NAME, "build inifile failed!\n\t%s", (ret[1])
@@ -322,7 +338,7 @@ def build_sign(
         input_path = os.path.join(sign_file_dir, infile)
         if os.path.exists(input_path):
             cmd = "ls {}".format(input_path)
-            ret = subprocess.getstatusoutput(cmd)
+            ret = _run_cmd(cmd)
             if ret[0] != 0:
                 COMM_LOG.cilog_warning(
                     THIS_FILE_NAME,
@@ -386,7 +402,7 @@ def build_sign(
         COMM_LOG.cilog_info(THIS_FILE_NAME, "------------------------------------")
         COMM_LOG.cilog_info(THIS_FILE_NAME, "execute:%s", cmd)
         # 签名后会在ini文件通目录下生成p7s文件，比如a.ini=>a.ini.p7s
-        ret = subprocess.getstatusoutput(cmd)
+        ret = _run_cmd(cmd)
         if ret[0] != 0:
             COMM_LOG.cilog_error(
                 THIS_FILE_NAME, "make %s sign failed!\n\t%s", sign, ret[1]
@@ -423,7 +439,7 @@ def add_bios_esbc_header(root_dir, item_size_set, sign_file_dir):
 
             COMM_LOG.cilog_info(THIS_FILE_NAME, "------------------------------------")
             COMM_LOG.cilog_info(THIS_FILE_NAME, "execute:%s", cmd)
-            ret = subprocess.getstatusoutput(cmd)
+            ret = _run_cmd(cmd)
             if ret[0] != 0:
                 COMM_LOG.cilog_error(
                     THIS_FILE_NAME,
@@ -521,8 +537,8 @@ def add_bios_header(
     if not os.path.exists(der_file):
         convert_der_file(crl_file, der_file)
 
-    for input, conf_item in list(item_size_set.items()):
-        input_file = os.path.join(sign_file_dir, input)
+    for input_name, conf_item in list(item_size_set.items()):
+        input_file = os.path.join(sign_file_dir, input_name)
         relative_path = input_file.replace(
             ("{}" + PATH_SEPARATOR).format(product_delivery_path), ""
         )
@@ -563,7 +579,7 @@ def add_bios_header(
 
                 if sign == "cms":
                     # 临时目录下的ini文件
-                    ini_file = os.path.join(sign_path, os.path.basename(input))
+                    ini_file = os.path.join(sign_path, os.path.basename(input_name))
                     # certtype 1 表示社区前面
                     cmd = (
                         cmd
@@ -581,7 +597,7 @@ def add_bios_header(
             return -1
         COMM_LOG.cilog_info(THIS_FILE_NAME, "------------------------------------")
         COMM_LOG.cilog_info(THIS_FILE_NAME, "execute:%s", cmd)
-        ret = subprocess.getstatusoutput(cmd)
+        ret = _run_cmd(cmd)
         if ret[0] != 0:
             COMM_LOG.cilog_error(
                 THIS_FILE_NAME, "add %s header failed!\n\t%s", input_file, ret[1]
