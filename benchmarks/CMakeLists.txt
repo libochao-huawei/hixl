@@ -20,6 +20,7 @@ file(GLOB COMMON_FILES "${HIXL_CODE_DIR}/benchmarks/common/*.cpp")
 set(targets_list
     "benchmark"
     "hixl_cs_benchmark"
+    "hixl_cs_benchmark_large"
 )
 
 foreach(target_name IN LISTS targets_list)
