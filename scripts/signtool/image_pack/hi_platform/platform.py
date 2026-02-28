@@ -149,46 +149,16 @@ def __build_header_fields(config: HeaderConfig, code_len, zero_bytes_32):
     )
 
 
-def __construct_header(
-    n_buf,
-    e_buf,
-    hash_buf,
-    code_len,
-    suffix,
-    head_type,
-    version,
-    nvcnt,
-    tag,
-    certtype,
-    before_header=False,
-    large_packet=False,
-    enc=False,
-    pss=False,
-    bcm=False,
-    gcm=False,
-    gm=False,
-):
-    config = HeaderConfig(
-        n_buf=n_buf,
-        e_buf=e_buf,
-        hash_buf=hash_buf,
-        code_len=code_len,
-        suffix=suffix,
-        head_type=head_type,
-        version=version,
-        nvcnt=nvcnt,
-        tag=tag,
-        certtype=certtype,
-        before_header=before_header,
-        large_packet=large_packet,
-        enc=enc,
-        pss=pss,
-        bcm=bcm,
-        gcm=gcm,
-        gm=gm,
-    )
+def __construct_header(config: HeaderConfig):
+    """构建头部信息
 
-    code_len, header_base, zero_bytes_32 = __init_header_values(config)
+    Args:
+        config: 头部配置参数对象
+
+    Returns:
+        bytes: 打包后的头部数据
+    """
+    code_len, _, zero_bytes_32 = __init_header_values(config)
     pack_list = __build_header_fields(config, code_len, zero_bytes_32)
 
     s = struct.Struct(
@@ -281,25 +251,28 @@ def __write_single_header(args, out, hash_buf, code_len, head_type=0):
 
     before_header = True if (args.position == "before_header") else False
     large_packet = True if (args.pkt_type == "large_pkt") else False
-    header = __construct_header(
-        n_buf,
-        e_buf,
-        hash_buf,
-        code_len,
-        args.S,
-        head_type,
-        args.ver,
-        args.nvcnt,
-        args.tag,
-        args.certtype,
-        before_header,
-        large_packet,
-        False,
-        False,
+
+    # 创建头部配置对象
+    header_config = HeaderConfig(
+        n_buf=n_buf,
+        e_buf=e_buf,
+        hash_buf=hash_buf,
+        code_len=code_len,
+        suffix=args.S,
+        head_type=head_type,
+        version=args.ver,
+        nvcnt=args.nvcnt,
+        tag=args.tag,
+        certtype=args.certtype,
+        before_header=before_header,
+        large_packet=large_packet,
+        enc=False,
+        pss=False,
         bcm=False,
         gcm=False,
         gm=False,
     )
+    header = __construct_header(header_config)
     __write_header(out, header, HeaderWriteParams(args.S, head_type, code_len, before_header))
 
 

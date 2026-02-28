@@ -272,6 +272,51 @@ def get_item_set(config_file, sign_file_dir, version) -> Tuple[int, Dict, List]:
 
 
 # 生成摘要文件，每个待签名文件生成一个，生成文件相关的参数放在image_info.xml文件中
+def _prepare_output_directory(sign_tmp_path, relative_path):
+    """准备输出目录，返回输出路径"""
+    output_path = os.path.dirname(
+        os.path.join(sign_tmp_path, relative_path)
+    )
+    output_path = os.path.realpath(output_path)
+    if not os.path.isdir(output_path):
+        os.makedirs(output_path)
+    return output_path
+
+
+def _should_write_cms_config(conf_item, inputfile):
+    """判断是否需要写入CMS配置"""
+    return (
+        "cms" in conf_item.type.split("/")
+        and conf_item.tag != ""
+        and os.path.isfile(inputfile)
+    )
+
+
+def _write_image_info_config(read_cfg, item_size_set, sign_file_dir,
+                              sign_tmp_path, product_delivery_path):
+    """写入image_info.xml配置文件内容，返回是否有CMS标志"""
+    cms_flag = False
+    for infile, conf_item in list(item_size_set.items()):
+        inputfile = os.path.join(sign_file_dir, infile)
+        relative_path = inputfile.replace(
+            product_delivery_path + PATH_SEPARATOR, ""
+        )
+        output_path = _prepare_output_directory(sign_tmp_path, relative_path)
+
+        if _should_write_cms_config(conf_item, inputfile):
+            cms_flag = True
+            read_cfg.write(
+                '<image path="%s" out="%s" tag="%s" ini_name="%s"/>\n'
+                % (
+                    inputfile,
+                    output_path,
+                    conf_item.tag,
+                    os.path.basename(infile),
+                )
+            )
+    return cms_flag
+
+
 def build_inifile(params: BuildIniParams) -> int:
     """
     功能：根据从bios_check_cfg.xml读取的配置，生成ini工具(ini_gen.py)的配置文件，
@@ -286,36 +331,15 @@ def build_inifile(params: BuildIniParams) -> int:
     product_delivery_path = params.product_delivery_path
     add_sign = params.add_sign
     cms_flag = False
+
     if add_sign == "true":
         inicfg = os.path.join(sign_tmp_path, "image_info.xml")
         with open(inicfg, "w+", encoding="utf-8") as read_cfg:
             read_cfg.write("<image_info>\n")
-            for infile, conf_item in list(item_size_set.items()):
-                inputfile = os.path.join(sign_file_dir, infile)
-                relative_path = inputfile.replace(
-                    product_delivery_path + PATH_SEPARATOR, ""
-                )
-                output_path = os.path.dirname(
-                    os.path.join(sign_tmp_path, relative_path)
-                )
-                output_path = os.path.realpath(output_path)
-                if not os.path.isdir(output_path):
-                    os.makedirs(output_path)
-                if (
-                    "cms" in conf_item.type.split("/")
-                    and conf_item.tag != ""
-                    and os.path.isfile(inputfile)
-                ):
-                    cms_flag = True
-                    read_cfg.write(
-                        '<image path="%s" out="%s" tag="%s" ini_name="%s"/>\n'
-                        % (
-                            inputfile,
-                            output_path,
-                            conf_item.tag,
-                            os.path.basename(infile),
-                        )
-                    )
+            cms_flag = _write_image_info_config(
+                read_cfg, item_size_set, sign_file_dir,
+                sign_tmp_path, product_delivery_path
+            )
             read_cfg.write("</image_info>\n")
         gen_tool = os.path.join(bios_tool_path, "ini_gen.py")
         cmd = "%s %s -in_xml %s" % (os.environ["HI_PYTHON"], gen_tool, inicfg)
@@ -505,6 +529,115 @@ def convert_der_file(crl_file: str, der_file: str) -> int:
 
 
 # 1 生成ini文件、2 添加esbc头、 3 执行签名、4 合入文件头
+def _prepare_sign_environment(root_dir):
+    """准备签名临时目录"""
+    sign_tmp_path = os.path.join(root_dir, "sign_tmp")
+    if not os.path.isdir(sign_tmp_path):
+        os.makedirs(sign_tmp_path)
+    return sign_tmp_path
+
+
+def _prepare_crl_file(root_dir):
+    """准备CRL文件，返回der文件路径"""
+    signature_path = os.path.join(root_dir, "scripts", "signtool", "signature")
+    crl_file = os.path.join(signature_path, "SWSCRL.crl")
+    der_file = os.path.join(signature_path, "SWSCRL.der")
+    if not os.path.exists(der_file):
+        convert_der_file(crl_file, der_file)
+    return der_file
+
+
+def _build_base_command(bios_tool_path):
+    """构建基础命令"""
+    return "{} {}".format(
+        os.environ["HI_PYTHON"], os.path.join(bios_tool_path, "image_pack.py")
+    )
+
+
+def _build_no_sign_cmd(cmd, input_file, conf_item):
+    """构建无签名命令"""
+    cmd = cmd + " -raw_img %s -out_img %s -version %s -nvcnt %s -tag %s" % (
+        input_file,
+        input_file,
+        conf_item.version,
+        conf_item.nvcnt,
+        conf_item.tag,
+    )
+    if conf_item.position != "":
+        cmd = cmd + " -position %s" % (conf_item.position)
+    return cmd
+
+
+def _build_cms_sign_cmd(cmd, input_file, conf_item, sign_path, input_name, der_file):
+    """构建CMS签名命令"""
+    add_cmd = conf_item.additional
+    for sign in conf_item.type.split("/"):
+        cmd = (
+            cmd
+            + " -raw_img %s -out_img %s -version %s -nvcnt %s -tag %s %s"
+            % (
+                input_file,
+                input_file,
+                conf_item.version,
+                conf_item.nvcnt,
+                conf_item.tag,
+                add_cmd,
+            )
+        )
+
+        if sign == "cms":
+            ini_file = os.path.join(sign_path, os.path.basename(input_name))
+            cmd = (
+                cmd
+                + " -cms %s.ini.p7s -ini %s.ini -crl %s -certtype 1 --addcms"
+                % (ini_file, ini_file, der_file)
+            )
+            if conf_item.position != "":
+                cmd = cmd + " -position %s" % (conf_item.position)
+    return cmd
+
+
+def _process_image_headers(params, der_file, sign_tmp_path, product_delivery_path):
+    """处理所有镜像的头部绑定"""
+    item_size_set = params.item_size_set
+    sign_file_dir = params.sign_file_dir
+    bios_tool_path = params.bios_tool_path
+    add_sign = params.add_sign
+
+    for input_name, conf_item in list(item_size_set.items()):
+        input_file = os.path.join(sign_file_dir, input_name)
+        relative_path = input_file.replace(
+            ("{}" + PATH_SEPARATOR).format(product_delivery_path), ""
+        )
+        sign_file = os.path.realpath(os.path.join(sign_tmp_path, relative_path))
+        sign_path = os.path.dirname(sign_file)
+
+        cmd = _build_base_command(bios_tool_path)
+
+        if add_sign != "true" or conf_item.type == "":
+            cmd = _build_no_sign_cmd(cmd, input_file, conf_item)
+        elif add_sign == "true" and conf_item.type != "":
+            cmd = _build_cms_sign_cmd(cmd, input_file, conf_item, sign_path, input_name, der_file)
+        else:
+            COMM_LOG.cilog_error(
+                THIS_FILE_NAME,
+                "bios_check_cfg.xml config format is invalid, %s is not correct!,please check!",
+                input_file,
+            )
+            return -1
+
+        COMM_LOG.cilog_info(THIS_FILE_NAME, "------------------------------------")
+        COMM_LOG.cilog_info(THIS_FILE_NAME, "execute:%s", cmd)
+        ret = _run_cmd(cmd)
+        if ret[0] != 0:
+            COMM_LOG.cilog_error(
+                THIS_FILE_NAME, "add %s header failed!\n\t%s", input_file, ret[1]
+            )
+            return -1
+
+    return 0
+
+
 def add_bios_header(params: AddHeaderParams) -> int:
     """
     功能：生成每个镜像的签名并绑定
@@ -517,20 +650,17 @@ def add_bios_header(params: AddHeaderParams) -> int:
     sign_tool_path = params.sign_tool_path
     root_dir = params.root_dir
     add_sign = params.add_sign
-    # 分别绑定镜像文件，此处分3种流程
-    # 1、add_sign不为true时,不需要进行签名,此时只需要绑定BIOS字节头
-    # 2、conf_item.type为cms时：需要绑定镜像文件，ini文件、cms签名及证书、rsa签名及证书、rsa根证书
 
-    # 当需要签名时,调用build_inifile函数生成ini文件
-    sign_tmp_path = os.path.join(root_dir, "sign_tmp")
+    # 准备临时目录
+    sign_tmp_path = _prepare_sign_environment(root_dir)
     product_delivery_path = os.path.join(root_dir)
-    if not os.path.isdir(sign_tmp_path):
-        os.makedirs(sign_tmp_path)
 
+    # 添加ESBC头
     ret_code = add_bios_esbc_header(root_dir, item_size_set, sign_file_dir)
     if ret_code != 0:
         return ret_code
 
+    # 生成ini文件
     ret_code = build_inifile(
         BuildIniParams(
             item_size_set,
@@ -544,6 +674,7 @@ def add_bios_header(params: AddHeaderParams) -> int:
     if ret_code != 0:
         return ret_code
 
+    # 执行签名
     if add_sign == "true":
         ret_code = build_sign(
             BuildSignParams(
@@ -558,82 +689,27 @@ def add_bios_header(params: AddHeaderParams) -> int:
         if ret_code != 0:
             return ret_code
 
-    # 将CRL文件转为der
-    signature_path = os.path.join(root_dir, "scripts", "signtool", "signature")
-    crl_file = os.path.join(signature_path, "SWSCRL.crl")
-    der_file = os.path.join(signature_path, "SWSCRL.der")
-    # 如果der文件不存在，将CRL文件copy至sign_path目录下，并转为der格式
-    if not os.path.exists(der_file):
-        convert_der_file(crl_file, der_file)
+    # 准备CRL文件
+    der_file = _prepare_crl_file(root_dir)
 
-    for input_name, conf_item in list(item_size_set.items()):
-        input_file = os.path.join(sign_file_dir, input_name)
-        relative_path = input_file.replace(
-            ("{}" + PATH_SEPARATOR).format(product_delivery_path), ""
-        )
-        # 签名文件及ini文件存放目录
-        sign_file = os.path.realpath(os.path.join(sign_tmp_path, relative_path))
-        sign_path = os.path.dirname(sign_file)
+    # 处理镜像头部绑定
+    ret_code = _process_image_headers(
+        AddHeaderParams(
+            item_size_set,
+            sign_file_dir,
+            bios_tool_path,
+            sign_tool_path,
+            root_dir,
+            add_sign,
+        ),
+        der_file,
+        sign_tmp_path,
+        product_delivery_path,
+    )
+    if ret_code != 0:
+        return ret_code
 
-        cmd = "{} {}".format(
-            os.environ["HI_PYTHON"], os.path.join(bios_tool_path, "image_pack.py")
-        )
-        add_cmd = conf_item.additional
-        # 镜像绑定cms签名,用image_pack.py工具脚本绑定cms签名信息
-        if add_sign != "true" or conf_item.type == "":
-            cmd = cmd + " -raw_img %s -out_img %s -version %s -nvcnt %s -tag %s" % (
-                input_file,
-                input_file,
-                conf_item.version,
-                conf_item.nvcnt,
-                conf_item.tag,
-            )
-            if conf_item.position != "":
-                cmd = cmd + " -position %s" % (conf_item.position)
-        elif add_sign == "true" and conf_item.type != "":
-            # 原代码支持/分割多种签名方式，实际只能一种，暂时保持不变，后续统一黄区代码时再优化
-            for sign in conf_item.type.split("/"):
-                cmd = (
-                    cmd
-                    + " -raw_img %s -out_img %s -version %s -nvcnt %s -tag %s %s"
-                    % (
-                        input_file,
-                        input_file,
-                        conf_item.version,
-                        conf_item.nvcnt,
-                        conf_item.tag,
-                        add_cmd,
-                    )
-                )
-
-                if sign == "cms":
-                    # 临时目录下的ini文件
-                    ini_file = os.path.join(sign_path, os.path.basename(input_name))
-                    # certtype 1 表示社区前面
-                    cmd = (
-                        cmd
-                        + " -cms %s.ini.p7s -ini %s.ini -crl %s -certtype 1 --addcms"
-                        % (ini_file, ini_file, der_file)
-                    )
-                    if conf_item.position != "":
-                        cmd = cmd + " -position %s" % (conf_item.position)
-        else:
-            COMM_LOG.cilog_error(
-                THIS_FILE_NAME,
-                "bios_check_cfg.xml config format is invalid, %s is not correct!,please check!",
-                input_file,
-            )
-            return -1
-        COMM_LOG.cilog_info(THIS_FILE_NAME, "------------------------------------")
-        COMM_LOG.cilog_info(THIS_FILE_NAME, "execute:%s", cmd)
-        ret = _run_cmd(cmd)
-        if ret[0] != 0:
-            COMM_LOG.cilog_error(
-                THIS_FILE_NAME, "add %s header failed!\n\t%s", input_file, ret[1]
-            )
-            return -1
-
-    # 删除中间残留文件，防止打包到run包中
+    # 删除中间残留文件
     if os.path.isdir(sign_tmp_path):
         shutil.rmtree(sign_tmp_path)
 

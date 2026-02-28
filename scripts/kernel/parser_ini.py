@@ -259,32 +259,43 @@ class IniParser(object):
         )
         raise KeyError("bad key value")
 
+    def _log_opinfo_warnings(self, warn_ops):
+        """记录opInfo缺失警告"""
+        for op_name in warn_ops:
+            logging.warning(
+                "%s\t## OP %s: defined missing opInfo section %s",
+                COLOR_RED,
+                op_name,
+                COLOR_END,
+            )
+
+    def _log_io_warnings(self, warn_ops):
+        """记录input/output缺失警告"""
+        for op_name in warn_ops:
+            logging.warning(
+                "%s\t## OP %s: defined missing input/output section %s",
+                COLOR_CYAN,
+                op_name,
+                COLOR_END,
+            )
+
     def _log_missing_section_warnings(self):
         """记录缺失部分的警告"""
-        if self.warn_print:
-            for warn_type, warn_ops in self.warning_ops.items():
-                if warn_type == "opInfo":
-                    for op_name in warn_ops:
-                        logging.warning(
-                            "%s\t## OP %s: defined missing opInfo section %s",
-                            COLOR_RED,
-                            op_name,
-                            COLOR_END,
-                        )
-                elif warn_type == "io":
-                    for op_name in warn_ops:
-                        logging.warning(
-                            "%s\t## OP %s: defined missing input/output section %s",
-                            COLOR_CYAN,
-                            op_name,
-                            COLOR_END,
-                        )
+        if not self.warn_print:
+            return
+
+        for warn_type, warn_ops in self.warning_ops.items():
+            if warn_type == "opInfo":
+                self._log_opinfo_warnings(warn_ops)
+            elif warn_type == "io":
+                self._log_io_warnings(warn_ops)
 
     def _remove_custom_ops_if_needed(self):
         """如果需要，移除custom ops"""
         if not self.custom_flag:
             for op_name in self.custom_ops_info:
                 del self.aicpu_ops_info[op_name]
+                
                 
 def main():
     """A Parser function for ini file."""
