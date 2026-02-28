@@ -120,17 +120,16 @@ inline hixl::Status ConvertAclRetToStatus(int32_t acl_ret) {
   } while (false)
 
 // If expr != ACL_SUCCESS, log and return the converted Hixl Status
-#define HIXL_CHK_ACL_RET(expr, ...)                                                                      \
-  do {                                                                                                   \
-    const aclError _acl_ret = (expr);                                                                    \
-    if (_acl_ret != ACL_SUCCESS) {                                                                       \
-      hixl::Status _hixl_status = ConvertAclRetToStatus(static_cast<int32_t>(_acl_ret));                 \
-      REPORT_INNER_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_acl_ret)); \
-      HIXL_LOGE(_hixl_status, "Call acl api:%s failed, ret: 0x%X. " __VA_ARGS__, #expr,                  \
-                static_cast<uint32_t>(_acl_ret));                                                        \
-      return _hixl_status;                                                                               \
-    }                                                                                                    \
-  } while (false)
+#define HIXL_CHK_ACL_RET(expr, ...)                                                                            \
+  do {                                                                                                         \
+    const aclError _acl_ret = (expr);                                                                          \
+    if (_acl_ret != ACL_SUCCESS) {                                                                             \
+      REPORT_INNER_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_acl_ret));       \
+      HIXL_LOGE(static_cast<hixl::Status>(_acl_ret), "Call acl api:%s failed, ret: 0x%X. " __VA_ARGS__, #expr, \
+                static_cast<uint32_t>(_acl_ret));                                                              \
+      return static_cast<hixl::Status>(_acl_ret);                                                              \
+    }                                                                                                          \
+} while (false)
 
 // If expr != ACL_SUCCESS, print the log and do not return
 #define HIXL_CHK_ACL(expr, ...)                                                                       \
