@@ -63,9 +63,4 @@ class Config:
         if args.world_size is not None:
             self.world_size = args.world_size
         
-        if args.rank is not None:
-            self.rank = args.rank
-        else:
-            self.rank = self.device_id // 2 if self.world_size > 1 else 0
-        
         return args
