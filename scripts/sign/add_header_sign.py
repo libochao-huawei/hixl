@@ -149,6 +149,17 @@ class AddHeaderParams:
     add_sign: str
 
 
+@dataclass
+class CmsSignCmdParams:
+    """参数封装：_build_cms_sign_cmd函数的参数"""
+    cmd: str
+    input_file: str
+    conf_item: AddHeaderConfig
+    sign_path: str
+    input_name: str
+    der_file: str
+
+
 def read_xml(in_path):
     """
     功能：读取XML
@@ -568,72 +579,103 @@ def _build_no_sign_cmd(cmd, input_file, conf_item):
     return cmd
 
 
-def _build_cms_sign_cmd(cmd, input_file, conf_item, sign_path, input_name, der_file):
+def _build_cms_sign_cmd(params: CmsSignCmdParams) -> str:
     """构建CMS签名命令"""
-    add_cmd = conf_item.additional
-    for sign in conf_item.type.split("/"):
+    cmd = params.cmd
+    add_cmd = params.conf_item.additional
+
+    for sign in params.conf_item.type.split("/"):
         cmd = (
             cmd
             + " -raw_img %s -out_img %s -version %s -nvcnt %s -tag %s %s"
             % (
-                input_file,
-                input_file,
-                conf_item.version,
-                conf_item.nvcnt,
-                conf_item.tag,
+                params.input_file,
+                params.input_file,
+                params.conf_item.version,
+                params.conf_item.nvcnt,
+                params.conf_item.tag,
                 add_cmd,
             )
         )
 
         if sign == "cms":
-            ini_file = os.path.join(sign_path, os.path.basename(input_name))
-            cmd = (
-                cmd
-                + " -cms %s.ini.p7s -ini %s.ini -crl %s -certtype 1 --addcms"
-                % (ini_file, ini_file, der_file)
-            )
-            if conf_item.position != "":
-                cmd = cmd + " -position %s" % (conf_item.position)
+            cmd = _add_cms_params(cmd, params)
+
     return cmd
+
+
+def _add_cms_params(cmd: str, params: CmsSignCmdParams) -> str:
+    """添加CMS签名参数到命令"""
+    ini_file = os.path.join(params.sign_path, os.path.basename(params.input_name))
+    cmd = (
+        cmd
+        + " -cms %s.ini.p7s -ini %s.ini -crl %s -certtype 1 --addcms"
+        % (ini_file, ini_file, params.der_file)
+    )
+    if params.conf_item.position != "":
+        cmd = cmd + " -position %s" % (params.conf_item.position)
+    return cmd
+
+
+def _get_image_paths(input_name, sign_file_dir, sign_tmp_path, product_delivery_path):
+    """获取镜像相关路径"""
+    input_file = os.path.join(sign_file_dir, input_name)
+    relative_path = input_file.replace(
+        ("{}" + PATH_SEPARATOR).format(product_delivery_path), ""
+    )
+    sign_file = os.path.realpath(os.path.join(sign_tmp_path, relative_path))
+    sign_path = os.path.dirname(sign_file)
+    return input_file, sign_path
+
+
+def _build_image_command(params, input_file, sign_path, input_name, der_file, conf_item):
+    """构建镜像处理命令"""
+    cmd = _build_base_command(params.bios_tool_path)
+
+    if params.add_sign != "true" or conf_item.type == "":
+        return _build_no_sign_cmd(cmd, input_file, conf_item)
+    elif params.add_sign == "true" and conf_item.type != "":
+        cms_params = CmsSignCmdParams(cmd, input_file, conf_item, sign_path, input_name, der_file)
+        return _build_cms_sign_cmd(cms_params)
+    else:
+        return None
+
+
+def _execute_image_command(cmd, input_file):
+    """执行镜像处理命令"""
+    if cmd is None:
+        COMM_LOG.cilog_error(
+            THIS_FILE_NAME,
+            "bios_check_cfg.xml config format is invalid, %s is not correct!,please check!",
+            input_file,
+        )
+        return -1
+
+    COMM_LOG.cilog_info(THIS_FILE_NAME, "------------------------------------")
+    COMM_LOG.cilog_info(THIS_FILE_NAME, "execute:%s", cmd)
+    ret = _run_cmd(cmd)
+    if ret[0] != 0:
+        COMM_LOG.cilog_error(
+            THIS_FILE_NAME, "add %s header failed!\n\t%s", input_file, ret[1]
+        )
+        return -1
+    return 0
 
 
 def _process_image_headers(params, der_file, sign_tmp_path, product_delivery_path):
     """处理所有镜像的头部绑定"""
     item_size_set = params.item_size_set
     sign_file_dir = params.sign_file_dir
-    bios_tool_path = params.bios_tool_path
-    add_sign = params.add_sign
 
     for input_name, conf_item in list(item_size_set.items()):
-        input_file = os.path.join(sign_file_dir, input_name)
-        relative_path = input_file.replace(
-            ("{}" + PATH_SEPARATOR).format(product_delivery_path), ""
+        input_file, sign_path = _get_image_paths(
+            input_name, sign_file_dir, sign_tmp_path, product_delivery_path
         )
-        sign_file = os.path.realpath(os.path.join(sign_tmp_path, relative_path))
-        sign_path = os.path.dirname(sign_file)
 
-        cmd = _build_base_command(bios_tool_path)
-
-        if add_sign != "true" or conf_item.type == "":
-            cmd = _build_no_sign_cmd(cmd, input_file, conf_item)
-        elif add_sign == "true" and conf_item.type != "":
-            cmd = _build_cms_sign_cmd(cmd, input_file, conf_item, sign_path, input_name, der_file)
-        else:
-            COMM_LOG.cilog_error(
-                THIS_FILE_NAME,
-                "bios_check_cfg.xml config format is invalid, %s is not correct!,please check!",
-                input_file,
-            )
-            return -1
-
-        COMM_LOG.cilog_info(THIS_FILE_NAME, "------------------------------------")
-        COMM_LOG.cilog_info(THIS_FILE_NAME, "execute:%s", cmd)
-        ret = _run_cmd(cmd)
-        if ret[0] != 0:
-            COMM_LOG.cilog_error(
-                THIS_FILE_NAME, "add %s header failed!\n\t%s", input_file, ret[1]
-            )
-            return -1
+        cmd = _build_image_command(params, input_file, sign_path, input_name, der_file, conf_item)
+        ret_code = _execute_image_command(cmd, input_file)
+        if ret_code != 0:
+            return ret_code
 
     return 0
 
