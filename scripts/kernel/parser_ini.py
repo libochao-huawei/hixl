@@ -135,61 +135,6 @@ class IniParser(object):
         subset = set(io_sec_info.keys()).difference(self.input_output_info_keys)
         return not subset
 
-    def _validate_op_info_section(self, op_name, sec_info):
-        """验证opInfo部分"""
-        self.check_op_info(op_name, sec_info)
-        return True
-
-    def _validate_io_section(self, op_name, op_sec, sec_info):
-        """验证input/output部分"""
-        ret = self.check_op_input_output(sec_info)
-        if not ret:
-            logging.error(
-                "## %s: %s should has format type or name as the key, but getting %s",
-                op_name,
-                op_sec,
-                sec_info,
-            )
-            raise KeyError("bad op_sets key")
-        return False
-
-    def _validate_unknown_section(self, op_name, op_sec):
-        """验证未知部分"""
-        logging.error(
-            "Only opInfo, input[0-9], output[0-9] can be used as a key, "
-            "but op %s has the key %s",
-            op_name,
-            op_sec,
-        )
-        raise KeyError("bad key value")
-
-    def _log_missing_section_warnings(self):
-        """记录缺失部分的警告"""
-        if self.warn_print:
-            for warn_type, warn_ops in self.warning_ops.items():
-                if warn_type == "opInfo":
-                    for op_name in warn_ops:
-                        logging.warning(
-                            "%s\t## OP %s: defined missing opInfo section %s",
-                            COLOR_RED,
-                            op_name,
-                            COLOR_END,
-                        )
-                elif warn_type == "io":
-                    for op_name in warn_ops:
-                        logging.warning(
-                            "%s\t## OP %s: defined missing input/output section %s",
-                            COLOR_CYAN,
-                            op_name,
-                            COLOR_END,
-                        )
-
-    def _remove_custom_ops_if_needed(self):
-        """如果需要，移除custom ops"""
-        if not self.custom_flag:
-            for op_name in self.custom_ops_info:
-                del self.aicpu_ops_info[op_name]
-
     def check_op_info_setting(self):
         """
         Check ini op info setting correct or enough
@@ -286,7 +231,72 @@ class IniParser(object):
                     logging.info('\tNo "%s" ops set: %s', warn_type, warn_ops)
             logging.info("parse try except normal")
 
+    def _validate_op_info_section(self, op_name, sec_info):
+        """验证opInfo部分"""
+        self.check_op_info(op_name, sec_info)
+        return True
 
+    def _validate_io_section(self, op_name, op_sec, sec_info):
+        """验证input/output部分"""
+        ret = self.check_op_input_output(sec_info)
+        if not ret:
+            logging.error(
+                "## %s: %s should has format type or name as the key, but getting %s",
+                op_name,
+                op_sec,
+                sec_info,
+            )
+            raise KeyError("bad op_sets key")
+        return False
+
+    def _validate_unknown_section(self, op_name, op_sec):
+        """验证未知部分"""
+        logging.error(
+            "Only opInfo, input[0-9], output[0-9] can be used as a key, "
+            "but op %s has the key %s",
+            op_name,
+            op_sec,
+        )
+        raise KeyError("bad key value")
+
+    def _log_opinfo_warnings(self, warn_ops):
+        """记录opInfo缺失警告"""
+        for op_name in warn_ops:
+            logging.warning(
+                "%s\t## OP %s: defined missing opInfo section %s",
+                COLOR_RED,
+                op_name,
+                COLOR_END,
+            )
+
+    def _log_io_warnings(self, warn_ops):
+        """记录input/output缺失警告"""
+        for op_name in warn_ops:
+            logging.warning(
+                "%s\t## OP %s: defined missing input/output section %s",
+                COLOR_CYAN,
+                op_name,
+                COLOR_END,
+            )
+
+    def _log_missing_section_warnings(self):
+        """记录缺失部分的警告"""
+        if not self.warn_print:
+            return
+
+        for warn_type, warn_ops in self.warning_ops.items():
+            if warn_type == "opInfo":
+                self._log_opinfo_warnings(warn_ops)
+            elif warn_type == "io":
+                self._log_io_warnings(warn_ops)
+
+    def _remove_custom_ops_if_needed(self):
+        """如果需要，移除custom ops"""
+        if not self.custom_flag:
+            for op_name in self.custom_ops_info:
+                del self.aicpu_ops_info[op_name]
+                
+                
 def main():
     """A Parser function for ini file."""
     parser = argparse.ArgumentParser(
