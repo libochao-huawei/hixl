@@ -81,65 +81,111 @@ def __init_header_values(config: HeaderConfig):
     return code_len, header_base, zero_bytes_32
 
 
+def __get_basic_header_fields(config, code_len):
+    """获取基本头部字段"""
+    header_base = 0x1000 if config.head_type else 0
+    return (
+        0x55AA55AA,  # preamble
+        int(0).to_bytes(20, "big"),  # rev0
+        0x600,  # head_len
+        0x0,  # user_len
+        int(0).to_bytes(32, "big"),  # user_define_data
+        config.hash_buf,  # code_hash
+        0x600 + header_base,  # sub_key_cert_offset
+        0x618,  # sub_cert_len
+        0x0,  # uw_rootkey_alg
+        0x8010000,  # img_sign_algo
+        512,  # root_pubkey_len
+    )
+
+
+def __get_offset_fields(config, code_len):
+    """获取偏移字段"""
+    header_base = 0x1000 if config.head_type else 0
+    return (
+        0 if config.before_header else 0x2000,  # img_offset
+        code_len,  # img_sign_obj_len
+        header_base + 0xE00,  # sign_offset
+    )
+
+
+def __get_security_fields(zero_bytes_32):
+    """获取安全相关字段"""
+    return (
+        0xFFFFFFFF,  # code_encrypt_flag
+        0x2,  # code_encrypt_algo
+        zero_bytes_32,  # derive_seed
+        1000,  # km_ireation_cnt
+        zero_bytes_32[:16],  # code_encrypt_iv
+        zero_bytes_32[:16],  # code_encrypt_tag
+        zero_bytes_32[:16],  # code_encrypt_add
+    )
+
+
+def __get_bcm_fields(config):
+    """获取BCM相关字段"""
+    if config.bcm:
+        return 0x41544941, 0x800, 0x1000  # h2c_enable, h2c_cert_len, h2c_cert_offset
+    return 0xA5A55555, 0, 0
+
+
+def __get_tag_fields(config, zero_bytes_32):
+    """获取标签相关字段"""
+    code_tag = int(0).to_bytes(16, "big") if config.tag is None else bytes(str(config.tag), "ascii")
+    ver_padding = binascii.a2b_hex("ff" * 0x10)
+    padding = binascii.a2b_hex("ff" * 0x44)
+    return code_tag, bytes(config.version, "ascii"), ver_padding, padding
+
+
 def __build_header_fields(config: HeaderConfig, code_len, zero_bytes_32):
     """构建头部字段值"""
-    header_base = 0x1000 if config.head_type else 0
+    # 基本字段
+    preamble, rev0, head_len, user_len, user_define_data, code_hash = (
+        0x55AA55AA,
+        int(0).to_bytes(20, "big"),
+        0x600,
+        0x0,
+        int(0).to_bytes(32, "big"),
+        config.hash_buf,
+    )
 
-    preamble = 0x55AA55AA
-    rev0 = int(0).to_bytes(20, "big")
-    head_len = 0x600
-    user_len = 0x0
-    user_define_data = int(0).to_bytes(32, "big")
-    code_hash = config.hash_buf
-    sub_key_cert_offset = 0x600 + header_base
+    header_base = 0x1000 if config.head_type else 0
+    sub_key_cert_offset = header_base + 0x600
     sub_cert_len = 0x618
     uw_rootkey_alg = 0x0
     img_sign_algo = 0x8010000
     root_pubkey_len = 512
-    root_pubkey_n = config.n_buf
-    root_pubkey_e = config.e_buf
-    img_offset = 0 if config.before_header else 0x2000
-    img_sign_obj_len = code_len
-    sign_offset = header_base + 0xE00
-    sign_len = 512
-    code_encrypt_flag = 0xFFFFFFFF
-    code_encrypt_algo = 0x2
-    derive_seed = zero_bytes_32
-    km_ireation_cnt = 1000
-    code_encrypt_iv = zero_bytes_32[:16]
-    code_encrypt_tag = zero_bytes_32[:16]
-    code_encrypt_add = zero_bytes_32[:16]
+
+    # 偏移字段
+    img_offset, img_sign_obj_len, sign_offset = __get_offset_fields(config, code_len)
+
+    # 安全字段
+    sign_len, code_encrypt_flag, code_encrypt_algo, derive_seed, km_ireation_cnt, code_encrypt_iv, code_encrypt_tag, code_encrypt_add = (
+        512, 0xFFFFFFFF, 0x2, zero_bytes_32, 1000,
+        zero_bytes_32[:16], zero_bytes_32[:16], zero_bytes_32[:16]
+    )
+
+    # 保留字段
     rsv1 = int(0).to_bytes(88, "big")
     rsv2 = int(0).to_bytes(20, "big")
 
-    if config.bcm:
-        h2c_enable = 0x41544941
-        h2c_cert_len = 0x800
-        h2c_cert_offset = 0x1000
-    else:
-        h2c_enable = 0xA5A55555
-        h2c_cert_offset = 0
-        h2c_cert_len = 0
+    # BCM字段
+    h2c_enable, h2c_cert_len, h2c_cert_offset = __get_bcm_fields(config)
+
+    # 其他字段
     root_pubkeyinfo = 0
     head_magic = 0x33CC33CC
     head_hash = zero_bytes_32
     cms_flag = int(0).to_bytes(16, "big")
     code_nvcnt = int(0).to_bytes(8, "big")
 
-    if config.tag is None:
-        code_tag = int(0).to_bytes(16, "big")
-    else:
-        code_tag = bytes(str(config.tag), "ascii")
-    ver_value = bytes(config.version, "ascii")
-    ver_padding_val = "ff" * 0x10
-    ver_padding = binascii.a2b_hex(ver_padding_val)
-    padding_val = "ff" * 0x44
-    padding = binascii.a2b_hex(padding_val)
+    # 标签字段
+    code_tag, ver_value, ver_padding, padding = __get_tag_fields(config, zero_bytes_32)
 
     return (
         preamble, rev0, head_len, user_len, user_define_data, code_hash,
         sub_key_cert_offset, sub_cert_len, uw_rootkey_alg, img_sign_algo,
-        root_pubkey_len, root_pubkey_n, root_pubkey_e, img_offset,
+        root_pubkey_len, config.n_buf, config.e_buf, img_offset,
         img_sign_obj_len, sign_offset, sign_len, code_encrypt_flag,
         code_encrypt_algo, derive_seed, km_ireation_cnt, code_encrypt_iv,
         code_encrypt_tag, code_encrypt_add, rsv1, h2c_enable, h2c_cert_len,

@@ -160,6 +160,18 @@ class CmsSignCmdParams:
     der_file: str
 
 
+@dataclass
+class ImageCommandParams:
+    """参数封装：_build_image_command函数的参数"""
+    bios_tool_path: str
+    add_sign: str
+    input_file: str
+    sign_path: str
+    input_name: str
+    der_file: str
+    conf_item: AddHeaderConfig
+
+
 def read_xml(in_path):
     """
     功能：读取XML
@@ -628,14 +640,17 @@ def _get_image_paths(input_name, sign_file_dir, sign_tmp_path, product_delivery_
     return input_file, sign_path
 
 
-def _build_image_command(params, input_file, sign_path, input_name, der_file, conf_item):
+def _build_image_command(params: ImageCommandParams) -> Optional[str]:
     """构建镜像处理命令"""
     cmd = _build_base_command(params.bios_tool_path)
 
-    if params.add_sign != "true" or conf_item.type == "":
-        return _build_no_sign_cmd(cmd, input_file, conf_item)
-    elif params.add_sign == "true" and conf_item.type != "":
-        cms_params = CmsSignCmdParams(cmd, input_file, conf_item, sign_path, input_name, der_file)
+    if params.add_sign != "true" or params.conf_item.type == "":
+        return _build_no_sign_cmd(cmd, params.input_file, params.conf_item)
+    elif params.add_sign == "true" and params.conf_item.type != "":
+        cms_params = CmsSignCmdParams(
+            cmd, params.input_file, params.conf_item,
+            params.sign_path, params.input_name, params.der_file
+        )
         return _build_cms_sign_cmd(cms_params)
     else:
         return None
@@ -672,7 +687,16 @@ def _process_image_headers(params, der_file, sign_tmp_path, product_delivery_pat
             input_name, sign_file_dir, sign_tmp_path, product_delivery_path
         )
 
-        cmd = _build_image_command(params, input_file, sign_path, input_name, der_file, conf_item)
+        cmd_params = ImageCommandParams(
+            params.bios_tool_path,
+            params.add_sign,
+            input_file,
+            sign_path,
+            input_name,
+            der_file,
+            conf_item,
+        )
+        cmd = _build_image_command(cmd_params)
         ret_code = _execute_image_command(cmd, input_file)
         if ret_code != 0:
             return ret_code
@@ -680,74 +704,61 @@ def _process_image_headers(params, der_file, sign_tmp_path, product_delivery_pat
     return 0
 
 
-def add_bios_header(params: AddHeaderParams) -> int:
-    """
-    功能：生成每个镜像的签名并绑定
-    输入：params: AddHeaderParams封装的参数
-    返回：-1:失败，0：成功
-    """
-    item_size_set = params.item_size_set
-    sign_file_dir = params.sign_file_dir
-    bios_tool_path = params.bios_tool_path
-    sign_tool_path = params.sign_tool_path
-    root_dir = params.root_dir
-    add_sign = params.add_sign
+def _setup_ini_generation(params, sign_tmp_path, product_delivery_path):
+    """设置ini文件生成"""
+    return build_inifile(
+        BuildIniParams(
+            params.item_size_set,
+            params.sign_file_dir,
+            params.bios_tool_path,
+            sign_tmp_path,
+            product_delivery_path,
+            params.add_sign,
+        )
+    )
 
+
+def _setup_sign_generation(params, sign_tmp_path, product_delivery_path):
+    """设置签名生成"""
+    return build_sign(
+        BuildSignParams(
+            params.item_size_set,
+            params.sign_file_dir,
+            params.sign_tool_path,
+            sign_tmp_path,
+            params.root_dir,
+            product_delivery_path,
+        )
+    )
+
+
+def add_bios_header(params: AddHeaderParams) -> int:
+    """生成每个镜像的签名并绑定"""
     # 准备临时目录
-    sign_tmp_path = _prepare_sign_environment(root_dir)
-    product_delivery_path = os.path.join(root_dir)
+    sign_tmp_path = _prepare_sign_environment(params.root_dir)
+    product_delivery_path = os.path.join(params.root_dir)
 
     # 添加ESBC头
-    ret_code = add_bios_esbc_header(root_dir, item_size_set, sign_file_dir)
+    ret_code = add_bios_esbc_header(params.root_dir, params.item_size_set, params.sign_file_dir)
     if ret_code != 0:
         return ret_code
 
     # 生成ini文件
-    ret_code = build_inifile(
-        BuildIniParams(
-            item_size_set,
-            sign_file_dir,
-            bios_tool_path,
-            sign_tmp_path,
-            product_delivery_path,
-            add_sign,
-        )
-    )
+    ret_code = _setup_ini_generation(params, sign_tmp_path, product_delivery_path)
     if ret_code != 0:
         return ret_code
 
     # 执行签名
-    if add_sign == "true":
-        ret_code = build_sign(
-            BuildSignParams(
-                item_size_set,
-                sign_file_dir,
-                sign_tool_path,
-                sign_tmp_path,
-                root_dir,
-                product_delivery_path,
-            )
-        )
+    if params.add_sign == "true":
+        ret_code = _setup_sign_generation(params, sign_tmp_path, product_delivery_path)
         if ret_code != 0:
             return ret_code
 
     # 准备CRL文件
-    der_file = _prepare_crl_file(root_dir)
+    der_file = _prepare_crl_file(params.root_dir)
 
     # 处理镜像头部绑定
-    ret_code = _process_image_headers(
-        AddHeaderParams(
-            item_size_set,
-            sign_file_dir,
-            bios_tool_path,
-            sign_tool_path,
-            root_dir,
-            add_sign,
-        ),
-        der_file,
-        sign_tmp_path,
-        product_delivery_path,
-    )
+    ret_code = _process_image_headers(params, der_file, sign_tmp_path, product_delivery_path)
     if ret_code != 0:
         return ret_code
 
