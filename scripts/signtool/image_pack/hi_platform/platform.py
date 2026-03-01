@@ -160,7 +160,8 @@ def __build_header_fields(config: HeaderConfig, code_len, zero_bytes_32):
     img_offset, img_sign_obj_len, sign_offset = __get_offset_fields(config, code_len)
 
     # 安全字段
-    sign_len, code_encrypt_flag, code_encrypt_algo, derive_seed, km_ireation_cnt, code_encrypt_iv, code_encrypt_tag, code_encrypt_add = (
+    sign_len, code_encrypt_flag, code_encrypt_algo, derive_seed, \
+            km_ireation_cnt, code_encrypt_iv, code_encrypt_tag, code_encrypt_add = (
         512, 0xFFFFFFFF, 0x2, zero_bytes_32, 1000,
         zero_bytes_32[:16], zero_bytes_32[:16], zero_bytes_32[:16]
     )
