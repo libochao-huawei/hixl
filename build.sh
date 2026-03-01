@@ -42,7 +42,7 @@ usage() {
   echo "    --cov             Enable Coverage, default is OFF"
   echo "    --sign-script=<PATH> | --sign_script=<PATH>" 
   echo "                          Set sign-script's path to <PATH>"
-  echo "    --enable-sign"    Enable to sign"
+  echo "    --enable-sign    Enable to sign"
   echo ""
 }
 

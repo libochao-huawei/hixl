@@ -26,14 +26,18 @@ logging.basicConfig(
 )
 
 
-def get_args():
-    parser = argparse.ArgumentParser(
+def _create_parser():
+    """创建参数解析器"""
+    return argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=textwrap.dedent(
-            """
-                                     A tool to pack image with new structure"""
+            "A tool to pack image with new structure"
         ),
     )
+
+
+def _add_basic_arguments(parser):
+    """添加基本参数"""
     parser.add_argument(
         "-raw_img", required=False, dest="raw", help="INPUT: The raw image"
     )
@@ -51,21 +55,25 @@ def get_args():
         help="INPUT: platform : ascend",
     )
 
-    # input for cms
+
+def _add_cms_arguments(parser):
+    """添加CMS相关参数"""
     parser.add_argument("-cms", required=False, dest="cms", help="INPUT: The cms file")
     parser.add_argument("-ini", required=False, dest="ini", help="INPUT: The ini file")
     parser.add_argument("-crl", required=False, dest="crl", help="INPUT: The crl file")
-
-    # 1910_version
     parser.add_argument(
         "-version", required=False, dest="ver", help="INPUT: The version number"
     )
 
-    # flag cmd
-    parser.add_argument("-S", help="choose whether Onchiprom", action="store_true")
 
+def _add_flag_arguments(parser):
+    """添加标志参数"""
+    parser.add_argument("-S", help="choose whether Onchiprom", action="store_true")
     parser.add_argument("--addcms", help="choose whether add cms", action="store_true")
 
+
+def _add_position_arguments(parser):
+    """添加位置参数"""
     parser.add_argument(
         "-position",
         required=False,
@@ -89,7 +97,9 @@ def get_args():
         help="INPUT: The rootfs/app.img total size(M)",
     )
 
-    # nvcnt
+
+def _add_image_arguments(parser):
+    """添加镜像相关参数"""
     parser.add_argument(
         "-nvcnt",
         required=False,
@@ -106,7 +116,6 @@ def get_args():
         const=None,
         help="INPUT: tag for driver images",
     )
-
     parser.add_argument(
         "-certtype",
         required=False,
@@ -116,6 +125,16 @@ def get_args():
         type=int,
         help="INPUT: 0x1:Community Certificate, 0x2:Client Certificate, 0xFFFFFFFF:HW Certificate",
     )
+
+
+def get_args():
+    """解析命令行参数"""
+    parser = _create_parser()
+    _add_basic_arguments(parser)
+    _add_cms_arguments(parser)
+    _add_flag_arguments(parser)
+    _add_position_arguments(parser)
+    _add_image_arguments(parser)
     return parser.parse_args()
 
 

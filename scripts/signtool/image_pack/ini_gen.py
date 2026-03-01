@@ -83,6 +83,16 @@ def cal_fs_image_hash(filepath, roothash):
     return hash_val
 
 
+def _get_hash_for_elem(elem):
+    """Calculate hash for an element based on its position attribute."""
+    position = elem.get("position", "after_header")
+    if position == "before_header":
+        roothash = elem.get("roothash")
+        return cal_fs_image_hash(elem.attrib["path"], roothash)
+    else:
+        return cal_image_hash(elem.attrib["path"])
+
+
 def gen_ini():
     args = get_args()
     tree = ET.ElementTree(file=args.inFilePath)
@@ -97,24 +107,14 @@ def gen_ini():
         for elem in tree.iter(tag="image"):
             if elem.attrib["tag"] == "hashlist":
                 continue
-            position = elem.get("position", "after_header")
-            if position == "before_header":
-                roothash = elem.get("roothash")
-                hash_val = cal_fs_image_hash(elem.attrib["path"], roothash)
-            else:
-                hash_val = cal_image_hash(elem.attrib["path"])
+            hash_val = _get_hash_for_elem(elem)
             with open(hash_list_path, "a+") as f:
                 line_elem = [elem.attrib["tag"], hash_val]
                 line = "{};".format(",".join(line_elem))
                 f.write(line)
     else:
         for elem in tree.iter(tag="image"):
-            position = elem.get("position", "after_header")
-            if position == "before_header":
-                roothash = elem.get("roothash")
-                hash_val = cal_fs_image_hash(elem.attrib["path"], roothash)
-            else:
-                hash_val = cal_image_hash(elem.attrib["path"])
+            hash_val = _get_hash_for_elem(elem)
             if hash_val == "":
                 return -1
             if "ini_name" in elem.attrib:
@@ -132,31 +132,46 @@ def gen_ini():
     return 0
 
 
+def _write_hash_with_logging(elem, hash_list_path):
+    """写入哈希值并记录日志"""
+    hash_val = cal_image_hash(elem.attrib["path"])
+    with open(hash_list_path, "a+") as f:
+        line_elem = [elem.attrib["tag"], hash_val]
+        line = "{};".format(",".join(line_elem))
+        f.write(line)
+    logging.info("add %s hash val %s to %s", elem.attrib["tag"], hash_val, hash_list_path)
+
+
+def _find_and_update_image_hash(tree, new_image_name, hash_list_path):
+    """查找并更新指定镜像的哈希值"""
+    for elem in tree.iter(tag="image"):
+        if elem.attrib["tag"] == new_image_name:
+            _write_hash_with_logging(elem, hash_list_path)
+            return True
+    return False
+
+
 def update_hash():
+    """更新镜像哈希值到hashlist文件"""
     args = get_args()
     tree = ET.ElementTree(file=args.inFilePath)
     logging.info("update_hash")
+
     if tree.getroot().tag != "image_info":
         logging.error("error in input xml file")
-    if args.new_image_name:
-        hash_list_path = args.hash_list_img_path
-        if os.path.exists(hash_list_path):
-            for elem in tree.iter(tag="image"):
-                if elem.attrib["tag"] == args.new_image_name:
-                    hash_val = cal_image_hash(elem.attrib["path"])
-                    with open(hash_list_path, "a+") as f:
-                        line_elem = [elem.attrib["tag"], hash_val]
-                        line = "{};".format(",".join(line_elem))
-                        f.write(line)
-                        logging.info(
-                            "add %s hash val %s to %s",
-                            args.new_image_name,
-                            hash_val,
-                            hash_list_path,
-                        )
-        else:
-            logging.error("input hashlist file not exist")
-            return 1
+        return 1
+
+    if not args.new_image_name:
+        return 0
+
+    hash_list_path = args.hash_list_img_path
+    if not os.path.exists(hash_list_path):
+        logging.error("input hashlist file not exist")
+        return 1
+
+    if not _find_and_update_image_hash(tree, args.new_image_name, hash_list_path):
+        logging.warning("image %s not found in xml", args.new_image_name)
+
     return 0
 
 
