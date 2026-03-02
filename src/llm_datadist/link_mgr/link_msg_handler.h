@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #ifndef CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_LINK_MSG_HANDLER_H_
@@ -20,12 +21,7 @@
 #include "common/msg_handler_plugin.h"
 
 namespace llm {
-enum class LinkMsgType : int32_t {
-  kConnect = 1,
-  kDisconnect = 2,
-  kStatus = 3,
-  kEnd
-};
+enum class LinkMsgType : int32_t { kConnect = 1, kDisconnect = 2, kStatus = 3, kEnd };
 
 struct LLMExchangeInfo {
   uint64_t cache_table_addr;
@@ -51,7 +47,7 @@ struct LLMDisconnectInfo {
   int32_t timeout;
 };
 
-using GetMemHandles = std::function<std::vector<void *> ()>;
+using GetMemHandles = std::function<std::vector<void *>()>;
 
 class LinkMsgHandler {
  public:
@@ -76,9 +72,9 @@ class LinkMsgHandler {
   void SetMemHandlesCallback(GetMemHandles callback);
 
  private:
-  template<typename T>
+  template <typename T>
   static ge::Status SendMsg(int32_t fd, LinkMsgType msg_type, const T &msg);
-  template<typename T>
+  template <typename T>
   static ge::Status RecvMsg(int32_t fd, LinkMsgType msg_type, T &msg);
   ge::Status ConnectedProcess(int32_t fd, bool &keep_fd);
   ge::Status ExchangeInfoProcess(const LLMExchangeInfo &peer_exchange_info, int32_t timeout, bool force_link,
@@ -88,11 +84,11 @@ class LinkMsgHandler {
   ge::Status ProcessConnectRequest(int32_t fd, const std::vector<char> &msg);
   ge::Status GenerateLocalCommRes(const ClusterInfo &cluster);
   ge::Status CreateEntityMemInfo(EntityMemInfoPtr &mem_info_ptr);
-  ge::Status SetEntityMemInfo(const LLMExchangeInfo &peer_exchange_info,
-                              EntityPtr entity, EntityMemInfoPtr &mem_info_ptr) const;
-  template<typename T>
+  ge::Status SetEntityMemInfo(const LLMExchangeInfo &peer_exchange_info, EntityPtr entity,
+                              EntityMemInfoPtr &mem_info_ptr) const;
+  template <typename T>
   static ge::Status Serialize(const T &msg, std::string &msg_str);
-  template<typename T>
+  template <typename T>
   static ge::Status Deserialize(const std::vector<char> &msg_str, T &msg);
 
   uint64_t cluster_id_;

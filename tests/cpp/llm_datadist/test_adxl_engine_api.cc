@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include <vector>
@@ -303,7 +304,7 @@ TEST_F(AdxlEngineSTest, TestAdxlDisableBufferPoolD2D) {
 
 TEST_F(AdxlEngineSTest, TestHeartbeat) {
   ChannelManager::SetHeartbeatWaitTime(10);  // 10ms
-  Channel::SetHeartbeatTimeout(50);  // 50ms
+  Channel::SetHeartbeatTimeout(50);          // 50ms
   AdxlEngine engine1;
   llm::AutoCommResRuntimeMock::SetDevice(0);
   std::map<AscendString, AscendString> options1;
@@ -322,14 +323,14 @@ TEST_F(AdxlEngineSTest, TestHeartbeat) {
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
   EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", READ, {desc}), SUCCESS);
   EXPECT_EQ(src, 2);
-  // not disconnet, force finalize
+  // not disconnect, force finalize
   engine1.Finalize();
 
   llm::AutoCommResRuntimeMock::SetDevice(0);
   AdxlEngine engine3;
   EXPECT_EQ(engine3.Initialize("127.0.0.1", options1), SUCCESS);  // use same key with engine1
   EXPECT_EQ(engine3.Connect("127.0.0.1:26001"), SUCCESS);
-  // not disconnet, force finalize
+  // not disconnect, force finalize
   engine3.Finalize();
   std::this_thread::sleep_for(std::chrono::milliseconds(60));  // wait server:engine2 clear client:engine3
   engine2.Finalize();

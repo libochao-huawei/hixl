@@ -17,16 +17,16 @@
 #include "hixl_cs_server.h"
 #include "hixl_cs_client.h"
 
-HixlStatus HixlCSServerCreate(const HixlServerDesc *server_desc,
-                              const HixlServerConfig *config, HixlServerHandle *server_handle) {
+HixlStatus HixlCSServerCreate(const HixlServerDesc *server_desc, const HixlServerConfig *config,
+                              HixlServerHandle *server_handle) {
   HIXL_CHECK_NOTNULL(server_handle);
   HIXL_CHECK_NOTNULL(server_desc);
   auto server = new (std::nothrow) hixl::HixlCSServer(server_desc->server_ip, server_desc->server_port);
   HIXL_CHECK_NOTNULL(server);
   HIXL_DISMISSABLE_GUARD(rollback, ([server]() { delete server; }));
   HIXL_CHK_STATUS_RET(server->Initialize(server_desc->endpoint_list, server_desc->endpoint_list_num, config),
-                      "Failed to init hixl cs server, ip:%s, port:%u",
-                      server_desc->server_ip, server_desc->server_port);
+                      "Failed to init hixl cs server, ip:%s, port:%u", server_desc->server_ip,
+                      server_desc->server_port);
   HIXL_DISMISS_GUARD(rollback);
   *server_handle = server;
   HIXL_EVENT("[HixlCSServer] create server success, server_handle:%p", *server_handle);
@@ -226,4 +226,4 @@ HixlStatus HixlCSServerRegProc(HixlServerHandle server_handle, hixl::CtrlMsgType
                       static_cast<int32_t>(msg_type));
   return HIXL_SUCCESS;
 }
-}
+}  // namespace hixl

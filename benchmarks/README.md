@@ -36,11 +36,11 @@
 
 
 ## 执行前准备
-执行前请先确认**两个device之间互通**，可以用hccn_tool按照以下步骤确认两个设备之间的连通性，假设要测试a和b两台设备间的连通性：  
+执行前请先确认**两个device之间互通**，可以用hccn_tool按照以下步骤确认两个设备之间的连通性，假设要测试a和b两台设备间的连通性：
 
 1. 用hccn_tool查询b的device_ip
 ```
-hccn_tool -i ${device_id_b} -ip -g  
+hccn_tool -i ${device_id_b} -ip -g
 ```
 其中\${device_id_b}为b设备的device_id。
 
@@ -48,9 +48,9 @@ hccn_tool -i ${device_id_b} -ip -g
 ```
 hccn_tool -i ${device_id_a} -ping -g address ${ip_address_b}
 ```
-其中\${device_id_a}为a设备的device_id，\${ip_address_b}为第一步中查出的b设备的device_ip。  
+其中\${device_id_a}为a设备的device_id，\${ip_address_b}为第一步中查出的b设备的device_ip。
 
-3. 将ab互换重复执行步骤1和2，检测b到a的连通性    
+3. 将ab互换重复执行步骤1和2，检测b到a的连通性
 
 假如返回结果出现类似于recv time out seq=0的字样，说明两个设备之间不连通，请更换device_id，选择连通的一对执行用例。
 
@@ -136,4 +136,3 @@ for i in {0..7}; do hccn_tool -i $i -tls -s enable 0; done
 ## 性能数据
 
 HIXL在昇腾A2/A3芯片上部分场景传输数据的实测性能,可参见[A2性能数据](A2_benchmark_performance.md)/[A3性能数据](A3_benchmark_performance.md)。
-

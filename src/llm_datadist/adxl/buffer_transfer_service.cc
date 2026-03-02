@@ -207,8 +207,7 @@ Status BufferTransferService::FlushBatch(const ChannelPtr &channel, const std::v
     ADXL_CHK_STATUS_RET(
         ProcessCopy(channel, src_addrs, buffer_addrs, buffer_req.buffer_lens, std::make_pair(kind, left_timeout)),
         "Copy failed");
-    time_cost =
-        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+    time_cost = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
     StatisticManager::GetInstance().UpdateClientCopyCost(channel->GetChannelId(), time_cost);
   }
   ADXL_CHK_STATUS_RET(SendBufferReq(channel, buffer_req, timeout, start), "Send req failed.");
@@ -384,10 +383,10 @@ Status BufferTransferService::D2DTransfer(const ChannelPtr &channel, TransferOp 
   aclrtStream stream = nullptr;
   ADXL_CHK_STATUS_RET(stream_pool->TryAllocStream(stream), "Stream pool get stream failed.");
   LLM_DISMISSABLE_GUARD(fail_guard, ([stream_pool, &stream]() {
-    if (stream != nullptr) {
-      stream_pool->DestroyStream(stream);
-    }
-  }));
+                          if (stream != nullptr) {
+                            stream_pool->DestroyStream(stream);
+                          }
+                        }));
   ADXL_CHK_STATUS_RET(channel->TransferAsyncWithTimeout(transfer_op, op_descs, stream, timeout), "transfer failed.");
   uint64_t time_cost =
       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
@@ -514,10 +513,10 @@ Status BufferTransferService::ProcessCopyWithBatch(const SliceInfo &slice_info, 
     sizes[i] = slice_info.sizes[slice_index + i];
   }
   size_t fail_idx;
-  auto ret = aclrtMemcpyBatch(void_dst_addrs.data(), sizes.data(), void_src_addrs.data(), sizes.data(),
-                              batch_num, attrs.data(), attrsIds.data(), batch_num, &fail_idx);
+  auto ret = aclrtMemcpyBatch(void_dst_addrs.data(), sizes.data(), void_src_addrs.data(), sizes.data(), batch_num,
+                              attrs.data(), attrsIds.data(), batch_num, &fail_idx);
   ADXL_CHK_BOOL_RET_SPECIAL_STATUS(ret == ACL_ERROR_RT_FEATURE_NOT_SUPPORT, UNSUPPORTED,
-                                  "aclrtMemcpyBatch is not supported.");
+                                   "aclrtMemcpyBatch is not supported.");
   return ret == ACL_ERROR_NONE ? SUCCESS : FAILED;
 }
 
@@ -530,15 +529,15 @@ Status BufferTransferService::ProcessCopyWithAsync(const ChannelPtr &channel, co
   aclrtStream stream = nullptr;
   ADXL_CHK_STATUS_RET(stream_pool->TryAllocStream(stream), "Stream pool get stream failed.");
   LLM_DISMISSABLE_GUARD(fail_guard, ([stream_pool, &stream]() {
-    if (stream != nullptr) {
-      stream_pool->DestroyStream(stream);
-    }
-  }));
+                          if (stream != nullptr) {
+                            stream_pool->DestroyStream(stream);
+                          }
+                        }));
   ADXL_CHK_BOOL_RET_STATUS(stream != nullptr, FAILED, "Channel is finalized.");
   auto start = std::chrono::steady_clock::now();
   for (size_t i = 0; i < src_addrs.size(); ++i) {
     ADXL_CHK_ACL_RET(aclrtMemcpyAsync(llm::ValueToPtr(dst_addrs[i]), sizes[i], llm::ValueToPtr(src_addrs[i]), sizes[i],
-                                   extra_info.first, stream));
+                                      extra_info.first, stream));
   }
   uint64_t time_cost =
       std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();

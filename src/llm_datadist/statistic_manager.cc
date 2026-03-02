@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "common/llm_log.h"
@@ -84,7 +85,7 @@ FuncStatisticInfo &StatisticManager::GetFuncStatisticInfo() {
   return func_statistic_info_;
 }
 
-void StatisticManager::Dump() const{
+void StatisticManager::Dump() const {
   DumpMemoryProfilingTrack();
   DumpFuncProfilingTrack();
   DumpLinkProfilingTrack();
@@ -93,8 +94,8 @@ void StatisticManager::Dump() const{
 
 void StatisticManager::DumpMemoryProfilingTrack() const {
   LLMEVENT("Memory statistic info:alloc mem:%lu, free mem:%lu, alloc times:%lu, free times%:lu",
-          memory_statistic_info_.alloc_mem, memory_statistic_info_.free_mem, memory_statistic_info_.alloc_times,
-          memory_statistic_info_.free_times);
+           memory_statistic_info_.alloc_mem, memory_statistic_info_.free_mem, memory_statistic_info_.alloc_times,
+           memory_statistic_info_.free_times);
 }
 
 void StatisticManager::DumpFuncProfilingTrack() const {
@@ -121,8 +122,8 @@ void StatisticManager::DumpFuncProfilingTrack() const {
 
   const uint64_t transfer_func_avg_cost =
       func_statistic_info_.transfer_func_times == 0U
-      ? 0U
-      : func_statistic_info_.transfer_func_total_cost / func_statistic_info_.transfer_func_times;
+          ? 0U
+          : func_statistic_info_.transfer_func_total_cost / func_statistic_info_.transfer_func_times;
   LLMEVENT(
       "Func statistic info:"
       "link info[times:%lu, max_cost:%lu us, min_cost:%lu us, avg_cost:%lu us], "
@@ -163,13 +164,11 @@ void StatisticManager::DumpLinkProfilingTrack() const {
       "register global mem info[times:%lu], comm bind mem info[times:%lu], ",
       "exchange mem info[times:%lu, max_cost:%lu us, min_cost:%lu us, avg_cost:%lu us]",
       link_statistic_info_.comm_init_times, link_statistic_info_.comm_init_max_cost,
-      link_statistic_info_.comm_init_min_cost, comm_init_avg_cost,
-      link_statistic_info_.comm_prepare_times, link_statistic_info_.comm_prepare_max_cost,
-      link_statistic_info_.comm_prepare_min_cost, comm_prepare_avg_cost,
+      link_statistic_info_.comm_init_min_cost, comm_init_avg_cost, link_statistic_info_.comm_prepare_times,
+      link_statistic_info_.comm_prepare_max_cost, link_statistic_info_.comm_prepare_min_cost, comm_prepare_avg_cost,
       link_statistic_info_.register_global_mem_times, link_statistic_info_.comm_bind_mem_times,
       link_statistic_info_.exchange_mem_times, link_statistic_info_.exchange_mem_max_cost,
-      link_statistic_info_.exchange_mem_min_cost, exchange_mem_avg_cost
-      );
+      link_statistic_info_.exchange_mem_min_cost, exchange_mem_avg_cost);
 }
 
 void StatisticManager::DumpUnLinkProfilingTrack() const {
@@ -181,10 +180,9 @@ void StatisticManager::DumpUnLinkProfilingTrack() const {
       "Unlink statistic info:"
       "destroy comm info[times:%lu, max_cost:%lu us, min_cost:%lu us, avg_cost:%lu us], "
       "deregister global mem info[times:%lu], comm unbind mem info[times:%lu]",
-      link_statistic_info_.comm_destroy_times,link_statistic_info_.comm_destroy_max_cost,
+      link_statistic_info_.comm_destroy_times, link_statistic_info_.comm_destroy_max_cost,
       link_statistic_info_.comm_destroy_min_cost, comm_destroy_avg_cost,
-      link_statistic_info_.deregister_global_mem_times, link_statistic_info_.comm_unbind_mem_times
-      );
+      link_statistic_info_.deregister_global_mem_times, link_statistic_info_.comm_unbind_mem_times);
 }
 
 void StatisticManager::Reset() {

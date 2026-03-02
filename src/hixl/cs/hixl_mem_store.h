@@ -57,7 +57,6 @@ class HixlMemStore {
   Status ValidateMemoryAccess(const void *server_addr, size_t mem_size, const void *client_addr);
   bool CheckMemoryForRegister(bool is_server, const void *check_addr, size_t check_size);
 
-
  private:
   bool CheckMemoryForAccess(bool is_server, const void *check_addr, size_t check_size);
   // 内存区域信息结构体

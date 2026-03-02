@@ -112,8 +112,8 @@ Status FabricMemTransferService::RegisterMem(const MemDesc &mem, MemType type, M
                               LLM_CHK_ACL(aclrtFreePhysical(local_pa_handle));
                             }
                           }));
-    ADXL_CHK_ACL_RET(aclrtMemImportFromShareableHandleV2(&share_handle, ACL_MEM_SHARE_HANDLE_TYPE_FABRIC, 0U,
-                                                      &local_pa_handle));
+    ADXL_CHK_ACL_RET(
+        aclrtMemImportFromShareableHandleV2(&share_handle, ACL_MEM_SHARE_HANDLE_TYPE_FABRIC, 0U, &local_pa_handle));
     void *local_va_ = llm::ValueToPtr(local_va_addr);
     ADXL_CHK_ACL_RET(aclrtMapMem(local_va_, mem.len, 0, local_pa_handle, 0));
     std::lock_guard<std::mutex> lock(local_va_map_mutex_);
@@ -387,7 +387,8 @@ Status FabricMemTransferService::TryGetStream(std::vector<aclrtStream> &streams,
   auto start = std::chrono::steady_clock::now();
   streams.reserve(task_stream_num_);
   while (true) {
-    ADXL_CHK_BOOL_RET_SPECIAL_STATUS(TryGetStreamOnce(streams, task_stream_num_) == SUCCESS, SUCCESS, "Success to get stream.");
+    ADXL_CHK_BOOL_RET_SPECIAL_STATUS(TryGetStreamOnce(streams, task_stream_num_) == SUCCESS, SUCCESS,
+                                     "Success to get stream.");
     uint64_t time_cost =
         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
     ADXL_CHK_BOOL_RET_STATUS(time_cost < timeout, TIMEOUT, "Get stream timeout.");
@@ -414,8 +415,7 @@ Status FabricMemTransferService::TryGetStreamOnce(std::vector<aclrtStream> &stre
       return FAILED;
     }
     aclrtStream stream = nullptr;
-    ADXL_CHK_ACL_RET(
-        aclrtCreateStreamWithConfig(&stream, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC));
+    ADXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&stream, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC));
     streams.emplace_back(stream);
     LLMEVENT("Create new stream, current stream pool size:%zu.", stream_pool_.size());
   }
@@ -502,11 +502,11 @@ Status FabricMemTransferService::ProcessCopyWithAsync(const std::vector<aclrtStr
     auto kind = ACL_MEMCPY_DEVICE_TO_DEVICE;
     auto &stream = streams[i % (streams.size())];
     if (operation == TransferOp::WRITE) {
-      ADXL_CHK_ACL_RET(
-          aclrtMemcpyAsync(llm::ValueToPtr(op.remote_addr), op.len, llm::ValueToPtr(op.local_addr), op.len, kind, stream));
+      ADXL_CHK_ACL_RET(aclrtMemcpyAsync(llm::ValueToPtr(op.remote_addr), op.len, llm::ValueToPtr(op.local_addr), op.len,
+                                        kind, stream));
     } else if (operation == TransferOp::READ) {
-      ADXL_CHK_ACL_RET(
-          aclrtMemcpyAsync(llm::ValueToPtr(op.local_addr), op.len, llm::ValueToPtr(op.remote_addr), op.len, kind, stream));
+      ADXL_CHK_ACL_RET(aclrtMemcpyAsync(llm::ValueToPtr(op.local_addr), op.len, llm::ValueToPtr(op.remote_addr), op.len,
+                                        kind, stream));
     }
   }
   return SUCCESS;

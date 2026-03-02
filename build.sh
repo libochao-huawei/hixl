@@ -40,7 +40,7 @@ usage() {
   echo "    --examples        Build with examples and benchmarks, default is OFF"
   echo "    --asan            Enable AddressSanitizer, default is OFF"
   echo "    --cov             Enable Coverage, default is OFF"
-  echo "    --sign-script=<PATH> | --sign_script=<PATH>" 
+  echo "    --sign-script=<PATH> | --sign_script=<PATH>"
   echo "                          Set sign-script's path to <PATH>"
   echo "    --enable-sign    Enable to sign"
   echo ""

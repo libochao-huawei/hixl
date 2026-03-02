@@ -29,6 +29,7 @@
 # 日期    ：2025年11月25日
 # 修改内容  ：创建文件
 """
+
 import shlex
 import argparse
 import logging
@@ -57,6 +58,7 @@ def _run_cmd(cmd: str) -> Tuple[int, str]:
         return (result.returncode, result.stdout)
     except Exception as e:
         return (1, str(e))
+
 
 logging.basicConfig(
     format="[%(asctime)s] [%(levelname)s] [%(pathname)s] [line:%(lineno)d] %(message)s",
@@ -119,6 +121,7 @@ AddNvcntHeaderConfig = namedtuple("AddNvcntHeaderConfig", ["inputfile", "nvcnt"]
 @dataclass
 class BuildIniParams:
     """参数封装：build_inifile函数的参数"""
+
     item_size_set: Dict
     sign_file_dir: str
     bios_tool_path: str
@@ -130,6 +133,7 @@ class BuildIniParams:
 @dataclass
 class BuildSignParams:
     """参数封装：build_sign函数的参数"""
+
     item_size_set: Dict
     sign_file_dir: str
     sign_tool_path: str
@@ -141,6 +145,7 @@ class BuildSignParams:
 @dataclass
 class AddHeaderParams:
     """参数封装：add_bios_header函数的参数"""
+
     item_size_set: Dict
     sign_file_dir: str
     bios_tool_path: str
@@ -152,6 +157,7 @@ class AddHeaderParams:
 @dataclass
 class CmsSignCmdParams:
     """参数封装：_build_cms_sign_cmd函数的参数"""
+
     cmd: str
     input_file: str
     conf_item: AddHeaderConfig
@@ -163,6 +169,7 @@ class CmsSignCmdParams:
 @dataclass
 class ImageCommandParams:
     """参数封装：_build_image_command函数的参数"""
+
     bios_tool_path: str
     add_sign: str
     input_file: str
@@ -297,9 +304,7 @@ def get_item_set(config_file, sign_file_dir, version) -> Tuple[int, Dict, List]:
 # 生成摘要文件，每个待签名文件生成一个，生成文件相关的参数放在image_info.xml文件中
 def _prepare_output_directory(sign_tmp_path, relative_path):
     """准备输出目录，返回输出路径"""
-    output_path = os.path.dirname(
-        os.path.join(sign_tmp_path, relative_path)
-    )
+    output_path = os.path.dirname(os.path.join(sign_tmp_path, relative_path))
     output_path = os.path.realpath(output_path)
     if not os.path.isdir(output_path):
         os.makedirs(output_path)
@@ -315,15 +320,14 @@ def _should_write_cms_config(conf_item, inputfile):
     )
 
 
-def _write_image_info_config(read_cfg, item_size_set, sign_file_dir,
-                              sign_tmp_path, product_delivery_path):
+def _write_image_info_config(
+    read_cfg, item_size_set, sign_file_dir, sign_tmp_path, product_delivery_path
+):
     """写入image_info.xml配置文件内容，返回是否有CMS标志"""
     cms_flag = False
     for infile, conf_item in list(item_size_set.items()):
         inputfile = os.path.join(sign_file_dir, infile)
-        relative_path = inputfile.replace(
-            product_delivery_path + PATH_SEPARATOR, ""
-        )
+        relative_path = inputfile.replace(product_delivery_path + PATH_SEPARATOR, "")
         output_path = _prepare_output_directory(sign_tmp_path, relative_path)
 
         if _should_write_cms_config(conf_item, inputfile):
@@ -360,8 +364,11 @@ def build_inifile(params: BuildIniParams) -> int:
         with open(inicfg, "w+", encoding="utf-8") as read_cfg:
             read_cfg.write("<image_info>\n")
             cms_flag = _write_image_info_config(
-                read_cfg, item_size_set, sign_file_dir,
-                sign_tmp_path, product_delivery_path
+                read_cfg,
+                item_size_set,
+                sign_file_dir,
+                sign_tmp_path,
+                product_delivery_path,
             )
             read_cfg.write("</image_info>\n")
         gen_tool = os.path.join(bios_tool_path, "ini_gen.py")
@@ -438,9 +445,7 @@ def _prepare_sign_file(file, sign_file_dir, sign_tmp_path, product_delivery_path
 
 def _build_sign_command(sign_tool_path, root_dir, ini_files):
     """构建签名命令"""
-    cmd = "{} {} {}".format(
-        os.environ["HI_PYTHON"], sign_tool_path, root_dir
-    )
+    cmd = "{} {} {}".format(os.environ["HI_PYTHON"], sign_tool_path, root_dir)
     for ini_file in ini_files:
         cmd = "{} {}".format(cmd, ini_file)
     return cmd
@@ -465,7 +470,9 @@ def build_sign(params: BuildSignParams) -> int:
 
     ini_files = []
     for file in sign_dict["cms"]:
-        ini_file, ret = _prepare_sign_file(file, sign_file_dir, sign_tmp_path, product_delivery_path)
+        ini_file, ret = _prepare_sign_file(
+            file, sign_file_dir, sign_tmp_path, product_delivery_path
+        )
         if ret != 0:
             return -1
         logging.info("ini file prepared for signing: %s", ini_file)
@@ -476,9 +483,7 @@ def build_sign(params: BuildSignParams) -> int:
     COMM_LOG.cilog_info(THIS_FILE_NAME, "execute:%s", cmd)
     ret = _run_cmd(cmd)
     if ret[0] != 0:
-        COMM_LOG.cilog_error(
-            THIS_FILE_NAME, "make cms sign failed!\n\t%s", ret[1]
-        )
+        COMM_LOG.cilog_error(THIS_FILE_NAME, "make cms sign failed!\n\t%s", ret[1])
         return -1
     COMM_LOG.cilog_info(THIS_FILE_NAME, "%s", ret[1])
 
@@ -504,7 +509,7 @@ def add_bios_esbc_header(root_dir, item_size_set, sign_file_dir):
         input_file = os.path.join(sign_file_dir, input_filename)
 
         if conf_item.nvcnt:
-            cmd = f'{os.environ["HI_PYTHON"]} {os.path.join(bios_esbc_header_tool_path, "esbc_header.py")}'
+            cmd = f"{os.environ['HI_PYTHON']} {os.path.join(bios_esbc_header_tool_path, 'esbc_header.py')}"
             # 用esbc_header.py工具脚本添加esbc头
             cmd += f" -raw_img {input_file} -out_img {input_file}"
             cmd += f" -version {conf_item.version} -nvcnt {conf_item.nvcnt} -tag {conf_item.tag}"
@@ -597,17 +602,13 @@ def _build_cms_sign_cmd(params: CmsSignCmdParams) -> str:
     add_cmd = params.conf_item.additional
 
     for sign in params.conf_item.type.split("/"):
-        cmd = (
-            cmd
-            + " -raw_img %s -out_img %s -version %s -nvcnt %s -tag %s %s"
-            % (
-                params.input_file,
-                params.input_file,
-                params.conf_item.version,
-                params.conf_item.nvcnt,
-                params.conf_item.tag,
-                add_cmd,
-            )
+        cmd = cmd + " -raw_img %s -out_img %s -version %s -nvcnt %s -tag %s %s" % (
+            params.input_file,
+            params.input_file,
+            params.conf_item.version,
+            params.conf_item.nvcnt,
+            params.conf_item.tag,
+            add_cmd,
         )
 
         if sign == "cms":
@@ -619,10 +620,10 @@ def _build_cms_sign_cmd(params: CmsSignCmdParams) -> str:
 def _add_cms_params(cmd: str, params: CmsSignCmdParams) -> str:
     """添加CMS签名参数到命令"""
     ini_file = os.path.join(params.sign_path, os.path.basename(params.input_name))
-    cmd = (
-        cmd
-        + " -cms %s.ini.p7s -ini %s.ini -crl %s -certtype 1 --addcms"
-        % (ini_file, ini_file, params.der_file)
+    cmd = cmd + " -cms %s.ini.p7s -ini %s.ini -crl %s -certtype 1 --addcms" % (
+        ini_file,
+        ini_file,
+        params.der_file,
     )
     if params.conf_item.position != "":
         cmd = cmd + " -position %s" % (params.conf_item.position)
@@ -648,8 +649,12 @@ def _build_image_command(params: ImageCommandParams) -> Optional[str]:
         return _build_no_sign_cmd(cmd, params.input_file, params.conf_item)
     elif params.add_sign == "true" and params.conf_item.type != "":
         cms_params = CmsSignCmdParams(
-            cmd, params.input_file, params.conf_item,
-            params.sign_path, params.input_name, params.der_file
+            cmd,
+            params.input_file,
+            params.conf_item,
+            params.sign_path,
+            params.input_name,
+            params.der_file,
         )
         return _build_cms_sign_cmd(cms_params)
     else:
@@ -739,7 +744,9 @@ def add_bios_header(params: AddHeaderParams) -> int:
     product_delivery_path = os.path.join(params.root_dir)
 
     # 添加ESBC头
-    ret_code = add_bios_esbc_header(params.root_dir, params.item_size_set, params.sign_file_dir)
+    ret_code = add_bios_esbc_header(
+        params.root_dir, params.item_size_set, params.sign_file_dir
+    )
     if ret_code != 0:
         return ret_code
 
@@ -758,7 +765,9 @@ def add_bios_header(params: AddHeaderParams) -> int:
     der_file = _prepare_crl_file(params.root_dir)
 
     # 处理镜像头部绑定
-    ret_code = _process_image_headers(params, der_file, sign_tmp_path, product_delivery_path)
+    ret_code = _process_image_headers(
+        params, der_file, sign_tmp_path, product_delivery_path
+    )
     if ret_code != 0:
         return ret_code
 
@@ -868,7 +877,12 @@ def main(argv=None):
     # 调用签名插件对需要签名的镜像进行签名，并绑定镜像文件
     ret_code = add_bios_header(
         AddHeaderParams(
-            item_size_set, sign_file_dir, bios_tool_path, sgn_tool_path, root_dir, add_sign
+            item_size_set,
+            sign_file_dir,
+            bios_tool_path,
+            sgn_tool_path,
+            root_dir,
+            add_sign,
         )
     )
     return ret_code

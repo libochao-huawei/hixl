@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "memory/allocator/scalable_allocator.h"
@@ -42,7 +43,7 @@ ScalableAllocator::ScalableAllocator(SpanAllocator &span_allocator, const Scalab
 
 ScalableAllocator::~ScalableAllocator() {
   try {
-    (void) Finalize();
+    (void)Finalize();
     span_layers_.clear();
   } catch (const std::exception &) {
     // do nothing
@@ -89,7 +90,7 @@ PageSpan *ScalableAllocator::FetchLayerSpan(const SpanLayerId layer_id) {
 
 PageSpan *ScalableAllocator::BlockAlloc(ge::Allocator &allocator, const BlockAddr block_addr, const MemAddr addr,
                                         const size_t size) {
-  auto span = new(span_allocator_.Alloc()) PageSpan{allocator, *this, block_addr, addr, size};
+  auto span = new (span_allocator_.Alloc()) PageSpan{allocator, *this, block_addr, addr, size};
   return span;
 }
 
@@ -102,7 +103,7 @@ SpanLayer *ScalableAllocator::FetchSpanLayer(const SpanLayerId layer_id) {
     return span_layers_[layer_id];
   }
 
-  auto newLayer = new(layer_allocator_.Alloc()) SpanLayer(layer_id, GetlayerSpanCapacity(layer_id));
+  auto newLayer = new (layer_allocator_.Alloc()) SpanLayer(layer_id, GetlayerSpanCapacity(layer_id));
   if (newLayer != nullptr) {
     span_layers_[layer_id] = newLayer;
     span_layer_lut_->OnLayerCreated(*newLayer);
@@ -130,8 +131,8 @@ PageSpan *ScalableAllocator::SplitSpan(ge::Allocator &allocator, const SpanLayer
                                        const SpanLayerId fit_layer_id, PageSpan *const span, const MemSize size) {
   LLM_ASSERT_NOTNULL(span);
   PageLen left_page_len = fit_layer_id - fix_layer_id;
-  const auto buddy_addr = PageLen_ForwardAddr(left_page_len, config_.page_idem_num,
-                                              reinterpret_cast<MemAddr>(span->GetAddr()));
+  const auto buddy_addr =
+      PageLen_ForwardAddr(left_page_len, config_.page_idem_num, reinterpret_cast<MemAddr>(span->GetAddr()));
   const auto buddy_span = BlockAlloc(allocator, nullptr, buddy_addr, static_cast<size_t>(size));
   if (buddy_span == nullptr) {
     return nullptr;
@@ -177,7 +178,7 @@ PageSpan *ScalableAllocator::AllocImp(ge::Allocator &allocator, const MemSize si
 PageSpan *ScalableAllocator::Alloc(ge::Allocator &allocator, const MemSize size) {
   if (size > config_.page_mem_size_total_threshold) {
     LLMLOGE(ge::FAILED, "%s [ScalableAllocator]: size:%lu > mem_size_total_thresold:%lu", GetId().c_str(), size,
-           config_.page_mem_size_total_threshold);
+            config_.page_mem_size_total_threshold);
     return nullptr;
   }
 
@@ -193,8 +194,8 @@ PageSpan *ScalableAllocator::Alloc(ge::Allocator &allocator, const MemSize size)
     if (theory_size_ > theory_min_size_) {
       theory_min_size_ = theory_size_;
     }
-    LOG_BY_TYPE(DLOG_INFO, "Malloc block size:%llu allocate_size:%zu mem_addr:%p. span addr %p",
-                size, span->GetSize(), span->GetAddr(), span);
+    LOG_BY_TYPE(DLOG_INFO, "Malloc block size:%llu allocate_size:%zu mem_addr:%p. span addr %p", size, span->GetSize(),
+                span->GetAddr(), span);
   }
   return span;
 }
@@ -247,8 +248,8 @@ void ScalableAllocator::Free(ge::MemBlock *block) {
     real_theory_size_ -= span->GetRealSize();
     theory_size_ -= span->GetSize();
   }
-  LOG_BY_TYPE(DLOG_INFO, "Free block theory_size_:%zu theory_min_size_:%zu allock_size:%zu mem_addr:%p.",
-              theory_size_, theory_min_size_, span->GetSize(), span->GetAddr());
+  LOG_BY_TYPE(DLOG_INFO, "Free block theory_size_:%zu theory_min_size_:%zu allock_size:%zu mem_addr:%p.", theory_size_,
+              theory_min_size_, span->GetSize(), span->GetAddr());
 
   occupied_spans_.remove(*span);
   span = TryMergeNext(*span);
@@ -292,8 +293,7 @@ void ScalableAllocator::PrintDetails(const int32_t level) {
     return;
   }
 
-  LOG_BY_TYPE(level, "Allocator memory: [alloc count:%zu free count:%zu]", alloc_succ_count_,
-              free_succ_count_);
+  LOG_BY_TYPE(level, "Allocator memory: [alloc count:%zu free count:%zu]", alloc_succ_count_, free_succ_count_);
 
   std::map<size_t, size_t> occupied_span_stat;
   size_t total_page_count = 0U;
@@ -302,11 +302,11 @@ void ScalableAllocator::PrintDetails(const int32_t level) {
     occupied_span_stat[span.GetPageLen()]++;
   }
 
-  LOG_BY_TYPE(level, "Using: [span count:%zu page count:%zu total size:%llu]",
-              occupied_spans_.size(), total_page_count, PageLen_GetMemSize(total_page_count, config_.page_idem_num));
+  LOG_BY_TYPE(level, "Using: [span count:%zu page count:%zu total size:%llu]", occupied_spans_.size(), total_page_count,
+              PageLen_GetMemSize(total_page_count, config_.page_idem_num));
   for (const auto &stat : occupied_span_stat) {
-    LOG_BY_TYPE(level, "    |-span: [size:%-11llu count:%-5zu]",
-                PageLen_GetMemSize(stat.first, config_.page_idem_num), stat.second);
+    LOG_BY_TYPE(level, "    |-span: [size:%-11llu count:%-5zu]", PageLen_GetMemSize(stat.first, config_.page_idem_num),
+                stat.second);
   }
 
   size_t total_span_count = 0U;
@@ -342,9 +342,7 @@ ge::Status ScalableAllocator::InitFixSizedAllocator(ge::Allocator &allocator, vo
   const auto span = BlockAlloc(allocator, nullptr, static_cast<uint8_t *>(base_addr), size);
   LLM_CHK_BOOL_RET_STATUS(span != nullptr, ge::FAILED, "Failed to alloc block.");
 
-  LLM_DISMISSABLE_GUARD(fail_guard, ([this, span]() {
-      span_allocator_.Free(*span);
-  }));
+  LLM_DISMISSABLE_GUARD(fail_guard, ([this, span]() { span_allocator_.Free(*span); }));
 
   base_addr_ = span->GetAddr();
   LOG_BY_TYPE(DLOG_INFO, "base_addr:%p size:%zu", base_addr_, span->GetSize());
@@ -353,8 +351,7 @@ ge::Status ScalableAllocator::InitFixSizedAllocator(ge::Allocator &allocator, vo
     span->SubCount();
   }
 
-  const SpanLayerId fit_layer_id =
-      SpanLayerId_GetIdFromSize(size, ScalableAllocator::config_.page_idem_num);
+  const SpanLayerId fit_layer_id = SpanLayerId_GetIdFromSize(size, ScalableAllocator::config_.page_idem_num);
   const auto layer = FetchSpanLayer(fit_layer_id);
   LLM_CHK_BOOL_RET_STATUS(layer != nullptr, ge::FAILED, "Failed to fetch span layer.");
   PushSpanToLayer(*layer, *span);
@@ -362,4 +359,4 @@ ge::Status ScalableAllocator::InitFixSizedAllocator(ge::Allocator &allocator, vo
   LLM_DISMISS_GUARD(fail_guard);
   return ge::SUCCESS;
 }
-}
+}  // namespace llm

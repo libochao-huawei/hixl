@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #ifndef CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_CHANNEL_MSG_HANDLE_H_
@@ -27,12 +28,7 @@
 #include "common/hixl_utils.h"
 
 namespace adxl {
-enum class ChannelMsgType : int32_t {
-  kConnect = 1,
-  kDisconnect = 2,
-  kStatus = 3,
-  kEnd
-};
+enum class ChannelMsgType : int32_t { kConnect = 1, kDisconnect = 2, kStatus = 3, kEnd };
 
 struct AddrInfo {
   uintptr_t start_addr{0};
@@ -59,15 +55,15 @@ struct ChannelDisconnectInfo {
 };
 
 struct EvictItem {
-    std::string channel_id;
-    ChannelType channel_type;
-    int32_t timeout_ms{1000};
+  std::string channel_id;
+  ChannelType channel_type;
+  int32_t timeout_ms{1000};
 };
 
 struct PendingDisconnectRequest {
-    std::condition_variable cv;
-    bool received{false};
-    RequestDisconnectResp resp;
+  std::condition_variable cv;
+  bool received{false};
+  RequestDisconnectResp resp;
 };
 
 using CallbackProcessor = std::function<Status(int32_t fd, const char *msg, uint64_t msg_len, bool &keep_fd)>;
@@ -75,11 +71,8 @@ using CallbackProcessor = std::function<Status(int32_t fd, const char *msg, uint
 class ChannelMsgHandler {
  public:
   ChannelMsgHandler(const std::string &listen_info, ChannelManager *channel_manager)
-      : listen_info_(listen_info),
-        channel_manager_(channel_manager),
-        device_id_(0),
-        listen_port_(-1),
-        comm_config_{} {};
+      : listen_info_(listen_info), channel_manager_(channel_manager), device_id_(0), listen_port_(-1), comm_config_{} {
+        };
 
   ~ChannelMsgHandler() = default;
   Status Initialize(const std::map<AscendString, AscendString> &options, SegmentTable *segment_table,
@@ -92,7 +85,7 @@ class ChannelMsgHandler {
   Status Connect(const std::string &remote_engine, int32_t timeout_in_millis);
   Status Disconnect(const std::string &remote_engine, int32_t timeout_in_millis);
 
-  const std::string& GetListenInfo() const {
+  const std::string &GetListenInfo() const {
     return listen_info_;
   }
 
@@ -120,19 +113,18 @@ class ChannelMsgHandler {
   Status CreateChannel(const ChannelInfo &channel_info, bool is_client, const ChannelConnectInfo &peer_channel_info);
   Status ParseRankTable(const ChannelConnectInfo &peer_channel_info, std::string &rank_table, int32_t &local_rank_id,
                         int32_t &peer_rank_id);
-  Status ConnectInfoProcess(const ChannelConnectInfo &peer_channel_info,
-                            int32_t timeout, bool is_client);
+  Status ConnectInfoProcess(const ChannelConnectInfo &peer_channel_info, int32_t timeout, bool is_client);
   Status ProcessConnectRequest(int32_t fd, const char *msg, uint64_t msg_len, bool &keep_fd);
   Status DisconnectInfoProcess(ChannelType channel_type, const ChannelDisconnectInfo &peer_disconnect_info);
   Status ProcessDisconnectRequest(int32_t fd, const char *msg, uint64_t msg_len, bool &keep_fd);
   Status ConnectedProcess(int32_t fd, bool &keep_fd);
-  template<typename T>
+  template <typename T>
   static Status SendMsg(int32_t fd, ChannelMsgType msg_type, const T &msg);
-  template<typename T>
+  template <typename T>
   static Status RecvMsg(int32_t fd, ChannelMsgType msg_type, T &msg);
-  template<typename T>
+  template <typename T>
   static Status Serialize(const T &msg, std::string &msg_str);
-  template<typename T>
+  template <typename T>
   static Status Deserialize(const char *msg_str, T &msg);
   Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
   Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
@@ -142,15 +134,15 @@ class ChannelMsgHandler {
   int32_t GetTotalChannelCount() const;
   bool ShouldTriggerEviction() const;
   Status NotifyEviction();
-  Status ProcessEviction(const EvictItem& item);
+  Status ProcessEviction(const EvictItem &item);
   Status ResetAllTransferFlags();
   void EvictionLoop();
   std::vector<EvictItem> SelectEvictionCandidates(int32_t need_expire);
   Status StartEvictionThread();
   Status SetupChannelManagerCallbacks();
 
-  Status ProcessServerEviction(const std::string& channel_id, ChannelPtr channel);
-  Status ProcessClientEviction(const std::string& channel_id, int32_t timeout_ms);
+  Status ProcessServerEviction(const std::string &channel_id, ChannelPtr channel);
+  Status ProcessClientEviction(const std::string &channel_id, int32_t timeout_ms);
 
   int32_t max_channel_{kDefaultMaxChannel};
   int32_t high_waterline_{0};

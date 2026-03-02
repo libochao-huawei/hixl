@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "data_transfer/data_transfer_client.h"
@@ -23,7 +24,7 @@ ge::Status SetBufferInfoCount(const PullCacheParam &pull_cache_param, uint32_t &
                               uint32_t &is_pull_block,
                               std::vector<std::vector<std::pair<int64_t, int64_t>>> &contiguous_blocks_pair) {
   LLM_CHK_BOOL_RET_STATUS(pull_cache_param.prompt_blocks.empty() || !pull_cache_param.decoder_blocks.empty(),
-                         ge::LLM_PARAM_INVALID, "currently not support pull from discrete to continuous");
+                          ge::LLM_PARAM_INVALID, "currently not support pull from discrete to continuous");
   if (pull_cache_param.decoder_blocks.empty()) {
     buffer_info_count = 1U;
     LLMLOGD("enter pull from contiguous to contiguous");
@@ -37,8 +38,8 @@ ge::Status SetBufferInfoCount(const PullCacheParam &pull_cache_param, uint32_t &
   } else {
     is_pull_block = 1;
     LLM_CHK_STATUS_RET(LLMUtils::FindContiguousBlockIndexPair(pull_cache_param.prompt_blocks,
-                                                             pull_cache_param.decoder_blocks, contiguous_blocks_pair),
-                      "find contiguous blocks failed");
+                                                              pull_cache_param.decoder_blocks, contiguous_blocks_pair),
+                       "find contiguous blocks failed");
     buffer_info_count = contiguous_blocks_pair.size();
     LLMLOGD("enter pull from discrete to discrete");
   }
@@ -57,13 +58,13 @@ void SetDstAddr(const PullCacheParam &pull_cache_param, const CacheEntry &cache_
     if (pull_cache_param.decoder_blocks.empty()) {
       request.transfer_infos[i].dst_addr =
           ValueToPtr(PtrToValue(cache_entry.cache_addrs[i + layer_start_tensor_index].get()) +
-                         pull_cache_param.batch_index * cache_entry.stride);
+                     pull_cache_param.batch_index * cache_entry.stride);
       LLMLOGI("request set %uth dst_addr:%lu", i, reinterpret_cast<uintptr_t>(request.transfer_infos[i].dst_addr));
     } else {
       request.block_size = cache_entry.stride;
       request.transfer_infos[i].dst_addr = cache_entry.cache_addrs[i + layer_start_tensor_index].get();
       LLMLOGI("request set block size is:%lu, set %uth dst_addr:%lu", cache_entry.stride, i,
-             reinterpret_cast<uintptr_t>(request.transfer_infos[i].dst_addr));
+              reinterpret_cast<uintptr_t>(request.transfer_infos[i].dst_addr));
     }
   }
 }
@@ -81,18 +82,18 @@ ge::Status SetBufferInfo(const PullCacheParam &pull_cache_param, const CacheEntr
       dst_buffer_info.block_start_index = 0U;
       src_buffer_info.buffer_len = pull_size;
       src_buffer_info.block_start_index = 0U;
-      LLMLOGI("request buffer_len is:%lu, block_start_index is:%lu",
-              dst_buffer_info.buffer_len, dst_buffer_info.block_start_index);
+      LLMLOGI("request buffer_len is:%lu, block_start_index is:%lu", dst_buffer_info.buffer_len,
+              dst_buffer_info.block_start_index);
       break;
     }
     const auto &contiguous_block_pair = contiguous_blocks_pair[i];
     const int64_t dst_index = contiguous_block_pair.front().second;
     const int64_t dst_end_index = contiguous_block_pair.back().second;
     LLM_CHK_BOOL_RET_STATUS((static_cast<uint64_t>(dst_index) < cache_entry.num_blocks) &&
-                               (static_cast<uint64_t>(dst_end_index) < cache_entry.num_blocks),
-                           ge::LLM_PARAM_INVALID,
-                           "dst block begin index[%ld] or dst block end index[%ld] is out of range[0, %lu)",
-                           dst_index, dst_end_index, cache_entry.num_blocks);
+                                (static_cast<uint64_t>(dst_end_index) < cache_entry.num_blocks),
+                            ge::LLM_PARAM_INVALID,
+                            "dst block begin index[%ld] or dst block end index[%ld] is out of range[0, %lu)", dst_index,
+                            dst_end_index, cache_entry.num_blocks);
     src_buffer_info.buffer_len = contiguous_block_pair.size() * cache_entry.stride;
     src_buffer_info.block_start_index = contiguous_blocks_pair[i].front().first;
     dst_buffer_info.buffer_len = contiguous_block_pair.size() * cache_entry.stride;
@@ -112,13 +113,13 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
   uint32_t buffer_info_count = 0U;
   uint32_t is_pull_block = 0U;
   LLM_CHK_STATUS_RET(SetBufferInfoCount(pull_cache_param, buffer_info_count, is_pull_block, contiguous_blocks_pair),
-                    "set buffer_info_count failed");
+                     "set buffer_info_count failed");
   uint64_t request_size =
       sizeof(TransferCacheReq) + sizeof(TransferInfo) * (static_cast<uint64_t>(buffer_info_count) * kSrcAndDstNum +
                                                          cache_entry.cache_addrs.size());
   LLM_CHK_BOOL_RET_STATUS(request_size <= (kDefaultReqBufferSize - kFlagSize), ge::LLM_PARAM_INVALID,
-                         "buffer info count[%u] is to large, request size[%lu] is out of range[0, %lu]",
-                         buffer_info_count, request_size, (kDefaultReqBufferSize - kFlagSize));
+                          "buffer info count[%u] is to large, request size[%lu] is out of range[0, %lu]",
+                          buffer_info_count, request_size, (kDefaultReqBufferSize - kFlagSize));
 
   request.cache_id = cache_key.prompt_cache_id;
   request.batch_index = cache_key.prompt_batch_index;
@@ -145,7 +146,7 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
   }
   SetDstAddr(pull_cache_param, cache_entry, request);
   LLM_CHK_STATUS_RET(SetBufferInfo(pull_cache_param, cache_entry, contiguous_blocks_pair, request),
-                    "Failed to set buffer info");
+                     "Failed to set buffer info");
   return ge::SUCCESS;
 }
 
@@ -156,7 +157,7 @@ ge::Status DataTransferClient::GetResponseInfo() const {
   // 校验response里面的数据
   auto ret = static_cast<ge::Status>(response_info->ret_code);
   LLM_CHK_BOOL_RET_STATUS(ret == ge::SUCCESS, ret, "pull cache failed, not find kv in remote cluster[%lu]",
-                         comm_entity_->GetClusterId());
+                          comm_entity_->GetClusterId());
   LLMLOGI("entity:%s success to receive cache", comm_entity_->GetDesc().c_str());
   return ge::SUCCESS;
 }
@@ -173,7 +174,7 @@ ge::Status DataTransferClient::SendCacheInfoToRemote() const {
     size = request_size;
   };
   LLM_CHK_STATUS_RET(comm_entity_->SendRequest(fill_req_func, req_stream_),
-                    "put cache info to remote_cluster[%lu] failed", comm_entity_->GetClusterId());
+                     "put cache info to remote_cluster[%lu] failed", comm_entity_->GetClusterId());
   return ge::SUCCESS;
 }
 
@@ -193,8 +194,8 @@ ge::Status DataTransferClient::SynchronizeStreamTask(const TimePoint &start_time
     const auto &current_time = std::chrono::steady_clock::now();
     const uint64_t duration = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - start_time).count();
     LLM_CHK_BOOL_RET_STATUS(duration <= static_cast<uint64_t>(timeout_in_ms_), ge::LLM_TIMEOUT,
-                           "entity:%s synchronize timeout, time cost:%lu ms.", comm_entity_->GetDesc().c_str(),
-                           duration);
+                            "entity:%s synchronize timeout, time cost:%lu ms.", comm_entity_->GetDesc().c_str(),
+                            duration);
   }
   comm_entity_->ClearResponseFlags();
   LLMLOGI("entity:%s synchronize success", comm_entity_->GetDesc().c_str());
@@ -203,7 +204,7 @@ ge::Status DataTransferClient::SynchronizeStreamTask(const TimePoint &start_time
 
 ge::Status DataTransferClient::PullCacheFromRemote(const TimePoint &start_time) const {
   LLM_CHK_STATUS_RET(SendCacheInfoToRemote(), "send cache info to remote cluster:%lu failed",
-                    comm_entity_->GetClusterId());
+                     comm_entity_->GetClusterId());
   LLM_CHK_STATUS_RET(SynchronizeStreamTask(start_time), "pull cache timeout");
   LLM_CHK_STATUS_RET(GetResponseInfo(), "get response failed from remote cluster:%lu", comm_entity_->GetClusterId());
   return ge::SUCCESS;
@@ -216,7 +217,7 @@ ge::Status DataTransferClient::PullCache(const CacheEntry &cache_entry, const Ca
   auto &request = *PtrToPtr<uint8_t, TransferCacheReq>(comm_entity_->GetEntityInfo().send_buffer_req_ptr);
   LLM_CHK_STATUS_RET(ConstructTransferInfo(pull_cache_param, cache_entry, cache_key, timeout_in_ms, request));
   LLM_CHK_STATUS_RET(PullCacheFromRemote(start), "Failed to pull kv from remote cluster:%lu",
-                    cache_key.prompt_cluster_id);
+                     cache_key.prompt_cluster_id);
   return ge::SUCCESS;
 }
 
@@ -227,9 +228,9 @@ ge::Status DataTransferClient::PullCacheByGet(const CacheEntry &cache_entry, con
   CacheEntry remote_cache_entry;
   LLM_CHK_STATUS_RET(comm_entity_->GetCacheAccessTable().FindCacheEntry(request, remote_cache_entry));
   LLM_CHK_BOOL_RET_STATUS(cache_entry.remote_accessible, ge::LLM_PARAM_INVALID,
-                         "local cache is not remote accessible.");
+                          "local cache is not remote accessible.");
   LLM_CHK_BOOL_RET_STATUS(remote_cache_entry.remote_accessible, ge::LLM_PARAM_INVALID,
-                         "remote cache is not remote accessible.");
+                          "remote cache is not remote accessible.");
   D2DDataTransferJob job;
   uint64_t offset = 0;
   if (cache_entry.cache_mem_type != CacheMemType::BLOCKS) {

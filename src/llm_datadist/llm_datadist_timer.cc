@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "llm_datadist_timer.h"
@@ -74,7 +75,7 @@ ge::Status LlmDatadistTimer::DeleteTimer(const void *handle) {
   std::unique_lock<std::mutex> lk(mutex_);
   const auto &iter = timer_infos_.find(timer->timer_id);
   LLM_CHK_BOOL_RET_STATUS(iter != timer_infos_.cend(), ge::LLM_PARAM_INVALID,
-                         "not find timer info, delete timer[%u] failed", timer->timer_id);
+                          "not find timer info, delete timer[%u] failed", timer->timer_id);
   LLMLOGI("DeleteTimer success, timer_id:%u", timer->timer_id);
   (void)timer_infos_.erase(iter);
   return ge::SUCCESS;
@@ -87,7 +88,7 @@ ge::Status LlmDatadistTimer::StartTimer(void *handle, uint32_t period, bool one_
   std::unique_lock<std::mutex> lk(mutex_);
   const auto &iter = timer_infos_.find(timer->timer_id);
   LLM_CHK_BOOL_RET_STATUS(iter != timer_infos_.cend(), ge::LLM_PARAM_INVALID,
-                         "not find timer info, start timer[%u] failed", timer->timer_id);
+                          "not find timer info, start timer[%u] failed", timer->timer_id);
   timer->period = period;
   timer->one_shot_flag = one_shot;
   timer->is_start = true;
@@ -101,7 +102,7 @@ ge::Status LlmDatadistTimer::StopTimer(void *handle) {
   std::unique_lock<std::mutex> lk(mutex_);
   const auto &iter = timer_infos_.find(timer->timer_id);
   LLM_CHK_BOOL_RET_STATUS(iter != timer_infos_.cend(), ge::LLM_PARAM_INVALID,
-                         "not find timer info, stop timer[%u] failed", timer->timer_id);
+                          "not find timer info, stop timer[%u] failed", timer->timer_id);
   timer->is_start = false;
   return ge::SUCCESS;
 }
@@ -130,7 +131,7 @@ void LlmDatadistTimer::ProcessTimerInContext() {
 }
 
 void LlmDatadistTimer::TimerThreadLoop() {
-  (void) pthread_setname_np(pthread_self(), "ge_llm_stats");
+  (void)pthread_setname_np(pthread_self(), "ge_llm_stats");
   while (running_) {
     std::this_thread::sleep_for(std::chrono::milliseconds(kTimerWaitInterval));
     ProcessTimerInContext();

@@ -64,4 +64,3 @@ install(TARGETS cann_hixl OPTIONAL
         EXPORT cann_hixl-targets
         LIBRARY DESTINATION ${INSTALL_LIBRARY_DIR}
         RUNTIME DESTINATION ${INSTALL_LIBRARY_DIR})
-

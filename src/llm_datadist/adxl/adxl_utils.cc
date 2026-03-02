@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "adxl_utils.h"
@@ -15,9 +16,9 @@
 #include "common/llm_log.h"  // Correct include path
 
 namespace adxl {
-std::string JsonValueToString(const nlohmann::json& j) {
+std::string JsonValueToString(const nlohmann::json &j) {
   if (j.is_string()) {
-      return j.get<std::string>();
+    return j.get<std::string>();
   }
   return j.dump();
 }
@@ -63,7 +64,7 @@ Status LLMError2AdxlStatus(ge::Status ret) {
   return FAILED;
 }
 
-Status LoadJsonConfig(const std::string& json_string, std::map<AscendString, AscendString>& options) {
+Status LoadJsonConfig(const std::string &json_string, std::map<AscendString, AscendString> &options) {
   try {
     nlohmann::json j = nlohmann::json::parse(json_string);
     if (j.is_object()) {
@@ -74,7 +75,7 @@ Status LoadJsonConfig(const std::string& json_string, std::map<AscendString, Asc
       }
     }
     return SUCCESS;
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     LLMLOGE(PARAM_INVALID, "Failed to parse JSON config string: %s", e.what());
     return PARAM_INVALID;
   }
@@ -83,5 +84,5 @@ Status LoadJsonConfig(const std::string& json_string, std::map<AscendString, Asc
 bool NeedErrorLog(Status status) {
   std::set<Status> warnning_status = {RESOURCE_EXHAUSTED};
   return !warnning_status.count(status);
-} 
+}
 }  // namespace adxl

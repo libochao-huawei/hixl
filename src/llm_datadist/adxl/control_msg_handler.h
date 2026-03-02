@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #ifndef CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_ADXL_CONTROL_MSG_HANDLER_H_
@@ -24,15 +25,15 @@ struct ProtocolHeader {
   uint64_t body_size;
 };
 
-enum class ControlMsgType : int32_t { 
-  kHeartBeat = 1, 
-  kBufferReq = 2, 
-  kBufferResp = 3, 
-  kNotify = 4, 
-  kNotifyAck = 5, 
+enum class ControlMsgType : int32_t {
+  kHeartBeat = 1,
+  kBufferReq = 2,
+  kBufferResp = 3,
+  kNotify = 4,
+  kNotifyAck = 5,
   kRequestDisconnect = 6,
   kRequestDisconnectResp = 7,
-  kEnd 
+  kEnd
 };
 
 struct HeartbeatMsg {
@@ -154,7 +155,7 @@ inline void from_json(const nlohmann::json &j, NotifyMsg &msg) {
 
 struct RequestDisconnectMsg {
   std::string channel_id;
-  uint64_t timeout{1000}; 
+  uint64_t timeout{1000};
   uint64_t req_id{0};
 };
 
@@ -175,17 +176,14 @@ struct RequestDisconnectResp {
   uint64_t req_id{0};
   bool can_disconnect{false};
   bool disconnected{false};
-  uint32_t error_code{0}; 
+  uint32_t error_code{0};
   std::string error_message;
 };
 
 inline void to_json(nlohmann::json &j, const RequestDisconnectResp &resp) {
-  j = nlohmann::json{{"channel_id", resp.channel_id},
-                     {"req_id", resp.req_id},
-                     {"can_disconnect", resp.can_disconnect},
-                     {"disconnected", resp.disconnected},
-                     {"error_code", resp.error_code},
-                     {"error_message", resp.error_message}};
+  j = nlohmann::json{{"channel_id", resp.channel_id},         {"req_id", resp.req_id},
+                     {"can_disconnect", resp.can_disconnect}, {"disconnected", resp.disconnected},
+                     {"error_code", resp.error_code},         {"error_message", resp.error_message}};
 }
 
 inline void from_json(const nlohmann::json &j, RequestDisconnectResp &resp) {

@@ -352,7 +352,7 @@ class LlmCacheManagerSt(unittest.TestCase):
 
         cache_mgr.pull_cache(cache_keys[0], dst_cache, 0, 4, src_layer_range=range(0,1), dst_layer_range=range(0,1),
                              tensor_num_per_layer=2)
-        
+
         with self.assertRaises(ValueError):
             cache_mgr.pull_cache(cache_keys[0], dst_cache, 0, 4, src_layer_range=range(0,1), dst_layer_range=range(0,1),
                                  tensor_num_per_layer=-1)
@@ -468,7 +468,7 @@ class LlmCacheManagerDecoderSt(unittest.TestCase):
             print(traceback.format_exc())
             self.has_exception = True
         self.assertEqual(self.has_exception, False)
-        
+
     def test_push_cache_with_tensor_number(self):
         self.create_link()
         cache_mgr = self.llm_datadist.cache_manager
@@ -529,7 +529,7 @@ class LlmCacheManagerDecoderSt(unittest.TestCase):
         with self.assertRaises(LLMException):
             cache_mgr.push_blocks(dst_cache_key, dst_blocks_cache, [0], [0],
                               src_layer_range=range(0,1), dst_layer_range=range(0,1), tensor_num_per_layer=0)
-        
+
         with self.assertRaises(LLMException):
             cache_mgr.push_blocks(dst_cache_key, dst_blocks_cache, [0], [0],
                               src_layer_range=range(0,1), dst_layer_range=range(0,1), tensor_num_per_layer=3)

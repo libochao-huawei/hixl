@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "segment_table.h"
@@ -65,18 +66,16 @@ SegmentPtr SegmentTable::FindSegment(const std::string &channel_id, uint64_t sta
 }
 
 void Segment::AddRange(uint64_t start, uint64_t end) {
-  auto it = std::upper_bound(ranges_.begin(), ranges_.end(), start,
-                             [](uint64_t val, const std::pair<uint64_t, uint64_t> &range) {
-                               return val < range.first;
-                             });
+  auto it =
+      std::upper_bound(ranges_.begin(), ranges_.end(), start,
+                       [](uint64_t val, const std::pair<uint64_t, uint64_t> &range) { return val < range.first; });
   ranges_.insert(it, {start, end});
 }
 
 void Segment::RemoveRange(uint64_t start, uint64_t end) {
-  auto it = std::lower_bound(ranges_.begin(), ranges_.end(), start,
-                             [](const std::pair<uint64_t, uint64_t> &range, uint64_t val) {
-                               return range.first < val;
-                             });
+  auto it =
+      std::lower_bound(ranges_.begin(), ranges_.end(), start,
+                       [](const std::pair<uint64_t, uint64_t> &range, uint64_t val) { return range.first < val; });
   for (; it != ranges_.end() && it->first == start; ++it) {
     if (it->second == end) {
       ranges_.erase(it);
@@ -90,10 +89,9 @@ bool Segment::Contains(uint64_t start, uint64_t end) const {
   if (start > end) {
     return false;
   }
-  auto it = std::upper_bound(ranges_.begin(), ranges_.end(), start,
-                             [](uint64_t val, const std::pair<uint64_t, uint64_t> &range) {
-                               return val < range.first;
-                             });
+  auto it =
+      std::upper_bound(ranges_.begin(), ranges_.end(), start,
+                       [](uint64_t val, const std::pair<uint64_t, uint64_t> &range) { return val < range.first; });
 
   uint64_t max_reached = start;
   bool covered_start = false;
