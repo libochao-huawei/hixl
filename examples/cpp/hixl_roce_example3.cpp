@@ -327,7 +327,6 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
 
 int32_t main(int32_t argc, char **argv) {
   bool is_client = false;
-  bool use_buffer_pool = false;
   std::string device_id;
   std::string local_engine;
   std::string remote_engine;

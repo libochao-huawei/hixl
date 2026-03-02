@@ -343,7 +343,7 @@ int32_t main(int32_t argc, char **argv) {
     is_client = (local_engine.find(':') == std::string::npos);
     printf("[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, transfer_op = %s\n", 
             device_id.c_str(), local_engine.c_str(), remote_engine.c_str(), tcp_port_str.c_str(), 
-            transfer_mode.c_str(), transfer_op_str.c_str());
+            transfer_mode.c_str(), op_type.c_str());
   } else {
     printf("[ERROR] Expect 6 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, transfer_op), but got %d\n", argc - 1);
     return -1;
