@@ -78,15 +78,16 @@ constexpr uint32_t kArgIndexTransferOp = 6;
 constexpr uint32_t kArgIndexTestType = 7;
 constexpr uint32_t kArgIndexLocalCommRes = 8;
 constexpr uint32_t kArgIndexRemoteCommRes = 9;
-constexpr uint32_t kBaseBlockSize = 262144;
 constexpr int32_t kPortMaxValue = 65535;
 constexpr int32_t kBackLog = 1024;
 constexpr const char *kServerMemTagName = "server_mem";
 constexpr const char *kClientMemTagName = "client_mem";
 
 constexpr uint64_t k1GB = 1ULL * 1024 * 1024 * 1024;
-constexpr uint64_t k10GB = 10ULL * 1024 * 1024 * 1024;
-constexpr uint64_t k100GB = 100ULL * 1024 * 1024 * 1024;
+constexpr uint64_t k2GB = 2ULL * 1024 * 1024 * 1024;
+constexpr uint64_t k8GB = 8ULL * 1024 * 1024 * 1024;
+constexpr uint64_t k32GB = 32ULL * 1024 * 1024 * 1024;
+constexpr uint64_t k128MB = 128ULL * 1024 * 1024;
 
 constexpr int32_t kTestTypeLargeData = 1;
 constexpr int32_t kTestTypeMultiBlock = 2;
@@ -108,7 +109,6 @@ struct Args {
   std::string transfer_mode;
   std::string transfer_op;
   int32_t test_type;
-  uint64_t transfer_size;
   std::string local_comm_res;
   std::string remote_comm_res;
 };
@@ -131,9 +131,9 @@ void PrintThroughput(uint64_t size_bytes, int64_t time_us) {
                static_cast<double>(size_bytes) / 1024 / 1024 / 1024, time_second, throughput_gb, throughput_gbps);
 }
 
-int32_t TransferLargeData(HixlClientHandle client_handle, uint8_t *local_addr, 
-                          uint64_t transfer_size, const std::string &transfer_op,
-                          uint32_t num_blocks) {
+int32_t TransferLargeData(HixlClientHandle client_handle, uint8_t *local_addr,
+                           const std::vector<uint64_t> &test_sizes, const std::string &transfer_op,
+                           uint64_t block_size) {
   HcommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
@@ -148,63 +148,62 @@ int32_t TransferLargeData(HixlClientHandle client_handle, uint8_t *local_addr,
   }
   uint8_t *remote_addr = static_cast<uint8_t *>(server_mems[kServerMemTagName].addr);
 
-  uint64_t block_size = transfer_size / num_blocks;
-  if (block_size == 0) {
-    block_size = transfer_size;
-    num_blocks = 1;
-  }
+  for (uint64_t transfer_size : test_sizes) {
+    uint32_t num_blocks = static_cast<uint32_t>((transfer_size + block_size - 1) / block_size);
+    uint64_t actual_block_size = transfer_size / num_blocks;
 
-  (void)printf("[INFO] TransferLargeData: size=%lu bytes, num_blocks=%u, block_size=%lu bytes\n",
-               transfer_size, num_blocks, block_size);
+    (void)printf("[INFO] TransferLargeData: size=%lu bytes, num_blocks=%u, block_size=%lu bytes\n",
+                 transfer_size, num_blocks, actual_block_size);
 
-  std::vector<HixlOneSideOpDesc> desc_list(num_blocks);
-  for (uint32_t j = 0; j < num_blocks; j++) {
-    desc_list[j].local_buf = local_addr + j * block_size;
-    desc_list[j].remote_buf = remote_addr + j * block_size;
-    desc_list[j].len = block_size;
-  }
+    std::vector<HixlOneSideOpDesc> desc_list(num_blocks);
+    for (uint32_t j = 0; j < num_blocks; j++) {
+      desc_list[j].local_buf = local_addr + j * actual_block_size;
+      desc_list[j].remote_buf = remote_addr + j * actual_block_size;
+      desc_list[j].len = actual_block_size;
+    }
 
-  CompleteHandle *complete_handle = new CompleteHandle();
-  const auto start = std::chrono::steady_clock::now();
+    CompleteHandle *complete_handle = new CompleteHandle();
+    const auto start = std::chrono::steady_clock::now();
 
-  if (transfer_op == "write") {
-    HIXL_LOGI("HixlCSClientBatchPutAsync start, num_blocks is:%u", num_blocks);
-    ret = HixlCSClientBatchPutAsync(client_handle, num_blocks, desc_list.data(), complete_handle);
-  } else {
-    HIXL_LOGI("HixlCSClientBatchGetAsync start, num_blocks is:%u", num_blocks);
-    ret = HixlCSClientBatchGetAsync(client_handle, num_blocks, desc_list.data(), complete_handle);
-  }
-  if (ret != HIXL_SUCCESS) {
-    (void)printf("[ERROR] HixlCSClientBatchPutAsync/HixlCSClientBatchGetAsync failed, ret = %u\n", ret);
-    delete complete_handle;
-    return -1;
-  }
-
-  HixlCompleteStatus status = HIXL_COMPLETE_STATUS_WAITING;
-  while (true) {
-    ret = HixlCSClientQueryCompleteStatus(client_handle, complete_handle, &status);
-    if (status == HIXL_COMPLETE_STATUS_COMPLETED) {
-      break;
-    } else if (status == HIXL_COMPLETE_STATUS_WAITING) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      continue;
+    if (transfer_op == "write") {
+      HIXL_LOGI("HixlCSClientBatchPutAsync start, num_blocks is:%u", num_blocks);
+      ret = HixlCSClientBatchPutAsync(client_handle, num_blocks, desc_list.data(), complete_handle);
+    } else {
+      HIXL_LOGI("HixlCSClientBatchGetAsync start, num_blocks is:%u", num_blocks);
+      ret = HixlCSClientBatchGetAsync(client_handle, num_blocks, desc_list.data(), complete_handle);
     }
     if (ret != HIXL_SUCCESS) {
-      (void)printf("[ERROR] HixlCSClientQueryCompleteStatus failed, ret = %u\n", ret);
+      (void)printf("[ERROR] HixlCSClientBatchPutAsync/HixlCSClientBatchGetAsync failed, ret = %u\n", ret);
       delete complete_handle;
       return -1;
     }
-  }
 
-  auto time_cost = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
-  PrintThroughput(transfer_size, time_cost);
-  delete complete_handle;
+    HixlCompleteStatus status = HIXL_COMPLETE_STATUS_WAITING;
+    while (true) {
+      ret = HixlCSClientQueryCompleteStatus(client_handle, complete_handle, &status);
+      if (status == HIXL_COMPLETE_STATUS_COMPLETED) {
+        break;
+      } else if (status == HIXL_COMPLETE_STATUS_WAITING) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        continue;
+      }
+      if (ret != HIXL_SUCCESS) {
+        (void)printf("[ERROR] HixlCSClientQueryCompleteStatus failed, ret = %u\n", ret);
+        delete complete_handle;
+        return -1;
+      }
+    }
+
+    auto time_cost = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+    PrintThroughput(transfer_size, time_cost);
+    delete complete_handle;
+  }
   return 0;
 }
 
 int32_t TransferMultiBlock(HixlClientHandle client_handle, uint8_t *local_addr,
                             uint64_t total_size, const std::string &transfer_op,
-                            uint32_t num_blocks) {
+                            const std::vector<uint32_t> &block_counts) {
   HcommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
@@ -219,55 +218,53 @@ int32_t TransferMultiBlock(HixlClientHandle client_handle, uint8_t *local_addr,
   }
   uint8_t *remote_addr = static_cast<uint8_t *>(server_mems[kServerMemTagName].addr);
 
-  uint64_t block_size = total_size / num_blocks;
-  if (block_size == 0) {
-    block_size = total_size;
-    num_blocks = 1;
-  }
+  for (uint32_t num_blocks : block_counts) {
+    uint64_t block_size = total_size / num_blocks;
 
-  (void)printf("[INFO] MultiBlock Test: total_size=%lu bytes, num_blocks=%u, block_size=%lu bytes\n",
-               total_size, num_blocks, block_size);
+    (void)printf("[INFO] MultiBlock Test: total_size=%lu bytes, num_blocks=%u, block_size=%lu bytes\n",
+                 total_size, num_blocks, block_size);
 
-  std::vector<HixlOneSideOpDesc> desc_list(num_blocks);
-  for (uint32_t j = 0; j < num_blocks; j++) {
-    desc_list[j].local_buf = local_addr + j * block_size;
-    desc_list[j].remote_buf = remote_addr + j * block_size;
-    desc_list[j].len = block_size;
-  }
+    std::vector<HixlOneSideOpDesc> desc_list(num_blocks);
+    for (uint32_t j = 0; j < num_blocks; j++) {
+      desc_list[j].local_buf = local_addr + j * block_size;
+      desc_list[j].remote_buf = remote_addr + j * block_size;
+      desc_list[j].len = block_size;
+    }
 
-  CompleteHandle *complete_handle = new CompleteHandle();
-  const auto start = std::chrono::steady_clock::now();
+    CompleteHandle *complete_handle = new CompleteHandle();
+    const auto start = std::chrono::steady_clock::now();
 
-  if (transfer_op == "write") {
-    ret = HixlCSClientBatchPutAsync(client_handle, num_blocks, desc_list.data(), complete_handle);
-  } else {
-    ret = HixlCSClientBatchGetAsync(client_handle, num_blocks, desc_list.data(), complete_handle);
-  }
-  if (ret != HIXL_SUCCESS) {
-    (void)printf("[ERROR] Batch operation failed, ret = %u\n", ret);
-    delete complete_handle;
-    return -1;
-  }
-
-  HixlCompleteStatus status = HIXL_COMPLETE_STATUS_WAITING;
-  while (true) {
-    ret = HixlCSClientQueryCompleteStatus(client_handle, complete_handle, &status);
-    if (status == HIXL_COMPLETE_STATUS_COMPLETED) {
-      break;
-    } else if (status == HIXL_COMPLETE_STATUS_WAITING) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      continue;
+    if (transfer_op == "write") {
+      ret = HixlCSClientBatchPutAsync(client_handle, num_blocks, desc_list.data(), complete_handle);
+    } else {
+      ret = HixlCSClientBatchGetAsync(client_handle, num_blocks, desc_list.data(), complete_handle);
     }
     if (ret != HIXL_SUCCESS) {
-      (void)printf("[ERROR] HixlCSClientQueryCompleteStatus failed, ret = %u\n", ret);
+      (void)printf("[ERROR] Batch operation failed, ret = %u\n", ret);
       delete complete_handle;
       return -1;
     }
-  }
 
-  auto time_cost = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
-  PrintThroughput(total_size, time_cost);
-  delete complete_handle;
+    HixlCompleteStatus status = HIXL_COMPLETE_STATUS_WAITING;
+    while (true) {
+      ret = HixlCSClientQueryCompleteStatus(client_handle, complete_handle, &status);
+      if (status == HIXL_COMPLETE_STATUS_COMPLETED) {
+        break;
+      } else if (status == HIXL_COMPLETE_STATUS_WAITING) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        continue;
+      }
+      if (ret != HIXL_SUCCESS) {
+        (void)printf("[ERROR] HixlCSClientQueryCompleteStatus failed, ret = %u\n", ret);
+        delete complete_handle;
+        return -1;
+      }
+    }
+
+    auto time_cost = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+    PrintThroughput(total_size, time_cost);
+    delete complete_handle;
+  }
   return 0;
 }
 
@@ -327,24 +324,27 @@ int32_t RunClientLargeData(const Args &args) {
     return -1;
   }
 
-  uint64_t transfer_size = args.transfer_size;
+  std::vector<uint64_t> test_sizes = {k2GB, k8GB, k32GB};
+  uint64_t max_size = k32GB;
+  uint64_t block_size = k128MB;
+
   MemHandle mem_handle = nullptr;
   HcommMem mem{};
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
 
   if (is_host) {
-    void *tmp = malloc(transfer_size);
+    void *tmp = malloc(max_size);
     mem.addr = tmp;
     mem.type = HCCL_MEM_TYPE_HOST;
-    mem.size = transfer_size;
+    mem.size = max_size;
     if (tmp == nullptr) {
       HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Client host addr malloc failed.");
       return hixl::RESOURCE_EXHAUSTED;
     }
   } else {
-    aclError acl_ret = aclrtMalloc(&mem.addr, transfer_size, ACL_MEM_MALLOC_HUGE_ONLY);
+    aclError acl_ret = aclrtMalloc(&mem.addr, max_size, ACL_MEM_MALLOC_HUGE_ONLY);
     mem.type = HCCL_MEM_TYPE_DEVICE;
-    mem.size = transfer_size;
+    mem.size = max_size;
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] aclrtMalloc failed, ret = %d\n", acl_ret);
       ClientFinalize(client_handle, {mem_handle});
@@ -353,7 +353,7 @@ int32_t RunClientLargeData(const Args &args) {
   }
 
   if (args.transfer_op == "write") {
-    memset(mem.addr, 1, transfer_size);
+    memset(mem.addr, 1, max_size);
   }
 
   ret = HixlCSClientRegMem(client_handle, kClientMemTagName, &mem, &mem_handle);
@@ -362,7 +362,7 @@ int32_t RunClientLargeData(const Args &args) {
     ClientFinalize(client_handle, {mem_handle});
     return -1;
   }
-  (void)printf("[INFO] Client memory registered, size: %lu bytes\n", transfer_size);
+  (void)printf("[INFO] Client memory registered, size: %lu bytes\n", max_size);
 
   ret = HixlCSClientConnect(client_handle, kClientConnectTimeoutMs);
   if (ret != HIXL_SUCCESS) {
@@ -371,9 +371,8 @@ int32_t RunClientLargeData(const Args &args) {
     return -1;
   }
 
-  uint32_t num_blocks = 1;
-  if (TransferLargeData(client_handle, static_cast<uint8_t *>(mem.addr), transfer_size, 
-                        args.transfer_op, num_blocks) != 0) {
+  if (TransferLargeData(client_handle, static_cast<uint8_t *>(mem.addr), test_sizes,
+                        args.transfer_op, block_size) != 0) {
     ClientFinalize(client_handle, {mem_handle});
     return -1;
   }
@@ -421,7 +420,9 @@ int32_t RunClientMultiBlock(const Args &args) {
     return -1;
   }
 
-  uint64_t transfer_size = k1GB;
+  uint64_t transfer_size = k2GB;
+  std::vector<uint32_t> block_counts = {40, 200, 1000};
+
   MemHandle mem_handle = nullptr;
   HcommMem mem{};
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
@@ -465,11 +466,8 @@ int32_t RunClientMultiBlock(const Args &args) {
     return -1;
   }
 
-  uint32_t num_blocks = static_cast<uint32_t>(args.transfer_size);
-  (void)printf("[INFO] Testing with %u blocks\n", num_blocks);
-
   if (TransferMultiBlock(client_handle, static_cast<uint8_t *>(mem.addr), transfer_size,
-                         args.transfer_op, num_blocks) != 0) {
+                         args.transfer_op, block_counts) != 0) {
     ClientFinalize(client_handle, {mem_handle});
     return -1;
   }
@@ -514,24 +512,24 @@ int32_t RunServerLargeData(const Args &args) {
   }
   (void)printf("[INFO] Server listen success, %s:%d\n", ip.c_str(), port);
 
-  uint64_t transfer_size = args.transfer_size;
+  uint64_t max_size = k32GB;
   MemHandle mem_handle = nullptr;
   HcommMem mem{};
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
 
   if (is_host) {
-    void *tmp = malloc(transfer_size);
+    void *tmp = malloc(max_size);
     mem.addr = tmp;
     mem.type = HCCL_MEM_TYPE_HOST;
-    mem.size = transfer_size;
+    mem.size = max_size;
     if (tmp == nullptr) {
       HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Server host addr malloc failed.");
       return hixl::RESOURCE_EXHAUSTED;
     }
   } else {
-    aclError acl_ret = aclrtMalloc(&mem.addr, transfer_size, ACL_MEM_MALLOC_HUGE_ONLY);
+    aclError acl_ret = aclrtMalloc(&mem.addr, max_size, ACL_MEM_MALLOC_HUGE_ONLY);
     mem.type = HCCL_MEM_TYPE_DEVICE;
-    mem.size = transfer_size;
+    mem.size = max_size;
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] Server aclrtMalloc failed, ret = %d\n", acl_ret);
       ServerFinalize(server_handle, {mem_handle});
@@ -545,7 +543,7 @@ int32_t RunServerLargeData(const Args &args) {
     ServerFinalize(server_handle, {mem_handle});
     return -1;
   }
-  (void)printf("[INFO] Server memory registered, size: %lu bytes\n", transfer_size);
+  (void)printf("[INFO] Server memory registered, size: %lu bytes\n", max_size);
 
   TCPClient tcp_client;
   if (!tcp_client.ConnectToServer(args.remote_engine, args.tcp_port)) {
@@ -593,7 +591,7 @@ int32_t RunServerMultiBlock(const Args &args) {
   }
   (void)printf("[INFO] Server listen success, %s:%d\n", ip.c_str(), port);
 
-  uint64_t transfer_size = k1GB;
+  uint64_t transfer_size = k2GB;
   MemHandle mem_handle = nullptr;
   HcommMem mem{};
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
@@ -645,12 +643,10 @@ int32_t RunServerMultiBlock(const Args &args) {
 
 void PrintUsage(const char *prog_name) {
   (void)printf("Usage: %s <device_id> <local_engine> <remote_engine> <tcp_port> <transfer_mode> "
-               "<transfer_op> <test_type> [param] <local_comm_res> <remote_comm_res>\n", prog_name);
-  (void)printf("  test_type: 1=LargeData(1G/10G/100G), 2=MultiBlock(100/1k/10k)\n");
-  (void)printf("  param: for LargeData: 1=1GB, 2=10GB, 3=100GB\n");
-  (void)printf("  param: for MultiBlock: 100, 1000, or 10000\n");
-  (void)printf("  Example (LargeData 1GB): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write 1 1 h2h h2h\n", prog_name);
-  (void)printf("  Example (MultiBlock 1k): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write 2 1000 h2h h2h\n", prog_name);
+                "<transfer_op> <test_type> <local_comm_res> <remote_comm_res>\n", prog_name);
+  (void)printf("  test_type: 1=LargeData(2G/8G/32G), 2=MultiBlock(40/200/1000 blocks)\n");
+  (void)printf("  Example (LargeData): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write 1 h2h h2h\n", prog_name);
+  (void)printf("  Example (MultiBlock): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write 2 h2h h2h\n", prog_name);
 }
 
 int32_t main(int32_t argc, char **argv) {
@@ -658,7 +654,6 @@ int32_t main(int32_t argc, char **argv) {
   Args args{};
   std::string device_id_str;
   std::string tcp_port_str;
-  std::string test_param_str;
 
   if (argc == kExpectedArgCnt) {
     device_id_str = argv[kArgIndexDeviceId];
@@ -668,15 +663,14 @@ int32_t main(int32_t argc, char **argv) {
     args.transfer_mode = argv[kArgIndexTransferMode];
     args.transfer_op = argv[kArgIndexTransferOp];
     args.test_type = std::stoi(argv[kArgIndexTestType]);
-    test_param_str = argv[kArgIndexTestType + 1];
     args.local_comm_res = argv[kArgIndexLocalCommRes];
     args.remote_comm_res = argv[kArgIndexRemoteCommRes];
     is_client = (args.remote_engine.find(':') != std::string::npos);
     (void)printf(
         "[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, "
-        "transfer_op = %s, test_type = %d, param = %s, local_comm_res = %s, remote_comm_res = %s\n",
+        "transfer_op = %s, test_type = %d, local_comm_res = %s, remote_comm_res = %s\n",
         device_id_str.c_str(), args.local_engine.c_str(), args.remote_engine.c_str(), tcp_port_str.c_str(),
-        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.test_type, test_param_str.c_str(),
+        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.test_type,
         args.local_comm_res.c_str(), args.remote_comm_res.c_str());
   } else {
     (void)printf(
@@ -693,21 +687,7 @@ int32_t main(int32_t argc, char **argv) {
   }
   args.tcp_port = static_cast<uint16_t>(input_tcp_port);
 
-  if (args.test_type == kTestTypeLargeData) {
-    int32_t size_choice = std::stoi(test_param_str);
-    if (size_choice == 1) {
-      args.transfer_size = k1GB;
-    } else if (size_choice == 2) {
-      args.transfer_size = k10GB;
-    } else if (size_choice == 3) {
-      args.transfer_size = k100GB;
-    } else {
-      (void)printf("[ERROR] Invalid size choice for LargeData test: %d (use 1=1GB, 2=10GB, 3=100GB)\n", size_choice);
-      return -1;
-    }
-  } else if (args.test_type == kTestTypeMultiBlock) {
-    args.transfer_size = std::stoul(test_param_str);
-  } else {
+  if (args.test_type != kTestTypeLargeData && args.test_type != kTestTypeMultiBlock) {
     (void)printf("[ERROR] Invalid test_type: %d (use 1=LargeData, 2=MultiBlock)\n", args.test_type);
     return -1;
   }
