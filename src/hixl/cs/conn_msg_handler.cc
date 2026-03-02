@@ -112,7 +112,8 @@ Status ConnMsgHandler::SendCreateChannelRequest(int32_t socket, const EndpointDe
   return ret;
 }
 
-Status ConnMsgHandler::RecvCreateChannelResponse(int32_t socket, uint64_t &remote_endpoint_handle, uint32_t timeout_ms) {
+Status ConnMsgHandler::RecvCreateChannelResponse(int32_t socket, uint64_t &remote_endpoint_handle,
+                                                 uint32_t timeout_ms) {
   HIXL_EVENT("RecvCreateChannelResponse start. socket: %d", socket);
   const uint64_t expect_body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + sizeof(CreateChannelResp));
 

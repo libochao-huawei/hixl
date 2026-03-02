@@ -58,7 +58,7 @@ def init_llm_datadist(role: LLMRole, cluster_id, device_id: int, local_host_ip, 
 class LayerSynchronizerImpl(LayerSynchronizer):
     def __init__(self, ret=True):
         self._ret = ret
-    
+
     def synchronize_layer(self, layer_index: int, timeout_in_millis: Optional[int]) -> bool:
         return self._ret
 

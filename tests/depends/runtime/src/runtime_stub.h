@@ -35,22 +35,21 @@ class RuntimeStub {
  public:
   virtual ~RuntimeStub() = default;
 
-  static RuntimeStub* GetInstance();
+  static RuntimeStub *GetInstance();
 
   static void SetInstance(const std::shared_ptr<RuntimeStub> &instance) {
     instance_ = instance;
   }
 
-  static void Install(RuntimeStub*);
-  static void UnInstall(RuntimeStub*);
+  static void Install(RuntimeStub *);
+  static void UnInstall(RuntimeStub *);
 
   static void Reset() {
     SetMockRtGetDeviceWay(0);
     instance_.reset();
   }
 
-//  virtual void LaunchTaskToStream(TaskTypeOnStream task_type, rtStream_t stream) {};
-
+  //  virtual void LaunchTaskToStream(TaskTypeOnStream task_type, rtStream_t stream) {};
 
   virtual rtError_t rtGetDevResAddress(const rtDevResInfo *resInfo, rtDevResAddrInfo *addrInfo);
 
@@ -66,14 +65,15 @@ class RuntimeStub {
 };
 
 class EnvGuard {
-public:
+ public:
   EnvGuard(const char *key, const char *value) : key_(key) {
     mmSetEnv(key, value, 1);
   }
   ~EnvGuard() {
     unsetenv(key_.c_str());
   }
-private:
+
+ private:
   const std::string key_;
 };
 }  // namespace llm
@@ -83,31 +83,30 @@ extern "C" {
 #endif
 void rtStubTearDown();
 
-#define RTS_STUB_SETUP()    \
-do {                        \
-  rtStubTearDown();         \
-} while (0)
+#define RTS_STUB_SETUP() \
+  do {                   \
+    rtStubTearDown();    \
+  } while (0)
 
 #define RTS_STUB_TEARDOWN() \
-do {                        \
-  rtStubTearDown();         \
-} while (0)
+  do {                      \
+    rtStubTearDown();       \
+  } while (0)
 
-#define RTS_STUB_RETURN_VALUE(FUNC, TYPE, VALUE)                          \
-do {                                                                      \
-  g_Stub_##FUNC##_RETURN.emplace(g_Stub_##FUNC##_RETURN.begin(), VALUE);  \
-} while (0)
+#define RTS_STUB_RETURN_VALUE(FUNC, TYPE, VALUE)                           \
+  do {                                                                     \
+    g_Stub_##FUNC##_RETURN.emplace(g_Stub_##FUNC##_RETURN.begin(), VALUE); \
+  } while (0)
 
-#define RTS_STUB_OUTBOUND_VALUE(FUNC, TYPE, NAME, VALUE)                          \
-do {                                                                              \
-  g_Stub_##FUNC##_OUT_##NAME.emplace(g_Stub_##FUNC##_OUT_##NAME.begin(), VALUE);  \
-} while (0)
+#define RTS_STUB_OUTBOUND_VALUE(FUNC, TYPE, NAME, VALUE)                           \
+  do {                                                                             \
+    g_Stub_##FUNC##_OUT_##NAME.emplace(g_Stub_##FUNC##_OUT_##NAME.begin(), VALUE); \
+  } while (0)
 
 #define RTS_STUB_RETURN_EXTERN(FUNC, TYPE) extern std::vector<TYPE> g_Stub_##FUNC##_RETURN;
 #define RTS_STUB_OUTBOUND_EXTERN(FUNC, TYPE, NAME) extern std::vector<TYPE> g_Stub_##FUNC##_OUT_##NAME;
 
-
 #ifdef __cplusplus
 }
 #endif
-#endif // __INC_LLT_RUNTIME_STUB_H
+#endif  // __INC_LLT_RUNTIME_STUB_H

@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #ifndef CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_CHANNEL_H_
@@ -65,27 +66,18 @@ class BufferedTransfer {
   std::function<Status(HcclOneSideOpDesc *descs, uint32_t desc_num)> trans_func_;
 };
 
-enum class RecvState {
-  WAITING_FOR_HEADER,
-  WAITING_FOR_BODY
-};
+enum class RecvState { WAITING_FOR_HEADER, WAITING_FOR_BODY };
 
 class Channel {
  public:
-  explicit Channel(ChannelInfo info)
-      : channel_info_(std::move(info)) {};
+  explicit Channel(ChannelInfo info) : channel_info_(std::move(info)) {};
   Status Initialize(bool enable_use_fabric_mem = false);
   Status Finalize();
   std::string GetChannelId() const;
-  Status TransferSync(TransferOp operation,
-                      const std::vector<TransferOpDesc> &op_descs,
-                      int32_t timeout_in_millis);
+  Status TransferSync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis);
+  Status TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs, aclrtStream stream);
   Status TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
-                       aclrtStream stream);
-  Status TransferAsync(TransferOp operation,
-                       const std::vector<TransferOpDesc> &op_descs,
-                       const TransferArgs &optional_args,
-                       TransferReq &req);
+                       const TransferArgs &optional_args, TransferReq &req);
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
   Status SetSocketNonBlocking(int32_t fd);
   void StopHeartbeat();
@@ -93,14 +85,16 @@ class Channel {
   Status CommWithFd(const std::function<Status(int32_t)> &func);
   Status SendHeartBeat(const std::function<Status(int32_t)> &func);
   static void SetHeartbeatTimeout(int64_t timeout_in_millis);
-  int32_t GetFd() const { return fd_; }
+  int32_t GetFd() const {
+    return fd_;
+  }
   void UpdateHeartbeatTime();
   bool IsHeartbeatTimeout() const;
   void SetStreamPool(StreamPool *stream_pool);
-  StreamPool* GetStreamPool();
+  StreamPool *GetStreamPool();
 
   std::mutex &GetTransferMutex();
-  
+
   void GetNotifyMessages(std::vector<NotifyDesc> &notifies);
 
   Status ImportMem(const std::vector<ShareHandleInfo> &remote_share_handles, int32_t device_id);
@@ -127,8 +121,8 @@ class Channel {
   void SetDisconnecting(bool value) {
     disconnect_flag_.store(value, std::memory_order_release);
   }
-  Status TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
-                                  aclrtStream stream, uint64_t timeout);
+  Status TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs, aclrtStream stream,
+                                  uint64_t timeout);
 
  private:
   Status ClearResources();
@@ -157,7 +151,7 @@ class Channel {
   // lock for push/fetch items from notify_messages_
   std::mutex notify_message_mutex_;
   std::vector<NotifyMsg> notify_messages_;
-  
+
   friend class ChannelManager;
   std::mutex transfer_reqs_mutex_;
   std::unordered_map<uint64_t, AsyncRecord> req_2_async_record_;

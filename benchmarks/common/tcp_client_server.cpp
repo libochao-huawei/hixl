@@ -1,11 +1,12 @@
 /**
-* This program is free software, you can redistribute it and/or modify it.
-* Copyright (c) 2025 Huawei Technologies Co., Ltd.
-* This file is a part of the CANN Open Software.
-* Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include <iostream>
@@ -85,7 +86,7 @@ bool TCPClient::ReceiveTaskStatus() const {
   } else if (bytes_received == 0) {
     std::cout << "[INFO] Server connection break" << std::endl;
     return false;
-  } 
+  }
 
   if (received) {
     std::cout << "[INFO] Tcp client received status success" << std::endl;
@@ -143,7 +144,7 @@ bool TCPServer::StartServer(uint16_t port) {
 }
 
 bool TCPServer::AcceptConnection() {
-  int timeout_ms= 5000;
+  int timeout_ms = 5000;
   struct pollfd pfd;
   pfd.fd = server_fd_;
   pfd.events = POLLIN;
@@ -212,7 +213,7 @@ bool TCPServer::ReceiveTaskStatus() const {
   } else if (bytes_received == 0) {
     std::cout << "[INFO] Client connection break" << std::endl;
     return false;
-  } 
+  }
 
   if (received) {
     std::cout << "[INFO] Tcp server received status success" << std::endl;

@@ -25,8 +25,7 @@ class ClientManager {
   ~ClientManager() = default;
   Status Initialize();
   Status Finalize();
-  Status CreateClient(const std::vector<EndpointConfig> &endpoint_list,
-                      const std::string &remote_engine,
+  Status CreateClient(const std::vector<EndpointConfig> &endpoint_list, const std::string &remote_engine,
                       ClientPtr &client_ptr);
   ClientPtr GetClient(const std::string &remote_engine);
   Status DestroyClient(const std::string &remote_engine);

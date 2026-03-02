@@ -1,12 +1,13 @@
 /**
-* This program is free software, you can redistribute it and/or modify it.
-* Copyright (c) 2025 Huawei Technologies Co., Ltd.
-* This file is a part of the CANN Open Software.
-* Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
-* Please refer to the License for details. You may not use this file except in compliance with the License.
-* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-* See LICENSE in the root of the software repository for the full text of the License.
-*/
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
+ */
 
 #include <cstdio>
 #include <thread>
@@ -32,7 +33,7 @@ constexpr uint32_t kBaseBlockSize = 262144;       // 0.25M
 constexpr uint32_t kExecuteRepeatNum = 5;
 constexpr int32_t kPortMaxValue = 65535;
 
-#define CHECK_ACL_RETURN(x)                                                                  \
+#define CHECK_ACL_RETURN(x)                                                           \
   do {                                                                                \
     aclError __ret = x;                                                               \
     if (__ret != ACL_ERROR_NONE) {                                                    \
@@ -86,7 +87,8 @@ void Disconnect(Hixl &hixl_engine, const char *remote_engine, bool connected) {
   }
 }
 
-int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine, uint64_t dst_addr, TransferOp transfer_op) {
+int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine, uint64_t dst_addr,
+                 TransferOp transfer_op) {
   for (uint32_t i = 0; i <= kExecuteRepeatNum; i++) {
     auto block_size = kBaseBlockSize * (1 << i);
     auto trans_num = kTransferMemSize / block_size;
@@ -117,7 +119,7 @@ int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine, uin
 }
 
 void Finalize(Hixl &hixl_engine, bool need_register, bool is_host, const std::vector<MemHandle> &handles,
-                    const std::vector<void *> &buffers = {}) {
+              const std::vector<void *> &buffers = {}) {
   if (need_register) {
     for (const auto &handle : handles) {
       auto ret = hixl_engine.DeregisterMem(handle);
@@ -140,8 +142,8 @@ void Finalize(Hixl &hixl_engine, bool need_register, bool is_host, const std::ve
   hixl_engine.Finalize();
 }
 
-int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t tcp_port, const std::string &transfer_mode, 
-                  TransferOp transfer_op, bool use_buffer_pool) {
+int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t tcp_port,
+                  const std::string &transfer_mode, TransferOp transfer_op, bool use_buffer_pool) {
   printf("[INFO] client start\n");
 
   // 通过TCP接收Server侧的内存地址
@@ -174,11 +176,11 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   bool connected = false;
   bool is_host = (transfer_mode == "h2d" || transfer_mode == "h2h");
   if (is_host) {
-    CHECK_ACL_RETURN(aclrtMallocHost(&tmp, kTransferMemSize)); 
+    CHECK_ACL_RETURN(aclrtMallocHost(&tmp, kTransferMemSize));
   } else {
     CHECK_ACL_RETURN(aclrtMalloc(&tmp, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY));
   }
-  src = static_cast<int32_t*>(tmp);
+  src = static_cast<int32_t *>(tmp);
 
   bool need_register = !(is_host && use_buffer_pool);
   if (need_register) {
@@ -226,8 +228,8 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   return 0;
 }
 
-int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t tcp_port, const std::string &transfer_mode, 
-                  bool use_buffer_pool) {
+int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t tcp_port,
+                  const std::string &transfer_mode, bool use_buffer_pool) {
   printf("[INFO] server start\n");
   // 1. 初始化
   Hixl hixl_engine;
@@ -238,9 +240,9 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   // 2. 注册内存地址
   void *buffer = nullptr;
   bool is_host = (transfer_mode == "d2h" || transfer_mode == "h2h");
-  if (is_host){
+  if (is_host) {
     CHECK_ACL_RETURN(aclrtMallocHost(&buffer, kTransferMemSize));
-  } else{
+  } else {
     CHECK_ACL_RETURN(aclrtMalloc(&buffer, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY));
   }
   auto addr = reinterpret_cast<uintptr_t>(buffer);
@@ -256,7 +258,7 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   auto mem_type = is_host ? MemType::MEM_HOST : MemType::MEM_DEVICE;
 
   bool need_register = !(use_buffer_pool && transfer_mode == "d2h");
-  if (need_register){
+  if (need_register) {
     MemDesc desc{};
     desc.addr = addr;
     desc.len = kTransferMemSize;
@@ -306,11 +308,16 @@ int32_t main(int32_t argc, char **argv) {
     use_buffer_pool_str = argv[kArgIndexUseBufferPool];
     use_buffer_pool = (use_buffer_pool_str == "true");
     is_client = (remote_engine.find(':') != std::string::npos);
-    printf("[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, transfer_op = %s, use_buffer_pool = %s\n", 
-            device_id.c_str(), local_engine.c_str(), remote_engine.c_str(), tcp_port_str.c_str(), 
-            transfer_mode.c_str(), transfer_op_str.c_str(), use_buffer_pool_str.c_str());
+    printf(
+        "[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, transfer_op "
+        "= %s, use_buffer_pool = %s\n",
+        device_id.c_str(), local_engine.c_str(), remote_engine.c_str(), tcp_port_str.c_str(), transfer_mode.c_str(),
+        transfer_op_str.c_str(), use_buffer_pool_str.c_str());
   } else {
-    printf("[ERROR] Expect 7 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, transfer_op, use_buffer_pool), but got %d\n", argc - 1);
+    printf(
+        "[ERROR] Expect 7 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, transfer_op, "
+        "use_buffer_pool), but got %d\n",
+        argc - 1);
     return -1;
   }
   int32_t device = std::stoi(device_id);
@@ -322,7 +329,7 @@ int32_t main(int32_t argc, char **argv) {
   auto tcp_port = static_cast<uint16_t>(input_tcp_port);
   CHECK_ACL_RETURN(aclrtSetDevice(device));
 
-  if (transfer_mode != "d2d" && transfer_mode != "h2d" && transfer_mode != "d2h" && transfer_mode != "h2h"){
+  if (transfer_mode != "d2d" && transfer_mode != "h2d" && transfer_mode != "d2h" && transfer_mode != "h2h") {
     printf("[ERROR] Invalid value for transfer_mode: %s\n", transfer_mode.c_str());
     return -1;
   }

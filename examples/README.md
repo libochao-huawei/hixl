@@ -4,7 +4,7 @@
 
 ## 目录说明
 ```
-├── examples                       
+├── examples
 │   ├── cpp                # C++样例
 │   ├── python             # Python样例
 │   ├── third_parties      # 对接三方库样例
@@ -18,4 +18,3 @@
 | [cppSamples](cpp) | C++样例 | C++ |
 | [pythonSamples](python) | Python样例 | Python |
 | [thirdPartiesSamples](third_parties) | Hixl对接其他社区样例 | C++/Python |
-

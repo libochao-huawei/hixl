@@ -49,7 +49,7 @@ find_path(_MMPA_PATH
     NO_CMAKE_SYSTEM_PATH
     NO_CMAKE_FIND_ROOT_PATH)
 
-find_path(_PKG_INC_MMPA_PATH 
+find_path(_PKG_INC_MMPA_PATH
     NAMES "mmpa/mmpa_api.h"
     PATH_SUFFIXES pkg_inc
     NO_CMAKE_SYSTEM_PATH

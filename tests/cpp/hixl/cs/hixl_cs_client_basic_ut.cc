@@ -21,7 +21,7 @@ namespace hixl {
 EndpointDesc MakeSrcEp() {
   EndpointDesc ep{};
   ep.loc.locType = ENDPOINT_LOC_TYPE_HOST;
-  ep.protocol = COMM_PROTOCOL_ROCE;      // 或 COMM_PROTOCOL_ROCE，按你们测试协议
+  ep.protocol = COMM_PROTOCOL_ROCE;  // 或 COMM_PROTOCOL_ROCE，按你们测试协议
   ep.commAddr.type = COMM_ADDR_TYPE_IP_V4;
   // 填充 IPv4 地址到 in_addr
   inet_pton(AF_INET, "127.0.0.1", &ep.commAddr.addr);
@@ -31,21 +31,21 @@ EndpointDesc MakeSrcEp() {
 EndpointDesc MakeDstEp() {
   EndpointDesc ep{};
   ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;  // 或 HOST：取决于你们对端在设备还是主机
-  ep.protocol = COMM_PROTOCOL_ROCE;          // 与 src 协议一致
+  ep.protocol = COMM_PROTOCOL_ROCE;           // 与 src 协议一致
   ep.commAddr.type = COMM_ADDR_TYPE_IP_V4;
   inet_pton(AF_INET, "127.0.0.1", &ep.commAddr.addr);
   return ep;
 }
 
 // 构造远端内存描述，模拟 GetRemoteMem 返回的数据后直接走 ImportRemoteMem
-static HixlMemDesc MakeRemoteDesc(const char *tag, void *addr, uint64_t size)  {
+static HixlMemDesc MakeRemoteDesc(const char *tag, void *addr, uint64_t size) {
   HixlMemDesc d{};
   d.tag = tag;
   d.mem.type = HCCL_MEM_TYPE_HOST;
   d.mem.addr = addr;
   d.mem.size = size;
   static const std::string dummy("export");
-  const size_t n = dummy.size(); // 纯字节长度
+  const size_t n = dummy.size();  // 纯字节长度
   // 若 ImportRemoteMem 只当作blob使用，无需 0 结尾，可分配 n；如按 C 字符串使用，分配 n+1 并补 '\0'
   char *buf = static_cast<char *>(std::malloc(n));
   if (buf == nullptr) {
@@ -59,30 +59,28 @@ static HixlMemDesc MakeRemoteDesc(const char *tag, void *addr, uint64_t size)  {
   return d;
 }
 
-constexpr uint32_t kFlagSizeBytes = 8;          // 传输完成标记占用字节数
-constexpr uint32_t kBlockSizeBytes = 1024;      // 远端数据块大小
-constexpr uint32_t kClientBufSizeBytes = 4096;  // 客户端缓冲区大小
+constexpr uint32_t kFlagSizeBytes = 8;           // 传输完成标记占用字节数
+constexpr uint32_t kBlockSizeBytes = 1024;       // 远端数据块大小
+constexpr uint32_t kClientBufSizeBytes = 4096;   // 客户端缓冲区大小
 constexpr uint32_t kClientBufSizeBytes2 = 1024;  // 客户端缓冲区大小
 uint32_t kClientBufAddr = 1;
 uint32_t kServerDataAddr = 2;
 uint64_t kTransFlagAddr = 1;
 struct ImportedRemote {
-  HcommMem* remote_mem_list = nullptr;
-  char** tags_buf = nullptr;
+  HcommMem *remote_mem_list = nullptr;
+  char **tags_buf = nullptr;
   uint32_t list_num = 0;
 };
 // 封装：创建连接 + 导入远端内存
-void PrepareConnectionAndImport(hixl::HixlCSClient& cli, const char* client_ip, uint32_t port) {
+void PrepareConnectionAndImport(hixl::HixlCSClient &cli, const char *client_ip, uint32_t port) {
   EndpointDesc src = MakeSrcEp();
   EndpointDesc dst = MakeDstEp();
-  HixlClientConfig config{}; // 默认构造
+  HixlClientConfig config{};  // 默认构造
   ASSERT_EQ(cli.Create(client_ip, port, &src, &dst, &config), SUCCESS);
 
   std::vector<HixlMemDesc> descs;
-  descs.push_back(MakeRemoteDesc("_hixl_builtin_host_trans_flag",
-  &kTransFlagAddr, kFlagSizeBytes));
-  descs.push_back(MakeRemoteDesc("server_data",
-  &kServerDataAddr, kBlockSizeBytes));
+  descs.push_back(MakeRemoteDesc("_hixl_builtin_host_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
+  descs.push_back(MakeRemoteDesc("server_data", &kServerDataAddr, kBlockSizeBytes));
 
   ImportedRemote ret{};
   ASSERT_EQ(cli.ImportRemoteMem(descs, &ret.remote_mem_list, &ret.tags_buf, &ret.list_num), SUCCESS);
@@ -95,14 +93,13 @@ class HixlCSClientFixture : public ::testing::Test {
   }
 };
 
-
 TEST_F(HixlCSClientFixture, RegMemAndUnRegMem) {
   // 先创建本端 endpoint（Create 不依赖 socket 初始化以外的 HCCL）
   const char *client_ip = "127.0.0.1";
   uint32_t server_port = 12345;
   EndpointDesc src = MakeSrcEp();
   EndpointDesc dst = MakeDstEp();
-  HixlClientConfig config{}; // 默认构造
+  HixlClientConfig config{};  // 默认构造
   // 对齐实现：Create 要求 dst.protocol != RESERVED 才能用于后续 Connect，这里仅测试 RegMem 不调用 Connect
   EXPECT_EQ(cli.Create(client_ip, server_port, &src, &dst, &config), SUCCESS);
 
@@ -125,13 +122,12 @@ TEST_F(HixlCSClientFixture, ImportRemoteMemAndClearRemoteMemInfo) {
   uint32_t server_port = 22334;
   EndpointDesc src = MakeSrcEp();
   EndpointDesc dst = MakeDstEp();
-  HixlClientConfig config{}; // 默认构造
+  HixlClientConfig config{};  // 默认构造
   EXPECT_EQ(cli.Create(client_ip, server_port, &src, &dst, &config), SUCCESS);
 
   // 构造两个远端内存描述并导入
   std::vector<HixlMemDesc> descs;
-  descs.push_back(
-      MakeRemoteDesc("_hixl_builtin_host_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
+  descs.push_back(MakeRemoteDesc("_hixl_builtin_host_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
   descs.push_back(MakeRemoteDesc("server_data", &kServerDataAddr, kBlockSizeBytes));
 
   HcommMem *remote_mem_list = nullptr;
@@ -144,7 +140,7 @@ TEST_F(HixlCSClientFixture, ImportRemoteMemAndClearRemoteMemInfo) {
   EXPECT_EQ(remote_mem_list[1].addr, &kServerDataAddr);
   EXPECT_EQ(remote_mem_list[1].size, kBlockSizeBytes);
   // 验证 server_data 被记录
-  void* key = remote_mem_list[1].addr;
+  void *key = remote_mem_list[1].addr;
   EXPECT_EQ(cli.mem_store_.server_regions_[key].size, kBlockSizeBytes);
   // 清理远端信息
   EXPECT_EQ(cli.ClearRemoteMemInfo(), SUCCESS);
@@ -155,16 +151,15 @@ TEST_F(HixlCSClientFixture, BatchPutSuccessWithStubbedHccl) {
   uint32_t port = 22335;
   EndpointDesc src = MakeSrcEp();
   EndpointDesc dst = MakeDstEp();
-  HixlClientConfig config{}; // 默认构造
+  HixlClientConfig config{};  // 默认构造
   EXPECT_EQ(cli.Create(client_ip, port, &src, &dst, &config), SUCCESS);
   std::cout << "cli已创建" << std::endl;
 
   // 导入远端内存，包含完成标志与一个数据区
   std::vector<HixlMemDesc> descs;
-  descs.push_back(
-      MakeRemoteDesc("_hixl_builtin_host_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
-  std::cout<<"_hixl_builtin_host_trans_flag的地址是"<<&kTransFlagAddr<<std::endl;
-  std::cout<<"_hixl_builtin_host_trans_flag的值是"<<kTransFlagAddr<<std::endl;
+  descs.push_back(MakeRemoteDesc("_hixl_builtin_host_trans_flag", &kTransFlagAddr, kFlagSizeBytes));
+  std::cout << "_hixl_builtin_host_trans_flag的地址是" << &kTransFlagAddr << std::endl;
+  std::cout << "_hixl_builtin_host_trans_flag的值是" << kTransFlagAddr << std::endl;
   descs.push_back(MakeRemoteDesc("server_data", &kServerDataAddr, kBlockSizeBytes));
   HcommMem *remote_mem_list = nullptr;
   char **tags_buf = nullptr;
@@ -192,8 +187,8 @@ TEST_F(HixlCSClientFixture, BatchPutSuccessWithStubbedHccl) {
   CompleteHandle *task_flag = static_cast<CompleteHandle *>(query_handle);
   // 首次检查通常为 NOT_READY（flag 还未被置 1)
   HixlCompleteStatus status_out = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
-  uint64_t* flag = task_flag->flag_address;
-  std::cout<<"falg的值是："<<*flag<<std::endl;
+  uint64_t *flag = task_flag->flag_address;
+  std::cout << "falg的值是：" << *flag << std::endl;
   Status st = cli.CheckStatus(task_flag, &status_out);
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(status_out, HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED);
@@ -211,10 +206,10 @@ TEST_F(HixlCSClientFixture, BatchGetSuccessWithStubbedHccl) {
   MemHandle local_handle = nullptr;
   ASSERT_EQ(cli.RegMem("client_buf", &local, &local_handle), SUCCESS);
 
-  const void* remote_list[] = {&kServerDataAddr};
-  void* local_list[] = {&kClientBufAddr};
+  const void *remote_list[] = {&kServerDataAddr};
+  void *local_list[] = {&kClientBufAddr};
   uint64_t len_list[] = {4};
-  void* query_handle = nullptr;
+  void *query_handle = nullptr;
   CommunicateMem com_mem{1, local_list, remote_list, len_list};
   EXPECT_EQ(cli.BatchTransfer(true, com_mem, &query_handle), SUCCESS);
   EXPECT_NE(query_handle, nullptr);
@@ -228,11 +223,11 @@ TEST_F(HixlCSClientFixture, BatchPutFailsOnUnrecordedMemory) {
   const char *client_ip = "127.0.0.1";
   uint32_t port = 22337;
   PrepareConnectionAndImport(cli, client_ip, port);
-  //不注册本地内存，直接创建任务
-  void* remote_list[] = {&kServerDataAddr};
-  const void* local_list[] = {&kClientBufAddr};
+  // 不注册本地内存，直接创建任务
+  void *remote_list[] = {&kServerDataAddr};
+  const void *local_list[] = {&kClientBufAddr};
   uint64_t len_list[] = {4};
-  void* query_handle = nullptr;
+  void *query_handle = nullptr;
   CommunicateMem com_mem{1, remote_list, local_list, len_list};
   EXPECT_EQ(cli.BatchTransfer(false, com_mem, &query_handle), PARAM_INVALID);
   EXPECT_EQ(query_handle, nullptr);

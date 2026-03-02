@@ -127,7 +127,7 @@ all_samples() {
         exit 1
     fi
     echo "IP_ADDRESS: ${IP_ADDRESS}"
-    
+
     if [ $# -lt 2 ]; then
         echo "ERROR: At least 2 device IDs are required."
         exit 1

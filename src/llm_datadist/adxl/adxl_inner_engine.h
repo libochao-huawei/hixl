@@ -49,15 +49,11 @@ class AdxlInnerEngine {
 
   void Disconnect();
 
-  Status TransferSync(const AscendString &remote_engine,
-                      TransferOp operation,
-                      const std::vector<TransferOpDesc> &op_descs,
-                      int32_t timeout_in_millis);
+  Status TransferSync(const AscendString &remote_engine, TransferOp operation,
+                      const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis);
 
-  Status TransferAsync(const AscendString &remote_engine,
-                       TransferOp operation,
-                       const std::vector<TransferOpDesc> &op_descs,
-                       const TransferArgs &optional_args,
+  Status TransferAsync(const AscendString &remote_engine, TransferOp operation,
+                       const std::vector<TransferOpDesc> &op_descs, const TransferArgs &optional_args,
                        TransferReq &req);
 
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
@@ -67,15 +63,14 @@ class AdxlInnerEngine {
   Status GetNotifies(std::vector<NotifyDesc> &notifies);
 
   Status RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor);
-  
+
  private:
   Status GetTransferType(const ChannelPtr &channel, TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                          bool &need_buffer, TransferType &type);
   Status InitBufferTransferService(const std::map<ge::AscendString, ge::AscendString> &options);
-  static void ParseBufferPool(const std::map<AscendString, AscendString> &options,
-                              std::string &pool_config);
-  Status ParseWaterlineRatio(const std::map<AscendString, AscendString>& json_options, 
-                             const char* option_name, double& parsed_value);
+  static void ParseBufferPool(const std::map<AscendString, AscendString> &options, std::string &pool_config);
+  Status ParseWaterlineRatio(const std::map<AscendString, AscendString> &json_options, const char *option_name,
+                             double &parsed_value);
   Status LoadGlobalResourceConfig(const std::map<AscendString, AscendString> &options);
   Status ParseChannelPoolConfig(const std::map<AscendString, AscendString> &json_options);
   Status ParseFabricMemoryCapacity(const std::map<AscendString, AscendString> &json_options);
@@ -104,8 +99,8 @@ class AdxlInnerEngine {
   aclrtContext aclrt_context_{nullptr};
 
   std::mutex notify_mutex_;
-  std::unordered_map<uint64_t, bool> notify_ack_ready_;     // Map to indicate if ack status is ready
-  std::condition_variable notify_cv_;                       // Condition variable for waiting ack
+  std::unordered_map<uint64_t, bool> notify_ack_ready_;  // Map to indicate if ack status is ready
+  std::condition_variable notify_cv_;                    // Condition variable for waiting ack
   std::atomic<uint64_t> next_notify_id_{1};
   std::mutex req2channel_mutex_;
   std::map<uint64_t, AscendString> req2channel_;

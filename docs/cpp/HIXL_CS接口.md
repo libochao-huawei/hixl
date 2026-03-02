@@ -415,7 +415,7 @@ HixlStatus HixlCSClientConnect(HixlClientHandle client_handle, uint32_t timeout_
 - `HIXL_PARAM_INVALID`：参数错误
 - `HIXL_TIMEOUT`：连接超时
 - 其他：失败
-  
+
 **约束说明**
 
 - 调用当前接口与server建链前，需要完成所有本地内存的注册。
