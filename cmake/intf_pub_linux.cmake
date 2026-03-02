@@ -20,7 +20,7 @@ target_compile_options(intf_pub_base INTERFACE
     -Wall
     -fPIC
     $<IF:$<STREQUAL:${CMAKE_SYSTEM_NAME},centos>,-fstack-protector-all,-fstack-protector-strong>
-    $<$<BOOL:${ENABLE_ASAN}>:-fsanitize=address -fsanitize=leak -fsanitize-recover=address,all 
+    $<$<BOOL:${ENABLE_ASAN}>:-fsanitize=address -fsanitize=leak -fsanitize-recover=address,all
     -fno-stack-protector -fno-omit-frame-pointer -g>
     $<$<BOOL:${ENABLE_GCOV}>:--coverage -fprofile-arcs -ftest-coverage>
     ${ADDED_COMPILE_OPTIONS}

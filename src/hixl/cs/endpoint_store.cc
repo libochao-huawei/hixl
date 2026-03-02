@@ -41,7 +41,7 @@ std::vector<EndpointHandle> EndpointStore::GetAllEndpointHandles() {
   return handles;
 }
 
-inline bool operator == (const EndpointDesc& lhs, const EndpointDesc& rhs) {
+inline bool operator==(const EndpointDesc &lhs, const EndpointDesc &rhs) {
   if (lhs.protocol != rhs.protocol) {
     return false;
   }
@@ -73,6 +73,5 @@ Status EndpointStore::Finalize() {
   endpoints_.clear();
   return SUCCESS;
 }
-
 
 }  // namespace hixl

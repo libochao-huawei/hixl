@@ -30,15 +30,15 @@ class MooncakeSampleBase:
         self.store = None
         self.tensor = None
         self.target_tensor = None
-        
+
     def init_process_group(self):
         if not self.config.distributed:
             logging.info("Running in single-machine mode")
             return
-        
+
         os.environ["MASTER_ADDR"] = self.config.master_addr
         os.environ["MASTER_PORT"] = self.config.master_port
-        
+
         dist.init_process_group(
             backend="gloo",
             rank=self.config.rank,
@@ -47,12 +47,12 @@ class MooncakeSampleBase:
         dist.barrier(group=dist.group.WORLD)
         logging.info(f"Initialized distributed process group: \
         rank={self.config.rank}, world_size={self.config.world_size}")
-    
+
     def init_mooncake_store(self) -> MooncakeDistributedStore:
         store = MooncakeDistributedStore()
         port = self.config.mooncake_store_port_start + self.config.rank
         store_ip = self.config.mooncake_store_ip + ":" + str(port)
-        
+
         store.setup(
             store_ip,
             self.config.metadata_url,
@@ -64,18 +64,18 @@ class MooncakeSampleBase:
         )
         logging.info(f"Initialized mooncake store: {store_ip}")
         return store
-    
+
     def create_tensors(self):
         if self.args.schema.startswith("h"):
             self.tensor = torch.ones(33, 61, 144 * 1024, dtype=torch.int8, pin_memory=True).cpu()
         else:
             self.tensor = torch.ones(33, 61, 144 * 1024, dtype=torch.int8).npu()
-        
+
         if self.args.schema.endswith("h"):
             self.target_tensor = torch.zeros(33, 61, 144 * 1024, dtype=torch.int8, pin_memory=True).cpu()
         else:
             self.target_tensor = torch.zeros(33, 61, 144 * 1024, dtype=torch.int8).npu()
-    
+
     def register_buffers(self):
         data_ptr = self.tensor.data_ptr()
         addr = (data_ptr + ALIGNMENT - 1) // ALIGNMENT * ALIGNMENT
@@ -86,13 +86,13 @@ class MooncakeSampleBase:
         remote_addr = (target_data_ptr + ALIGNMENT - 1) // ALIGNMENT * ALIGNMENT
         logging.info(f"dataptr:{target_data_ptr}, addr:{remote_addr}")
         self.store.register_buffer(remote_addr, 61 * 32 * 144 * 1024)
-        
+
         return addr, remote_addr
-    
+
     def close_store(self):
         if self.store:
             self.store.close()
-    
+
     def barrier(self):
         if self.config.distributed:
             dist.barrier(group=dist.group.WORLD)

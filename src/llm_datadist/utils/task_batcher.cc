@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "utils/task_batcher.h"
@@ -15,9 +16,7 @@ namespace {
 constexpr int32_t kMaxTaskNumInBatch = 64;
 
 }  // namespace
-void TaskBatcher::Initialize(uint32_t num_tensors,
-                             uint32_t block_size,
-                             size_t num_transfer_infos,
+void TaskBatcher::Initialize(uint32_t num_tensors, uint32_t block_size, size_t num_transfer_infos,
                              const TransferInfo *transfer_infos) {
   num_tensors_ = num_tensors;
   block_size_ = block_size;
@@ -50,8 +49,7 @@ std::vector<BufferSlice> TaskBatcher::NextBatch(uint32_t max_transfer_info_num) 
     uint64_t data_size_cur_task = 0U;
     GetOffsetAndLength(remaining_buffer_len, data_offset, data_size_cur_task);
     const auto data_size = static_cast<uint32_t>(data_size_cur_task);
-    if ((current_tensor_index_ == prev_tensor_index) &&
-        (data_offset == prev_block_end_offset) &&
+    if ((current_tensor_index_ == prev_tensor_index) && (data_offset == prev_block_end_offset) &&
         ((ret.back().data_size + data_size) <= max_block_size_)) {
       ret.back().data_size += data_size;
     } else {

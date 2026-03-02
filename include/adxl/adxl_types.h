@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #ifndef CANN_HIXL_INCLUDE_ADXL_ADXL_TYPES_H_
@@ -45,15 +46,9 @@ constexpr Status RESOURCE_EXHAUSTED = 203900U;
 
 using MemHandle = void *;
 
-enum MemType {
-  MEM_DEVICE,
-  MEM_HOST
-};
+enum MemType { MEM_DEVICE, MEM_HOST };
 
-enum TransferOp {
-  READ,
-  WRITE
-};
+enum TransferOp { READ, WRITE };
 
 struct MemDesc {
   uintptr_t addr;
@@ -67,14 +62,9 @@ struct TransferOpDesc {
   size_t len;
 };
 
-enum class TransferStatus {
-  WAITING,
-  COMPLETED,
-  TIMEOUT,
-  FAILED
-};
+enum class TransferStatus { WAITING, COMPLETED, TIMEOUT, FAILED };
 
-struct TransferArgs{
+struct TransferArgs {
   uint8_t reserved[128] = {};
 };
 

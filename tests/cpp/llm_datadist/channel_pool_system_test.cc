@@ -19,7 +19,7 @@
 #include "adxl/channel_msg_handler.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
 #include "depends/mmpa/src/mmpa_stub.h"
-namespace hixl{
+namespace hixl {
 
 class ChannelPoolSystemTest : public ::testing::Test {
  protected:
@@ -27,8 +27,8 @@ class ChannelPoolSystemTest : public ::testing::Test {
     llm::MockMmpaForHcclApi::Install();
     llm::AutoCommResRuntimeMock::Install();
     llm::HcclAdapter::GetInstance().Initialize();
-    options_["GlobalResourceConfig"] = 
-      R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
+    options_["GlobalResourceConfig"] =
+        R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
   }
 
   void TearDown() override {
@@ -65,7 +65,7 @@ TEST_F(ChannelPoolSystemTest, ClientChannelPoolSystemTest) {
   EXPECT_EQ(client_.Connect("127.0.0.1:20004"), SUCCESS);
   // sleep 500 ms for eviction
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
-  
+
   EXPECT_EQ(client_.Disconnect("127.0.0.1:20001"), NOT_CONNECTED);
   EXPECT_EQ(client_.Disconnect("127.0.0.1:20002"), NOT_CONNECTED);
   EXPECT_EQ(client_.Connect("127.0.0.1:20001"), SUCCESS);
@@ -210,35 +210,43 @@ TEST_F(ChannelPoolSystemTest, TestEvictionWithTransfer) {
 TEST_F(ChannelPoolSystemTest, TestWaterline) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
-  
+
   options_["GlobalResourceConfig"] = "invalid json string";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
-  
-  options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"0.1","channel_pool.low_waterline":"0.3"})";
+
+  options_["GlobalResourceConfig"] =
+      R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"0.1","channel_pool.low_waterline":"0.3"})";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
 
-  options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"0","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
+  options_["GlobalResourceConfig"] =
+      R"({"channel_pool.max_channel":"0","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
 
-  options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"999","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
+  options_["GlobalResourceConfig"] =
+      R"({"channel_pool.max_channel":"999","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
 
   options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10"})";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
 
-  options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"1.0","channel_pool.low_waterline":"0.1"})";
+  options_["GlobalResourceConfig"] =
+      R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"1.0","channel_pool.low_waterline":"0.1"})";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
 
-  options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.0"})";
+  options_["GlobalResourceConfig"] =
+      R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.0"})";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
 
-  options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"NaN","channel_pool.low_waterline":"0.1"})";
+  options_["GlobalResourceConfig"] =
+      R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"NaN","channel_pool.low_waterline":"0.1"})";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
 
-  options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"NaN","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
+  options_["GlobalResourceConfig"] =
+      R"({"channel_pool.max_channel":"NaN","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
 
-  options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
+  options_["GlobalResourceConfig"] =
+      R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
 }
 
@@ -288,9 +296,7 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferSyncAndEviction) {
   EXPECT_EQ(client.Initialize("127.0.0.1:30000", options_), SUCCESS);
 
   // Initialize servers in a loop to reduce duplicate code
-  const char* server_addrs[] = {
-    "127.0.0.1:30001", "127.0.0.1:30002", "127.0.0.1:30003", "127.0.0.1:30004"
-  };
+  const char *server_addrs[] = {"127.0.0.1:30001", "127.0.0.1:30002", "127.0.0.1:30003", "127.0.0.1:30004"};
   Hixl servers[4];
   // init 4 servers
   for (int i = 0; i < 4; ++i) {
@@ -320,7 +326,7 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferSyncAndEviction) {
   int32_t dst = 2;
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
 
-  auto transfer_func = [&client, &desc](const AscendString& server_addr) {
+  auto transfer_func = [&client, &desc](const AscendString &server_addr) {
     client.TransferSync(server_addr, READ, {desc});
     // sleep 5000 ms to simulate long transfer task
     std::this_thread::sleep_for(std::chrono::microseconds(5000));
@@ -367,9 +373,7 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
   EXPECT_EQ(client.Initialize("127.0.0.1:40000", options_), SUCCESS);
 
   // Initialize servers in a loop to reduce duplicate code
-  const char* server_addrs[] = {
-    "127.0.0.1:40001", "127.0.0.1:40002", "127.0.0.1:40003", "127.0.0.1:40004"
-  };
+  const char *server_addrs[] = {"127.0.0.1:40001", "127.0.0.1:40002", "127.0.0.1:40003", "127.0.0.1:40004"};
   Hixl servers_async[4];
   // initialize 4 servers
   for (int i = 0; i < 4; ++i) {
@@ -398,7 +402,7 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
   int32_t dst = 12;
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
 
-  auto transfer_async_func = [&client, &desc](const AscendString& server_addr) {
+  auto transfer_async_func = [&client, &desc](const AscendString &server_addr) {
     TransferReq req = nullptr;
     client.TransferAsync(server_addr, READ, {desc}, {}, req);
   };
@@ -413,7 +417,7 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
   // Channels 1 and 2 should still be connected because they have ongoing transfers
   // Channels 3 and 4 should be evicted since they have no transfers
   EXPECT_EQ(client.Disconnect("127.0.0.1:40003"), NOT_CONNECTED);
-  EXPECT_EQ(client.Disconnect("127.0.0.1:40004"), NOT_CONNECTED); 
+  EXPECT_EQ(client.Disconnect("127.0.0.1:40004"), NOT_CONNECTED);
   // Verify that channels with ongoing transfers are still connected
   EXPECT_EQ(client.Connect("127.0.0.1:40001"), ALREADY_CONNECTED);
   EXPECT_EQ(client.Connect("127.0.0.1:40002"), ALREADY_CONNECTED);
@@ -448,8 +452,8 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransfersWithoutConnectStatusErrors) {
 
   // Register memory for transfer
   hixl::MemDesc mem{};
-  mem.addr = 1234; // mock memory address 1234
-  mem.len = 1024; // mock memory length 1024
+  mem.addr = 1234;  // mock memory address 1234
+  mem.len = 1024;   // mock memory length 1024
   MemHandle client_handle = nullptr;
   EXPECT_EQ(client.RegisterMem(mem, MEM_DEVICE, client_handle), SUCCESS);
 
@@ -468,9 +472,7 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransfersWithoutConnectStatusErrors) {
   int32_t src = 1;
   // mock dst content 2
   int32_t dst = 2;
-  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), 
-                     reinterpret_cast<uintptr_t>(&dst), 
-                     sizeof(int32_t)};
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
 
   for (int i = 0; i < total_threads; ++i) {
     threads.emplace_back([&client, &desc, timeout]() {
@@ -479,7 +481,7 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransfersWithoutConnectStatusErrors) {
     });
   }
 
-  for (auto& thread : threads) {
+  for (auto &thread : threads) {
     if (thread.joinable()) {
       thread.join();
     }
@@ -501,8 +503,8 @@ TEST_F(ChannelPoolSystemTest, ConcurrentAsyncTransfersWithoutConnectStatusErrors
 
   // Register memory for transfer
   hixl::MemDesc mem{};
-  mem.addr = 5678; // mock memory address 5678
-  mem.len = 2048; // mock memory length 2048
+  mem.addr = 5678;  // mock memory address 5678
+  mem.len = 2048;   // mock memory length 2048
   MemHandle client_handle = nullptr;
   EXPECT_EQ(client.RegisterMem(mem, MEM_DEVICE, client_handle), SUCCESS);
 
@@ -520,9 +522,7 @@ TEST_F(ChannelPoolSystemTest, ConcurrentAsyncTransfersWithoutConnectStatusErrors
       int32_t src = 1;
       // mock dst content 2
       int32_t dst = 2;
-      TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), 
-                         reinterpret_cast<uintptr_t>(&dst), 
-                         sizeof(int32_t)};
+      TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
       // This will trigger ConnectWhenTransfer internally
       TransferReq req = nullptr;
       Status ret = client.TransferAsync("127.0.0.1:51001", READ, {desc}, {}, req);
@@ -530,7 +530,7 @@ TEST_F(ChannelPoolSystemTest, ConcurrentAsyncTransfersWithoutConnectStatusErrors
     });
   }
 
-  for (auto& t : threads) {
+  for (auto &t : threads) {
     if (t.joinable()) {
       t.join();
     }
@@ -542,15 +542,13 @@ TEST_F(ChannelPoolSystemTest, ConcurrentAsyncTransfersWithoutConnectStatusErrors
 }
 
 TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
-  options_["GlobalResourceConfig"] = 
-    R"({"channel_pool.max_channel":"3","channel_pool.high_waterline":"0.67","channel_pool.low_waterline":"0.33"})";
+  options_["GlobalResourceConfig"] =
+      R"({"channel_pool.max_channel":"3","channel_pool.high_waterline":"0.67","channel_pool.low_waterline":"0.33"})";
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl client_exhausted;
   EXPECT_EQ(client_exhausted.Initialize("127.0.0.1:60000", options_), SUCCESS);
   // Initialize servers in a loop to reduce duplicate code
-  const char* server_addrs[] = {
-    "127.0.0.1:60001", "127.0.0.1:60002", "127.0.0.1:60003", "127.0.0.1:60004"
-  };
+  const char *server_addrs[] = {"127.0.0.1:60001", "127.0.0.1:60002", "127.0.0.1:60003", "127.0.0.1:60004"};
   Hixl servers_async[4];
   // initialize 4 servers
   for (int i = 0; i < 4; ++i) {
@@ -578,7 +576,7 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
   int32_t dst = 12;
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
 
-  auto transfer_async_func = [&client_exhausted, &desc](const AscendString& server_addr) {
+  auto transfer_async_func = [&client_exhausted, &desc](const AscendString &server_addr) {
     TransferReq req = nullptr;
     client_exhausted.TransferAsync(server_addr, READ, {desc}, {}, req);
   };
@@ -607,4 +605,4 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
     servers_async[i].Finalize();
   }
 }
-}
+}  // namespace hixl

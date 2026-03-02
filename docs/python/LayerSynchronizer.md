@@ -79,4 +79,3 @@ synchronize_layer(layer_index: int, timeout_in_millis: Optional[int]) -> bool
 ## 约束说明<a name="zh-cn_topic_0000001481404214_zh-cn_topic_0000001488949573_zh-cn_topic_0000001357384997_zh-cn_topic_0000001312399929_section28090371"></a>
 
 无
-

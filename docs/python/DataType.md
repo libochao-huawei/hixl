@@ -81,4 +81,3 @@ DataType枚举类，枚举值如下表所示。
 </tr>
 </tbody>
 </table>
-

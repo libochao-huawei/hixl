@@ -53,10 +53,8 @@ class HixlCSServer {
   Status DoWait();
   void ProClientMsg(int32_t fd, std::shared_ptr<MsgReceiver> receiver);
   Status InitTransFinishedFlag();
-  static Status SendCreateChannelResp(int32_t fd,
-                                      const CreateChannelResp &resp);
-  static Status SendRemoteMemResp(int32_t fd,
-                                  const GetRemoteMemResp &resp);
+  static Status SendCreateChannelResp(int32_t fd, const CreateChannelResp &resp);
+  static Status SendRemoteMemResp(int32_t fd, const GetRemoteMemResp &resp);
 
   std::string ip_;
   uint32_t port_ = 0U;
@@ -80,10 +78,10 @@ class HixlCSServer {
   void *trans_flag_ = nullptr;
   MemHandle trans_flag_handle_ = nullptr;
 
-  void *host_trans_flag_ = nullptr;        // Host 侧 Flag 内存指针
-  MemHandle host_trans_flag_handle_ = nullptr; // Host 侧 Flag 注册句柄
+  void *host_trans_flag_ = nullptr;             // Host 侧 Flag 内存指针
+  MemHandle host_trans_flag_handle_ = nullptr;  // Host 侧 Flag 注册句柄
 
-  void *dev_trans_flag_ = nullptr;         // Device 侧 Flag 内存指针
+  void *dev_trans_flag_ = nullptr;             // Device 侧 Flag 内存指针
   MemHandle dev_trans_flag_handle_ = nullptr;  // Device 侧 Flag 注册句柄
 };
 }  // namespace hixl

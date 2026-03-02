@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "swap_impl.h"
@@ -45,14 +46,14 @@ ge::Status SwapImpl::SwapBlocks(const std::vector<uintptr_t> &src_addrs, const s
         auto src = src_addr + src_index * block_size;
         auto dst = dst_addr + dst_index * block_size;
         LLMLOGI("Begin mem copy, src index:%ld, dst index:%ld, copy size:%lu, contiguous block num:%lu", src_index,
-               dst_index, copy_size, ordered_block.size());
+                dst_index, copy_size, ordered_block.size());
         const auto copy_start = std::chrono::steady_clock::now();
         if (copy_info.copy_type == CopyType::kMemcpyEx) {
-          LLM_CHK_ACL_RET(aclrtMemcpy(reinterpret_cast<void *>(dst), copy_size, reinterpret_cast<void *>(src), copy_size,
-                                   copy_info.copy_kind));
+          LLM_CHK_ACL_RET(aclrtMemcpy(reinterpret_cast<void *>(dst), copy_size, reinterpret_cast<void *>(src),
+                                      copy_size, copy_info.copy_kind));
         } else {
-          LLM_CHK_ACL_RET(aclrtMemcpy(reinterpret_cast<void *>(dst), copy_size, reinterpret_cast<void *>(src), copy_size,
-                                 copy_info.copy_kind));
+          LLM_CHK_ACL_RET(aclrtMemcpy(reinterpret_cast<void *>(dst), copy_size, reinterpret_cast<void *>(src),
+                                      copy_size, copy_info.copy_kind));
         }
         const auto copy_end = std::chrono::steady_clock::now();
         const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(copy_end - copy_start).count();
@@ -68,7 +69,7 @@ ge::Status SwapImpl::SwapBlocks(const std::vector<uintptr_t> &src_addrs, const s
   }
   const auto end = std::chrono::steady_clock::now();
   LLMLOGI("[LlmPerf] mem copy cost time:%zu us, copy kind:%d, swap blocks cost time:%zu us", aclrt_copy_time.load(),
-         copy_info.copy_kind, std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+          copy_info.copy_kind, std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
   return ge::SUCCESS;
 }
 
@@ -78,7 +79,7 @@ ge::Status SwapImpl::SwapBlocksV2(const Cache &src, const Cache &dst, const uint
   const auto &src_addrs = src.per_device_tensor_addrs;
   const auto &dst_addrs = dst.per_device_tensor_addrs;
   LLMLOGI("Begin swap blocks, cache num:%zu, swap block num:%zu, swap type:%u", src_addrs.front().size(),
-         block_mapping.size(), type);
+          block_mapping.size(), type);
   aclrtMemcpyKind kind = (type == kSwapOut) ? ACL_MEMCPY_DEVICE_TO_HOST : ACL_MEMCPY_HOST_TO_DEVICE;
   LLM_CHK_STATUS_RET(
       SwapBlocks(src_addrs.front(), dst_addrs.front(), block_size, block_mapping, CopyInfo{CopyType::kMemcpy, kind}),
@@ -91,10 +92,10 @@ ge::Status SwapImpl::CheckParam(const Cache &src, const Cache &dst) {
   const auto &src_addrs = src.per_device_tensor_addrs;
   const auto &dst_addrs = dst.per_device_tensor_addrs;
   LLM_CHK_BOOL_RET_STATUS(((src_addrs.size() == 1) && (src_addrs.size() == dst_addrs.size())), ge::LLM_PARAM_INVALID,
-                         "currently support kv cache in one device");
+                          "currently support kv cache in one device");
   LLM_CHK_BOOL_RET_STATUS((src_addrs.front().size() == dst_addrs.front().size()), ge::LLM_PARAM_INVALID,
-                         "src adrrs size:%zu not equal dst addrs size:%zu", src_addrs.front().size(),
-                         dst_addrs.front().size());
+                          "src adrrs size:%zu not equal dst addrs size:%zu", src_addrs.front().size(),
+                          dst_addrs.front().size());
   return ge::SUCCESS;
 }
 }  // namespace llm

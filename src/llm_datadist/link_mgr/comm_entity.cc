@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "comm_entity.h"
@@ -35,7 +36,6 @@ constexpr int32_t kRetryCountMax = 100;
 std::mutex g_mutex_;
 }  // namespace
 
-
 RegBufferPool::RegBufferPool(uint64_t capacity, bool is_host)
     : capacity_(capacity), is_host_(is_host), buffer_(nullptr), handle_(nullptr) {}
 
@@ -44,19 +44,20 @@ ge::Status RegBufferPool::Initialize() {
   if (is_host_) {
     LLM_CHK_ACL_RET(aclrtMallocHost(&buffer_, buffer_size));
   } else {
-    LLM_CHK_ACL_RET(aclrtMalloc(&buffer_, buffer_size,
-                                static_cast<aclrtMemMallocPolicy>(ACL_MEM_TYPE_HIGH_BAND_WIDTH | ACL_MEM_MALLOC_HUGE_FIRST)));
+    LLM_CHK_ACL_RET(
+        aclrtMalloc(&buffer_, buffer_size,
+                    static_cast<aclrtMemMallocPolicy>(ACL_MEM_TYPE_HIGH_BAND_WIDTH | ACL_MEM_MALLOC_HUGE_FIRST)));
   }
   LLM_DISMISSABLE_GUARD(fail_guard, ([this]() {
-    if (is_host_) {
-      LLM_CHK_ACL(aclrtFreeHost(buffer_));
-    } else {
-      LLM_CHK_ACL(aclrtFree(buffer_));
-    }
-  }));
+                          if (is_host_) {
+                            LLM_CHK_ACL(aclrtFreeHost(buffer_));
+                          } else {
+                            LLM_CHK_ACL(aclrtFree(buffer_));
+                          }
+                        }));
   auto type = is_host_ ? HcclMemType::HCCL_MEM_TYPE_HOST : HcclMemType::HCCL_MEM_TYPE_DEVICE;
   LLM_CHK_STATUS_RET(GlobalMemManager::GetInstance().RegisterMem(buffer_, buffer_size, type, handle_),
-                    "Failed to register buffer pool addr.");
+                     "Failed to register buffer pool addr.");
   LLM_DISMISS_GUARD(fail_guard);
 
   for (uint64_t i = 0; i < capacity_; ++i) {
@@ -80,7 +81,7 @@ RegBufferPool::~RegBufferPool() {
 
 void RegBufferPool::Finalize() {
   if (handle_ != nullptr) {
-    (void) GlobalMemManager::GetInstance().UnregisterMem(handle_);
+    (void)GlobalMemManager::GetInstance().UnregisterMem(handle_);
     handle_ = nullptr;
   }
 }
@@ -107,9 +108,7 @@ void RegBufferPool::Free(void *buffer) {
   }
 }
 
-EntityMemInfo::EntityMemInfo(bool remote_cache_accessible, 
-                             RegBufferPool *host_reg_pool,
-                             RegBufferPool *device_reg_pool)
+EntityMemInfo::EntityMemInfo(bool remote_cache_accessible, RegBufferPool *host_reg_pool, RegBufferPool *device_reg_pool)
     : remote_cache_accessible_(remote_cache_accessible),
       msg_buffer_(nullptr),
       req_(nullptr),
@@ -159,47 +158,45 @@ EntityMemInfo::~EntityMemInfo() {
   }
 }
 
-EntityCommInfo::EntityCommInfo(const CommParams &comm_params)
-    : params_(comm_params), comm_{}, comm_inited_(false) {};
+EntityCommInfo::EntityCommInfo(const CommParams &comm_params) : params_(comm_params), comm_{}, comm_inited_(false) {};
 
-EntityCommInfo::EntityCommInfo(const HcclComm &comm, std::vector<void *> mem_handles, int32_t link_total_time, int32_t link_retry_count)
+EntityCommInfo::EntityCommInfo(const HcclComm &comm, std::vector<void *> mem_handles, int32_t link_total_time,
+                               int32_t link_retry_count)
     : params_({0, {}, "", mem_handles, link_total_time, link_retry_count}), comm_(comm), comm_inited_(true) {};
 
 ge::Status EntityCommInfo::Initialize() {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!comm_inited_) {
     std::lock_guard<std::mutex> g_lock(g_mutex_);
-    HcclResult ret = HcclAdapter::GetInstance().HcclCommInitClusterInfoMemConfig(params_.rank_table.c_str(),
-                                                                                 params_.rank_id,
-                                                                                 &params_.comm_config,
-                                                                                 &comm_);
+    HcclResult ret = HcclAdapter::GetInstance().HcclCommInitClusterInfoMemConfig(
+        params_.rank_table.c_str(), params_.rank_id, &params_.comm_config, &comm_);
     LLM_CHK_BOOL_RET_STATUS(ret == HcclResult::HCCL_SUCCESS, ge::LLM_LINK_FAILED,
-                          "Call HcclCommInitClusterInfoMemConfig failed, ret:%d.", ret);
+                            "Call HcclCommInitClusterInfoMemConfig failed, ret:%d.", ret);
     comm_inited_ = true;
   }
 
   LLM_DISMISSABLE_GUARD(fail_guard, ([this]() {
-    for (auto bind_handle : bind_handles_) {
-      (void) HcclAdapter::GetInstance().HcclCommUnbindMem(comm_, bind_handle);
-    }
-    bind_handles_.clear();
-    (void) HcclAdapter::GetInstance().HcclCommDestroy(comm_);
-    comm_inited_ = false;
-  }));
+                          for (auto bind_handle : bind_handles_) {
+                            (void)HcclAdapter::GetInstance().HcclCommUnbindMem(comm_, bind_handle);
+                          }
+                          bind_handles_.clear();
+                          (void)HcclAdapter::GetInstance().HcclCommDestroy(comm_);
+                          comm_inited_ = false;
+                        }));
 
   for (auto reg_handle : params_.mem_handles) {
     HcclResult bind_ret = HcclAdapter::GetInstance().HcclCommBindMem(comm_, reg_handle);
     LLM_CHK_BOOL_RET_STATUS(bind_ret == HcclResult::HCCL_SUCCESS, ge::LLM_LINK_FAILED,
-                          "Call HcclCommBindMem failed, ret:%d.", bind_ret);
+                            "Call HcclCommBindMem failed, ret:%d.", bind_ret);
     bind_handles_.emplace_back(reg_handle);
   }
 
   LLM_CHK_STATUS_RET(PrepareHcclComm(), "Failed to prepare hccl comm");
-  LLM_CHK_BOOL_RET_STATUS(params_.timeout >= 0, ge::LLM_PARAM_INVALID, 
-                         "timeout should be greater than or equal 0, given value is %d", params_.timeout);
-  LLM_CHK_BOOL_RET_STATUS(params_.link_retry_count >= kRetryCountMin && params_.link_retry_count <= kRetryCountMax,
-                         ge::LLM_PARAM_INVALID,
-                         "link_retry_count should be an integer between [1, 10], given value is %d", params_.link_retry_count);
+  LLM_CHK_BOOL_RET_STATUS(params_.timeout >= 0, ge::LLM_PARAM_INVALID,
+                          "timeout should be greater than or equal 0, given value is %d", params_.timeout);
+  LLM_CHK_BOOL_RET_STATUS(
+      params_.link_retry_count >= kRetryCountMin && params_.link_retry_count <= kRetryCountMax, ge::LLM_PARAM_INVALID,
+      "link_retry_count should be an integer between [1, 10], given value is %d", params_.link_retry_count);
   LLM_DISMISS_GUARD(fail_guard);
   return ge::SUCCESS;
 }
@@ -212,18 +209,19 @@ ge::Status EntityCommInfo::PrepareHcclComm() const {
   for (int32_t i = 0; i < params_.link_retry_count; i++) {
     prepare_ret = HcclAdapter::GetInstance().HcclCommPrepare(comm_, &prepareConfig, avg_timeout);
     if (prepare_ret != HcclResult::HCCL_SUCCESS && (!stop_flag_)) {
-      LLMEVENT("Retrying, there will be a total of %d retries, this time is %d, returned value this time:%d; " 
-              "the hccl logs during the calling of HcclCommPrepare from current thread could be ignored " 
-              "if HcclCommPrepare finally succeeds.", 
-              params_.link_retry_count, i + 1, prepare_ret);
+      LLMEVENT(
+          "Retrying, there will be a total of %d retries, this time is %d, returned value this time:%d; "
+          "the hccl logs during the calling of HcclCommPrepare from current thread could be ignored "
+          "if HcclCommPrepare finally succeeds.",
+          params_.link_retry_count, i + 1, prepare_ret);
     } else {
       break;
     }
   }
   auto cost = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
   LLM_CHK_BOOL_RET_STATUS(prepare_ret == HcclResult::HCCL_SUCCESS,
-                         HcclUtils::ConvertHcclErrorCode(prepare_ret, ge::LLM_LINK_FAILED),
-                        "Call HcclCommPrepare failed, ret:%d, cost:%ld ms.", prepare_ret, cost);
+                          HcclUtils::ConvertHcclErrorCode(prepare_ret, ge::LLM_LINK_FAILED),
+                          "Call HcclCommPrepare failed, ret:%d, cost:%ld ms.", prepare_ret, cost);
   LLMLOGI("HcclCommPrepare success, cost=%ld ms.", cost);
   return ge::SUCCESS;
 }
@@ -248,11 +246,11 @@ ge::Status EntityCommInfo::Finalize() {
 }
 
 EntityCommInfo::~EntityCommInfo() {
-  (void) Finalize();
+  (void)Finalize();
 }
 
-CommEntity::CommEntity(uint64_t comm_id, uint64_t cluster_id, uint32_t rank_id,
-                       uint64_t local_cluster_id, uint32_t local_rank_id)
+CommEntity::CommEntity(uint64_t comm_id, uint64_t cluster_id, uint32_t rank_id, uint64_t local_cluster_id,
+                       uint32_t local_rank_id)
     : comm_id_(comm_id),
       cluster_id_(cluster_id),
       rank_id_(rank_id),
@@ -268,15 +266,14 @@ CommEntity::CommEntity(uint64_t comm_id, uint64_t cluster_id, uint32_t rank_id,
 ge::Status CommEntity::Initialize(bool remote_cache_accessible) {
   LLMLOGI("comm entity init begin, remote_cache_accessible:%d", static_cast<int32_t>(remote_cache_accessible));
   LLM_CHK_STATUS_RET(cache_access_table_.Initialize(remote_cache_accessible));
-  LLM_ASSERT_RT_OK(aclrtCreateStreamWithConfig(&stream_, 0,
-                  ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC));
-  LLMLOGI("Entity:%s initialize success, stream:%p, remote_cache_accessible:%d",
-         desc_.c_str(), stream_, static_cast<int32_t>(remote_cache_accessible));
+  LLM_ASSERT_RT_OK(aclrtCreateStreamWithConfig(&stream_, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC));
+  LLMLOGI("Entity:%s initialize success, stream:%p, remote_cache_accessible:%d", desc_.c_str(), stream_,
+          static_cast<int32_t>(remote_cache_accessible));
   return ge::SUCCESS;
 }
 
 ge::Status CommEntity::Finalize(bool force) {
-  (void) force;
+  (void)force;
   auto ret = ge::SUCCESS;
   if (GetStream() != nullptr) {
     auto aclrt_ret = aclrtStreamAbort(GetStream());
@@ -327,7 +324,7 @@ void CommEntity::MarkEntityIdle() {
 ge::Status CommEntity::ProcessState() {
   const auto state = StateManager::GetInstance().GetState(cur_state_);
   LLM_CHK_BOOL_RET_STATUS(state != nullptr, ge::FAILED, "Failed to get state:%s, entity:%s",
-                         StateManager::GetInstance().GetStateDesc(cur_state_).c_str(), desc_.c_str());
+                          StateManager::GetInstance().GetStateDesc(cur_state_).c_str(), desc_.c_str());
   return state->Process(*this);
 }
 
@@ -335,7 +332,7 @@ ge::Status CommEntity::ChangeState(FsmState next_state) {
   cur_state_ = next_state;
   const auto state = StateManager::GetInstance().GetState(next_state);
   LLM_CHK_BOOL_RET_STATUS(state != nullptr, ge::FAILED, "Failed to get state:%s, entity:%s",
-                         StateManager::GetInstance().GetStateDesc(next_state).c_str(), desc_.c_str());
+                          StateManager::GetInstance().GetStateDesc(next_state).c_str(), desc_.c_str());
   return state->Preprocess(*this);
 }
 
@@ -360,7 +357,7 @@ ge::Status CommEntity::SetInfo() {
   LLM_CHK_BOOL_RET_STATUS((!remote_mems_.empty()), ge::LLM_LINK_FAILED, "remote mem num is 0.");
   cache_access_table_.SetTransferFunc(transfer_func, remote_mems_[0U].addr);
   LLM_CHK_STATUS_RET(GetCacheAccessTable().CheckRemoteFlag(remote_cache_accessible),
-                    "Check remote flag failed, entity:%s", GetDesc().c_str());
+                     "Check remote flag failed, entity:%s", GetDesc().c_str());
 
   /**
    * receive area      send area
@@ -396,7 +393,7 @@ ge::Status CommEntity::SetRemoteAddresses() {
   constexpr size_t kIndexRemoteReq = 1U;
   constexpr size_t kIndexRemoteResp = 2U;
   LLM_CHK_BOOL_RET_STATUS(remote_mems_.size() >= kMinRemoteMemSize, ge::LLM_LINK_FAILED,
-                         "remote mem num:%zu, expected min:%zu.", remote_mems_.size(), kMinRemoteMemSize);
+                          "remote mem num:%zu, expected min:%zu.", remote_mems_.size(), kMinRemoteMemSize);
   LLM_CHK_BOOL_RET_STATUS((remote_mems_[kIndexRemoteReq].type == HcclMemType::HCCL_MEM_TYPE_HOST) &&
                               (remote_mems_[kIndexRemoteReq].size == kDefaultReqBufferSize),
                           ge::LLM_LINK_FAILED, "Remote mem type:%s, size:%llu is not valid.",
@@ -485,10 +482,10 @@ void CommEntity::SetEntityCommInfo(EntityCommInfoPtr comm_info) {
 ge::Status CommEntity::BatchPutAsync(std::vector<HcclOneSideOpDesc> &op_descs, aclrtStream stream) {
   auto stream_to_use = stream != nullptr ? stream : stream_;
   const auto start = std::chrono::steady_clock::now();
-  auto ret = HcclAdapter::GetInstance().HcclBatchPut(GetComm(), rank_id_, op_descs.data(),
-                                                     op_descs.size(), stream_to_use);
+  auto ret =
+      HcclAdapter::GetInstance().HcclBatchPut(GetComm(), rank_id_, op_descs.data(), op_descs.size(), stream_to_use);
   LLM_CHK_BOOL_RET_STATUS(ret == HCCL_SUCCESS, ge::FAILED, "Failed to invoke HcclBatchPut, ret = %d",
-                         static_cast<int32_t>(ret));
+                          static_cast<int32_t>(ret));
   const auto end = std::chrono::steady_clock::now();
   const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   LLMLOGI("HcclBatchPut success, num = %zu, cost = %ld us.", op_descs.size(), cost);
@@ -515,26 +512,23 @@ SendStatisticInfo &CommEntity::GetSendStatisticInfo(aclrtStream stream) {
 ge::Status CommEntity::BatchGetAsync(std::vector<HcclOneSideOpDesc> &op_descs, aclrtStream stream) {
   auto stream_to_use = stream != nullptr ? stream : stream_;
   const auto start = std::chrono::steady_clock::now();
-  auto ret = HcclAdapter::GetInstance().HcclBatchGet(GetComm(), rank_id_, op_descs.data(),
-                                                     op_descs.size(), stream_to_use);
-  LLM_CHK_BOOL_RET_STATUS(ret == HCCL_SUCCESS,
-                         HcclUtils::ConvertHcclErrorCode(ret),
-                         "Failed to invoke HcclBatchGet, hccl_result = %d",
-                         static_cast<int32_t>(ret));
+  auto ret =
+      HcclAdapter::GetInstance().HcclBatchGet(GetComm(), rank_id_, op_descs.data(), op_descs.size(), stream_to_use);
+  LLM_CHK_BOOL_RET_STATUS(ret == HCCL_SUCCESS, HcclUtils::ConvertHcclErrorCode(ret),
+                          "Failed to invoke HcclBatchGet, hccl_result = %d", static_cast<int32_t>(ret));
   const auto end = std::chrono::steady_clock::now();
   const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-  LLMLOGI("HcclBatchGet success, num = %zu, cost = %ld us.", op_descs.size(), cost);;
-  StatisticManager::UpdateCost(
-      cost, recv_statistic_info_.batch_get_times, recv_statistic_info_.batch_get_min_cost,
-      recv_statistic_info_.batch_get_max_cost, recv_statistic_info_.batch_get_total_cost);
+  LLMLOGI("HcclBatchGet success, num = %zu, cost = %ld us.", op_descs.size(), cost);
+  ;
+  StatisticManager::UpdateCost(cost, recv_statistic_info_.batch_get_times, recv_statistic_info_.batch_get_min_cost,
+                               recv_statistic_info_.batch_get_max_cost, recv_statistic_info_.batch_get_total_cost);
   recv_statistic_info_.get_total_num += op_descs.size();
   return ge::SUCCESS;
 }
 
-ge::Status CommEntity::BatchTransfer(std::list<HcclOneSideOpDesc> &tasks, bool is_put, bool reversed, int32_t timeout_ms) {
-  LLM_DISMISSABLE_GUARD(stream, [this]() -> void {
-    LLM_CHK_ACL(aclrtStreamAbort(stream_));
-  });
+ge::Status CommEntity::BatchTransfer(std::list<HcclOneSideOpDesc> &tasks, bool is_put, bool reversed,
+                                     int32_t timeout_ms) {
+  LLM_DISMISSABLE_GUARD(stream, [this]() -> void { LLM_CHK_ACL(aclrtStreamAbort(stream_)); });
   const auto start = std::chrono::steady_clock::now();
   BufferedSender buffered_sender;
   buffered_sender.Initialize(*this, stream_, is_put);
@@ -551,12 +545,10 @@ ge::Status CommEntity::BatchTransfer(std::list<HcclOneSideOpDesc> &tasks, bool i
   }
   LLM_CHK_STATUS_RET(buffered_sender.Flush());
   const auto ret = aclrtSynchronizeStreamWithTimeout(stream_, timeout_ms);
-  LLM_CHK_BOOL_RET_STATUS(ret == ACL_ERROR_NONE,
-                         llm::ConvertAclError2Ge(ret),
-                         "Failed to sync stream, rt_ret = %d", ret);
+  LLM_CHK_BOOL_RET_STATUS(ret == ACL_ERROR_NONE, llm::ConvertAclError2Ge(ret), "Failed to sync stream, rt_ret = %d",
+                          ret);
   const auto end = std::chrono::steady_clock::now();
-  const auto cost = static_cast<uint64_t>(
-      std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+  const auto cost = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
   LLMLOGI("sync stream success, cost = %ld us.", cost);
   if (is_put) {
     auto &send_statistic_info = GetSendStatisticInfo(stream_);
@@ -567,7 +559,7 @@ ge::Status CommEntity::BatchTransfer(std::list<HcclOneSideOpDesc> &tasks, bool i
   } else {
     auto &recv_statistic_info = GetRecvStatisticInfo();
     StatisticManager::UpdateCost(cost, recv_statistic_info.pull_times, recv_statistic_info.pull_min_cost,
-                                recv_statistic_info.pull_max_cost, recv_statistic_info.pull_total_cost);
+                                 recv_statistic_info.pull_max_cost, recv_statistic_info.pull_total_cost);
   }
   LLM_DISMISS_GUARD(stream);
   return ge::SUCCESS;
@@ -606,20 +598,20 @@ void CommEntity::Dump() const {
 
   const uint64_t batch_get_avg_time =
       recv_statistic_info_.batch_get_times == 0U
-      ? 0U
-      : recv_statistic_info_.batch_get_total_cost / recv_statistic_info_.batch_get_times;
-  const uint64_t pull_avg_time =
-      recv_statistic_info_.pull_times == 0U
-      ? 0U
-      : recv_statistic_info_.pull_total_cost / recv_statistic_info_.pull_times;
-  LLMEVENT("Comm entity info:desc[%s] Recv statistic info:req_info get time:%lu, sync_flag get time:%lu, "
-          "HcclBatchGet [times:%lu, max:%lu us, min:%lu us, avg_cost:%lu us], "
-          "get info [total num:%lu, get times:%lu, max:%lu us, min:%lu us, avg_cost:%lu us]", desc_.c_str(),
-          recv_statistic_info_.req_info_get_times, recv_statistic_info_.sync_flag_get_times,
-          recv_statistic_info_.batch_get_times, recv_statistic_info_.batch_get_max_cost,
-          recv_statistic_info_.batch_get_min_cost, batch_get_avg_time,
-          recv_statistic_info_.pull_times, recv_statistic_info_.get_total_num, recv_statistic_info_.pull_max_cost,
-          recv_statistic_info_.pull_min_cost, pull_avg_time);
+          ? 0U
+          : recv_statistic_info_.batch_get_total_cost / recv_statistic_info_.batch_get_times;
+  const uint64_t pull_avg_time = recv_statistic_info_.pull_times == 0U
+                                     ? 0U
+                                     : recv_statistic_info_.pull_total_cost / recv_statistic_info_.pull_times;
+  LLMEVENT(
+      "Comm entity info:desc[%s] Recv statistic info:req_info get time:%lu, sync_flag get time:%lu, "
+      "HcclBatchGet [times:%lu, max:%lu us, min:%lu us, avg_cost:%lu us], "
+      "get info [total num:%lu, get times:%lu, max:%lu us, min:%lu us, avg_cost:%lu us]",
+      desc_.c_str(), recv_statistic_info_.req_info_get_times, recv_statistic_info_.sync_flag_get_times,
+      recv_statistic_info_.batch_get_times, recv_statistic_info_.batch_get_max_cost,
+      recv_statistic_info_.batch_get_min_cost, batch_get_avg_time, recv_statistic_info_.pull_times,
+      recv_statistic_info_.get_total_num, recv_statistic_info_.pull_max_cost, recv_statistic_info_.pull_min_cost,
+      pull_avg_time);
 }
 
 ge::Status CommEntity::SendRequest(const FillRequestFunc &fill_request_func, aclrtStream stream) {
@@ -628,11 +620,8 @@ ge::Status CommEntity::SendRequest(const FillRequestFunc &fill_request_func, acl
   fill_request_func(req_info, req_size);
   auto *local_sync_flag_ptr = PtrToPtr<void, int8_t>(info_.send_buffer_req_flag_ptr);
   *local_sync_flag_ptr = 1;
-  LLM_CHK_ACL_RET(aclrtMemcpyAsync(info_.send_dev_buffer_req_flag_ptr,
-                                   kDefaultReqBufferSize,
-                                   info_.send_buffer_req_flag_ptr,
-                                   kFlagSize + req_size,
-                                   ACL_MEMCPY_HOST_TO_DEVICE,
+  LLM_CHK_ACL_RET(aclrtMemcpyAsync(info_.send_dev_buffer_req_flag_ptr, kDefaultReqBufferSize,
+                                   info_.send_buffer_req_flag_ptr, kFlagSize + req_size, ACL_MEMCPY_HOST_TO_DEVICE,
                                    stream));
   std::vector<HcclOneSideOpDesc> request_desc{
       HcclOneSideOpDesc{info_.send_dev_buffer_req_ptr, info_.remote_req_ptr, req_size, HCCL_DATA_TYPE_UINT8}};
@@ -658,11 +647,8 @@ ge::Status CommEntity::SendResponse(const FillResponseFunc &fill_response_func) 
   fill_response_func(resp_info, resp_size);
   auto *local_sync_flag_ptr = PtrToPtr<void, int8_t>(info_.send_buffer_resp_flag_ptr);
   *local_sync_flag_ptr = 1;
-  LLM_CHK_ACL_RET(aclrtMemcpyAsync(info_.send_dev_buffer_resp_flag_ptr,
-                                   kDefaultRespBufferSize,
-                                   info_.send_buffer_resp_flag_ptr,
-                                   kFlagSize + resp_size,
-                                   ACL_MEMCPY_HOST_TO_DEVICE,
+  LLM_CHK_ACL_RET(aclrtMemcpyAsync(info_.send_dev_buffer_resp_flag_ptr, kDefaultRespBufferSize,
+                                   info_.send_buffer_resp_flag_ptr, kFlagSize + resp_size, ACL_MEMCPY_HOST_TO_DEVICE,
                                    stream_));
   std::vector<HcclOneSideOpDesc> response_desc{
       HcclOneSideOpDesc{info_.send_dev_buffer_resp_ptr, info_.remote_resp_ptr, resp_size, HCCL_DATA_TYPE_UINT8}};
@@ -679,7 +665,7 @@ ge::Status CommEntity::SendResponse(const FillResponseFunc &fill_response_func) 
 ge::Status CommEntity::GetResponse(const ResponseInfo *&response_info,
                                    const std::chrono::steady_clock::time_point *end_time_point) const {
   LLM_CHK_BOOL_RET_STATUS(SyncFlag(info_.local_resp_flag_ptr).Wait(end_time_point) != 0, ge::LLM_TIMEOUT,
-                         "wait resp flag timeout");
+                          "wait resp flag timeout");
   LLMLOGI("response received");
   response_info = PtrToPtr<void, ResponseInfo>(info_.local_resp_ptr);
   return ge::SUCCESS;

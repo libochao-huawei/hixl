@@ -131,7 +131,6 @@ bool HixlMemStore::CheckMemoryForAccess(bool is_server, const void *check_addr, 
   return false;
 }
 
-
 Status HixlMemStore::ValidateMemoryAccess(const void *server_addr, size_t mem_size, const void *client_addr) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (server_addr == nullptr || client_addr == nullptr || mem_size == size_t{0}) {

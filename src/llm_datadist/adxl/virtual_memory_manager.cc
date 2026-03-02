@@ -45,8 +45,7 @@ void VirtualMemoryManager::SetVirtualMemoryCapacity(size_t capacity_in_tb) {
   constexpr size_t kBytesPerTB = 1024UL * 1024UL * 1024UL * 1024UL;
   vm_size_ = capacity_in_tb * kBytesPerTB;
   num_blocks_ = vm_size_ / kBlockSize;
-  LLMLOGI("Set virtual memory capacity to %zu TB (%zu bytes, %zu blocks)",
-          capacity_in_tb, vm_size_, num_blocks_);
+  LLMLOGI("Set virtual memory capacity to %zu TB (%zu bytes, %zu blocks)", capacity_in_tb, vm_size_, num_blocks_);
 }
 
 Status VirtualMemoryManager::Initialize() {

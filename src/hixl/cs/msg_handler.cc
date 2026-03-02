@@ -29,9 +29,7 @@ Status MsgHandler::Initialize() {
 
   HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&ctx_));
   HIXL_LOGI("aclrtGetCurrentContext ctx=%p", ctx_);
-  listener_ = std::thread([this]() {
-    HandleMsg();
-  });
+  listener_ = std::thread([this]() { HandleMsg(); });
   return SUCCESS;
 }
 
@@ -45,17 +43,17 @@ void MsgHandler::Finalize() {
 }
 
 Status MsgHandler::HandleMsg(int32_t fd, CtrlMsgPtr msg, MsgProcessor proc) {
-  HIXL_EVENT("[HixlServer] handle msg begin, msg type:%d, msg size:%zu",
-             static_cast<int32_t>(msg->msg_type), msg->msg.size());
+  HIXL_EVENT("[HixlServer] handle msg begin, msg type:%d, msg size:%zu", static_cast<int32_t>(msg->msg_type),
+             msg->msg.size());
   HIXL_CHK_STATUS_RET(proc(fd, msg->msg.c_str(), msg->msg.size()), "Failed to handle msg");
-  HIXL_EVENT("[HixlServer] handle msg success, msg type:%d, msg size:%zu",
-             static_cast<int32_t>(msg->msg_type), msg->msg.size());
+  HIXL_EVENT("[HixlServer] handle msg success, msg type:%d, msg size:%zu", static_cast<int32_t>(msg->msg_type),
+             msg->msg.size());
   return SUCCESS;
 }
 
 Status MsgHandler::RegisterMsgProcessor(CtrlMsgType msg_type, MsgProcessor msg_processor) {
   const auto it = processors_.find(msg_type);
-  HIXL_CHK_BOOL_RET_STATUS(it == processors_.cend(), PARAM_INVALID, "msg_type:%d, has beeen registed.",
+  HIXL_CHK_BOOL_RET_STATUS(it == processors_.cend(), PARAM_INVALID, "msg_type:%d, has been registered.",
                            static_cast<int32_t>(msg_type));
   processors_[msg_type] = msg_processor;
   return SUCCESS;
@@ -75,7 +73,7 @@ void MsgHandler::HandleMsg() {
     }
     const auto it = processors_.find(req.second->msg_type);
     if (it == processors_.cend()) {
-      HIXL_EVENT("[HixlServer] msg type:%d, not registed", static_cast<int32_t>(req.second->msg_type));
+      HIXL_EVENT("[HixlServer] msg type:%d, not registered", static_cast<int32_t>(req.second->msg_type));
       continue;
     }
     auto proc = it->second;

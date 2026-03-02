@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #ifndef CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_HCCL_SO_MANAGER_H_
@@ -23,7 +24,7 @@ using HcclExchangeMemDescFunc = HcclResult (*)(HcclComm comm, uint32_t remote_ra
                                                HcclMemDescs *remote, uint32_t *actual_num);
 using HcclCommConfigInitFunc = void (*)(HcclCommConfig *config);
 using HcclCommInitClusterInfoMemConfigFunc = HcclResult (*)(const char *cluster, uint32_t rank, HcclCommConfig *config,
-                                                      HcclComm *comm);
+                                                            HcclComm *comm);
 using HcclCommDestroyFunc = HcclResult (*)(HcclComm comm);
 using HcclBatchPutFunc = HcclResult (*)(HcclComm comm, uint32_t remote_rank, HcclOneSideOpDesc *desc, uint32_t desc_num,
                                         aclrtStream stream);
@@ -92,24 +93,24 @@ class HcclUtils {
   static const std::string HcclMemTypeToString(HcclMemType type);
 };
 
-template<typename T>
-class FunctionLoader{
+template <typename T>
+class FunctionLoader {
  private:
   union FunctionPointerConverter {
-    void* from;
+    void *from;
     T to;
   };
 
  public:
-  static T load(void* so_handle, const char* func_name) {
-    void* symbol = mmDlsym(so_handle, func_name);
-        if (!symbol) {
-            return nullptr;
-        }
-        
-        FunctionPointerConverter converter;
-        converter.from = symbol;
-        return converter.to;
+  static T load(void *so_handle, const char *func_name) {
+    void *symbol = mmDlsym(so_handle, func_name);
+    if (!symbol) {
+      return nullptr;
+    }
+
+    FunctionPointerConverter converter;
+    converter.from = symbol;
+    return converter.to;
   }
 };
 }  // namespace llm

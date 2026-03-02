@@ -4,7 +4,8 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
 
  * The code snippet comes from Huawei's open-source Ascend project.
@@ -58,7 +59,7 @@ class MmpaStubApiGe {
 
   virtual INT32 WaitPid(mmProcess pid, INT32 *status, INT32 options) {
     if ((options != MMPA_ZERO) && (options != M_WAIT_NOHANG) && (options != M_WAIT_UNTRACED)) {
-    return EN_INVALID_PARAM;
+      return EN_INVALID_PARAM;
     }
 
     INT32 ret = waitpid(pid, status, options);
@@ -70,7 +71,7 @@ class MmpaStubApiGe {
         if (WIFEXITED(*status)) {
           *status = WEXITSTATUS(*status);
         }
-        if(WIFSIGNALED(*status)) {
+        if (WIFSIGNALED(*status)) {
           *status = WTERMSIG(*status);
         }
       }
@@ -94,7 +95,7 @@ class MmpaStubApiGe {
       return EN_INVALID_PARAM;
     }
 
-    result = write(fd, mm_buf, (size_t) mm_count);
+    result = write(fd, mm_buf, (size_t)mm_count);
     if (result < MMPA_ZERO) {
       return EN_ERROR;
     }
@@ -117,8 +118,7 @@ class MmpaStubApiGe {
     return ret;
   }
 
-  virtual INT32 mmAccess2(const CHAR *pathName, INT32 mode)
-  {
+  virtual INT32 mmAccess2(const CHAR *pathName, INT32 mode) {
     if (pathName == NULL) {
       return EN_INVALID_PARAM;
     }
@@ -129,8 +129,7 @@ class MmpaStubApiGe {
     return EN_OK;
   }
 
-  virtual INT32 Access(const CHAR *path_name)
-  {
+  virtual INT32 Access(const CHAR *path_name) {
     if (path_name == NULL) {
       return EN_INVALID_PARAM;
     }
@@ -179,7 +178,7 @@ class MmpaStubApiGe {
 
 class MmpaStub {
  public:
-  static MmpaStub& GetInstance() {
+  static MmpaStub &GetInstance() {
     static MmpaStub instance;
     return instance;
   }
@@ -188,7 +187,7 @@ class MmpaStub {
     impl_ = impl;
   }
 
-  MmpaStubApiGe* GetImpl() {
+  MmpaStubApiGe *GetImpl() {
     return impl_.get();
   }
 
@@ -197,8 +196,7 @@ class MmpaStub {
   }
 
  private:
-  MmpaStub(): impl_(std::make_shared<MmpaStubApiGe>()) {
-  }
+  MmpaStub() : impl_(std::make_shared<MmpaStubApiGe>()) {}
 
   std::shared_ptr<MmpaStubApiGe> impl_;
 };

@@ -341,8 +341,8 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
       "SrcEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x], "
       "DstEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x]",
       server_ip, server_port, local_endpoint->loc.locType, local_endpoint->protocol, local_endpoint->commAddr.type,
-      local_endpoint->commAddr.id, remote_endpoint->loc.locType, remote_endpoint->protocol, remote_endpoint->commAddr.type,
-      remote_endpoint->commAddr.id);
+      local_endpoint->commAddr.id, remote_endpoint->loc.locType, remote_endpoint->protocol,
+      remote_endpoint->commAddr.type, remote_endpoint->commAddr.id);
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(InitBaseClient(server_ip, server_port, *local_endpoint, *remote_endpoint),
                       "[HixlClient] InitBaseClient failed");
@@ -370,8 +370,7 @@ Status HixlCSClient::RegMem(const char *mem_tag, const HcommMem *mem, MemHandle 
   *mem_handle = ep_mem_handle;
   Status ret = mem_store_.RecordMemory(false, mem->addr, mem->size);  // 记录client侧给endpoint分配的内存信息
   if (ret != SUCCESS) {
-    HIXL_LOGE(FAILED,
-              "[HixlClient] Client record memory failed. mem_addr = %p, mem_size = %u",mem->addr, mem->size);
+    HIXL_LOGE(FAILED, "[HixlClient] Client record memory failed. mem_addr = %p, mem_size = %u", mem->addr, mem->size);
     return FAILED;
   }
   HIXL_LOGI("[HixlClient] Memory register success. ");
@@ -843,8 +842,7 @@ Status HixlCSClient::UnRegMem(MemHandle mem_handle) {
   if (result == SUCCESS) {
     Status ret = mem_store_.UnrecordMemory(false, desc.mem.addr);  // 删掉记录中client侧给endpoint分配的内存信息
     if (ret != SUCCESS) {
-      HIXL_LOGE(FAILED,
-                "[HixlClient] Client record memory failed. mem_addr = %p",desc.mem.addr);
+      HIXL_LOGE(FAILED, "[HixlClient] Client record memory failed. mem_addr = %p", desc.mem.addr);
       return FAILED;
     }
     return SUCCESS;

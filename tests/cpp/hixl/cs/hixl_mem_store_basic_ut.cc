@@ -16,9 +16,9 @@ TEST(HixlMemStoreBasicTest, RecordValidateAndUnrecord) {
   HixlMemStore store;
   uint32_t kServerDataAddr = 1;
   uint32_t kClientDataAddr = 2;
-  void* saddr = &kServerDataAddr;
-  void* caddr = &kClientDataAddr;
-  constexpr uint32_t kBlockSizeBytes = 64;      // 远端数据块大小
+  void *saddr = &kServerDataAddr;
+  void *caddr = &kClientDataAddr;
+  constexpr uint32_t kBlockSizeBytes = 64;        // 远端数据块大小
   constexpr uint32_t kClientBufSizeBytes = 4096;  // 客户端缓冲区大小
   // 记录 server/client 内存
   EXPECT_EQ(store.RecordMemory(true, saddr, kClientBufSizeBytes), hixl::SUCCESS);
