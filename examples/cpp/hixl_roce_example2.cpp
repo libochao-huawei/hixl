@@ -326,7 +326,6 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
 
 int32_t main(int32_t argc, char **argv) {
   bool is_client = false;
-  bool use_buffer_pool = false;
   std::string device_id;
   std::string local_engine;
   std::string remote_engine;
@@ -363,7 +362,7 @@ int32_t main(int32_t argc, char **argv) {
   }
 
   if (op_type != "write" && op_type != "read") {
-    printf("[ERROR] Invalid value for transfer_op: %s\n", transfer_op_str.c_str());
+    printf("[ERROR] Invalid value for transfer_op: %s\n", op_type.c_str());
     return -1;
   }
 
