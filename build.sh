@@ -61,7 +61,6 @@ check_build_type() {
 checkopts() {
   VERBOSE=""
   THREAD_NUM=8
-
   OUTPUT_PATH="${BASEPATH}/build_out"
   CANN_3RD_LIB_PATH="$BASEPATH/third_party"
   CMAKE_BUILD_TYPE="Release"
