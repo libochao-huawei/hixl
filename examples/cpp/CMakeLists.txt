@@ -26,6 +26,8 @@ set(targets_list
     "server_server_d2d"
     "fabric_mem_d2d"
     "hixl_roce_example"
+    "hixl_roce_example2"
+    "hixl_roce_example3"
 )
 
 file(GLOB COMMON_FILES "${HIXL_CODE_DIR}/benchmarks/common/*.cpp")

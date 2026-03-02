@@ -8,6 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+// 基本功能测试
+
 #include <string>
 #include <map>
 #include <sstream>
