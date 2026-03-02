@@ -23,14 +23,13 @@
 using namespace hixl;
 namespace {
 constexpr int32_t kWaitTransTime = 20;
-constexpr int32_t kExpectedArgCnt = 8;
+constexpr int32_t kExpectedArgCnt = 7;
 constexpr uint32_t kArgIndexDeviceId = 1;
 constexpr uint32_t kArgIndexLocalEngine = 2;
 constexpr uint32_t kArgIndexRemoteEngine = 3;
 constexpr uint32_t kArgIndexTcpPort = 4;
 constexpr uint32_t kArgIndexTransferMode = 5;
 constexpr uint32_t kArgIndexTransferOp = 6;
-constexpr uint32_t kArgIndexUseBufferPool = 7;
 constexpr uint32_t kTransferMemSize = 134217728;  // 128M
 constexpr uint32_t kBaseBlockSize = 1048576;       // 1M
 constexpr uint32_t kExecuteRepeatNum = 3;
@@ -95,13 +94,15 @@ void FillMapWithJsonFileContent(StringMap &target_map, const std::string &json_f
   }
 }
 
-int32_t Initialize(Hixl &hixl_engine, const char *local_engine, bool use_buffer_pool) {
+int Initialize(Hixl &hixl_engine, const char *local_engine, bool is_client) {
   std::map<AscendString, AscendString> options;
-  FillMapWithJsonFileContent(options);
-  // 在不需要使用中转buffer进行传输的场景下，关闭中转内存池
-  if (!use_buffer_pool) {
-    options["BufferPool"] = "0:0";
+  if (is_client) {
+    FillMapWithJsonFileContent(options, kClientJsonFilePath, kMapKey, true);
+  } else {
+    FillMapWithJsonFileContent(options, kServerJsonFilePath, kMapKey, true);
   }
+  // 在不需要使用中转buffer进行传输的场景下，关闭中转内存池
+  options["BufferPool"] = "0:0";
   auto ret = hixl_engine.Initialize(local_engine, options);
   if (ret != SUCCESS) {
     printf("[ERROR] Initialize failed, ret = %u\n", ret);
@@ -111,7 +112,7 @@ int32_t Initialize(Hixl &hixl_engine, const char *local_engine, bool use_buffer_
   return 0;
 }
 
-int32_t Connect(Hixl &hixl_engine, const char *remote_engine) {
+int Connect(Hixl &hixl_engine, const char *remote_engine) {
   auto ret = hixl_engine.Connect(remote_engine);
   if (ret != SUCCESS) {
     printf("[ERROR] Connect failed, ret = %u\n", ret);
@@ -121,18 +122,18 @@ int32_t Connect(Hixl &hixl_engine, const char *remote_engine) {
   return 0;
 }
 
-void Disconnect(Hixl &hixl_engine, const char *remote_engine, bool connected) {
-  if (connected) {
-    auto ret = hixl_engine.Disconnect(remote_engine);
-    if (ret != SUCCESS) {
-      printf("[ERROR] Disconnect failed, ret = %u\n", ret);
-    } else {
-      printf("[INFO] Disconnect success\n");
-    }
+int Disconnect(Hixl &hixl_engine, const char *remote_engine) {
+  auto ret = hixl_engine.Disconnect(remote_engine);
+  if (ret != SUCCESS) {
+    printf("[ERROR] Disconnect failed, ret = %u\n", ret);
+    return -1;
   }
+  printf("[INFO] Disconnect success\n");
+  return 0;
 }
 
-int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine, uint64_t dst_addr, TransferOp transfer_op) {
+int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine, uint64_t dst_addr, std::string op_type) {
+  TransferOp type = op_type == "read" ? READ : WRITE;
   for (uint32_t i = 0; i <= kExecuteRepeatNum; i++) {
     auto block_size = kBaseBlockSize * (1 << i);
     auto trans_num = kTransferMemSize / block_size;
@@ -146,7 +147,7 @@ int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine, uin
       descs.emplace_back(desc);
     }
     const auto start = std::chrono::steady_clock::now();
-    auto ret = hixl_engine.TransferSync(remote_engine, transfer_op, descs, 1000 * kWaitTransTime);
+    auto ret = hixl_engine.TransferSync(remote_engine, type, descs, 1000 * kWaitTransTime);
     if (ret != SUCCESS) {
       printf("[ERROR] TransferSync failed, ret = %u\n", ret);
       return -1;
@@ -162,18 +163,17 @@ int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine, uin
   return 0;
 }
 
-void Finalize(Hixl &hixl_engine, bool need_register, bool is_host, const std::vector<MemHandle> &handles,
+void Finalize(Hixl &hixl_engine, bool is_host, const std::vector<MemHandle> &handles,
                     const std::vector<void *> &buffers = {}) {
-  if (need_register) {
-    for (const auto &handle : handles) {
-      auto ret = hixl_engine.DeregisterMem(handle);
-      if (ret != 0) {
-        printf("[ERROR] DeregisterMem failed, ret = %u\n", ret);
-      } else {
-        printf("[INFO] DeregisterMem success\n");
-      }
+  for (const auto &handle : handles) {
+    auto ret = hixl_engine.DeregisterMem(handle);
+    if (ret != 0) {
+      printf("[ERROR] DeregisterMem failed, ret = %u\n", ret);
+    } else {
+      printf("[INFO] DeregisterMem success\n");
     }
   }
+
   if (is_host) {
     for (const auto &buffer : buffers) {
       free(buffer);
@@ -187,7 +187,7 @@ void Finalize(Hixl &hixl_engine, bool need_register, bool is_host, const std::ve
 }
 
 int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t tcp_port, const std::string &transfer_mode, 
-                  TransferOp transfer_op, bool use_buffer_pool) {
+                  std::string op_type, bool is_client) {
   printf("[INFO] client start\n");
 
   // 通过TCP接收Server侧的内存地址
@@ -208,7 +208,7 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
 
   // 1. 初始化
   Hixl hixl_engine;
-  if (Initialize(hixl_engine, local_engine, use_buffer_pool) != 0) {
+  if (Initialize(hixl_engine, local_engine, is_client) != 0) {
     printf("[ERROR] Initialize Hixl failed\n");
     return -1;
   }
@@ -217,7 +217,6 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   int32_t *src = nullptr;
   void *tmp = nullptr;
   MemHandle handle = nullptr;
-  bool connected = false;
   bool is_host = (transfer_mode == "h2d" || transfer_mode == "h2h");
   if (is_host) {
     tmp = (void*)malloc(kTransferMemSize);
@@ -226,19 +225,16 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   }
   src = static_cast<int32_t*>(tmp);
 
-  bool need_register = !(is_host && use_buffer_pool);
-  if (need_register) {
-    MemDesc desc{};
-    desc.addr = reinterpret_cast<uintptr_t>(src);
-    desc.len = kTransferMemSize;
-    auto ret = hixl_engine.RegisterMem(desc, is_host ? MemType::MEM_HOST : MEM_DEVICE, handle);
-    if (ret != SUCCESS) {
-      printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
-      Finalize(hixl_engine, need_register, is_host, {handle}, {src});
-      return -1;
-    }
-    printf("[INFO] RegisterMem success\n");
+  MemDesc desc{};
+  desc.addr = reinterpret_cast<uintptr_t>(src);
+  desc.len = kTransferMemSize;
+  auto ret = hixl_engine.RegisterMem(desc, is_host ? MemType::MEM_HOST : MEM_DEVICE, handle);
+  if (ret != SUCCESS) {
+    printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
+    Finalize(hixl_engine, is_host, {handle}, {src});
+    return -1;
   }
+  printf("[INFO] RegisterMem success\n");
 
   // 等待server注册完成
   if (tcp_server.ReceiveTaskStatus()) {
@@ -247,43 +243,43 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
 
   // 3. 与server建链
   if (Connect(hixl_engine, remote_engine) != 0) {
-    Finalize(hixl_engine, need_register, is_host, {handle}, {src});
+    Finalize(hixl_engine, is_host, {handle}, {src});
     return -1;
   }
-  connected = true;
 
   // 4. 与server进行内存传输
-  if (Transfer(hixl_engine, *src, remote_engine, remote_addr, transfer_op) != 0) {
-    Disconnect(hixl_engine, remote_engine, connected);
-    Finalize(hixl_engine, need_register, is_host, {handle}, {src});
+  if (Transfer(hixl_engine, *src, remote_engine, remote_addr, op_type) != 0) {
+    Disconnect(hixl_engine, remote_engine);
+    Finalize(hixl_engine, is_host, {handle}, {src});
     return -1;
   }
 
   // 断链
-  Disconnect(hixl_engine, remote_engine, connected);
+  Disconnect(hixl_engine, remote_engine);
   // 通过TCP通知Server侧已传输完成
   (void)tcp_server.SendTaskStatus();
   tcp_server.DisConnectClient();
   tcp_server.StopServer();
 
   // 5. 解注册，释放内存，析构
-  Finalize(hixl_engine, need_register, is_host, {handle}, {src});
+  Finalize(hixl_engine, is_host, {handle}, {src});
   printf("[INFO] Client Sample end\n");
   return 0;
 }
 
-int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t tcp_port, const std::string &transfer_mode, 
-                  bool use_buffer_pool) {
+int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t tcp_port, std::string &transfer_mode, 
+                  bool is_client) {
   printf("[INFO] server start\n");
   // 1. 初始化
   Hixl hixl_engine;
-  if (Initialize(hixl_engine, local_engine, use_buffer_pool) != 0) {
+  if (Initialize(hixl_engine, local_engine, is_client) != 0) {
     printf("[ERROR] Initialize Hixl failed\n");
     return -1;
   }
   // 2. 注册内存地址
+  MemType mem_type = (transfer_mode == "h2h" || transfer_mode == "d2h") ? MEM_HOST : MEM_DEVICE;
+  bool is_host = mem_type == MEM_HOST;
   void *buffer = nullptr;
-  bool is_host = (transfer_mode == "d2h" || transfer_mode == "h2h");
   if (is_host){
     buffer = (void*)malloc(kTransferMemSize);
   } else{
@@ -299,22 +295,18 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   (void)tcp_client.SendUint64(addr);
 
   MemHandle handle = nullptr;
-  auto mem_type = is_host ? MemType::MEM_HOST : MemType::MEM_DEVICE;
 
-  bool need_register = !(use_buffer_pool && transfer_mode == "d2h");
-  if (need_register){
-    MemDesc desc{};
-    desc.addr = addr;
-    desc.len = kTransferMemSize;
-    auto ret = hixl_engine.RegisterMem(desc, mem_type, handle);
-    if (ret != SUCCESS) {
-      printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
-      Finalize(hixl_engine, need_register, is_host, {handle}, {buffer});
-      return -1;
-    }
-    // 3. RegisterMem成功后，将地址保存到本地文件中等待client读取
-    printf("[INFO] RegisterMem success, addr:%p\n", buffer);
+  MemDesc desc{};
+  desc.addr = addr;
+  desc.len = kTransferMemSize;
+  auto ret = hixl_engine.RegisterMem(desc, mem_type, handle);
+  if (ret != SUCCESS) {
+    printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
+    Finalize(hixl_engine, is_host, {handle}, {buffer});
+    return -1;
   }
+  // 3. RegisterMem成功后，将地址保存到本地文件中等待client读取
+  printf("[INFO] RegisterMem success, addr:%p\n", buffer);
 
   // 通过TCP通知Client侧内存已注册
   (void)tcp_client.SendTaskStatus();
@@ -327,7 +319,7 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   tcp_client.Disconnect();
 
   // 5. 解注册，释放内存，析构
-  Finalize(hixl_engine, need_register, is_host, {handle}, {buffer});
+  Finalize(hixl_engine, is_host, {handle}, {buffer});
   printf("[INFO] Server Sample end\n");
   return 0;
 }
@@ -340,23 +332,20 @@ int32_t main(int32_t argc, char **argv) {
   std::string remote_engine;
   std::string tcp_port_str;
   std::string transfer_mode;
-  std::string transfer_op_str;
-  std::string use_buffer_pool_str;
+  std::string op_type;
   if (argc == kExpectedArgCnt) {
     device_id = argv[kArgIndexDeviceId];
     local_engine = argv[kArgIndexLocalEngine];
     remote_engine = argv[kArgIndexRemoteEngine];
     tcp_port_str = argv[kArgIndexTcpPort];
     transfer_mode = argv[kArgIndexTransferMode];
-    transfer_op_str = argv[kArgIndexTransferOp];
-    use_buffer_pool_str = argv[kArgIndexUseBufferPool];
-    use_buffer_pool = (use_buffer_pool_str == "true");
-    is_client = (remote_engine.find(':') != std::string::npos);
-    printf("[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, transfer_op = %s, use_buffer_pool = %s\n", 
+    op_type = argv[kArgIndexTransferOp];
+    is_client = (local_engine.find(':') == std::string::npos);
+    printf("[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, transfer_op = %s\n", 
             device_id.c_str(), local_engine.c_str(), remote_engine.c_str(), tcp_port_str.c_str(), 
-            transfer_mode.c_str(), transfer_op_str.c_str(), use_buffer_pool_str.c_str());
+            transfer_mode.c_str(), transfer_op_str.c_str());
   } else {
-    printf("[ERROR] Expect 7 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, transfer_op, use_buffer_pool), but got %d\n", argc - 1);
+    printf("[ERROR] Expect 6 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, transfer_op), but got %d\n", argc - 1);
     return -1;
   }
   int32_t device = std::stoi(device_id);
@@ -373,17 +362,16 @@ int32_t main(int32_t argc, char **argv) {
     return -1;
   }
 
-  if (transfer_op_str != "write" && transfer_op_str != "read") {
+  if (op_type != "write" && op_type != "read") {
     printf("[ERROR] Invalid value for transfer_op: %s\n", transfer_op_str.c_str());
     return -1;
   }
-  TransferOp transfer_op = (transfer_op_str == "read") ? TransferOp::READ : TransferOp::WRITE;
 
   int32_t ret = 0;
   if (is_client) {
-    ret = RunClient(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, transfer_op, use_buffer_pool);
+    ret = RunClient(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, op_type, is_client);
   } else {
-    ret = RunServer(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, use_buffer_pool);
+    ret = RunServer(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, is_client);
   }
   CHECK_ACL_RETURN(aclrtResetDevice(device));
   return ret;
