@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "rank_table_generator.h"
@@ -29,7 +30,7 @@ constexpr const char kConfigVersionV1[] = "1.0";
 constexpr const char kConfigVersionV2[] = "1.2";
 constexpr uint32_t kVersionMaxLen = 32U;
 constexpr uint32_t kBufferMaxSize = 128U;
-}
+}  // namespace
 
 std::unique_ptr<RankTableGenerator> RankTableGeneratorFactory::Create(const std::string &local_comm_res,
                                                                       const std::string &peer_comm_res) {
@@ -50,8 +51,8 @@ std::unique_ptr<RankTableGenerator> RankTableGeneratorFactory::Create(const std:
   if ((local_version != kConfigVersionV1 && local_version != kConfigVersionV2) ||
       (peer_version != kConfigVersionV1 && peer_version != kConfigVersionV2)) {
     LLMLOGE(ge::LLM_PARAM_INVALID, "version in option:%s only support %s and %s, local version:%s, peer version:%s.",
-           llm_datadist::OPTION_LOCAL_COMM_RES, kConfigVersionV1, kConfigVersionV2,
-           local_version.c_str(), peer_version.c_str());
+            llm_datadist::OPTION_LOCAL_COMM_RES, kConfigVersionV1, kConfigVersionV2, local_version.c_str(),
+            peer_version.c_str());
     return nullptr;
   }
 
@@ -62,23 +63,19 @@ std::unique_ptr<RankTableGenerator> RankTableGeneratorFactory::Create(const std:
   return MakeUnique<RankTableGeneratorV2>(local_comm_res, peer_comm_res);
 }
 
-ge::Status LocalCommResGenerator::Generate(const std::string &server_id,
-                                           int32_t device_id,
+ge::Status LocalCommResGenerator::Generate(const std::string &server_id, int32_t device_id,
                                            std::string &local_comm_res) {
-  const static std::set<std::string> kV2Version = {
-      "Ascend910_9391", "Ascend910_9381", "Ascend910_9392", "Ascend910_9382", "Ascend910_9372", "Ascend910_9362"
-  };
+  const static std::set<std::string> kV2Version = {"Ascend910_9391", "Ascend910_9381", "Ascend910_9392",
+                                                   "Ascend910_9382", "Ascend910_9372", "Ascend910_9362"};
   const char *version = aclrtGetSocName();
   LLM_CHECK_NOTNULL(version, "aclrt get soc name");
   const auto &it = kV2Version.find(version);
   if (it != kV2Version.cend()) {
     LLM_CHK_STATUS_RET(RankTableGeneratorV2::GenerateLocalCommRes(server_id, device_id, local_comm_res),
-                      "Failed to generate local comm res, server_id:%s, device_id:%d.",
-                      server_id.c_str(), device_id);
+                       "Failed to generate local comm res, server_id:%s, device_id:%d.", server_id.c_str(), device_id);
   } else {
     LLM_CHK_STATUS_RET(RankTableGeneratorV1::GenerateLocalCommRes(server_id, device_id, local_comm_res),
-                      "Failed to generate local comm res, server_id:%s, device_id:%d.",
-                      server_id.c_str(), device_id);
+                       "Failed to generate local comm res, server_id:%s, device_id:%d.", server_id.c_str(), device_id);
   }
   return ge::SUCCESS;
 }
@@ -107,7 +104,8 @@ ge::Status LocalCommResGenerator::GetHccnOutput(const std::string &command, std:
   return ge::SUCCESS;
 }
 
-ge::Status LocalCommResGenerator::ExecuteCommandAndPassIp(const std::string &command, std::string &output, std::string &ip) {
+ge::Status LocalCommResGenerator::ExecuteCommandAndPassIp(const std::string &command, std::string &output,
+                                                          std::string &ip) {
   LLM_CHK_STATUS_RET(GetHccnOutput(command, output), "Getting hccn output failed.");
   ExtractIpAddress(output, ip);
   if (ip.empty()) {
@@ -139,11 +137,11 @@ ge::Status LocalCommResGenerator::GetDeviceIp(int32_t phy_device_id, std::string
   char_t resolved_path[MMPA_MAX_PATH] = {};
   auto mm_ret = mmRealPath(kFilePath, &(resolved_path[0U]), MMPA_MAX_PATH);
   if (mm_ret == EN_OK) {
-    LLM_CHK_BOOL_RET_STATUS(mmAccess(resolved_path) == EN_OK,
-                            ge::FAILED, "Can not access file:%s, reason:%s", resolved_path, strerror(errno));
+    LLM_CHK_BOOL_RET_STATUS(mmAccess(resolved_path) == EN_OK, ge::FAILED, "Can not access file:%s, reason:%s",
+                            resolved_path, strerror(errno));
 
     std::ifstream file(resolved_path);
-    LLM_CHK_BOOL_RET_STATUS(file.is_open(), ge::FAILED, "Faile to open file:%s", kFilePath);
+    LLM_CHK_BOOL_RET_STATUS(file.is_open(), ge::FAILED, "Failed to open file:%s", kFilePath);
 
     std::string line;
     std::string target_key = "address_" + std::to_string(phy_device_id) + "=";
@@ -156,8 +154,8 @@ ge::Status LocalCommResGenerator::GetDeviceIp(int32_t phy_device_id, std::string
       }
       const auto addess_val = hixl::Split(line, '=');
       LLM_CHK_BOOL_RET_STATUS(addess_val.size() == kValidItemNum, ge::FAILED,
-                            "address format is invalid: %s, expect address_${phy_device_id}=${device_ip}",
-                            line.c_str());
+                              "address format is invalid: %s, expect address_${phy_device_id}=${device_ip}",
+                              line.c_str());
       device_ip = addess_val.back();
       LLM_CHK_BOOL_RET_STATUS(hixl::CheckIp(device_ip) == hixl::SUCCESS, ge::LLM_PARAM_INVALID,
                               "device ip:%s is invalid.", device_ip.c_str());
@@ -179,4 +177,3 @@ ge::Status LocalCommResGenerator::GetDeviceIp(int32_t phy_device_id, std::string
   return ge::SUCCESS;
 }
 }  // namespace llm
-

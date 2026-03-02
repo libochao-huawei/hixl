@@ -71,8 +71,8 @@ Status LoadBinaryFromJson(const char *json_path, aclrtBinHandle &bin_handle) {
   load_options.options = &option;
   aclError aerr = aclrtBinaryLoadFromFile(resolved_path, &load_options, &bin_handle);
   if (aerr != ACL_SUCCESS) {
-    HIXL_LOGE(FAILED, "[LoadKernel] aclrtBinaryLoadFromFile failed. path=%s ret=%d",
-              resolved_path, static_cast<int32_t>(aerr));
+    HIXL_LOGE(FAILED, "[LoadKernel] aclrtBinaryLoadFromFile failed. path=%s ret=%d", resolved_path,
+              static_cast<int32_t>(aerr));
     return FAILED;
   }
   HIXL_LOGI("[LoadKernel] aclrtBinaryLoadFromFile success. path=%s handle=%p", resolved_path, bin_handle);
@@ -80,8 +80,6 @@ Status LoadBinaryFromJson(const char *json_path, aclrtBinHandle &bin_handle) {
 }
 
 Status GetFuncHandle(aclrtBinHandle bin_handle, const char *func_name, aclrtFuncHandle &func_handle) {
-
-
   if (bin_handle == nullptr) {
     return PARAM_INVALID;
   }
@@ -89,14 +87,12 @@ Status GetFuncHandle(aclrtBinHandle bin_handle, const char *func_name, aclrtFunc
     return PARAM_INVALID;
   }
 
-
   aclError aerr = aclrtBinaryGetFunction(bin_handle, func_name, &func_handle);
   if (aerr != ACL_SUCCESS) {
-    HIXL_LOGE(FAILED, "[LoadKernel] aclrtBinaryGetFunction failed. func=%s ret=%d",
-              func_name, static_cast<int32_t>(aerr));
+    HIXL_LOGE(FAILED, "[LoadKernel] aclrtBinaryGetFunction failed. func=%s ret=%d", func_name,
+              static_cast<int32_t>(aerr));
     return FAILED;
   }
-
 
   HIXL_LOGI("[LoadKernel] resolve stub success. func=%s stub=%p", func_name, func_handle);
   return SUCCESS;
@@ -104,8 +100,8 @@ Status GetFuncHandle(aclrtBinHandle bin_handle, const char *func_name, aclrtFunc
 
 }  // namespace
 
-Status LoadUbKernelAndGetHandles(const char *func_get, const char *func_put,
-                                 aclrtBinHandle &bin_handle, UbFuncHandles &func_handles) {
+Status LoadUbKernelAndGetHandles(const char *func_get, const char *func_put, aclrtBinHandle &bin_handle,
+                                 UbFuncHandles &func_handles) {
   func_handles.batchGet = nullptr;
   func_handles.batchPut = nullptr;
 

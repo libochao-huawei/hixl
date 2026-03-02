@@ -41,7 +41,7 @@ body:
       label: 日志 / 截图
       description: 提供尽可能多的日志/结果信息
     validations:
-      required: true  
+      required: true
   - type: textarea
     attributes:
       label: 备注

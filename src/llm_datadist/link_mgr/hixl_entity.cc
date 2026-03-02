@@ -15,7 +15,7 @@
 
 namespace llm {
 namespace {
-constexpr int32_t kDisconnectTimeoutMs = 30000; // default 30s
+constexpr int32_t kDisconnectTimeoutMs = 30000;  // default 30s
 }
 
 ge::Status HixlEntity::Initialize(int32_t timeout_ms) {
@@ -28,13 +28,10 @@ ge::Status HixlEntity::Initialize(int32_t timeout_ms) {
                           remote_engine_.c_str(), timeout_ms);
 
   int32_t client_fd = -1;
-  LLM_CHK_BOOL_RET_STATUS(hixl::CtrlMsgPlugin::Connect(remote_ip_, remote_port_,
-                                                       client_fd, timeout_ms) == hixl::SUCCESS,
-                          ge::FAILED,
-                          "Connect server %s failed", remote_engine_.c_str());
-  ScopeGuard socket_guard([client_fd]() {
-    close(client_fd);
-  });
+  LLM_CHK_BOOL_RET_STATUS(
+      hixl::CtrlMsgPlugin::Connect(remote_ip_, remote_port_, client_fd, timeout_ms) == hixl::SUCCESS, ge::FAILED,
+      "Connect server %s failed", remote_engine_.c_str());
+  ScopeGuard socket_guard([client_fd]() { close(client_fd); });
   hixl::CtrlMsgHeader header{};
   header.magic = hixl::kMagicNumber;
   header.body_size = static_cast<uint64_t>(sizeof(hixl::CtrlMsgType));
@@ -43,8 +40,8 @@ ge::Status HixlEntity::Initialize(int32_t timeout_ms) {
       hixl::CtrlMsgPlugin::Send(client_fd, &header, static_cast<uint64_t>(sizeof(header))) == hixl::SUCCESS, ge::FAILED,
       "Failed to send cache table header");
   LLM_CHK_BOOL_RET_STATUS(
-      hixl::CtrlMsgPlugin::Send(client_fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))) == hixl::SUCCESS, ge::FAILED,
-      "Failed to send cache table type");
+      hixl::CtrlMsgPlugin::Send(client_fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))) == hixl::SUCCESS,
+      ge::FAILED, "Failed to send cache table type");
   CacheTableInfo info{};
   LLM_CHK_STATUS_RET(RecvCacheTableResp(client_fd, info, timeout_ms), "Failed to recv cache table info");
   auto &remote_mems = GetRemoteMems();
@@ -63,10 +60,9 @@ ge::Status HixlEntity::RecvCacheTableResp(int32_t fd, CacheTableInfo &cache_tabl
       ge::FAILED, "Failed to recv cache table header, timeout:%d", timeout_ms);
   LLM_CHK_BOOL_RET_STATUS(header.magic == hixl::kMagicNumber, ge::LLM_PARAM_INVALID,
                           "Invalid magic:0x%X for cache table resp", header.magic);
-  LLM_CHK_BOOL_RET_STATUS(
-      header.body_size == sizeof(hixl::CtrlMsgType) + sizeof(CacheTableInfo), ge::LLM_PARAM_INVALID,
-      "Invalid body_size in RecvCacheTableInfoResp, body_size=%" PRIu64 ", must be equal %zu",
-      header.body_size, sizeof(hixl::CtrlMsgType) + sizeof(CacheTableInfo));
+  LLM_CHK_BOOL_RET_STATUS(header.body_size == sizeof(hixl::CtrlMsgType) + sizeof(CacheTableInfo), ge::LLM_PARAM_INVALID,
+                          "Invalid body_size in RecvCacheTableInfoResp, body_size=%" PRIu64 ", must be equal %zu",
+                          header.body_size, sizeof(hixl::CtrlMsgType) + sizeof(CacheTableInfo));
 
   hixl::CtrlMsgType msg_type{};
   LLM_CHK_BOOL_RET_STATUS(
@@ -85,13 +81,14 @@ ge::Status HixlEntity::RecvCacheTableResp(int32_t fd, CacheTableInfo &cache_tabl
 ge::Status HixlEntity::Finalize(bool force) {
   if (!force) {
     LLM_CHK_BOOL_RET_STATUS(engine_->Disconnect(remote_engine_.c_str(), kDisconnectTimeoutMs) == hixl::SUCCESS,
-                            ge::FAILED,
-                            "Failed to disconnect to remote engine, remote_engine:%s.", remote_engine_.c_str());
+                            ge::FAILED, "Failed to disconnect to remote engine, remote_engine:%s.",
+                            remote_engine_.c_str());
   }
   return ge::SUCCESS;
 }
 
-ge::Status HixlEntity::BatchTransfer(std::list<HcclOneSideOpDesc> &tasks, bool is_put, bool reversed, int32_t timeout_ms) {
+ge::Status HixlEntity::BatchTransfer(std::list<HcclOneSideOpDesc> &tasks, bool is_put, bool reversed,
+                                     int32_t timeout_ms) {
   std::vector<hixl::TransferOpDesc> op_descs;
   LLMLOGI("task num = %zu", tasks.size());
   while (!tasks.empty()) {
@@ -106,10 +103,9 @@ ge::Status HixlEntity::BatchTransfer(std::list<HcclOneSideOpDesc> &tasks, bool i
     desc.len = op_desc.count;
     op_descs.emplace_back(desc);
   }
-  LLM_CHK_BOOL_RET_STATUS(engine_->TransferSync(
-      remote_engine_.c_str(), is_put ? hixl::WRITE : hixl::READ, op_descs, timeout_ms) == hixl::SUCCESS,
-      ge::FAILED,
-      "Failed to batch transfer, remote_engine:%s.", remote_engine_.c_str());
+  LLM_CHK_BOOL_RET_STATUS(engine_->TransferSync(remote_engine_.c_str(), is_put ? hixl::WRITE : hixl::READ, op_descs,
+                                                timeout_ms) == hixl::SUCCESS,
+                          ge::FAILED, "Failed to batch transfer, remote_engine:%s.", remote_engine_.c_str());
   return ge::SUCCESS;
 }
 

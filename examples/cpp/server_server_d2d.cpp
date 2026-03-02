@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include <numeric>
@@ -95,8 +96,8 @@ int32_t Transfer(Hixl &hixl_engine, uint8_t *&buffer, uint8_t *&buffer2, const c
     std::this_thread::sleep_for(std::chrono::seconds(kWaitTime));
     char value[kMaxEngineNameLen] = {};
     CHECK_ACL(aclrtMemcpy(value, kMaxEngineNameLen, buffer, strlen(remote_engine), ACL_MEMCPY_DEVICE_TO_HOST));
-    printf("[INFO] Wait peer TransferSync write end, remote_addr:%p, value = %s\n", reinterpret_cast<void *>(remote_addr),
-           value);
+    printf("[INFO] Wait peer TransferSync write end, remote_addr:%p, value = %s\n",
+           reinterpret_cast<void *>(remote_addr), value);
     if (std::string(remote_engine) != value) {
       printf("[ERROR] Failed to check peer write value:%s, expect:%s\n", value, remote_engine);
       return -1;

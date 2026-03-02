@@ -71,5 +71,3 @@ class LlmCacheManagerStEx(unittest.TestCase):
         except LLMException:
             has_err = True
         self.assertEqual(has_err, True)
-
-

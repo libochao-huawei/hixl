@@ -52,7 +52,6 @@ Status ParseIpAddress(const std::string &ip_str, CommAddr &addr) {
   return PARAM_INVALID;
 }
 
-
 Status CheckIp(const std::string &ip) {
   struct in_addr addr;
   struct sockaddr_in6 ipv6_addr;

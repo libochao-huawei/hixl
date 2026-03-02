@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #ifndef CANN_GRAPH_ENGINE_RUNTIME_LLM_ENGINE_INC_LLM_V2_DATADIST_H
@@ -18,7 +19,7 @@
 #include "cache_mgr/cache_manager.h"
 
 namespace llm {
-class LLMDataDistV2  {
+class LLMDataDistV2 {
  public:
   explicit LLMDataDistV2(uint64_t cluster_id) : cluster_id_(cluster_id) {};
 
@@ -28,8 +29,8 @@ class LLMDataDistV2  {
 
   void LLMDataDistFinalize();
 
-  ge::Status Link(std::string &cluster_name,
-                  const std::map<uint64_t, uint32_t> &cluster2rank, std::string &rank_table, uint64_t &comm_id);
+  ge::Status Link(std::string &cluster_name, const std::map<uint64_t, uint32_t> &cluster2rank, std::string &rank_table,
+                  uint64_t &comm_id);
 
   ge::Status Unlink(uint64_t comm_id);
 
@@ -75,8 +76,7 @@ class LLMDataDistV2  {
   void DoInnerFinalize();
   virtual ge::Status DoInitialize(const std::map<ge::AscendString, ge::AscendString> &options);
   virtual void DoFinalize();
-  ge::Status DoInnerInitialize(int32_t device_id,
-                               bool remote_cache_accessible,
+  ge::Status DoInnerInitialize(int32_t device_id, bool remote_cache_accessible,
                                const std::map<ge::AscendString, ge::AscendString> &options);
 
   uint64_t cluster_id_;

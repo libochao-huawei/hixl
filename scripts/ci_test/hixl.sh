@@ -90,7 +90,7 @@ install_hixl() {
     if [[ $? -eq 0 ]]; then
         echo "Install success."
     else
-        echo "Intall failed."
+        echo "Install failed."
         exit 1
     fi
 }
@@ -115,7 +115,7 @@ main() {
     local test_executed=false
     local install_executed=false
     local samples_executed=false
-    
+
     if [ $# -eq 0 ]; then
         build_hixl --examples
         test_hixl
@@ -133,7 +133,7 @@ main() {
         bash "${HIXLPATH}/tests/run_test.sh" -h | awk '/Options:/{flag=1; next} flag'
         exit 0
     fi
-    
+
     while [ $# -gt 0 ]; do
         case "$1" in
             hixl_build)
@@ -183,7 +183,7 @@ main() {
         esac
         shift
     done
-    
+
     # 按顺序执行各阶段命令
     if $build_executed; then
         build_hixl "${build_args[@]}"
@@ -196,7 +196,7 @@ main() {
     if $install_executed; then
         install_hixl "${install_args[@]}"
     fi
-    
+
     if $samples_executed; then
         if [ ${#samples_args[@]} -gt 0 ]; then
             echo "Running run_example.sh with parameters: ${samples_args[*]}"
@@ -206,7 +206,7 @@ main() {
             run_samples 0 2
         fi
     fi
-    
+
     if ! $build_executed && ! $test_executed && ! $install_executed && ! $samples_executed; then
         build_hixl --examples
         test_hixl

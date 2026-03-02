@@ -732,7 +732,7 @@ layer\_range参数异常会抛出LLMException异常。
 
 大模型推理过程中，如果发生内存UCE故障，即返回错误码ACL\_ERROR\_RT\_DEVICE\_MEM\_ERROR，上层框架需要先判断发生该故障的内存是否为KV Cache内存，如果不是，请参考[PyTorch](https://www.hiascend.com/developer/software/ai-frameworks/pytorch)的torch\_npu.npu.restart\_device接口的说明获取并修复内存UCE的错误虚拟地址。如果是KV Cache内存，还需要再调用该接口修复注册给网卡的KV Cache内存。
 
->![](public_sys-resources/icon-note.gif) **说明：** 
+>![](public_sys-resources/icon-note.gif) **说明：**
 >本接口为预留接口，暂不支持。
 
 **函数原型**<a name="zh-cn_topic_0000001481404214_zh-cn_topic_0000001488949573_zh-cn_topic_0000001357384997_zh-cn_topic_0000001312399929_section24431028171314"></a>
@@ -833,14 +833,3 @@ unregister_cache(cache_id: int) -> None
 
 -   当前仅支持配置local\_comm\_res场景使用。
 -   调用该接口之前，需要先调用unlink进行断链，否则会导致HCCL报错。
-
-
-
-
-
-
-
-
-
-
-

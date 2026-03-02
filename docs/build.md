@@ -9,7 +9,7 @@
 
 #### 方式一: 手动安装
 
-  以下所列为源码编译用到的依赖，请注意版本要求。  
+  以下所列为源码编译用到的依赖，请注意版本要求。
 
   - GCC >= 7.3.0
 
@@ -29,7 +29,7 @@
 #### 方式二：使用Docker容器
 
   **配套 X86 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_x86:lv4_latest`
-  
+
   **配套 ARM 构建镜像地址**：`swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_arm:lv4_latest`
 
   更多版本镜像，可根据需要在[Ascend-CANN镜像](https://www.hiascend.com/developer/ascendhub/detail/17da20d1c2b6493cb38765adeba85884)自行选择下载。
@@ -56,11 +56,11 @@
   配套构建镜像已安装了上述依赖、CANN Toolkit开发套件包以及CANN ops算子包，安装路径为`/home/jenkins/Ascend`。
   完成上述步骤后可直接进入[配置环境变量](#5-配置环境变量)章节。
 
-### 2. **安装驱动与固件（运行样例依赖）**  
+### 2. **安装驱动与固件（运行样例依赖）**
 
   驱动与固件为运行样例时的依赖，且必须安装。若仅编译源码或进行本地验证，可跳过此步骤。
 
-  驱动与固件的安装指导，可详见[《CANN软件安装指南》](https://www.hiascend.com/document/redirect/CannCommunityInstSoftware)。  
+  驱动与固件的安装指导，可详见[《CANN软件安装指南》](https://www.hiascend.com/document/redirect/CannCommunityInstSoftware)。
 
 ### 3. **安装社区版CANN toolkit包**
   本项目编译过程依赖CANN开发套件包（cann-toolkit），请根据环境操作系统架构，从[软件包下载地址](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-release/software/master)下载`Ascend-cann-toolkit_${cann_version}_linux-${arch}.run`，参考[昇腾文档中心-CANN软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)进行安装。
@@ -81,7 +81,7 @@
   - 建议`master`分支代码搭配最新版本CANN Ops包使用。
 
 ### 5. **配置环境变量**
-	
+
 根据实际场景，选择合适的命令。
 
  ```bash
@@ -101,7 +101,7 @@ git clone https://gitcode.com/cann/hixl.git
 ```
 
 > [!NOTE] 注意
-> gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。  
+> gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。
 
 若您的编译环境无法访问网络，由于无法通过`git`指令下载代码，须在联网环境中下载源码后，手动上传至目标环境。
 - 在联网环境中，进入[本项目主页](https://gitcode.com/cann/hixl), 通过`下载ZIP`或`clone`按钮，根据指导，完成源码下载。
@@ -187,7 +187,7 @@ bash build.sh --cann_3rd_lib_path={your_3rd_party_path}
     # 默认路径安装，root用户默认路径是/usr/local/Ascend/，普通用户默认路径是${HOME}/Ascend
     bash tests/run_test.sh
     ```
-  
+
 - 更多执行选项可以用 -h 查看：
   ```
   bash tests/run_test.sh -h
@@ -195,17 +195,17 @@ bash build.sh --cann_3rd_lib_path={your_3rd_party_path}
 
 ## 安装
 
-将[编译执行](#编译执行)环节生成的run包进行安装。  
-- 说明，此处的安装路径（无论默认还是指定）需与前面安装toolkit包时的路径保持一致。  
+将[编译执行](#编译执行)环节生成的run包进行安装。
+- 说明，此处的安装路径（无论默认还是指定）需与前面安装toolkit包时的路径保持一致。
 ```bash
 # 如果需要指定安装路径则加上--install-path=${cann_install_path}
 ./cann-hixl_${cann_version}_linux-${arch}.run --full --quiet --pylocal
 ```
-- --full 全量模式安装。  
-- --quiet 静默安装，跳过人机交互环节。  
-- --pylocal 安装HIXL软件包时，是否将.whl安装到HIXL安装路径。  
+- --full 全量模式安装。
+- --quiet 静默安装，跳过人机交互环节。
+- --pylocal 安装HIXL软件包时，是否将.whl安装到HIXL安装路径。
   - 若选择该参数，则.whl安装在${cann_install_path}/cann/python/site-packages路径。
   - 若不选择该参数，则.whl安装在本地python路径，例如/usr/local/python3.7.5/lib/python3.7/site-packages。
-- 更多安装选项请用--help选项查看。  
+- 更多安装选项请用--help选项查看。
 
 **安装完成后可参考[样例运行](../examples/README.md)尝试运行样例，也可参考[基准测试Benchmarks](../benchmarks/README.md)尝试运行基准测试**。

@@ -25,7 +25,7 @@ namespace {
 constexpr const int32_t kTimeOut = 1000;
 constexpr const int32_t kMaxRetryCount = 10;
 constexpr const int32_t kInterval = 10;
-}
+}  // namespace
 
 class HixlEngineTest : public ::testing::Test {
  protected:
@@ -39,7 +39,7 @@ class HixlEngineTest : public ::testing::Test {
             {
                 "protocol": "roce",
                 "comm_id": "127.0.0.1",
-                "placement": "host" 
+                "placement": "host"
             },
             {
                 "protocol": "ub_ctp",
@@ -65,7 +65,7 @@ class HixlEngineTest : public ::testing::Test {
             {
                 "protocol": "roce",
                 "comm_id": "127.0.0.1",
-                "placement": "host" 
+                "placement": "host"
             }
         ],
         "version": "1.3"
@@ -118,7 +118,7 @@ TEST_F(HixlEngineTest, TestHixl) {
   dst_mem.len = sizeof(int32_t);
   MemHandle handle2 = nullptr;
   EXPECT_EQ(engine2.RegisterMem(dst_mem, MEM_DEVICE, handle2), SUCCESS);
-  
+
   EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
 
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};

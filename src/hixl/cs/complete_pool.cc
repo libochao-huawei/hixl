@@ -163,8 +163,8 @@ Status CompletePool::Acquire(SlotHandle *handle) {
   handle->notify_addr = slot.notify_addr;
   handle->notify_len = slot.notify_len;
   handle->notify_tag = slot.notify_tag;
-  HIXL_LOGI("[CompletePool] Acquire slot success. index=%u, tag=%s, len=%u",
-            idx, handle->notify_tag.data(), handle->notify_len);
+  HIXL_LOGI("[CompletePool] Acquire slot success. index=%u, tag=%s, len=%u", idx, handle->notify_tag.data(),
+            handle->notify_len);
   return SUCCESS;
 }
 
@@ -234,8 +234,7 @@ Status CompletePool::InitOneSlotLocked(Slot &slot, uint32_t slot_index, int32_t 
   HIXL_CHK_STATUS_RET(EnsureStreamLocked(slot), "[CompletePool] EnsureStreamLocked failed");
   HIXL_CHK_STATUS_RET(EnsureThreadLocked(slot, engine, thread_num, notify_num_per_thread),
                       "[CompletePool] EnsureThreadLocked failed");
-  HIXL_CHK_STATUS_RET(EnsureNotifyRecordLocked(slot, slot_index),
-                      "[CompletePool] EnsureNotifyRecordLocked failed");
+  HIXL_CHK_STATUS_RET(EnsureNotifyRecordLocked(slot, slot_index), "[CompletePool] EnsureNotifyRecordLocked failed");
   HIXL_CHK_STATUS_RET(EnsurePinnedHostFlagLocked(slot), "[CompletePool] EnsurePinnedHostFlagLocked failed");
   return SUCCESS;
 }
@@ -300,8 +299,7 @@ Status CompletePool::GetNotifyAddrLocked(uint32_t notify_id, uint64_t &notify_ad
 
 Status CompletePool::BuildNotifyTagLocked(uint32_t slot_index, std::array<char, kNotifyTagSize> &tag) const {
   tag.fill('\0');
-  const int nret =
-      snprintf_s(tag.data(), tag.size(), tag.size() - 1U, "%s_%03u", kUbLocalNotifyTagPrefix, slot_index);
+  const int nret = snprintf_s(tag.data(), tag.size(), tag.size() - 1U, "%s_%03u", kUbLocalNotifyTagPrefix, slot_index);
   HIXL_CHK_BOOL_RET_STATUS(nret >= 0, FAILED, "[CompletePool] snprintf_s notify tag failed. slot=%u", slot_index);
   return SUCCESS;
 }
@@ -333,14 +331,11 @@ Status CompletePool::EnsureStreamLocked(Slot &slot) {
   aclrtStream stream = nullptr;
   HIXL_CHK_ACL_RET(aclrtCreateStream(&stream), "[CompletePool] aclrtCreateStream failed");
 
-  HIXL_DISMISSABLE_GUARD(stream_guard, [stream]() {
-    aclrtDestroyStream(stream);
-  });
+  HIXL_DISMISSABLE_GUARD(stream_guard, [stream]() { aclrtDestroyStream(stream); });
   aclrtStreamAttrValue attr_val = {0};
-  attr_val.failureMode = 1; // 1: 遇错即停
-  HIXL_CHK_ACL_RET(
-      aclrtSetStreamAttribute(stream, ACL_STREAM_ATTR_FAILURE_MODE, &attr_val),
-      "[CompletePool] Set stream failure mode failed");
+  attr_val.failureMode = 1;  // 1: 遇错即停
+  HIXL_CHK_ACL_RET(aclrtSetStreamAttribute(stream, ACL_STREAM_ATTR_FAILURE_MODE, &attr_val),
+                   "[CompletePool] Set stream failure mode failed");
   HIXL_DISMISS_GUARD(stream_guard);
   slot.stream = stream;
   return SUCCESS;

@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include <numeric>
@@ -97,8 +98,8 @@ int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine) {
   return 0;
 }
 
-void ClientFinalize(Hixl &hixl_engine, bool connected, const char *remote_engine,
-                    const std::vector<MemHandle> handles, const std::vector<void *> host_buffers = {}) {
+void ClientFinalize(Hixl &hixl_engine, bool connected, const char *remote_engine, const std::vector<MemHandle> handles,
+                    const std::vector<void *> host_buffers = {}) {
   if (connected) {
     auto ret = Disconnect(hixl_engine, remote_engine);
     if (ret != 0) {

@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "channel.h"
@@ -29,7 +30,7 @@ std::mutex g_mutex_;
 constexpr uint32_t kMaxOpDescNum = 256U;
 constexpr int64_t kHeartbeatTimeoutInMillis = 120000;
 constexpr int32_t kMillisToMicros = 1000;
-}
+}  // namespace
 
 int64_t Channel::timeout_in_millis_ = kHeartbeatTimeoutInMillis;
 
@@ -40,14 +41,12 @@ Status Channel::Initialize(bool enable_use_fabric_mem) {
     return SUCCESS;
   }
   LLMLOGI("HcclCommInitClusterInfoMemConfig begin, comm_name=%s, local rank_id=%u, rank_table=%s",
-         channel_info_.comm_config.hcclCommName, channel_info_.local_rank_id, channel_info_.rank_table.c_str());
+          channel_info_.comm_config.hcclCommName, channel_info_.local_rank_id, channel_info_.rank_table.c_str());
   {
     std::lock_guard<std::mutex> lock(g_mutex_);
     const auto start = std::chrono::steady_clock::now();
     ADXL_CHK_HCCL_RET(llm::HcclAdapter::GetInstance().HcclCommInitClusterInfoMemConfig(
-        channel_info_.rank_table.c_str(),
-        channel_info_.local_rank_id,
-        &channel_info_.comm_config,
+        channel_info_.rank_table.c_str(), channel_info_.local_rank_id, &channel_info_.comm_config,
         &channel_info_.comm));
     const auto end = std::chrono::steady_clock::now();
     const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
@@ -57,11 +56,11 @@ Status Channel::Initialize(bool enable_use_fabric_mem) {
 
   std::vector<void *> bind_handles;
   LLM_DISMISSABLE_GUARD(fail_guard, ([this, &bind_handles]() {
-    for (auto bind_handle : bind_handles) {
-      (void) llm::HcclAdapter::GetInstance().HcclCommUnbindMem(channel_info_.comm, bind_handle);
-    }
-    (void) llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
-  }));
+                          for (auto bind_handle : bind_handles) {
+                            (void)llm::HcclAdapter::GetInstance().HcclCommUnbindMem(channel_info_.comm, bind_handle);
+                          }
+                          (void)llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
+                        }));
 
   auto start = std::chrono::steady_clock::now();
   for (const auto &reg_handle_it : channel_info_.registered_mems) {
@@ -75,8 +74,8 @@ Status Channel::Initialize(bool enable_use_fabric_mem) {
 
   start = std::chrono::steady_clock::now();
   HcclPrepareConfig prepareConfig{};
-  ADXL_CHK_HCCL_RET(llm::HcclAdapter::GetInstance().HcclCommPrepare(channel_info_.comm, &prepareConfig,
-                                                                    channel_info_.timeout_sec));
+  ADXL_CHK_HCCL_RET(
+      llm::HcclAdapter::GetInstance().HcclCommPrepare(channel_info_.comm, &prepareConfig, channel_info_.timeout_sec));
   end = std::chrono::steady_clock::now();
   cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   LLMEVENT("HcclCommPrepare success, channel_id:%s, time cost:%lu us.", channel_info_.channel_id.c_str(), cost);
@@ -106,7 +105,7 @@ Status Channel::Finalize() {
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (fd_ > 0) {
-      (void) close(fd_);
+      (void)close(fd_);
       fd_ = -1;
     }
     with_heartbeat_.store(false, std::memory_order_release);
@@ -145,7 +144,7 @@ Status Channel::ClearResources() {
         ret = FAILED;
       }
     }
-    //during exceptional scenarios, destroy the stream when destroying the channel.
+    // during exceptional scenarios, destroy the stream when destroying the channel.
     if (stream != nullptr) {
       stream_pool_->DestroyStream(stream);
     }
@@ -178,7 +177,8 @@ Status Channel::ImportMem(const std::vector<ShareHandleInfo> &remote_share_handl
   for (auto &remote_share_handle_info : remote_share_handles) {
     uintptr_t remote_va_addr = 0;
     aclrtDrvMemHandle remote_pa_handle = nullptr;
-    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().ReserveMemory(remote_share_handle_info.len, remote_va_addr));
+    ADXL_CHK_STATUS_RET(
+        VirtualMemoryManager::GetInstance().ReserveMemory(remote_share_handle_info.len, remote_va_addr));
     LLM_DISMISSABLE_GUARD(free_mem_guard, ([&remote_va_addr, &remote_pa_handle]() {
                             if (remote_va_addr != 0) {
                               (void)VirtualMemoryManager::GetInstance().ReleaseMemory(remote_va_addr);
@@ -189,8 +189,8 @@ Status Channel::ImportMem(const std::vector<ShareHandleInfo> &remote_share_handl
                           }));
 
     auto share_handle = remote_share_handle_info.share_handle;
-    ADXL_CHK_ACL_RET(aclrtMemImportFromShareableHandleV2(&share_handle, ACL_MEM_SHARE_HANDLE_TYPE_FABRIC, 0U,
-                                                      &remote_pa_handle));
+    ADXL_CHK_ACL_RET(
+        aclrtMemImportFromShareableHandleV2(&share_handle, ACL_MEM_SHARE_HANDLE_TYPE_FABRIC, 0U, &remote_pa_handle));
     void *remote_va = llm::ValueToPtr(remote_va_addr);
     ADXL_CHK_ACL_RET(aclrtMapMem(remote_va, remote_share_handle_info.len, 0, remote_pa_handle, 0));
     std::lock_guard<std::mutex> lock(va_map_mutex_);
@@ -209,23 +209,21 @@ std::unordered_map<uintptr_t, ShareHandleInfo> Channel::GetNewVaToOldVa() {
   return new_va_to_old_va_;
 }
 
-Status Channel::TransferAsync(TransferOp operation,
-                              const std::vector<TransferOpDesc> &op_descs,
-                              const TransferArgs &optional_args,
-                              TransferReq &req) {
+Status Channel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
+                              const TransferArgs &optional_args, TransferReq &req) {
   (void)optional_args;
   aclrtStream stream = nullptr;
   ADXL_CHK_STATUS_RET(stream_pool_->TryAllocStream(stream), "Stream pool get stream failed.");
   auto id = reinterpret_cast<uint64_t>(req);
   aclrtEvent event = nullptr;
   LLM_DISMISSABLE_GUARD(fail_guard, ([&]() {
-    if (event != nullptr) {
-      aclrtDestroyEvent(event);
-    }
-    if (stream != nullptr) {
-      stream_pool_->DestroyStream(stream);
-    }
-  }));
+                          if (event != nullptr) {
+                            aclrtDestroyEvent(event);
+                          }
+                          if (stream != nullptr) {
+                            stream_pool_->DestroyStream(stream);
+                          }
+                        }));
   const auto transfer_start = std::chrono::steady_clock::now();
   ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream), "Channel transfer async failed.");
   LLM_CHK_ACL_RET(aclrtCreateEvent(&event));
@@ -269,7 +267,7 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
   }
   auto steam_status = aclrtSynchronizeStream(stream);
   if (steam_status != ACL_ERROR_NONE) {
-    //stream synchronize failed
+    // stream synchronize failed
     status = TransferStatus::FAILED;
     aclrtDestroyEvent(event);
     stream_pool_->DestroyStream(stream);
@@ -287,20 +285,17 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
   return SUCCESS;
 }
 
-Status Channel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
-                              aclrtStream stream) {
+Status Channel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs, aclrtStream stream) {
   auto trans_func = [this, operation, &stream](HcclOneSideOpDesc *descs, uint32_t desc_num) -> Status {
     HcclResult ret = HCCL_SUCCESS;
     if (operation == READ) {
-      ret = llm::HcclAdapter::GetInstance().HcclBatchGet(channel_info_.comm, channel_info_.peer_rank_id,
-                                                         descs, desc_num, stream);
+      ret = llm::HcclAdapter::GetInstance().HcclBatchGet(channel_info_.comm, channel_info_.peer_rank_id, descs,
+                                                         desc_num, stream);
     } else {
-      ret = llm::HcclAdapter::GetInstance().HcclBatchPut(channel_info_.comm, channel_info_.peer_rank_id,
-                                                         descs, desc_num, stream);
+      ret = llm::HcclAdapter::GetInstance().HcclBatchPut(channel_info_.comm, channel_info_.peer_rank_id, descs,
+                                                         desc_num, stream);
     }
-    ADXL_CHK_BOOL_RET_STATUS(ret == HCCL_SUCCESS,
-                             HcclError2AdxlStatus(ret),
-                             "Failed to invoke %s, hccl_result = %d",
+    ADXL_CHK_BOOL_RET_STATUS(ret == HCCL_SUCCESS, HcclError2AdxlStatus(ret), "Failed to invoke %s, hccl_result = %d",
                              operation == READ ? "HcclBatchGet" : "HcclBatchPut", static_cast<int32_t>(ret));
     return SUCCESS;
   };
@@ -342,17 +337,16 @@ Status Channel::TransferAsyncWithTimeout(TransferOp operation, const std::vector
   return SUCCESS;
 }
 
-Status Channel::TransferSync(TransferOp operation,
-                             const std::vector<TransferOpDesc> &op_descs,
+Status Channel::TransferSync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                              int32_t timeout_in_millis) {
   const auto start = std::chrono::steady_clock::now();
   aclrtStream stream = nullptr;
   ADXL_CHK_STATUS_RET(stream_pool_->TryAllocStream(stream), "Stream pool get stream failed.");
   LLM_DISMISSABLE_GUARD(fail_guard, ([this, &stream]() {
-    if (stream != nullptr) {
-      this->stream_pool_->DestroyStream(stream);
-    }
-  }));
+                          if (stream != nullptr) {
+                            this->stream_pool_->DestroyStream(stream);
+                          }
+                        }));
   ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream), "Transfer failed.");
 
   ADXL_CHK_ACL_RET(aclrtSynchronizeStreamWithTimeout(stream, timeout_in_millis));
@@ -424,7 +418,7 @@ bool Channel::IsHeartbeatTimeout() const {
   return false;
 }
 
-StreamPool* Channel::GetStreamPool() {
+StreamPool *Channel::GetStreamPool() {
   return stream_pool_;
 }
 
@@ -443,8 +437,8 @@ void Channel::GetNotifyMessages(std::vector<NotifyDesc> &notifies) {
   notify_messages_.clear();
 }
 
-BufferedTransfer::BufferedTransfer(
-    std::function<Status(HcclOneSideOpDesc *descs, uint32_t desc_num)> trans_func) : trans_func_(trans_func) {
+BufferedTransfer::BufferedTransfer(std::function<Status(HcclOneSideOpDesc *descs, uint32_t desc_num)> trans_func)
+    : trans_func_(trans_func) {
   op_descs_.reserve(kMaxOpDescNum);
 }
 
@@ -457,8 +451,8 @@ Status BufferedTransfer::Put(const std::vector<TransferOpDesc> &op_descs) {
     hccl_op_desc.count = desc.len;
     hccl_op_desc.dataType = HCCL_DATA_TYPE_UINT8;
     op_descs_.emplace_back(hccl_op_desc);
-    LLMLOGI("Batch transfer sync, index:%zu, local addr:%p, remote addr:%p, len:%zu.",
-           index, desc.local_addr, desc.remote_addr, desc.len);
+    LLMLOGI("Batch transfer sync, index:%zu, local addr:%p, remote addr:%p, len:%zu.", index, desc.local_addr,
+            desc.remote_addr, desc.len);
     if (op_descs_.size() == op_descs_.capacity()) {
       ADXL_CHK_STATUS_RET(Flush(), "Failed to batch transfer.");
     }
@@ -472,7 +466,7 @@ Status BufferedTransfer::Put(const std::vector<TransferOpDesc> &op_descs) {
 Status BufferedTransfer::Flush() {
   if (!op_descs_.empty()) {
     ADXL_CHK_STATUS_RET(trans_func_(op_descs_.data(), static_cast<uint32_t>(op_descs_.size())),
-                      "Failed to batch transfer.");
+                        "Failed to batch transfer.");
     op_descs_.clear();
   }
   return SUCCESS;

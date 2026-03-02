@@ -67,8 +67,7 @@ class HixlCSTest : public ::testing::Test {
     default_eps.emplace_back(ep_dev);
   }
   // 在测试类中进行清理工作，如果需要的话
-  void TearDown() override {
-  }
+  void TearDown() override {}
 
  private:
   std::vector<EndpointDesc> default_eps;
@@ -133,9 +132,9 @@ TEST_F(HixlCSTest, TestHixlCSServer) {
   auto ret = HixlCSServerCreate(&desc, &config, &server_handle);
   EXPECT_EQ(ret, SUCCESS);
   auto proc = [](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
-    (void) fd;
-    (void) msg;
-    (void) msg_len;
+    (void)fd;
+    (void)msg;
+    (void)msg_len;
     return 0;
   };
   ret = HixlCSServerRegProc(server_handle, static_cast<CtrlMsgType>(kCtrlMsgType), proc);
@@ -190,7 +189,7 @@ TEST_F(HixlCSTest, TestHixlCSClient2Server) {
   SendGetRemoteMemReq(client_fd, resp_body);
   std::this_thread::sleep_for(std::chrono::milliseconds(kTimeSleepMs));
   // 没有读取缓冲区数据，测试server recv报错场景
-  (void) close(client_fd);
+  (void)close(client_fd);
 
   ret = HixlCSServerUnregMem(server_handle, mem_handle);
   EXPECT_EQ(ret, SUCCESS);

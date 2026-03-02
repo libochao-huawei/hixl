@@ -925,15 +925,3 @@ Status UnregisterKvCache(int64_t cache_id);
 **约束说明**
 
 调用该接口前，需要先调用Initialize接口完成初始化。cache\_id必须为RegisterKvCache接口返回的值。
-
-
-
-
-
-
-
-
-
-
-
-

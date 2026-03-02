@@ -100,10 +100,7 @@ class MiniServer {
     port_ = kPort;
     get_mem_req_cnt_ = 0;
 
-    worker_ = std::thread(
-      [this]() {
-        ThreadMain();
-      });
+    worker_ = std::thread([this]() { ThreadMain(); });
     std::this_thread::sleep_for(std::chrono::milliseconds(kMilliSeconds10));
     return port_;
   }
@@ -178,19 +175,12 @@ class MiniServer {
   }
 
   static bool SendAll(int fd, void *buf, size_t n) {
-    auto fn = [](int f, const char *p, size_t len) -> ssize_t {
-      return ::send(f, p, len, MSG_NOSIGNAL);
-    };
-    return IoAllImpl(fd, buf, n,
-      [fn](int f, char *p, size_t len) {
-      return fn(f, p, len);
-    });
+    auto fn = [](int f, const char *p, size_t len) -> ssize_t { return ::send(f, p, len, MSG_NOSIGNAL); };
+    return IoAllImpl(fd, buf, n, [fn](int f, char *p, size_t len) { return fn(f, p, len); });
   }
 
   static bool RecvAll(int fd, void *buf, size_t n) {
-    auto fn = [](int f, char *p, size_t len) -> ssize_t {
-      return ::recv(f, p, len, 0);
-    };
+    auto fn = [](int f, char *p, size_t len) -> ssize_t { return ::recv(f, p, len, 0); };
     return IoAllImpl(fd, buf, n, fn);
   }
 
@@ -222,8 +212,8 @@ class MiniServer {
   bool AcceptOnce() {
     while (!stop_.load()) {
       sockaddr_in caddr{};
-      socklen_t clen = sizeof(caddr);
-      const int cfd = ::accept(listen_fd_, reinterpret_cast<sockaddr *>(&caddr), &clen);
+      socklen_t caddr_len = sizeof(caddr);
+      const int cfd = ::accept(listen_fd_, reinterpret_cast<sockaddr *>(&caddr), &caddr_len);
       if (cfd >= 0) {
         conn_fd_ = cfd;
         return true;
@@ -396,7 +386,8 @@ class MiniServer {
       return;
     }
     if (mem_mode_ == MiniSrvMode::kGetRemoteMemResp_MemImportFail) {
-      json_str = R"({"result":0,"mem_descs":[{"tag":"a","export_desc":[70,65,73,76],"mem":{"type":0,"addr":1,"size":1}}]})";
+      json_str =
+          R"({"result":0,"mem_descs":[{"tag":"a","export_desc":[70,65,73,76],"mem":{"type":0,"addr":1,"size":1}}]})";
     }
   }
 
@@ -528,7 +519,7 @@ class HixlCSClientUT : public ::testing::Test {
   // [修改] 辅助函数增加 config 参数构造
   void CreateClient(const char *ip = "127.0.0.1") {
     ASSERT_NE(port_, 0);
-    HixlClientConfig config{}; // 默认构造
+    HixlClientConfig config{};  // 默认构造
     ASSERT_EQ(client_.Create(ip, port_, &src_, &dst_, &config), SUCCESS);
   }
 
@@ -548,25 +539,25 @@ class HixlCSClientUT : public ::testing::Test {
 
 TEST_F(HixlCSClientUT, CreateSuccess) {
   port_ = kPort;
-  HixlClientConfig config{}; // [修改]
+  HixlClientConfig config{};  // [修改]
   EXPECT_EQ(client_.Create("127.0.0.1", port_, &src_, &dst_, &config), SUCCESS);
 }
 
 TEST_F(HixlCSClientUT, CreateFailNullServerIp) {
   port_ = kPort;
-  HixlClientConfig config{}; // [修改]
+  HixlClientConfig config{};  // [修改]
   EXPECT_NE(client_.Create(nullptr, port_, &src_, &dst_, &config), SUCCESS);
 }
 
 TEST_F(HixlCSClientUT, CreateFailNullSrcEndpoint) {
   port_ = kPort;
-  HixlClientConfig config{}; // [修改]
+  HixlClientConfig config{};  // [修改]
   EXPECT_NE(client_.Create("127.0.0.1", port_, nullptr, &dst_, &config), SUCCESS);
 }
 
 TEST_F(HixlCSClientUT, CreateFailNullDstEndpoint) {
   port_ = kPort;
-  HixlClientConfig config{}; // [修改]
+  HixlClientConfig config{};  // [修改]
   EXPECT_NE(client_.Create("127.0.0.1", port_, &src_, nullptr, &config), SUCCESS);
 }
 
@@ -577,7 +568,7 @@ TEST_F(HixlCSClientUT, ConnectFailWithoutCreate) {
 TEST_F(HixlCSClientUT, ConnectFailDstEndpointReserved) {
   port_ = kPort;
   dst_.protocol = COMM_PROTOCOL_RESERVED;
-  HixlClientConfig config{}; // [修改]
+  HixlClientConfig config{};  // [修改]
   ASSERT_EQ(client_.Create("127.0.0.1", port_, &src_, &dst_, &config), SUCCESS);
   EXPECT_EQ(client_.Connect(kConnectTime), PARAM_INVALID);
 }
@@ -585,7 +576,7 @@ TEST_F(HixlCSClientUT, ConnectFailDstEndpointReserved) {
 TEST_F(HixlCSClientUT, ConnectFailNoServer) {
   // 只 Create，不启动 server，让 CtrlMsgPlugin::Connect 走失败/超时路径
   port_ = kPort;
-  HixlClientConfig config{}; // [修改]
+  HixlClientConfig config{};  // [修改]
   ASSERT_EQ(client_.Create("127.0.0.1", port_, &src_, &dst_, &config), SUCCESS);
   EXPECT_NE(client_.Connect(kConnectTime1), SUCCESS);  // 50ms
 }
@@ -677,9 +668,9 @@ TEST_F(HixlCSClientUT, GetRemoteMemSuccessNormalWithTags) {
   EXPECT_NE(remote, nullptr);
   EXPECT_EQ(num, 3U);
   ASSERT_NE(tags, nullptr);
-  EXPECT_STREQ(tags[0], kGetRemoteMemStr0);//0：第一个
-  EXPECT_STREQ(tags[1], kGetRemoteMemStr1);//1：第二个
-  EXPECT_STREQ(tags[2], kGetRemoteMemStr2);//2：第三个
+  EXPECT_STREQ(tags[0], kGetRemoteMemStr0);  // 0：第一个
+  EXPECT_STREQ(tags[1], kGetRemoteMemStr1);  // 1：第二个
+  EXPECT_STREQ(tags[2], kGetRemoteMemStr2);  // 2：第三个
 }
 
 TEST_F(HixlCSClientUT, GetRemoteMemSuccessNormalNoTagsOutParam) {
