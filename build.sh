@@ -70,7 +70,7 @@ checkopts() {
   ENABLE_ASAN=OFF
   ENABLE_GCOV=OFF
   ENABLE_SIGN=ON
-  CUSTOM_SIGN_SCRIPT="${BASEPATH}/scripts/sign/community_sign_build.py"
+  CUSTOM_SIGN_SCRIPT="${BASEPATH}/../vendor/hisi/build/scripts/sign_and_add_header.sh"
 
   # Process the options
   parsed_args=$(getopt -a -o j:hv -l help,verbose,pkg,examples,cann_3rd_lib_path:,cann-3rd-lib-path:,output_path:,output-path:,build_type:,build-type:,sign-script:,sign_script:,asan,cov,enable_sign,enable-sign -- "$@") || {
