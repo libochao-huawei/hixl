@@ -15,6 +15,7 @@
 #include <thread>
 #include <iostream>
 #include <vector>
+#include "nlohmann/json.hpp"
 #include "common/tcp_client_server.h"
 #include "acl/acl.h"
 #include "hixl/hixl.h"
