@@ -189,7 +189,7 @@ def run_prompt_sample(datadist, device_id: int, is_single: bool, host_ip: str):
                            placement=Placement.DEVICE)
     tensor = torch.ones(2, 1024 * 1024, dtype=torch.float).npu()
     addr = int(tensor.data_ptr())
-    cache = cache_manager.register_blocks_cache(cache_desc, [addr], BlocksCacheKey(1, 0))
+    _ = cache_manager.register_blocks_cache(cache_desc, [addr], BlocksCacheKey(1, 0))
     logging.info('[register_blocks_cache] success')
 
     comm_id = link(datadist, device_id, is_single, host_ip)

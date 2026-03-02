@@ -86,7 +86,7 @@ if (ENABLE_TEST)
     endif()
 
     if(ENABLE_ASAN)
-        set(ASAN_COMPILE_OPTION -fsanitize=address -fsanitize=leak -fsanitize-recover=address,all 
+        set(ASAN_COMPILE_OPTION -fsanitize=address -fsanitize=leak -fsanitize-recover=address,all
             -fno-stack-protector -fno-omit-frame-pointer)
         set(DT_COMMON_COMPILE_OPTION ${DT_COMMON_COMPILE_OPTION} ${ASAN_COMPILE_OPTION})
 

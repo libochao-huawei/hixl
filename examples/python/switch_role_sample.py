@@ -136,7 +136,7 @@ def run_decoder_sample(datadist, local_host_ip, remote_host_ip):
     ret, _ = datadist.unlink_clusters([cluster], 5000)
     if ret != LLMStatusCode.LLM_SUCCESS:
         raise Exception("unlink failed")
-    
+
     dist.barrier() # decoder unlink
     dist.barrier() # prompt switch role end, close lisen
     llm_config = LLMConfig()

@@ -14,26 +14,59 @@ import os
 from .status import LLMStatusCode, LLMException, Status
 from .configs import LLMClusterInfo, LLMRole, LlmConfig, LlmConfig as LLMConfig
 from .data_type import DataType
-from .v2.llm_types import KvCache, CacheDesc, CacheKey, CacheKeyByIdAndIndex, BlocksCacheKey, Placement, \
-    RegisterMemStatus, Cache, LayerSynchronizer, TransferConfig, CacheTask, TransferWithCacheKeyConfig, \
-    Memtype, MemInfo
+from .v2.llm_types import (
+    KvCache,
+    CacheDesc,
+    CacheKey,
+    CacheKeyByIdAndIndex,
+    BlocksCacheKey,
+    Placement,
+    RegisterMemStatus,
+    Cache,
+    LayerSynchronizer,
+    TransferConfig,
+    CacheTask,
+    TransferWithCacheKeyConfig,
+    Memtype,
+    MemInfo,
+)
 from .v2.llm_datadist import LLMDataDist
 
-__all__ = ["LLMClusterInfo", "LLMStatusCode", "LLMException",
-           "LLMRole", "LlmConfig", "LLMConfig", "DataType", "Status",
-           "CacheDesc", "CacheKey", "CacheKeyByIdAndIndex", "KvCache", "Cache",
-           "BlocksCacheKey", "LLMDataDist", "Placement", "RegisterMemStatus", "LayerSynchronizer",
-           "TransferConfig", "CacheTask", "TransferWithCacheKeyConfig", "Memtype", "MemInfo"]
+__all__ = [
+    "LLMClusterInfo",
+    "LLMStatusCode",
+    "LLMException",
+    "LLMRole",
+    "LlmConfig",
+    "LLMConfig",
+    "DataType",
+    "Status",
+    "CacheDesc",
+    "CacheKey",
+    "CacheKeyByIdAndIndex",
+    "KvCache",
+    "Cache",
+    "BlocksCacheKey",
+    "LLMDataDist",
+    "Placement",
+    "RegisterMemStatus",
+    "LayerSynchronizer",
+    "TransferConfig",
+    "CacheTask",
+    "TransferWithCacheKeyConfig",
+    "Memtype",
+    "MemInfo",
+]
 
 try:
     from llm_datadist_v1.tensor import TensorDesc, Tensor
     from llm_datadist_v1.kv_cache_manager import KvCacheManager
-    __all__ += ['TensorDesc', 'Tensor', 'KvCacheManager']
+
+    __all__ += ["TensorDesc", "Tensor", "KvCacheManager"]
 except ModuleNotFoundError:
     pass
 
-_ENV_VAR_NAME_AUTO_USE_UC_MEMORY = 'AUTO_USE_UC_MEMORY'
+_ENV_VAR_NAME_AUTO_USE_UC_MEMORY = "AUTO_USE_UC_MEMORY"
 
 if _ENV_VAR_NAME_AUTO_USE_UC_MEMORY not in os.environ:
-    os.environ[_ENV_VAR_NAME_AUTO_USE_UC_MEMORY] = '0'
-
+    os.environ[_ENV_VAR_NAME_AUTO_USE_UC_MEMORY] = "0"

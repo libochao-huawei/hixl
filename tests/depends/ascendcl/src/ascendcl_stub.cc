@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 #include <string>
 #include <map>
@@ -33,15 +34,15 @@ std::string &GetAclStubMock() {
 }
 
 struct aclrtContextStub {
-    int32_t deviceId;
+  int32_t deviceId;
 };
 
 std::shared_ptr<AclRuntimeStub> AclRuntimeStub::instance_;
 std::mutex AclRuntimeStub::mutex_;
-thread_local AclRuntimeStub* AclRuntimeStub::fake_instance_;
+thread_local AclRuntimeStub *AclRuntimeStub::fake_instance_;
 AclRuntimeStub *AclRuntimeStub::GetInstance() {
   const std::lock_guard<std::mutex> lock(mutex_);
-  if(fake_instance_ != nullptr){
+  if (fake_instance_ != nullptr) {
     return fake_instance_;
   }
   if (instance_ == nullptr) {
@@ -50,11 +51,11 @@ AclRuntimeStub *AclRuntimeStub::GetInstance() {
   return instance_.get();
 }
 
-void AclRuntimeStub::Install(AclRuntimeStub* instance){
+void AclRuntimeStub::Install(AclRuntimeStub *instance) {
   fake_instance_ = instance;
 }
 
-void AclRuntimeStub::UnInstall(AclRuntimeStub*){
+void AclRuntimeStub::UnInstall(AclRuntimeStub *) {
   fake_instance_ = nullptr;
 }
 
@@ -62,17 +63,13 @@ aclError AclRuntimeStub::aclrtRecordNotify(aclrtNotify notify, aclrtStream strea
   return ACL_SUCCESS;
 }
 
-aclError AclRuntimeStub::aclrtBinaryGetFunctionByEntry(aclrtBinHandle binHandle,
-                                                       uint64_t funcEntry,
+aclError AclRuntimeStub::aclrtBinaryGetFunctionByEntry(aclrtBinHandle binHandle, uint64_t funcEntry,
                                                        aclrtFuncHandle *funcHandle) {
   return ACL_SUCCESS;
 }
 
-aclError AclRuntimeStub::aclrtLaunchKernel(aclrtFuncHandle funcHandle,
-                                           uint32_t blockDim,
-                                           const void *argsData,
-                                           size_t argsSize,
-                                           aclrtStream stream) {
+aclError AclRuntimeStub::aclrtLaunchKernel(aclrtFuncHandle funcHandle, uint32_t blockDim, const void *argsData,
+                                           size_t argsSize, aclrtStream stream) {
   return ACL_SUCCESS;
 }
 
@@ -119,7 +116,7 @@ aclError AclRuntimeStub::aclrtDestroyContext(aclrtContext context) {
 }
 
 aclError AclRuntimeStub::aclrtSetCurrentContext(aclrtContext context) {
-  const char * const kEnvRecordPath = "SET_TRANS_VAR_DATA";
+  const char *const kEnvRecordPath = "SET_TRANS_VAR_DATA";
   char record_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
 
@@ -140,7 +137,7 @@ aclError AclRuntimeStub::aclrtCreateEvent(aclrtEvent *event) {
     return ACL_ERROR_RT_INTERNAL_ERROR;
   }
 
-  if(g_free_event_num <= 0) {
+  if (g_free_event_num <= 0) {
     return ACL_ERROR_RT_INTERNAL_ERROR;
   }
   g_free_event_num--;
@@ -150,7 +147,7 @@ aclError AclRuntimeStub::aclrtCreateEvent(aclrtEvent *event) {
 
 aclError AclRuntimeStub::aclrtDestroyEvent(aclrtEvent event) {
   g_free_event_num++;
-  delete[](int *) event;
+  delete[] (int *)event;
   return ACL_ERROR_NONE;
 }
 
@@ -164,14 +161,14 @@ aclError AclRuntimeStub::aclrtQueryEventStatus(aclrtEvent event, aclrtEventRecor
 }
 
 aclError AclRuntimeStub::aclrtCreateStream(aclrtStream *stream) {
-  const char * const kEnvRecordPath = "CONSTANT_FOLDING_PASS_4";
+  const char *const kEnvRecordPath = "CONSTANT_FOLDING_PASS_4";
   char record_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&record_path[0]).find("mock_fail") != std::string::npos) {
     return ACL_ERROR_RT_INTERNAL_ERROR;
   }
 
-  if(g_free_stream_num <= 0) {
+  if (g_free_stream_num <= 0) {
     return ACL_ERROR_RT_INTERNAL_ERROR;
   }
   g_free_stream_num--;
@@ -180,7 +177,7 @@ aclError AclRuntimeStub::aclrtCreateStream(aclrtStream *stream) {
 }
 
 aclError AclRuntimeStub::aclrtCreateStreamWithConfig(aclrtStream *stream, uint32_t priority, uint32_t flag) {
-  if(g_free_stream_num <= 0) {
+  if (g_free_stream_num <= 0) {
     return ACL_ERROR_RT_INTERNAL_ERROR;
   }
   g_free_stream_num--;
@@ -197,38 +194,38 @@ aclError AclRuntimeStub::aclrtDestroyStream(aclrtStream stream) {
 }
 
 aclError AclRuntimeStub::aclrtStreamAbort(aclrtStream stream) {
-  (void) stream;
+  (void)stream;
   return ACL_ERROR_NONE;
 }
 
 aclError AclRuntimeStub::aclrtStreamWaitEvent(aclrtStream stream, aclrtEvent event) {
-  (void) stream;
+  (void)stream;
   return ACL_ERROR_NONE;
 }
 
 aclError AclRuntimeStub::aclrtSynchronizeStream(aclrtStream stream) {
-  const char * const kEnvRecordPath = "CONSTANT_FOLDING_PASS_9";
+  const char *const kEnvRecordPath = "CONSTANT_FOLDING_PASS_9";
   char record_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&record_path[0]).find("mock_fail") != std::string::npos) {
     return ACL_ERROR_RT_INTERNAL_ERROR;
   }
 
-  const char * const kEnvPath = "END_OF_SEQUENCE";
+  const char *const kEnvPath = "END_OF_SEQUENCE";
   char env_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvPath, &env_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&env_path[0]).find("end") != std::string::npos) {
     return ACL_ERROR_RT_END_OF_SEQUENCE;
   }
 
-  const char * const kEnvOverFlowPath = "ACL_ERROR_RT_OVER_FLOW";
+  const char *const kEnvOverFlowPath = "ACL_ERROR_RT_OVER_FLOW";
   char over_flow_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvOverFlowPath, &over_flow_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&over_flow_path[0]).find("over_flow") != std::string::npos) {
     return ACL_ERROR_RT_OVER_FLOW;
   }
 
-  const char * const kEnvPathSt = "MOCK_FAIL_ST";
+  const char *const kEnvPathSt = "MOCK_FAIL_ST";
   char env_path_st[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvPathSt, &env_path_st[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&env_path_st[0]).find("mock_st_fail") != std::string::npos) {
@@ -238,7 +235,7 @@ aclError AclRuntimeStub::aclrtSynchronizeStream(aclrtStream stream) {
     }
   }
 
-  const char * const kEnvOverFlowPathSt = "ACL_ERROR_RT_OVER_FLOW_ST";
+  const char *const kEnvOverFlowPathSt = "ACL_ERROR_RT_OVER_FLOW_ST";
   char over_flow_path_st[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvOverFlowPathSt, &over_flow_path_st[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&over_flow_path_st[0]).find("over_st_flow") != std::string::npos) {
@@ -252,33 +249,33 @@ aclError AclRuntimeStub::aclrtSynchronizeStream(aclrtStream stream) {
 }
 
 aclError AclRuntimeStub::aclrtSynchronizeStreamWithTimeout(aclrtStream stream, int32_t timeout) {
-  const char * const kEnvRecordPath = "CONSTANT_FOLDING_PASS_9";
+  const char *const kEnvRecordPath = "CONSTANT_FOLDING_PASS_9";
   char record_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&record_path[0]).find("mock_fail") != std::string::npos) {
     return ACL_ERROR_RT_INTERNAL_ERROR;
   }
-  const char * const kEnvPath = "END_OF_SEQUENCE";
+  const char *const kEnvPath = "END_OF_SEQUENCE";
   char env_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvPath, &env_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&env_path[0]).find("end") != std::string::npos) {
     return ACL_ERROR_RT_END_OF_SEQUENCE;
   }
 
-  const char * const kEnvPathWithTimeout = "WITH_TIMEOUT_END_OF_SEQUENCE";
+  const char *const kEnvPathWithTimeout = "WITH_TIMEOUT_END_OF_SEQUENCE";
   char end_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvPathWithTimeout, &end_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&end_path[0]).find("end") != std::string::npos) {
     return ACL_ERROR_RT_END_OF_SEQUENCE;
   }
 
-  const char * const kTimeoutEnvPath = "TIMEOUT";
+  const char *const kTimeoutEnvPath = "TIMEOUT";
   char timeout_env_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kTimeoutEnvPath, &timeout_env_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&timeout_env_path[0]).find("timeout") != std::string::npos) {
     return ACL_ERROR_RT_STREAM_SYNC_TIMEOUT;
   }
-  const char * const kOverflowEnvPath = "SYNCSTREAM_OVERFLOW_RET";
+  const char *const kOverflowEnvPath = "SYNCSTREAM_OVERFLOW_RET";
   char overflow_env_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kOverflowEnvPath, &overflow_env_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&overflow_env_path[0]).find("aicore") != std::string::npos) {
@@ -294,7 +291,7 @@ aclError AclRuntimeStub::aclrtSynchronizeStreamWithTimeout(aclrtStream stream, i
 }
 
 aclError AclRuntimeStub::aclrtMalloc(void **devPtr, size_t size, aclrtMemMallocPolicy policy) {
-  const char * const kEnvRecordPath = "CONSTANT_FOLDING_PASS_2";
+  const char *const kEnvRecordPath = "CONSTANT_FOLDING_PASS_2";
   char record_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&record_path[0]).find("mock_fail") != std::string::npos) {
@@ -345,17 +342,17 @@ aclError AclRuntimeStub::aclrtMemset(void *devPtr, size_t maxCount, int32_t valu
 }
 
 aclError AclRuntimeStub::aclrtFree(void *devPtr) {
-  delete[](uint8_t *) devPtr;
+  delete[] (uint8_t *)devPtr;
   return ACL_ERROR_NONE;
 }
 
 aclError AclRuntimeStub::aclrtFreeHost(void *devPtr) {
-  delete[](uint8_t *) devPtr;
+  delete[] (uint8_t *)devPtr;
   return ACL_ERROR_NONE;
 }
 
 aclError AclRuntimeStub::aclrtMemcpy(void *dst, size_t dest_max, const void *src, size_t count, aclrtMemcpyKind kind) {
-  const char * const kEnvRecordPath = "CONSTANT_FOLDING_PASS";
+  const char *const kEnvRecordPath = "CONSTANT_FOLDING_PASS";
   char record_path[MMPA_MAX_PATH] = {};
   (void)mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
   if (std::string(&record_path[0]).find("mock_fail") != std::string::npos) {
@@ -378,12 +375,8 @@ aclError AclRuntimeStub::aclrtMemcpy(void *dst, size_t dest_max, const void *src
   return ACL_ERROR_NONE;
 }
 
-aclError AclRuntimeStub::aclrtMemcpyAsync(void *dst,
-              size_t dest_max,
-              const void *src,
-              size_t src_count,
-              aclrtMemcpyKind kind,
-              aclrtStream stream) {
+aclError AclRuntimeStub::aclrtMemcpyAsync(void *dst, size_t dest_max, const void *src, size_t src_count,
+                                          aclrtMemcpyKind kind, aclrtStream stream) {
   const char *const kEnvRecordPath = "MOCK_MEMCPY_HUGE";
   char record_path[MMPA_MAX_PATH] = {};
   int32_t ret = mmGetEnv(kEnvRecordPath, &record_path[0], static_cast<uint32_t>(MMPA_MAX_PATH));
@@ -405,12 +398,8 @@ aclError AclRuntimeStub::aclrtMemcpyAsync(void *dst,
   return ACL_ERROR_NONE;
 }
 
-aclError AclRuntimeStub::aclrtMemcpyAsyncWithCondition(void *dst,
-                                                      size_t destMax,
-                                                      const void *src,
-                                                      size_t count,
-                                                      aclrtMemcpyKind kind,
-                                                      aclrtStream stream) {
+aclError AclRuntimeStub::aclrtMemcpyAsyncWithCondition(void *dst, size_t destMax, const void *src, size_t count,
+                                                       aclrtMemcpyKind kind, aclrtStream stream) {
   return aclrtMemcpyAsync(dst, destMax, src, count, kind, stream);
 }
 
@@ -420,7 +409,7 @@ aclError AclRuntimeStub::aclrtGetMemInfo(aclrtMemAttr attr, size_t *free_size, s
   return ACL_ERROR_NONE;
 }
 
-const char* AclRuntimeStub::aclrtGetSocName() {
+const char *AclRuntimeStub::aclrtGetSocName() {
   return g_soc_version;
 }
 
@@ -435,8 +424,8 @@ aclError AclRuntimeStub::aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, 
 }
 
 aclError AclRuntimeStub::aclrtMemcpyBatch(void **dsts, size_t *destMax, void **srcs, size_t *sizes, size_t numBatches,
-                          aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs, size_t *failIndex)
-{
+                                          aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs,
+                                          size_t *failIndex) {
   *failIndex = static_cast<size_t>(0);
   if (__FUNCTION__ == g_acl_stub_mock) {
     return ACL_ERROR_RT_INTERNAL_ERROR;
@@ -450,8 +439,9 @@ aclError AclRuntimeStub::aclrtMemcpyBatch(void **dsts, size_t *destMax, void **s
   return ACL_ERROR_NONE;
 }
 
-aclError AclRuntimeStub::aclrtReserveMemAddress(void** devPtr, size_t size, size_t alignment, void *devAddr, uint64_t flags) {
-  if (size < 200UL * 1024UL *1024UL) {
+aclError AclRuntimeStub::aclrtReserveMemAddress(void **devPtr, size_t size, size_t alignment, void *devAddr,
+                                                uint64_t flags) {
+  if (size < 200UL * 1024UL * 1024UL) {
     *devPtr = new uint8_t[size];
     reserve_mem_size_ = size;
   } else {
@@ -461,16 +451,17 @@ aclError AclRuntimeStub::aclrtReserveMemAddress(void** devPtr, size_t size, size
   return ACL_ERROR_NONE;
 }
 
-aclError AclRuntimeStub::aclrtReleaseMemAddress(void* devPtr) {
+aclError AclRuntimeStub::aclrtReleaseMemAddress(void *devPtr) {
   delete[] (uint8_t *)devPtr;
   return ACL_ERROR_NONE;
 }
 
-aclError AclRuntimeStub::aclrtMapMem(void* devPtr, size_t size, size_t offset, aclrtDrvMemHandle handle, uint64_t flags) {
+aclError AclRuntimeStub::aclrtMapMem(void *devPtr, size_t size, size_t offset, aclrtDrvMemHandle handle,
+                                     uint64_t flags) {
   return ACL_ERROR_NONE;
 }
 
-aclError AclRuntimeStub::aclrtUnmapMem(void* devPtr) {
+aclError AclRuntimeStub::aclrtUnmapMem(void *devPtr) {
   return ACL_ERROR_NONE;
 }
 
@@ -484,17 +475,18 @@ aclError AclRuntimeStub::aclrtPointerGetAttributes(const void *ptr, aclrtPtrAttr
 }
 
 aclError AclRuntimeStub::aclrtMemExportToShareableHandleV2(aclrtDrvMemHandle handle, uint64_t flags,
-                                                          aclrtMemSharedHandleType type, void *shareableHandle) {
+                                                           aclrtMemSharedHandleType type, void *shareableHandle) {
   return ACL_ERROR_NONE;
 }
 
 aclError AclRuntimeStub::aclrtMemImportFromShareableHandleV2(void *shareableHandle, aclrtMemSharedHandleType type,
-                                                    uint64_t flags, aclrtDrvMemHandle *handle) {
+                                                             uint64_t flags, aclrtDrvMemHandle *handle) {
   *handle = (aclrtDrvMemHandle) new uint8_t[8];
   return ACL_ERROR_NONE;
 }
 
-aclError AclRuntimeStub::aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop, uint64_t flags) {
+aclError AclRuntimeStub::aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop,
+                                             uint64_t flags) {
   *handle = (aclrtDrvMemHandle) new uint8_t[8];
   return ACL_ERROR_NONE;
 }
@@ -506,7 +498,7 @@ aclError AclRuntimeStub::aclrtFreePhysical(aclrtDrvMemHandle handle) {
 
 aclError AclRuntimeStub::aclrtBinaryLoadFromFile(const char *fileName, aclrtBinaryLoadOptions *options, void **handle) {
   (void)fileName;
-  (void) options;
+  (void)options;
   if (handle == nullptr) {
     return ACL_ERROR_INVALID_PARAM;
   }
@@ -519,7 +511,7 @@ aclError AclRuntimeStub::aclrtBinaryGetFunction(const aclrtBinHandle binHandle, 
   (void)funcName;
   if (funcPtr != nullptr) {
     static int dummy_func_addr = 0;
-    *funcPtr = (void*)&dummy_func_addr;
+    *funcPtr = (void *)&dummy_func_addr;
   }
   return ACL_SUCCESS;
 }
@@ -541,13 +533,14 @@ aclError AclRuntimeStub::aclrtDestroyNotify(aclrtNotify notify) {
 aclError AclRuntimeStub::aclrtGetNotifyId(aclrtNotify notify, uint32_t *notifyId) {
   (void)notify;
   if (notifyId != nullptr) {
-    *notifyId = 1U; // 随便给个合法的 ID
+    *notifyId = 1U;  // 随便给个合法的 ID
   }
   return ACL_SUCCESS;
 }
 
 // 2. Stream 相关
-aclError AclRuntimeStub::aclrtSetStreamAttribute(aclrtStream stream, aclrtStreamAttr attr, aclrtStreamAttrValue *attrValue) {
+aclError AclRuntimeStub::aclrtSetStreamAttribute(aclrtStream stream, aclrtStreamAttr attr,
+                                                 aclrtStreamAttrValue *attrValue) {
   (void)stream;
   (void)attr;
   (void)attrValue;
@@ -563,7 +556,8 @@ aclError AclRuntimeStub::aclrtKernelArgsInit(aclrtFuncHandle funcHandle, aclrtAr
   return ACL_SUCCESS;
 }
 
-aclError AclRuntimeStub::aclrtKernelArgsAppend(aclrtArgsHandle argsHandle, void *data, size_t size, aclrtParamHandle *paraHandle) {
+aclError AclRuntimeStub::aclrtKernelArgsAppend(aclrtArgsHandle argsHandle, void *data, size_t size,
+                                               aclrtParamHandle *paraHandle) {
   (void)argsHandle;
   (void)data;
   (void)size;
@@ -579,7 +573,8 @@ aclError AclRuntimeStub::aclrtKernelArgsFinalize(aclrtArgsHandle argsHandle) {
 }
 
 aclError AclRuntimeStub::aclrtLaunchKernelWithConfig(aclrtFuncHandle funcHandle, uint32_t blockDim, aclrtStream stream,
-                                     aclrtLaunchKernelCfg *config, aclrtArgsHandle argsHandle, void *reserved) {
+                                                     aclrtLaunchKernelCfg *config, aclrtArgsHandle argsHandle,
+                                                     void *reserved) {
   (void)funcHandle;
   (void)blockDim;
   (void)stream;
@@ -594,7 +589,7 @@ aclError AclRuntimeStub::aclrtBinaryUnLoad(aclrtBinHandle binHandle) {
   (void)binHandle;
   return ACL_SUCCESS;
 }
-}
+}  // namespace llm
 
 #ifdef __cplusplus
 extern "C" {
@@ -609,7 +604,7 @@ aclError aclrtBinaryGetFunctionByEntry(aclrtBinHandle binHandle, uint64_t funcEn
 }
 
 aclError aclrtLaunchKernel(aclrtFuncHandle funcHandle, uint32_t blockDim, const void *argsData, size_t argsSize,
-  aclrtStream stream) {
+                           aclrtStream stream) {
   return llm::AclRuntimeStub::GetInstance()->aclrtLaunchKernel(funcHandle, blockDim, argsData, argsSize, stream);
 }
 
@@ -721,21 +716,13 @@ aclError aclrtMemcpy(void *dst, size_t dest_max, const void *src, size_t count, 
   return llm::AclRuntimeStub::GetInstance()->aclrtMemcpy(dst, dest_max, src, count, kind);
 }
 
-aclError aclrtMemcpyAsync(void *dst,
-                          size_t dest_max,
-                          const void *src,
-                          size_t src_count,
-                          aclrtMemcpyKind kind,
+aclError aclrtMemcpyAsync(void *dst, size_t dest_max, const void *src, size_t src_count, aclrtMemcpyKind kind,
                           aclrtStream stream) {
   return llm::AclRuntimeStub::GetInstance()->aclrtMemcpyAsync(dst, dest_max, src, src_count, kind, stream);
 }
 
-aclError aclrtMemcpyAsyncWithCondition(void *dst,
-                                        size_t destMax,
-                                        const void *src,
-                                        size_t count,
-                                        aclrtMemcpyKind kind,
-                                        aclrtStream stream) {
+aclError aclrtMemcpyAsyncWithCondition(void *dst, size_t destMax, const void *src, size_t count, aclrtMemcpyKind kind,
+                                       aclrtStream stream) {
   return llm::AclRuntimeStub::GetInstance()->aclrtMemcpyAsyncWithCondition(dst, destMax, src, count, kind, stream);
 }
 
@@ -743,7 +730,7 @@ aclError aclrtGetMemInfo(aclrtMemAttr attr, size_t *free_size, size_t *total) {
   return llm::AclRuntimeStub::GetInstance()->aclrtGetMemInfo(attr, free_size, total);
 }
 
-const char* aclrtGetSocName() {
+const char *aclrtGetSocName() {
   return llm::AclRuntimeStub::GetInstance()->aclrtGetSocName();
 }
 
@@ -756,13 +743,12 @@ aclError aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, int32_t *const p
 }
 
 aclError aclrtMemcpyBatch(void **dsts, size_t *destMax, void **srcs, size_t *sizes, size_t numBatches,
-                          aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs, size_t *failIndex)
-{
-  return llm::AclRuntimeStub::GetInstance()->aclrtMemcpyBatch(dsts, destMax, srcs, sizes, numBatches,
-                                                              attrs, attrsIndexex, numAttrs, failIndex);
+                          aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs, size_t *failIndex) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtMemcpyBatch(dsts, destMax, srcs, sizes, numBatches, attrs,
+                                                              attrsIndexex, numAttrs, failIndex);
 }
 
-aclError aclrtReserveMemAddress(void** devPtr, size_t size, size_t alignment, void *devAddr, uint64_t flags) {
+aclError aclrtReserveMemAddress(void **devPtr, size_t size, size_t alignment, void *devAddr, uint64_t flags) {
   return llm::AclRuntimeStub::GetInstance()->aclrtReserveMemAddress(devPtr, size, alignment, devAddr, flags);
 }
 
@@ -770,15 +756,15 @@ aclError aclrtReserveMemAddressNoUCMemory(void **devPtr, size_t size, size_t ali
   return llm::AclRuntimeStub::GetInstance()->aclrtReserveMemAddress(devPtr, size, alignment, devAddr, flags);
 }
 
-aclError aclrtReleaseMemAddress(void* devPtr) {
+aclError aclrtReleaseMemAddress(void *devPtr) {
   return llm::AclRuntimeStub::GetInstance()->aclrtReleaseMemAddress(devPtr);
 }
 
-aclError aclrtMapMem(void* devPtr, size_t size, size_t offset, aclrtDrvMemHandle handle, uint64_t flags) {
+aclError aclrtMapMem(void *devPtr, size_t size, size_t offset, aclrtDrvMemHandle handle, uint64_t flags) {
   return llm::AclRuntimeStub::GetInstance()->aclrtMapMem(devPtr, size, offset, handle, flags);
 }
 
-aclError aclrtUnmapMem(void* devPtr) {
+aclError aclrtUnmapMem(void *devPtr) {
   return llm::AclRuntimeStub::GetInstance()->aclrtUnmapMem(devPtr);
 }
 
@@ -791,22 +777,21 @@ aclError aclrtPointerGetAttributes(const void *ptr, aclrtPtrAttributes *attribut
 }
 
 aclError aclrtMemExportToShareableHandleV2(aclrtDrvMemHandle handle, uint64_t flags, aclrtMemSharedHandleType type,
-                                          void *shareableHandle) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtMemExportToShareableHandleV2(handle, flags, type, shareableHandle);  
+                                           void *shareableHandle) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtMemExportToShareableHandleV2(handle, flags, type, shareableHandle);
 }
 
-aclError aclrtMemImportFromShareableHandleV2(void *shareableHandle, aclrtMemSharedHandleType type,
-                                             uint64_t flags, aclrtDrvMemHandle *handle) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtMemImportFromShareableHandleV2(shareableHandle, type,
-                                                              flags, handle);  
+aclError aclrtMemImportFromShareableHandleV2(void *shareableHandle, aclrtMemSharedHandleType type, uint64_t flags,
+                                             aclrtDrvMemHandle *handle) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtMemImportFromShareableHandleV2(shareableHandle, type, flags, handle);
 }
 
 aclError aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop, uint64_t flags) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtMallocPhysical(handle, size, prop, flags);  
+  return llm::AclRuntimeStub::GetInstance()->aclrtMallocPhysical(handle, size, prop, flags);
 }
 
 aclError aclrtFreePhysical(aclrtDrvMemHandle handle) {
-  return llm::AclRuntimeStub::GetInstance()->aclrtFreePhysical(handle);  
+  return llm::AclRuntimeStub::GetInstance()->aclrtFreePhysical(handle);
 }
 
 aclError aclrtBinaryLoadFromFile(const char *fileName, aclrtBinaryLoadOptions *options, void **handle) {
@@ -822,11 +807,11 @@ aclError aclrtCreateNotify(aclrtNotify *notify, uint64_t flag) {
 }
 
 aclError aclrtDestroyNotify(aclrtNotify notify) {
-  return llm::AclRuntimeStub::GetInstance()-> aclrtDestroyNotify(notify);
+  return llm::AclRuntimeStub::GetInstance()->aclrtDestroyNotify(notify);
 }
 
 aclError aclrtGetNotifyId(aclrtNotify notify, uint32_t *notifyId) {
-  return llm::AclRuntimeStub::GetInstance()-> aclrtGetNotifyId(notify, notifyId);
+  return llm::AclRuntimeStub::GetInstance()->aclrtGetNotifyId(notify, notifyId);
 }
 
 aclError aclrtSetStreamAttribute(aclrtStream stream, aclrtStreamAttr attr, aclrtStreamAttrValue *attrValue) {
@@ -834,7 +819,7 @@ aclError aclrtSetStreamAttribute(aclrtStream stream, aclrtStreamAttr attr, aclrt
 }
 
 aclError aclrtKernelArgsInit(aclrtFuncHandle funcHandle, aclrtArgsHandle *argsHandle) {
-  return llm::AclRuntimeStub::GetInstance()-> aclrtKernelArgsInit(funcHandle, argsHandle);
+  return llm::AclRuntimeStub::GetInstance()->aclrtKernelArgsInit(funcHandle, argsHandle);
 }
 
 aclError aclrtKernelArgsAppend(aclrtArgsHandle argsHandle, void *data, size_t size, aclrtParamHandle *paraHandle) {
@@ -842,17 +827,17 @@ aclError aclrtKernelArgsAppend(aclrtArgsHandle argsHandle, void *data, size_t si
 }
 
 aclError aclrtKernelArgsFinalize(aclrtArgsHandle argsHandle) {
-  return llm::AclRuntimeStub::GetInstance()-> aclrtKernelArgsFinalize(argsHandle);
+  return llm::AclRuntimeStub::GetInstance()->aclrtKernelArgsFinalize(argsHandle);
 }
 
 aclError aclrtLaunchKernelWithConfig(aclrtFuncHandle funcHandle, uint32_t blockDim, aclrtStream stream,
                                      aclrtLaunchKernelCfg *config, aclrtArgsHandle argsHandle, void *reserved) {
-  return llm::AclRuntimeStub::GetInstance()-> aclrtLaunchKernelWithConfig(funcHandle, blockDim, stream,
-                                                                       config, argsHandle, reserved);
+  return llm::AclRuntimeStub::GetInstance()->aclrtLaunchKernelWithConfig(funcHandle, blockDim, stream, config,
+                                                                         argsHandle, reserved);
 }
 
 aclError aclrtBinaryUnLoad(aclrtBinHandle binHandle) {
-  return llm::AclRuntimeStub::GetInstance()-> aclrtBinaryUnLoad(binHandle);
+  return llm::AclRuntimeStub::GetInstance()->aclrtBinaryUnLoad(binHandle);
 }
 #ifdef __cplusplus
 }

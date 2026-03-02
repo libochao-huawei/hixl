@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "llm_datadist_v2_wrapper.h"
@@ -93,8 +94,7 @@ std::pair<ge::Status, CacheTuple> LLMDataDistV2Wrapper::RegisterCache(const Cach
     cache.per_device_tensor_addrs = {tensor_addrs};
     auto real_cache_desc = LLMDataDistV2Wrapper::UnpackCacheDesc(cache_desc);
     real_cache_desc.remote_accessible = remote_accessible;
-    ret = llm_data_dist->RegisterCache(real_cache_desc, cache,
-                                       LLMDataDistV2Wrapper::UnpackCacheKeys(cache_keys));
+    ret = llm_data_dist->RegisterCache(real_cache_desc, cache, LLMDataDistV2Wrapper::UnpackCacheKeys(cache_keys));
     result = std::make_tuple(cache.cache_id, std::move(cache.per_device_tensor_addrs));
   }
   return {ret, result};
@@ -153,8 +153,7 @@ ge::Status LLMDataDistV2Wrapper::SwapBlocks(const CacheTuple &src, const CacheTu
                                             const std::vector<std::pair<int64_t, int64_t>> &block_mapping) {
   LLM_CHECK_NOTNULL(llm_data_dist);
   return llm_data_dist->SwapBlocks(LLMDataDistV2Wrapper::UnpackCacheTuple(src),
-                                   LLMDataDistV2Wrapper::UnpackCacheTuple(dst),
-                                   block_size, type, block_mapping);
+                                   LLMDataDistV2Wrapper::UnpackCacheTuple(dst), block_size, type, block_mapping);
 }
 
 ge::Status LLMDataDistV2Wrapper::CheckCapacity(const size_t seq_len) {

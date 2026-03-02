@@ -10,21 +10,38 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-__all__ = ['CacheDesc', 'CacheKey', 'CacheKeyByIdAndIndex', 'KvCache', 'BlocksCacheKey',
-           'Placement', 'CacheTask', 'TransferConfig', 'LayerSynchronizer', 'Cache']
+__all__ = [
+    "CacheDesc",
+    "CacheKey",
+    "CacheKeyByIdAndIndex",
+    "KvCache",
+    "BlocksCacheKey",
+    "Placement",
+    "CacheTask",
+    "TransferConfig",
+    "LayerSynchronizer",
+    "Cache",
+]
 
 from abc import abstractmethod, ABC
 from enum import Enum
-from typing import Any, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 from llm_datadist import llm_datadist_wrapper as llm_wrapper, LLMException
 from llm_datadist.data_type import DataType
 from llm_datadist.status import raise_if_false, LLMStatusCode, raise_if_true
 from llm_datadist.utils import log
-from llm_datadist.utils.utils import (check_isinstance, check_uint32, check_int32,
-                                      check_uint64, check_int64, check_list_int64, check_list_uint64)
+from llm_datadist.utils.utils import (
+    check_isinstance,
+    check_uint32,
+    check_int32,
+    check_uint64,
+    check_int64,
+    check_list_int64,
+    check_list_uint64,
+)
 
-_INVALID_ID = 2 ** 64 - 1
+_INVALID_ID = 2**64 - 1
 
 
 class PushType(Enum):
@@ -79,7 +96,11 @@ class MemInfo(object):
         return self.__str__()
 
 
-int_to_mem_status_dict = {0: RegisterMemStatus.OK, 1: RegisterMemStatus.PREPARING, 2: RegisterMemStatus.FAILED}
+int_to_mem_status_dict = {
+    0: RegisterMemStatus.OK,
+    1: RegisterMemStatus.PREPARING,
+    2: RegisterMemStatus.FAILED,
+}
 
 
 class Placement(Enum):
@@ -110,29 +131,37 @@ class CacheDesc(object):
         >>> cache_desc_2 = CacheDesc(tensor_num, tensor_shape, tensor_data_type, Placement.DEVICE, 0, 1)
     """
 
-    def __init__(self,
-                 num_tensors: int,
-                 shape: Union[Tuple[int], List[int]],
-                 data_type: DataType,
-                 placement: Placement = Placement.DEVICE,
-                 batch_dim_index: int = 0,
-                 seq_len_dim_index: int = -1,
-                 kv_tensor_format: str = None):
+    def __init__(
+        self,
+        num_tensors: int,
+        shape: Union[Tuple[int], List[int]],
+        data_type: DataType,
+        placement: Placement = Placement.DEVICE,
+        batch_dim_index: int = 0,
+        seq_len_dim_index: int = -1,
+        kv_tensor_format: str = None,
+    ):
         self._num_tensors = num_tensors
         self._shape = shape
-        check_uint32('num_tensors', num_tensors)
-        check_isinstance('shape', shape, [tuple, list], int)
-        check_isinstance('data_type', data_type, DataType)
-        check_isinstance('placement', placement, Placement)
-        check_isinstance('batch_dim_index', batch_dim_index, int)
-        check_int32('seq_len_dim_index', seq_len_dim_index)
-        check_isinstance('kv_tensor_format', kv_tensor_format, str)
-        raise_if_false(0 <= batch_dim_index < len(shape),
-                       "batch_dim_index {0} out of range, [0, {1})",
-                       batch_dim_index, len(shape))
-        raise_if_false(seq_len_dim_index == -1 or 0 <= seq_len_dim_index < len(shape),
-                       "seq_len_dim_index {0} is invalid, should be -1 or in range [0, {1})",
-                       seq_len_dim_index, len(shape))
+        check_uint32("num_tensors", num_tensors)
+        check_isinstance("shape", shape, [tuple, list], int)
+        check_isinstance("data_type", data_type, DataType)
+        check_isinstance("placement", placement, Placement)
+        check_isinstance("batch_dim_index", batch_dim_index, int)
+        check_int32("seq_len_dim_index", seq_len_dim_index)
+        check_isinstance("kv_tensor_format", kv_tensor_format, str)
+        raise_if_false(
+            0 <= batch_dim_index < len(shape),
+            "batch_dim_index {0} out of range, [0, {1})",
+            batch_dim_index,
+            len(shape),
+        )
+        raise_if_false(
+            seq_len_dim_index == -1 or 0 <= seq_len_dim_index < len(shape),
+            "seq_len_dim_index {0} is invalid, should be -1 or in range [0, {1})",
+            seq_len_dim_index,
+            len(shape),
+        )
         check_list_int64("shape", shape)
         self._data_type = data_type
         self._batch_dim = batch_dim_index
@@ -144,13 +173,15 @@ class CacheDesc(object):
         self._is_blocks = False
 
     def __repr__(self):
-        return (f'CacheDesc(num_tensors={self.num_tensors}, '
-                f'shape={self.shape}, '
-                f'data_type={self.data_type}, '
-                f'placement={self.placement}, '
-                f'batch_dim_index={self.batch_dim}, '
-                f'seq_len_dim_index={self._seq_len_dim_index},'
-                f'kv_tensor_format={self.kv_tensor_format})')
+        return (
+            f"CacheDesc(num_tensors={self.num_tensors}, "
+            f"shape={self.shape}, "
+            f"data_type={self.data_type}, "
+            f"placement={self.placement}, "
+            f"batch_dim_index={self.batch_dim}, "
+            f"seq_len_dim_index={self._seq_len_dim_index},"
+            f"kv_tensor_format={self.kv_tensor_format})"
+        )
 
     @property
     def num_tensors(self) -> int:
@@ -185,7 +216,9 @@ class CacheDesc(object):
         if self._size == -1:
             self._size = llm_wrapper.calc_tensor_size(self.shape, self._data_type.value)
             if self._size < 0:
-                raise LLMException(f'Failed to calc tensor size, shape = {self.shape}, data_type = {self.data_type}')
+                raise LLMException(
+                    f"Failed to calc tensor size, shape = {self.shape}, data_type = {self.data_type}"
+                )
         return self._size
 
     @property
@@ -202,14 +235,15 @@ class Cache(object):
     Cache, 由CacheManager.register_cache/allocate_cache/allocate_blocks_cache创建，用户不应直接构造
     """
 
-    def __init__(self,
-                 cache_id: int,
-                 cache_desc: CacheDesc,
-                 tensor_addrs: List[int],
-                 cache_manager,
-                 is_registered,
-                 is_blocks_cache
-                 ):
+    def __init__(
+        self,
+        cache_id: int,
+        cache_desc: CacheDesc,
+        tensor_addrs: List[int],
+        cache_manager,
+        is_registered,
+        is_blocks_cache,
+    ):
         self._cache_id = cache_id
         check_int64("cache_id", cache_id)
         self._cache_desc = cache_desc
@@ -229,11 +263,15 @@ class Cache(object):
 
     @classmethod
     def create_cpu_cache(cls, cache_desc: CacheDesc, addrs: List[int]):
-        check_isinstance('cache_desc', cache_desc, CacheDesc)
-        check_isinstance('addrs', addrs, list, int)
-        raise_if_false(cache_desc.placement == Placement.HOST, "cache_desc placement must be HOST")
-        raise_if_false(cache_desc.num_tensors == len(addrs),
-                       f"cache_desc num_tensors:{cache_desc.num_tensors} not equal addrs num:{len(addrs)}")
+        check_isinstance("cache_desc", cache_desc, CacheDesc)
+        check_isinstance("addrs", addrs, list, int)
+        raise_if_false(
+            cache_desc.placement == Placement.HOST, "cache_desc placement must be HOST"
+        )
+        raise_if_false(
+            cache_desc.num_tensors == len(addrs),
+            f"cache_desc num_tensors:{cache_desc.num_tensors} not equal addrs num:{len(addrs)}",
+        )
         return cls(-1, cache_desc, addrs, None, False, True)
 
     @property
@@ -245,8 +283,10 @@ class Cache(object):
         return self._is_blocks_cache
 
     def __str__(self):
-        return (f'Cache(cache_id = {self._cache_id}, device_tensor_addrs = {len(self._tensor_addrs)}, '
-                f'is_blocks_cache = {self._is_blocks_cache})')
+        return (
+            f"Cache(cache_id = {self._cache_id}, device_tensor_addrs = {len(self._tensor_addrs)}, "
+            f"is_blocks_cache = {self._is_blocks_cache})"
+        )
 
     def __repr__(self):
         return self.__str__()
@@ -280,15 +320,25 @@ class BlocksCacheKey(object):
             kwargs["cluster_id"] = args[0]
         if len(args) > 1:
             kwargs["model_id"] = args[1]
-        raise_if_false("prompt_cluster_id" in kwargs or "cluster_id" in kwargs,
-                       "Param prompt_cluster_id or cluster_id is required")
+        raise_if_false(
+            "prompt_cluster_id" in kwargs or "cluster_id" in kwargs,
+            "Param prompt_cluster_id or cluster_id is required",
+        )
         valid_keys = ["prompt_cluster_id", "cluster_id", "model_id"]
         for k in kwargs.keys():
             raise_if_false(k in valid_keys, "Unsupported param:{}", k)
-        self._cluster_id = kwargs["cluster_id"] if "cluster_id" in kwargs else kwargs["prompt_cluster_id"]
-        self._cluster_id_key = "cluster_id" if "cluster_id" in kwargs else "prompt_cluster_id"
+        self._cluster_id = (
+            kwargs["cluster_id"]
+            if "cluster_id" in kwargs
+            else kwargs["prompt_cluster_id"]
+        )
+        self._cluster_id_key = (
+            "cluster_id" if "cluster_id" in kwargs else "prompt_cluster_id"
+        )
         self._model_id = kwargs["model_id"] if "model_id" in kwargs else 0
-        check_isinstance("cluster_id", self._cluster_id, int, extra_fmt="The first param ")
+        check_isinstance(
+            "cluster_id", self._cluster_id, int, extra_fmt="The first param "
+        )
         check_isinstance("model_id", self._model_id, int, extra_fmt="The second param ")
 
     @property
@@ -304,8 +354,10 @@ class BlocksCacheKey(object):
         return self._model_id
 
     def __repr__(self):
-        return (f'BlocksCacheKey({self._cluster_id_key}={self.cluster_id}, '
-                f'model_id={self.model_id})')
+        return (
+            f"BlocksCacheKey({self._cluster_id_key}={self.cluster_id}, "
+            f"model_id={self.model_id})"
+        )
 
 
 class CacheKey(object):
@@ -344,14 +396,27 @@ class CacheKey(object):
             kwargs["model_id"] = args[2]
         if len(args) > 3:
             kwargs["prefix_id"] = args[3]
-        raise_if_false("prompt_cluster_id" in kwargs or "cluster_id" in kwargs,
-                       "Param prompt_cluster_id or cluster_id is required")
-        raise_if_false("req_id" in kwargs or "req_id" in kwargs,
-                       "Param req_id is required")
-        valid_keys = ["prompt_cluster_id", "cluster_id", "req_id", "model_id", "prefix_id"]
+        raise_if_false(
+            "prompt_cluster_id" in kwargs or "cluster_id" in kwargs,
+            "Param prompt_cluster_id or cluster_id is required",
+        )
+        raise_if_false(
+            "req_id" in kwargs or "req_id" in kwargs, "Param req_id is required"
+        )
+        valid_keys = [
+            "prompt_cluster_id",
+            "cluster_id",
+            "req_id",
+            "model_id",
+            "prefix_id",
+        ]
         for k in kwargs.keys():
             raise_if_false(k in valid_keys, "Unsupported param:{}", k)
-        self._cluster_id = kwargs["cluster_id"] if "cluster_id" in kwargs else kwargs["prompt_cluster_id"]
+        self._cluster_id = (
+            kwargs["cluster_id"]
+            if "cluster_id" in kwargs
+            else kwargs["prompt_cluster_id"]
+        )
         self._req_id = kwargs["req_id"]
         self._model_id = kwargs["model_id"] if "model_id" in kwargs else 0
         self._prefix_id = kwargs["prefix_id"] if "prefix_id" in kwargs else _INVALID_ID
@@ -381,10 +446,12 @@ class CacheKey(object):
         return self._model_id
 
     def __repr__(self):
-        return (f'CacheKey(cluster_id={self.cluster_id}, '
-                f'req_id={self.req_id}, '
-                f'prefix_id={self.prefix_id}, '
-                f'model_id={self.model_id})')
+        return (
+            f"CacheKey(cluster_id={self.cluster_id}, "
+            f"req_id={self.req_id}, "
+            f"prefix_id={self.prefix_id}, "
+            f"model_id={self.model_id})"
+        )
 
 
 class CacheKeyByIdAndIndex(object):
@@ -424,9 +491,11 @@ class CacheKeyByIdAndIndex(object):
         return self._prompt_batch_index
 
     def __repr__(self):
-        return (f'CacheKeyByIdAndIndex(cluster_id={self.cluster_id}, '
-                f'cache_id={self.cache_id}, '
-                f'batch_index={self.batch_index})')
+        return (
+            f"CacheKeyByIdAndIndex(cluster_id={self.cluster_id}, "
+            f"cache_id={self.cache_id}, "
+            f"batch_index={self.batch_index})"
+        )
 
 
 class KvCache(object):
@@ -434,11 +503,13 @@ class KvCache(object):
     Kv Cache, 由KvCacheManager.allocate_cache创建，用户不应直接构造
     """
 
-    def __init__(self,
-                 cache_id: int,
-                 cache_desc: CacheDesc,
-                 per_device_tensor_addrs: List[List[int]],
-                 kv_cache_manager):
+    def __init__(
+        self,
+        cache_id: int,
+        cache_desc: CacheDesc,
+        per_device_tensor_addrs: List[List[int]],
+        kv_cache_manager,
+    ):
         self._cache_id = cache_id
         check_int64("cache_id", cache_id)
         self._cache_desc = cache_desc
@@ -448,8 +519,12 @@ class KvCache(object):
 
     def __del__(self):
         # 保底释放kv cache, 但更推荐主动通过调用kv_cache_manager.deallocate_cache来释放kv cache，而不应该遗留到此处自动释放
-        if self._valid and self._kv_cache_manager is not None and self._kv_cache_manager.is_initialized():
-            log.info('auto deallocate kv cache: %s', self.cache_id)
+        if (
+            self._valid
+            and self._kv_cache_manager is not None
+            and self._kv_cache_manager.is_initialized()
+        ):
+            log.info("auto deallocate kv cache: %s", self.cache_id)
             self._kv_cache_manager.deallocate_cache(self)
 
     @property
@@ -465,37 +540,52 @@ class KvCache(object):
         return self._per_device_tensor_addrs
 
     def __str__(self):
-        return f'KvCache(cache_id = {self._cache_id}, num_devices = {len(self._per_device_tensor_addrs)})'
+        return f"KvCache(cache_id = {self._cache_id}, num_devices = {len(self._per_device_tensor_addrs)})"
 
     def __repr__(self):
         return self.__str__()
 
     @classmethod
-    def create_cpu_cache(cls, cache_desc: CacheDesc, addrs: Union[List[int], List[List[int]]]):
-        check_isinstance('cache_desc', cache_desc, CacheDesc)
-        raise_if_false(cache_desc.placement == Placement.HOST, "cache_desc placement must be HOST")
-        check_isinstance('addrs', addrs, list)
+    def create_cpu_cache(
+        cls, cache_desc: CacheDesc, addrs: Union[List[int], List[List[int]]]
+    ):
+        check_isinstance("cache_desc", cache_desc, CacheDesc)
+        raise_if_false(
+            cache_desc.placement == Placement.HOST, "cache_desc placement must be HOST"
+        )
+        check_isinstance("addrs", addrs, list)
         raise_if_false(len(addrs) > 0, "addrs length should be bigger than zero.")
         last_type = type(addrs[0])
         for addr in addrs:
-            check_isinstance('the internal element of addrs', addr, [list, int])
+            check_isinstance("the internal element of addrs", addr, [list, int])
             if isinstance(addr, list):
-                check_isinstance('the internal element of addrs', addr, list, int)
-                raise_if_false(cache_desc.num_tensors == len(addr),
-                               f"cache_desc num_tensors:{cache_desc.num_tensors} "
-                               f"should be equal to size of the internal element of addrs:{len(addr)}")
-            raise_if_false(isinstance(addr, last_type),
-                           'the type of the internal element of addrs should be consistent.')
+                check_isinstance("the internal element of addrs", addr, list, int)
+                raise_if_false(
+                    cache_desc.num_tensors == len(addr),
+                    f"cache_desc num_tensors:{cache_desc.num_tensors} "
+                    f"should be equal to size of the internal element of addrs:{len(addr)}",
+                )
+            raise_if_false(
+                isinstance(addr, last_type),
+                "the type of the internal element of addrs should be consistent.",
+            )
             last_type = type(addr)
-        if last_type == int:
-            raise_if_false(cache_desc.num_tensors == len(addrs),
-                           f"cache_desc num_tensors:{cache_desc.num_tensors} "
-                           f"should be equal to size of addrs:{len(addrs)}")
-        return cls(-1, cache_desc, [addrs] if last_type == int else addrs, None)
+        if isinstance(last_type, int):
+            raise_if_false(
+                cache_desc.num_tensors == len(addrs),
+                f"cache_desc num_tensors:{cache_desc.num_tensors} "
+                f"should be equal to size of addrs:{len(addrs)}",
+            )
+        return cls(
+            -1, cache_desc, [addrs] if isinstance(last_type, int) else addrs, None
+        )
+
 
 class LayerSynchronizer(ABC):
     @abstractmethod
-    def synchronize_layer(self, layer_index: int, timeout_in_millis: Optional[int]) -> bool:
+    def synchronize_layer(
+        self, layer_index: int, timeout_in_millis: Optional[int]
+    ) -> bool:
         """
         阻塞等待指定层计算完成
 
@@ -512,38 +602,55 @@ def check_layer_range(name, layer_range: Optional[range], allow_none=True):
     if allow_none and layer_range is None:
         return
     check_isinstance(name, layer_range, range, allow_none=allow_none)
-    raise_if_false(layer_range.step == 1,
-                   f'check {name}.step == 1 failed')
-    raise_if_false(0 <= layer_range.start < layer_range.stop,
-                   'check 0 <= range.start < range.stop failed, {0} = {1}', name, layer_range)
+    raise_if_false(layer_range.step == 1, f"check {name}.step == 1 failed")
+    raise_if_false(
+        0 <= layer_range.start < layer_range.stop,
+        "check 0 <= range.start < range.stop failed, {0} = {1}",
+        name,
+        layer_range,
+    )
 
 
 class TransferWithCacheKeyConfig:
-    def __init__(self,
-                 cache_key: Union[BlocksCacheKey, CacheKeyByIdAndIndex],
-                 src_layer_range: range = None,
-                 dst_layer_range: range = None,
-                 src_batch_index: int = 0):
-        check_isinstance('cache_key', cache_key, [BlocksCacheKey, CacheKeyByIdAndIndex], allow_none=False)
+    def __init__(
+        self,
+        cache_key: Union[BlocksCacheKey, CacheKeyByIdAndIndex],
+        src_layer_range: range = None,
+        dst_layer_range: range = None,
+        src_batch_index: int = 0,
+    ):
+        check_isinstance(
+            "cache_key",
+            cache_key,
+            [BlocksCacheKey, CacheKeyByIdAndIndex],
+            allow_none=False,
+        )
         self._cache_key = cache_key
-        check_layer_range('src_layer_range', src_layer_range, allow_none=False)
+        check_layer_range("src_layer_range", src_layer_range, allow_none=False)
         self._src_layer_range = src_layer_range
-        check_layer_range('dst_layer_range', dst_layer_range, allow_none=False)
+        check_layer_range("dst_layer_range", dst_layer_range, allow_none=False)
         self._dst_layer_range = dst_layer_range
-        raise_if_false((src_layer_range.stop - src_layer_range.start) == (dst_layer_range.stop - src_layer_range.start),
-                       f'src_layer_range size shoulde be equal to dst_layer_range size')
-        check_uint32('src_batch_index', src_batch_index)
+        raise_if_false(
+            (src_layer_range.stop - src_layer_range.start)
+            == (dst_layer_range.stop - src_layer_range.start),
+            "src_layer_range size should be equal to dst_layer_range size",
+        )
+        check_uint32("src_batch_index", src_batch_index)
 
-        raise_if_true(isinstance(cache_key, BlocksCacheKey) and src_batch_index != 0,
-                      "src_batch_index shoulde be 0 when cache_key is BlocksCacheKey.")
+        raise_if_true(
+            isinstance(cache_key, BlocksCacheKey) and src_batch_index != 0,
+            "src_batch_index should be 0 when cache_key is BlocksCacheKey.",
+        )
         self._src_batch_index = src_batch_index
         self.dst_cluster_id = cache_key.cluster_id
 
     def __repr__(self) -> str:
-        return (f"TransferWithCacheKeyConfig(cache_key={self._cache_key},"
-                f" src_layer_range={self._src_layer_range},"
-                f" dst_layer_range={self._dst_layer_range},"
-                f" src_batch_index={self._src_batch_index})")
+        return (
+            f"TransferWithCacheKeyConfig(cache_key={self._cache_key},"
+            f" src_layer_range={self._src_layer_range},"
+            f" dst_layer_range={self._dst_layer_range},"
+            f" src_batch_index={self._src_batch_index})"
+        )
 
     @property
     def cache_key(self):
@@ -551,7 +658,7 @@ class TransferWithCacheKeyConfig:
 
     @cache_key.setter
     def cache_key(self, cache_key: Union[BlocksCacheKey, CacheKeyByIdAndIndex]) -> None:
-        check_isinstance('cache_key', cache_key, [BlocksCacheKey, CacheKeyByIdAndIndex])
+        check_isinstance("cache_key", cache_key, [BlocksCacheKey, CacheKeyByIdAndIndex])
         self._cache_key = cache_key
 
     @property
@@ -560,7 +667,7 @@ class TransferWithCacheKeyConfig:
 
     @src_layer_range.setter
     def src_layer_range(self, src_layer_range: Optional[range]) -> None:
-        check_layer_range('src_layer_range', src_layer_range)
+        check_layer_range("src_layer_range", src_layer_range)
         self._src_layer_range = src_layer_range
 
     @property
@@ -569,7 +676,7 @@ class TransferWithCacheKeyConfig:
 
     @dst_layer_range.setter
     def dst_layer_range(self, dst_layer_range: Optional[range]) -> None:
-        check_layer_range('dst_layer_range', dst_layer_range)
+        check_layer_range("dst_layer_range", dst_layer_range)
         self._dst_layer_range = dst_layer_range
 
     @property
@@ -578,8 +685,10 @@ class TransferWithCacheKeyConfig:
 
     @src_batch_index.setter
     def src_batch_index(self, src_batch_index: int) -> None:
-        raise_if_true(isinstance(self.cache_key, BlocksCacheKey) and src_batch_index != 0,
-                      "src_batch_index shoulde be 0 when cache_key is BlocksCacheKey.")
+        raise_if_true(
+            isinstance(self.cache_key, BlocksCacheKey) and src_batch_index != 0,
+            "src_batch_index should be 0 when cache_key is BlocksCacheKey.",
+        )
         self._check_src_batch_index(src_batch_index)
         self._src_batch_index = src_batch_index
 
@@ -589,14 +698,16 @@ class TransferWithCacheKeyConfig:
 
 
 class TransferConfig:
-    def __init__(self,
-                 dst_cluster_id: int,
-                 dst_addrs: List[int],
-                 src_layer_range: Optional[range] = None,
-                 src_batch_index: int = 0):
+    def __init__(
+        self,
+        dst_cluster_id: int,
+        dst_addrs: List[int],
+        src_layer_range: Optional[range] = None,
+        src_batch_index: int = 0,
+    ):
         self._check_dst_cluster_id(dst_cluster_id)
         self._check_dst_addrs(dst_addrs)
-        check_layer_range('src_layer_range', src_layer_range)
+        check_layer_range("src_layer_range", src_layer_range)
         self._check_src_batch_index(src_batch_index)
         self._dst_cluster_id = dst_cluster_id
         self._dst_addrs = dst_addrs
@@ -605,10 +716,12 @@ class TransferConfig:
         self.dst_layer_range = None
 
     def __repr__(self) -> str:
-        return (f"TransferConfig(src_cluster_id={self._dst_cluster_id},"
-                f" dst_addrs={self._dst_addrs},"
-                f" src_layer_range={self._src_layer_range},"
-                f" src_batch_index={self._src_batch_index})")
+        return (
+            f"TransferConfig(src_cluster_id={self._dst_cluster_id},"
+            f" dst_addrs={self._dst_addrs},"
+            f" src_layer_range={self._src_layer_range},"
+            f" src_batch_index={self._src_batch_index})"
+        )
 
     def __str__(self):
         return self.__repr__()
@@ -641,7 +754,7 @@ class TransferConfig:
 
     @src_layer_range.setter
     def src_layer_range(self, layer_range: Optional[range]) -> None:
-        check_layer_range('src_layer_range', layer_range)
+        check_layer_range("src_layer_range", layer_range)
         self._src_layer_range = layer_range
 
     @src_batch_index.setter
@@ -670,13 +783,15 @@ class CacheTask:
     def synchronize(self, timeout_in_millis: Optional[int] = None) -> LLMStatusCode:
         timeout = None
         if timeout_in_millis is not None:
-            check_uint32('timeout_in_millis', timeout_in_millis)
+            check_uint32("timeout_in_millis", timeout_in_millis)
             timeout = timeout_in_millis / 1000
         return self._transfer_async_task.get(timeout)
 
-    def get_results(self, timeout_in_millis: Optional[int] = None) -> List[LLMStatusCode]:
+    def get_results(
+        self, timeout_in_millis: Optional[int] = None
+    ) -> List[LLMStatusCode]:
         timeout = None
         if timeout_in_millis is not None:
-            check_uint32('timeout_in_millis', timeout_in_millis)
+            check_uint32("timeout_in_millis", timeout_in_millis)
             timeout = timeout_in_millis / 1000
         return self._transfer_async_task.get_results(timeout)

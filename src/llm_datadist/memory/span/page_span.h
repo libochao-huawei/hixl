@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #ifndef H3A8A51B9_C45F_4713_89E4_03F02FA1F99F
@@ -26,8 +27,7 @@ class PageSpan : public ge::MemBlock, public LinkNode<PageSpan> {
  public:
   PageSpan(ge::Allocator &allocator, ScalableAllocator &scalable_allocator, BlockAddr block_addr, MemAddr addr,
            size_t mem_size)
-      : ge::MemBlock(allocator, addr, mem_size), block_addr_{block_addr}, scalable_allocator_{scalable_allocator} {
-  }
+      : ge::MemBlock(allocator, addr, mem_size), block_addr_{block_addr}, scalable_allocator_{scalable_allocator} {}
 
   ~PageSpan() override {
     page_len_ = 0;
@@ -103,6 +103,6 @@ class PageSpan : public ge::MemBlock, public LinkNode<PageSpan> {
   size_t real_size_{0U};
   bool splitable_{false};
 };
-}
+}  // namespace llm
 
 #endif

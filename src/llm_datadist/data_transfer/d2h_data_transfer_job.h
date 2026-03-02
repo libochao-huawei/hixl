@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #ifndef CANN_GRAPH_ENGINE_RUNTIME_LLM_ENGINE_V2_DATA_TRANSFER_D2H_DATA_TRANSFER_JOB_H_
@@ -32,28 +33,22 @@ struct TransferBlocksTask {
 class DataTransferTaskGenerator {
  public:
   DataTransferTaskGenerator(uint32_t num_tensors, uint32_t num_buffers, uint32_t buffer_size)
-      : num_tensors_(num_tensors), num_buffers_(num_buffers), buffer_size_(buffer_size) {
-  }
+      : num_tensors_(num_tensors), num_buffers_(num_buffers), buffer_size_(buffer_size) {}
 
-  // for continous
-  std::vector<TransferBlocksTask> GenerateTasks(int64_t tensor_size,
-                                                uint32_t block_size);
+  // for continuous
+  std::vector<TransferBlocksTask> GenerateTasks(int64_t tensor_size, uint32_t block_size);
 
-  std::vector<TransferBlocksTask> GenerateTasks(uint32_t block_size,
-                                                uint32_t num_block_indices,
+  std::vector<TransferBlocksTask> GenerateTasks(uint32_t block_size, uint32_t num_block_indices,
                                                 const uint64_t *block_indices,
                                                 const uint64_t *remote_block_indices = nullptr);
 
  private:
-  std::vector<TransferBlocksTask> DoGenerate(uint32_t block_size,
-                                             uint32_t tail_block_size,
-                                             uint32_t num_block_indices,
+  std::vector<TransferBlocksTask> DoGenerate(uint32_t block_size, uint32_t tail_block_size, uint32_t num_block_indices,
                                              const uint64_t *block_indices);
   std::vector<TransferBlocksTask> DoGenerateForClientBlocks(uint32_t block_size, uint32_t tail_block_size,
                                                             uint32_t num_block_indices, const uint64_t *block_indices,
                                                             const uint64_t *remote_block_indices);
-  std::vector<TransferBlocksTask> DoGenerateForLargeBlock(uint32_t block_size,
-                                                          uint32_t num_block_indices,
+  std::vector<TransferBlocksTask> DoGenerateForLargeBlock(uint32_t block_size, uint32_t num_block_indices,
                                                           const uint64_t *block_indices) const;
   void GetNextBufBlockNum(uint32_t buffer_task_index, uint32_t &remote_buffer_block_num);
 
@@ -96,24 +91,18 @@ class D2HDataTransferClient {
   explicit D2HDataTransferClient(CommEntity &comm_entity, aclrtStream stream);
   ~D2HDataTransferClient();
 
-  ge::Status PullCache(const CacheEntry &cache_entry,
-                       const CacheKey &cache_key,
-                       const PullCacheParam &pull_cache_param,
+  ge::Status PullCache(const CacheEntry &cache_entry, const CacheKey &cache_key, const PullCacheParam &pull_cache_param,
                        int32_t timeout_in_ms = 1000);
+
  private:
   ge::Status Prepare(const CacheEntry &cache_entry, const CacheKey &cache_key, const PullCacheParam &pull_cache_param);
-  ge::Status GenerateTasks(const CacheEntry &cache_entry,
-                           const PullCacheParam &pull_cache_param,
+  ge::Status GenerateTasks(const CacheEntry &cache_entry, const PullCacheParam &pull_cache_param,
                            const ResponseInfo &response);
-  ge::Status SendRequest(const CacheEntry &cache_entry,
-                         const CacheKey &cache_key,
+  ge::Status SendRequest(const CacheEntry &cache_entry, const CacheKey &cache_key,
                          const PullCacheParam &pull_cache_param) const;
   ge::Status RunTasks();
-  void FillRequest(const CacheEntry &cache_entry,
-                   const CacheKey &cache_key,
-                   const PullCacheParam &pull_cache_param,
-                   TransferCacheReq &request,
-                   uint64_t &size) const;
+  void FillRequest(const CacheEntry &cache_entry, const CacheKey &cache_key, const PullCacheParam &pull_cache_param,
+                   TransferCacheReq &request, uint64_t &size) const;
   ge::Status CopyAsync(const TransferBlocksTask &task);
 
   CommEntity *comm_entity_ = nullptr;

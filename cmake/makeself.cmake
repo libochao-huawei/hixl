@@ -94,4 +94,3 @@ execute_process(COMMAND bash ${MAKESELF_EXE}
 if(NOT EXEC_RESULT EQUAL 0)
     message(FATAL_ERROR "makeself packaging failed: ${EXEC_ERROR}")
 endif()
-

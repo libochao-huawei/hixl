@@ -60,9 +60,7 @@ void ThreadPool::ThreadFunc(ThreadPool *const thread_pool, uint32_t thread_idx) 
     {
       std::unique_lock<std::mutex> lock{thread_pool->m_lock_};
       thread_pool->cond_var_.wait(
-          lock, [thread_pool]() -> bool {
-            return thread_pool->is_stoped_.load() || (!thread_pool->tasks_.empty());
-          });
+          lock, [thread_pool]() -> bool { return thread_pool->is_stoped_.load() || (!thread_pool->tasks_.empty()); });
       if (thread_pool->is_stoped_ && thread_pool->tasks_.empty()) {
         return;
       }

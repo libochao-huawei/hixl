@@ -93,4 +93,3 @@ TransferWithCacheKeyConfig(BlocksCacheKey(1), range(0, 40), range(0, 40))
 
 -   src\_layer\_range表示范围需等于dst\_layer\_range表示范围。
 -   cache\_key为BlocksCacheKey时，src\_batch\_index只能为0。
-

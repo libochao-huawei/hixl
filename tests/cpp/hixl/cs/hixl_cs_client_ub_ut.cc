@@ -24,7 +24,6 @@
 #undef protected
 #undef private
 
-
 namespace hixl {
 namespace {
 
@@ -109,22 +108,21 @@ class HixlCSClientUbFixture : public ::testing::Test {
 
   // [新增] 辅助函数：统一处理 Buffer 的注册和 CommunicateMem 参数的组装
   CommunicateMem SetupBatchTransfer(bool is_get) {
-    RecordMemForBatchTransfer(cli_, remote_buf_.data(), remote_buf_.size(),
-                              local_buf_.data(), local_buf_.size());
+    RecordMemForBatchTransfer(cli_, remote_buf_.data(), remote_buf_.size(), local_buf_.data(), local_buf_.size());
 
     if (is_get) {
-      remote_list_const_[0] = remote_buf_.data(); // src (remote)
-      local_list_[0]        = local_buf_.data();  // dst (local)
-      mem_.src_buf_list     = remote_list_const_;
-      mem_.dst_buf_list     = local_list_;
+      remote_list_const_[0] = remote_buf_.data();  // src (remote)
+      local_list_[0] = local_buf_.data();          // dst (local)
+      mem_.src_buf_list = remote_list_const_;
+      mem_.dst_buf_list = local_list_;
     } else {
-      local_list_const_[0]  = local_buf_.data();  // src (local)
-      remote_list_[0]       = remote_buf_.data(); // dst (remote)
-      mem_.src_buf_list     = local_list_const_;
-      mem_.dst_buf_list     = remote_list_;
+      local_list_const_[0] = local_buf_.data();  // src (local)
+      remote_list_[0] = remote_buf_.data();      // dst (remote)
+      mem_.src_buf_list = local_list_const_;
+      mem_.dst_buf_list = remote_list_;
     }
 
-    len_list_[0]  = kLen8;
+    len_list_[0] = kLen8;
     mem_.len_list = len_list_;
     mem_.list_num = kListNum1;
 
@@ -137,10 +135,10 @@ class HixlCSClientUbFixture : public ::testing::Test {
   // [新增] 将临时 Buffer 和数组沉淀到类的生命周期中，防止悬空指针
   std::array<uint8_t, 8> local_buf_{};
   std::array<uint8_t, 8> remote_buf_{};
-  void* local_list_[1]{};
-  void* remote_list_[1]{};
-  const void* local_list_const_[1]{};
-  const void* remote_list_const_[1]{};
+  void *local_list_[1]{};
+  void *remote_list_[1]{};
+  const void *local_list_const_[1]{};
+  const void *remote_list_const_[1]{};
   uint64_t len_list_[1]{};
   CommunicateMem mem_{};
 };
@@ -149,7 +147,7 @@ class HixlCSClientUbFixture : public ::testing::Test {
 
 TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceSuccessUseMemcpyHackFlag) {
   setenv("HIXL_UT_UB_FLAG_HACK", "1", 1);
-  CommunicateMem mem = SetupBatchTransfer(false); // false = Put
+  CommunicateMem mem = SetupBatchTransfer(false);  // false = Put
 
   void *qh = nullptr;
   const Status ret = cli_.BatchTransfer(false, mem, &qh);
@@ -163,7 +161,7 @@ TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceSuccessUseMemcpyHackFlag) {
 
 TEST_F(HixlCSClientUbFixture, BatchGetUbDeviceSuccessUseMemcpyHackFlag) {
   setenv("HIXL_UT_UB_FLAG_HACK", "1", 1);
-  CommunicateMem mem = SetupBatchTransfer(true); // true = Get
+  CommunicateMem mem = SetupBatchTransfer(true);  // true = Get
 
   void *qh = nullptr;
   const Status ret = cli_.BatchTransfer(true, mem, &qh);
@@ -192,7 +190,7 @@ TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceNotifyWaitFail) {
   const Status ret = cli_.BatchTransfer(false, mem, &qh);
   EXPECT_EQ(ret, SUCCESS);
   ASSERT_NE(qh, nullptr);
-  EXPECT_EQ(GetCompletePool().GetInUseCount(), 1U); // 确认占用了 1 个
+  EXPECT_EQ(GetCompletePool().GetInUseCount(), 1U);  // 确认占用了 1 个
 
   // 2. 给底层的 Wait 注入一个失败的返回值
   g_Stub_aclrtWaitAndResetNotify_RETURN.push_back(static_cast<aclError>(-1));

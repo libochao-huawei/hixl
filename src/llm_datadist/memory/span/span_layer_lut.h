@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #ifndef H46CE8BDB_A361_403B_AB8B_D4CFAE40604E
@@ -19,10 +20,9 @@
 namespace llm {
 class SpanLayerLut {
   using SpanLayerIdIterator = std::set<SpanLayerId>::iterator;
+
  public:
-  explicit SpanLayerLut(const std::vector<SpanLayer *> &span_layers)
-      : span_layers_{span_layers} {
-  }
+  explicit SpanLayerLut(const std::vector<SpanLayer *> &span_layers) : span_layers_{span_layers} {}
 
  public:
   virtual void OnLayerCreated(const SpanLayer &) = 0;
@@ -63,8 +63,7 @@ class SpanLayerQuickLut : public SpanLayerLut {
   using SpanLayerLut::SpanLayerLut;
 
  private:
-  void OnLayerCreated(const SpanLayer &) override {
-  }
+  void OnLayerCreated(const SpanLayer &) override {}
   void OnLayerAddSpan(const SpanLayer &layer) override {
     if (layer.GetSize() == 1) {
       span_layer_ids_.emplace(layer.GetLayerId());
@@ -91,6 +90,6 @@ class SpanLayerQuickLut : public SpanLayerLut {
     span_layer_ids_.clear();
   }
 };
-}
+}  // namespace llm
 
 #endif

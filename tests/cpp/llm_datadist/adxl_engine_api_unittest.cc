@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include <memory>
@@ -43,7 +44,7 @@ class AdxlEngineUTest : public ::testing::Test {
     llm::AutoCommResRuntimeMock::Reset();
     llm::MockMmpaForHcclApi::Reset();
   }
-  //初始化两个 AdxlEngine 引擎
+  // 初始化两个 AdxlEngine 引擎
   void SetupEngines(AdxlEngine &engine1, AdxlEngine &engine2) {
     llm::AutoCommResRuntimeMock::SetDevice(0);
     std::map<AscendString, AscendString> options1;
@@ -56,14 +57,14 @@ class AdxlEngineUTest : public ::testing::Test {
     std::map<AscendString, AscendString> options2;
     EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
   }
-  //注册 int32 类型的内存
+  // 注册 int32 类型的内存
   void RegisterInt32Mem(AdxlEngine &engine, int32_t *ptr, MemHandle &handle) {
     adxl::MemDesc mem_desc{};
     mem_desc.addr = reinterpret_cast<uintptr_t>(ptr);
     mem_desc.len = sizeof(int32_t);
     EXPECT_EQ(engine.RegisterMem(mem_desc, MEM_DEVICE, handle), SUCCESS);
   }
-  //清理资源
+  // 清理资源
   void CleanupEngine(AdxlEngine &engine1, AdxlEngine &engine2, MemHandle &handle1, MemHandle &handle2) {
     EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
     EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
@@ -158,7 +159,7 @@ TEST_F(AdxlEngineUTest, TestDeregisterUnregisterMem) {
 
 TEST_F(AdxlEngineUTest, TestHeartbeat) {
   ChannelManager::SetHeartbeatWaitTime(10);  // 10ms
-  Channel::SetHeartbeatTimeout(50);  // 50ms
+  Channel::SetHeartbeatTimeout(50);          // 50ms
   AdxlEngine engine1;
   llm::AutoCommResRuntimeMock::SetDevice(0);
   std::map<AscendString, AscendString> options1;
@@ -177,16 +178,16 @@ TEST_F(AdxlEngineUTest, TestHeartbeat) {
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
   EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", READ, {desc}), SUCCESS);
   EXPECT_EQ(src, 2);
-  // not disconnet, force finalize
+  // not disconnect, force finalize
   engine1.Finalize();
 
   llm::AutoCommResRuntimeMock::SetDevice(0);
   AdxlEngine engine3;
   EXPECT_EQ(engine3.Initialize("127.0.0.1", options1), SUCCESS);  // use same key with engine1
   EXPECT_EQ(engine3.Connect("127.0.0.1:26001"), SUCCESS);
-  // not disconnet, force finalize
+  // not disconnect, force finalize
   engine3.Finalize();
-  std::this_thread::sleep_for(std::chrono::milliseconds(60));  // wait server:engine2 clear client:engine3 
+  std::this_thread::sleep_for(std::chrono::milliseconds(60));  // wait server:engine2 clear client:engine3
   engine2.Finalize();
 }
 
@@ -321,10 +322,10 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineTransferAsync) {
   }
   EXPECT_EQ(status, TransferStatus::COMPLETED);
   EXPECT_EQ(src, 2);
-  //测试多次查找
+  // 测试多次查找
   EXPECT_EQ(engine1.GetTransferStatus(req, status), PARAM_INVALID);
   EXPECT_EQ(status, TransferStatus::FAILED);
-  
+
   src = 1;
   ASSERT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req), SUCCESS);
   status = TransferStatus::WAITING;
@@ -333,7 +334,7 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineTransferAsync) {
     EXPECT_EQ(engine1.GetTransferStatus(req, status), SUCCESS);
   }
   EXPECT_EQ(status, TransferStatus::COMPLETED);
-  EXPECT_EQ(dst, 1); 
+  EXPECT_EQ(dst, 1);
 
   CleanupEngine(engine1, engine2, handle1, handle2);
 }
@@ -352,46 +353,54 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineTransferAsyncWithMultiThread) {
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
   constexpr int kThreadCount = 20;
   constexpr int kPollInterval = 10;
-  constexpr int kMaxWaitTime = 5; //5s
+  constexpr int kMaxWaitTime = 5;  // 5s
   TransferReq req_list[kThreadCount];
   std::vector<std::thread> async_threads;
-  for(int i = 0; i< kThreadCount; i++) {
-    async_threads.emplace_back([&, i]() {
-      EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req_list[i]), SUCCESS);
-    });
+  for (int i = 0; i < kThreadCount; i++) {
+    async_threads.emplace_back(
+        [&, i]() { EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req_list[i]), SUCCESS); });
   }
-  for (auto& t : async_threads) { t.join();} 
+  for (auto &t : async_threads) {
+    t.join();
+  }
   std::vector<std::thread> poll_threads;
   std::atomic<int> completed{0};
   std::atomic<bool> stop{false};
   auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(kMaxWaitTime);
-  for(int i = 0; i <kThreadCount; i++) {
+  for (int i = 0; i < kThreadCount; i++) {
     poll_threads.emplace_back([&, i]() {
       TransferStatus status = TransferStatus::WAITING;
       while (!stop.load() && status == TransferStatus::WAITING) {
         engine1.GetTransferStatus(req_list[i], status);
-        if(status == TransferStatus::COMPLETED) {
+        if (status == TransferStatus::COMPLETED) {
           completed.fetch_add(1);
           break;
-        }else if(status == TransferStatus::FAILED) { break;}
+        } else if (status == TransferStatus::FAILED) {
+          break;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(kPollInterval));
       }
     });
   }
-  while(std::chrono::steady_clock::now() < deadline) {
-    if(completed.load() == kThreadCount) { break;}
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (completed.load() == kThreadCount) {
+      break;
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(kPollInterval));
   }
   stop = true;
-  for (auto &t : poll_threads){
-    if(t.joinable()) { t.join();}
+  for (auto &t : poll_threads) {
+    if (t.joinable()) {
+      t.join();
+    }
   }
   EXPECT_EQ(completed.load(), kThreadCount);
   CleanupEngine(engine1, engine2, handle1, handle2);
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineGetTransferStatusFalied) {
-  llm:AutoCommResRuntimeMock::SetDevice(0);
+llm:
+  AutoCommResRuntimeMock::SetDevice(0);
   AdxlEngine engine1;
   std::map<AscendString, AscendString> options1;
   EXPECT_EQ(engine1.Initialize("127.0.0.1", options1), SUCCESS);
@@ -405,7 +414,7 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineGetTransferStatusFalied) {
   TransferReq req = nullptr;
   TransferStatus status;
   EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
-  //给 req 随机赋值一个地址
+  // 给 req 随机赋值一个地址
   constexpr size_t kFakeReqSize = 64;
   req = malloc(kFakeReqSize);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), PARAM_INVALID);
@@ -452,7 +461,8 @@ TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithQueryEventFailed) {
   TransferReq req = nullptr;
   EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req), SUCCESS);
   TransferStatus status = TransferStatus::WAITING;
-  TransferAsyncRuntimeMock instance;;
+  TransferAsyncRuntimeMock instance;
+  ;
   llm::AclRuntimeStub::Install(&instance);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
   llm::AclRuntimeStub::UnInstall(&instance);
@@ -481,17 +491,17 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineSendGetNotifies) {
   }
   // sleep 100 ms then get notify
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  
+
   std::vector<NotifyDesc> notifies;
   EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
   // should get 5 notifies
   EXPECT_EQ(notifies.size(), 5);
-  // check 5 notifies contex
+  // check 5 notifies context
   for (int i = 0; i < 5; ++i) {
     EXPECT_EQ(std::string(notifies[i].name.GetString()), "test_notify" + std::to_string(i));
     EXPECT_EQ(std::string(notifies[i].notify_msg.GetString()), "message " + std::to_string(i));
   }
-  
+
   EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
@@ -518,17 +528,17 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineMultiGetNotifies) {
   }
   // sleep 100 ms then get notifies
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  
+
   std::vector<NotifyDesc> notifies;
   EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
   // should get 5 notifies
   EXPECT_EQ(notifies.size(), 5);
-  // check 5 notifies contex
+  // check 5 notifies context
   for (int i = 0; i < 5; ++i) {
     EXPECT_EQ(std::string(notifies[i].name.GetString()), "test_notify" + std::to_string(i));
     EXPECT_EQ(std::string(notifies[i].notify_msg.GetString()), "message " + std::to_string(i));
   }
-  
+
   notifies.clear();
   EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
   // should get 0 notify
@@ -564,14 +574,14 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineMultiSendNotifies) {
     EXPECT_EQ(engine1.SendNotify("127.0.0.1:26001", notify), SUCCESS);
     EXPECT_EQ(engine3.SendNotify("127.0.0.1:26001", notify), SUCCESS);
   }
-  // sleep 100 ms then get nofifies
+  // sleep 100 ms then get notifies
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  
+
   std::vector<NotifyDesc> notifies;
   EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
   // should get 10 notifies
   EXPECT_EQ(notifies.size(), 10);
-  
+
   notifies.clear();
   EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
   EXPECT_EQ(engine3.Disconnect("127.0.0.1:26001"), SUCCESS);
@@ -602,12 +612,12 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyTimeout) {
   }
   // sleep 100 ms then get notifies
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  
+
   std::vector<NotifyDesc> notifies;
   EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
-  // shoule get 0 notify
+  // should get 0 notify
   EXPECT_EQ(notifies.size(), 0);
-  
+
   EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
@@ -627,13 +637,13 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyNameTooLong) {
   EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
 
   NotifyDesc notify;
-  // send notify name consit of 2000 'a'
+  // send notify name consist of 2000 'a'
   std::string long_name(2000, 'a');
   notify.name = AscendString(long_name.c_str());
   notify.notify_msg = AscendString("short message");
-  
+
   EXPECT_EQ(engine1.SendNotify("127.0.0.1:26001", notify), PARAM_INVALID);
-  
+
   EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
@@ -653,7 +663,8 @@ TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithStreamSyncFailed) {
   TransferReq req = nullptr;
   EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req), SUCCESS);
   TransferStatus status = TransferStatus::WAITING;
-  TransferAsyncSteamRuntimeMocak instance;;
+  TransferAsyncSteamRuntimeMocak instance;
+  ;
   llm::AclRuntimeStub::Install(&instance);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
   llm::AclRuntimeStub::UnInstall(&instance);
@@ -669,7 +680,8 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineFabricMemoryCapacityConfig) {
   constexpr size_t kCustomCapacityTB = 32UL;
   std::string json_config = R"({
     "fabric_memory": {
-      "max_capacity": )" + std::to_string(kCustomCapacityTB) + R"(
+      "max_capacity": )" + std::to_string(kCustomCapacityTB) +
+                            R"(
     }
   })";
 
@@ -753,7 +765,8 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineTaskStreamNumConfig) {
   // Test with custom task stream num (valid values 1 to 8)
   for (size_t task_stream_num = 1; task_stream_num <= 8; ++task_stream_num) {
     std::string json_config = R"({
-    "fabric_memory.task_stream_num": )" + std::to_string(task_stream_num) + R"(
+    "fabric_memory.task_stream_num": )" +
+                              std::to_string(task_stream_num) + R"(
   })";
 
     llm::AutoCommResRuntimeMock::SetDevice(0);

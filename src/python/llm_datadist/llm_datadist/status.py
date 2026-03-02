@@ -18,6 +18,7 @@ try:
 except ImportError:
     from llm_datadist_v1 import llm_wrapper
 
+
 class LLMStatusCode(Enum):
     LLM_SUCCESS = llm_wrapper.kSuccess
     LLM_FAILED = llm_wrapper.kFailed
@@ -93,11 +94,11 @@ _code_2_status = {
     llm_wrapper.kLLMLinkBusy: LLMStatusCode.LLM_LINK_BUSY,
     llm_wrapper.kLLMOutOfMemory: LLMStatusCode.LLM_OUT_OF_MEMORY,
     llm_wrapper.kLLMDeviceMemError: LLMStatusCode.LLM_DEVICE_MEM_ERROR,
-    llm_wrapper.kLLMSuspectRemoteError: LLMStatusCode.LLM_SUSPECT_REMOTE_ERROR
+    llm_wrapper.kLLMSuspectRemoteError: LLMStatusCode.LLM_SUSPECT_REMOTE_ERROR,
 }
 
 
-class Status():
+class Status:
     def __init__(self, status):
         self._status_code = status
 
@@ -120,23 +121,31 @@ class Status():
 
 
 def code_2_status(status) -> LLMStatusCode:
-    return _code_2_status[status] if status in _code_2_status else LLMStatusCode.LLM_FAILED
+    return (
+        _code_2_status[status] if status in _code_2_status else LLMStatusCode.LLM_FAILED
+    )
 
 
 def handle_llm_status(status, func_name, other_info):
     if status != int(llm_wrapper.kSuccess):
-        raise LLMException(f"{func_name} failed, error code is {code_2_status(status)}, {other_info}.",
-                           status_code=code_2_status(status))
+        raise LLMException(
+            f"{func_name} failed, error code is {code_2_status(status)}, {other_info}.",
+            status_code=code_2_status(status),
+        )
 
 
-def raise_if_false(pred, fmt, *args, status_code=LLMStatusCode.LLM_PARAM_INVALID, **kwargs):
+def raise_if_false(
+    pred, fmt, *args, status_code=LLMStatusCode.LLM_PARAM_INVALID, **kwargs
+):
     if not pred:
         error_msg = fmt.format(*args, **kwargs)
         log.error(error_msg)
         raise LLMException(error_msg, status_code=status_code)
 
 
-def raise_if_true(pred, fmt, *args, status_code=LLMStatusCode.LLM_PARAM_INVALID, **kwargs):
+def raise_if_true(
+    pred, fmt, *args, status_code=LLMStatusCode.LLM_PARAM_INVALID, **kwargs
+):
     if pred:
         error_msg = fmt.format(*args, **kwargs)
         log.error(error_msg)

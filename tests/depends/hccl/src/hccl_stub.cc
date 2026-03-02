@@ -76,7 +76,7 @@ HcclResult HcommMemUnimport(EndpointHandle endpointHandle, const void *memDesc, 
 }
 
 HcclResult HcommChannelCreate(EndpointHandle endPointHandle, CommEngine engine, HcommChannelDesc *channelDescs,
-    uint32_t channelNum, ChannelHandle *channels) {
+                              uint32_t channelNum, ChannelHandle *channels) {
   (void)endPointHandle;
   (void)engine;
   (void)channelDescs;
@@ -130,9 +130,9 @@ int32_t HcommThreadAlloc(int32_t engine, uint32_t thread_num, uint32_t notify_nu
   (void)thread_num;
   (void)notify_num;
   if (thread_id != nullptr) {
-    *thread_id = 999U; // 随便赋一个非 0 的假 Thread ID，防止外层重复分配
+    *thread_id = 999U;  // 随便赋一个非 0 的假 Thread ID，防止外层重复分配
   }
-  return 0; // 0 通常代表 HCCL_SUCCESS
+  return 0;  // 0 通常代表 HCCL_SUCCESS
 }
 
 int32_t HcommBatchModeStart(const char *batchTag) {

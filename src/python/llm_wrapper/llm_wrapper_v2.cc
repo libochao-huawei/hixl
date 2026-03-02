@@ -4,8 +4,9 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include "Python.h"
@@ -75,9 +76,7 @@ std::vector<std::pair<int64_t, int64_t>> PyDictToVector(const py::dict &py_dict)
 
 int64_t CalcTensorSize(const std::vector<int64_t> &shape, int32_t data_type) {
   int64_t tensor_size = -1;
-  (void) LLMUtils::CalcTensorMemSize(shape,
-                                     static_cast<ge::DataType>(data_type),
-                                     tensor_size);
+  (void)LLMUtils::CalcTensorMemSize(shape, static_cast<ge::DataType>(data_type), tensor_size);
   return tensor_size;
 }
 
@@ -101,10 +100,10 @@ void BuildDataDistV2Funcs(py::module &m) {
   (void)m.def("copy_cache_v2", &LLMDataDistV2Wrapper::CopyCache, py::call_guard<py::gil_scoped_release>());
   (void)m.def("swap_blocks_v2", &LLMDataDistV2Wrapper::SwapBlocks, py::call_guard<py::gil_scoped_release>());
   (void)m.def("check_capacity_v2", &LLMDataDistV2Wrapper::CheckCapacity, py::call_guard<py::gil_scoped_release>());
-  (void) m.def("transfer_cache_v2", &LLMDataDistV2Wrapper::TransferCache, py::call_guard<py::gil_scoped_release>());
-  (void) m.def("link_clusters_v2", &LLMDataDistV2Wrapper::LinkClusters, py::call_guard<py::gil_scoped_release>());
-  (void) m.def("unlink_clusters_v2", &LLMDataDistV2Wrapper::UnlinkClusters, py::call_guard<py::gil_scoped_release>());
-  (void) m.def("switch_role_v2", &LLMDataDistV2Wrapper::SwitchRole, py::call_guard<py::gil_scoped_release>());
+  (void)m.def("transfer_cache_v2", &LLMDataDistV2Wrapper::TransferCache, py::call_guard<py::gil_scoped_release>());
+  (void)m.def("link_clusters_v2", &LLMDataDistV2Wrapper::LinkClusters, py::call_guard<py::gil_scoped_release>());
+  (void)m.def("unlink_clusters_v2", &LLMDataDistV2Wrapper::UnlinkClusters, py::call_guard<py::gil_scoped_release>());
+  (void)m.def("switch_role_v2", &LLMDataDistV2Wrapper::SwitchRole, py::call_guard<py::gil_scoped_release>());
 }
 }  // namespace
 
