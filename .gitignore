@@ -27,3 +27,6 @@ cmake-build-gcov
 cmake-build-dt
 .gemini
 GEMINI.md
+
+# PR description files
+scripts/pr_description_*.md

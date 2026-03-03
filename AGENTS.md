@@ -58,6 +58,33 @@
 cd build_test && python -m unittest tests.python.test_module.TestClass.test_method
 ```
 
+### 创建Pull Request
+```bash
+# 方式1：使用环境变量配置Token
+export GITCODE_TOKEN="your_token_here"
+./scripts/create_pr.sh
+
+# 方式2：交互式输入Token
+./scripts/create_pr.sh
+# 脚本会提示输入GitCode Personal Access Token
+
+# PR创建流程：
+# 1. 检查git状态和远程仓库配置
+# 2. 确认commit范围（单个commit或commit范围）
+# 3. 推送当前分支到origin远程仓库
+# 4. 基础分析（文件列表、commit messages、测试文件）
+# 5. 深度代码分析（类、方法、调用关系）
+# 6. 交互式收集PR信息（类型标签、标题、Mermaid图表类型）
+# 7. 调用GLM-4.7生成详细PR描述（背景、问题、方案、流程、逻辑）
+# 8. 按需生成Mermaid图表（流程图、时序图、类图、架构图）
+# 9. 收集测试信息
+# 10. 填充PR模板（.gitcode/PULL_REQUEST_TEMPLATE.zh-CN.md）
+# 11. 调用GitCode API创建PR到upstream仓库
+# 12. 如果API调用失败，保存PR描述到scripts/pr_description_*.md供手动创建
+
+# 详细流程文档：scripts/PR_CREATION_FLOW.md
+```
+
 ## 代码风格指南
 
 ### C++ 代码风格
