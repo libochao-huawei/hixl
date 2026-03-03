@@ -21,15 +21,19 @@ Status HixlMemStore::RecordMemory(bool is_server, const void *addr, size_t size)
   if (is_server) {  // server侧内存注册
     auto it = server_regions_.find(addr);
     if (it != server_regions_.end()) {
+      HIXL_LOGI("This server mem has been registered yet, addr:%p, size:%zu.", addr, size);
       return SUCCESS;  // 内存已注册，此时不做处理，直接返回。
     }
     server_regions_[addr] = new_region;
+    HIXL_LOGI("Server mem registered successfully, addr:%p, size:%zu.", addr, size);
   } else {  // client侧内存注册
     auto it = client_regions_.find(addr);
     if (it != client_regions_.end()) {
+      HIXL_LOGI("This client mem has been registered yet, addr:%p, size:%zu.", addr, size);
       return PARAM_INVALID;  // 内存已注册
     }
     client_regions_[addr] = new_region;
+    HIXL_LOGI("Client mem registered successfully, addr:%p, size:%zu.", addr, size);
   }
   return SUCCESS;
 }
@@ -55,6 +59,7 @@ Status HixlMemStore::UnrecordMemory(bool is_server, const void *addr) {
     }
     client_regions_.erase(addr);
   }
+  HIXL_LOGI("This mem has been deleted, addr:%p.", addr);
   return SUCCESS;
 }
 
@@ -75,14 +80,14 @@ bool HixlMemStore::CheckMemoryForRegister(bool is_server, const void *check_addr
   auto overlaps = [s, e](const MemoryRegion &r) {
     auto rs = reinterpret_cast<uintptr_t>(r.addr);
     auto re = rs + r.size;
-    return ((rs <= s) && (s <= re)) || ((rs <= e) && (e <= re));
+    return ((rs <= s) && (s < re)) || ((rs < e) && (e <= re));
   };
 
   auto it = regions.lower_bound(check_addr);
   if (it != regions.end() && overlaps(it->second)) {
     HIXL_LOGE(PARAM_INVALID,
               "%s memory registration failed; the parameters overlap with the already registered memory. "
-              "Overlapping memory information: buf_addr:%p, buf_len:%u",
+              "Overlapping memory information: buf_addr:%p, buf_len:%zu",
               is_server ? "Server" : "Client", it->second.addr, it->second.size);
     return true;  // 与后一个起点>=s的区间重叠
   }
@@ -91,8 +96,8 @@ bool HixlMemStore::CheckMemoryForRegister(bool is_server, const void *check_addr
     if (overlaps(prev)) {
       HIXL_LOGE(PARAM_INVALID,
                 "%s memory registration failed; the parameters overlap with the already registered memory. "
-                "Overlapping memory information: buf_addr:%p, buf_len:%u",
-                is_server ? "Server" : "Client", it->second.addr, it->second.size);
+                "Overlapping memory information: buf_addr:%p, buf_len:%zu",
+                is_server ? "Server" : "Client", prev.addr, prev.size);
       return true;
     }
   }
@@ -142,7 +147,7 @@ Status HixlMemStore::ValidateMemoryAccess(const void *server_addr, size_t mem_si
   if (!server_valid) {
     HIXL_LOGE(PARAM_INVALID,
               "Server memory verification failed; the memory has not been registered yet. memory information: "
-              "server_addr:%p, buf_len:%u",
+              "server_addr:%p, buf_len:%zu",
               server_addr, mem_size);
     return PARAM_INVALID;
   }
@@ -151,7 +156,7 @@ Status HixlMemStore::ValidateMemoryAccess(const void *server_addr, size_t mem_si
   if (!client_valid) {
     HIXL_LOGE(PARAM_INVALID,
               "Client memory verification failed; the memory has not been registered yet. memory information: "
-              "client_addr:%p, buf_len:%u",
+              "client_addr:%p, buf_len:%zu",
               client_addr, mem_size);
     return PARAM_INVALID;
   }
