@@ -17,7 +17,7 @@ import unittest
 import ctypes
 
 from llm_datadist import *
-from llm_datadist.v2.llm_types import RegisterMemStatus, Cache, Memtype, MemInfo
+from llm_datadist.v2.llm_types import RegisterMemStatus, Cache, Memtype, MemInfo, KvCache
 
 _INVALID_ID = 2 ** 64 - 1
 
@@ -226,15 +226,31 @@ class LlmCacheManagerSt(unittest.TestCase):
                                    data_type=DataType.DT_FLOAT16, placement=Placement.HOST)
         return Cache.create_cpu_cache(cpu_cache_desc, cache.tensor_addrs), cache
 
+    @staticmethod
+    def _allocate_cpu_kv_cache(kv_cache_manager, block_size, num_block, num_tensors):
+        # DT没有友好的方式创建cpu tensor，用npu接口模拟
+        cpu_cache_desc = CacheDesc(num_tensors=num_tensors, shape=[num_block, block_size],
+                                   data_type=DataType.DT_FLOAT16)
+        cpu_cache_key = BlocksCacheKey(1, 1)
+        cache = kv_cache_manager.allocate_blocks_cache(cpu_cache_desc, cpu_cache_key)
+        cpu_cache_desc = CacheDesc(num_tensors=num_tensors, shape=[num_block, block_size],
+                                   data_type=DataType.DT_FLOAT16, placement=Placement.HOST)
+        return KvCache.create_cpu_cache(cpu_cache_desc, cache.tensor_addrs), cache
+
     def test_swap_blocks(self):
         cache_manager = self.llm_datadist.cache_manager
         # allocate npu cache
         npu_cache, npu_cache_key = self._allocate_npu_cache(cache_manager, 64 * 1024, 10, 10)
         cpu_cache, tmp_cache = self._allocate_cpu_cache(cache_manager, 64 * 1024, 20, 10)
+        cpu_kv_cache, tmp_kv_cache = self._allocate_cpu_kv_cache(cache_manager, 64 * 1024, 20, 10)
         src_to_dst = {3: 4, 0: 0, 1: 1, 2: 2, 5: 6, 6: 7, 7: 8, 9: 9}
         try:
             cache_manager.swap_blocks(npu_cache, cpu_cache, src_to_dst)
             cache_manager.swap_blocks(cpu_cache, npu_cache, src_to_dst)
+
+            cache_manager.swap_blocks(npu_cache, cpu_kv_cache, src_to_dst)
+            cache_manager.swap_blocks(cpu_kv_cache, npu_cache, src_to_dst)
+
             cache_manager.deallocate_blocks_cache(npu_cache)
             cache_manager.deallocate_blocks_cache(cpu_cache)
         except Exception as e:
