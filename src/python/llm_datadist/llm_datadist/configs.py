@@ -15,12 +15,18 @@ import socket
 from enum import Enum
 from typing import List, Tuple, Union
 
-from .data_type import DataType
-from .utils.utils import check_isinstance, check_dict, check_uint64, check_int32, check_uint32, check_uint16
+from .utils.utils import (
+    check_isinstance,
+    check_dict,
+    check_uint64,
+    check_int32,
+    check_uint32,
+    check_uint16,
+)
 from .status import raise_if_false
 
-_INVALID_ID = 2 ** 64 - 1
-_INT32_MAX = 2 ** 32 - 1
+_INVALID_ID = 2**64 - 1
+_INT32_MAX = 2**32 - 1
 
 
 class LLMRole(Enum):
@@ -34,7 +40,7 @@ def trans_str_ip(ip):
         try:
             ip_bytes = socket.inet_aton(ip)
             return int.from_bytes(ip_bytes, byteorder="little")
-        except:
+        except OSError:
             raise RuntimeError(f"Can not parse ip str:{ip}")
     return ip
 
@@ -141,7 +147,9 @@ class LlmConfig(object):
                 self._options["ge.session_device_id"] = str(self.device_id)
             else:
                 self._options["ge.session_device_id"] = str(self.device_id[0])
-                self._options["ge.exec.deviceId"] = ";".join([str(dev) for dev in self.device_id])
+                self._options["ge.exec.deviceId"] = ";".join(
+                    [str(dev) for dev in self.device_id]
+                )
         if self.sync_kv_timeout is not None:
             self._options["llm.SyncKvCacheWaitTime"] = str(self.sync_kv_timeout)
         if self.deploy_res_path:
@@ -179,12 +187,19 @@ class LlmConfig(object):
         check_isinstance("device_id", device_id, [list, tuple, int])
         if isinstance(device_id, list) or isinstance(device_id, tuple):
             check_isinstance("device_id", device_id, [list, tuple], int)
-            [raise_if_false(dev_id >= 0, "device_id should be greater than or equal to zero.") for dev_id in device_id]
-            [check_int32('device_id', dev_id) for dev_id in device_id]
+            [
+                raise_if_false(
+                    dev_id >= 0, "device_id should be greater than or equal to zero."
+                )
+                for dev_id in device_id
+            ]
+            [check_int32("device_id", dev_id) for dev_id in device_id]
         else:
             check_isinstance("device_id", device_id, int)
-            raise_if_false(device_id >= 0, "device_id should be greater than or equal to zero.")
-            check_int32('device_id', device_id)
+            raise_if_false(
+                device_id >= 0, "device_id should be greater than or equal to zero."
+            )
+            check_int32("device_id", device_id)
         self._device_id = device_id
 
     @property
@@ -230,8 +245,10 @@ class LlmConfig(object):
     @mem_utilization.setter
     def mem_utilization(self, mem_utilization):
         check_isinstance("mem_utilization", mem_utilization, float)
-        raise_if_false(((mem_utilization >= 0.0) and (mem_utilization <= 1.0)),
-                       f"mem_utilization must be in range [0,1], current:{mem_utilization}")
+        raise_if_false(
+            ((mem_utilization >= 0.0) and (mem_utilization <= 1.0)),
+            f"mem_utilization must be in range [0,1], current:{mem_utilization}",
+        )
         self._mem_utilization = mem_utilization
 
     @property
@@ -260,8 +277,10 @@ class LlmConfig(object):
         check_isinstance("sync_kv_timeout", sync_kv_timeout, [int, str])
         if isinstance(sync_kv_timeout, str):
             raise_if_false(sync_kv_timeout.isdigit(), "sync_kv_timeout must be digit.")
-        raise_if_false(int(sync_kv_timeout) > 0, "sync_kv_timeout should be greater than zero.")
-        check_int32('sync_kv_timeout', int(sync_kv_timeout))
+        raise_if_false(
+            int(sync_kv_timeout) > 0, "sync_kv_timeout should be greater than zero."
+        )
+        check_int32("sync_kv_timeout", int(sync_kv_timeout))
         self._sync_kv_timeout = sync_kv_timeout
 
     @property
@@ -280,7 +299,10 @@ class LlmConfig(object):
     @link_total_time.setter
     def link_total_time(self, link_total_time: int):
         check_isinstance("link_total_time", link_total_time, int)
-        raise_if_false(0 <= link_total_time <= _INT32_MAX, f"link_total_time should be an integer between [0, 2^32-1], given value is {link_total_time}")
+        raise_if_false(
+            0 <= link_total_time <= _INT32_MAX,
+            f"link_total_time should be an integer between [0, 2^32-1], given value is {link_total_time}",
+        )
         self._link_total_time = link_total_time
 
     @property
@@ -290,13 +312,17 @@ class LlmConfig(object):
     @link_retry_count.setter
     def link_retry_count(self, link_retry_count):
         check_isinstance("link_retry_count", link_retry_count, int)
-        raise_if_false(1 <= link_retry_count <= 100,
-                       f"link_retry_count should be an integer between [1, 100], given value is {link_retry_count}")
+        raise_if_false(
+            1 <= link_retry_count <= 100,
+            f"link_retry_count should be an integer between [1, 100], given value is {link_retry_count}",
+        )
         self._link_retry_count = link_retry_count
 
     @property
     def enable_cache_manager(self):
-        return False if self._enable_cache_manager is None else self._enable_cache_manager
+        return (
+            False if self._enable_cache_manager is None else self._enable_cache_manager
+        )
 
     @enable_cache_manager.setter
     def enable_cache_manager(self, enable_cache_manager: bool):
@@ -305,11 +331,17 @@ class LlmConfig(object):
 
     @property
     def enable_remote_cache_accessible(self):
-        return False if self._enable_remote_cache_accessible is None else self._enable_remote_cache_accessible
+        return (
+            False
+            if self._enable_remote_cache_accessible is None
+            else self._enable_remote_cache_accessible
+        )
 
     @enable_remote_cache_accessible.setter
     def enable_remote_cache_accessible(self, enable_remote_cache_accessible: bool):
-        check_isinstance("enable_remote_cache_accessible", enable_remote_cache_accessible, [bool])
+        check_isinstance(
+            "enable_remote_cache_accessible", enable_remote_cache_accessible, [bool]
+        )
         self._enable_remote_cache_accessible = enable_remote_cache_accessible
 
     @property
@@ -374,9 +406,13 @@ class LlmConfig(object):
         if self._host_mem_pool_cfg:
             self._options["llm.HostMemPoolConfig"] = str(self._host_mem_pool_cfg)
         if self._enable_cache_manager is not None:
-            self._options["llm.EnableCacheManager"] = "1" if self._enable_cache_manager else "0"
+            self._options["llm.EnableCacheManager"] = (
+                "1" if self._enable_cache_manager else "0"
+            )
         if self._enable_remote_cache_accessible is not None:
-            self._options["llm.EnableRemoteCacheAccessible"] = "1" if self._enable_remote_cache_accessible else "0"
+            self._options["llm.EnableRemoteCacheAccessible"] = (
+                "1" if self._enable_remote_cache_accessible else "0"
+            )
 
     def _add_connect_options(self):
         if self.listen_ip_info:

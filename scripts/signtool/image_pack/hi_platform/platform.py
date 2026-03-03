@@ -23,6 +23,7 @@ from tools import cal_bin_hash, to_bytes
 @dataclass
 class HeaderConfig:
     """参数封装：__construct_header函数的参数"""
+
     n_buf: bytes
     e_buf: bytes
     hash_buf: bytes
@@ -45,6 +46,7 @@ class HeaderConfig:
 @dataclass
 class HeaderWriteParams:
     """参数封装：__write_header函数的参数"""
+
     suffix: bool = False
     head_type: int = 0
     code_len: int = 0
@@ -54,6 +56,7 @@ class HeaderWriteParams:
 @dataclass
 class HeaderHashParams:
     """参数封装：__write_header_hash函数的参数"""
+
     suffix: bool = False
     head_type: int = 0
     sm: bool = False
@@ -64,6 +67,7 @@ class HeaderHashParams:
 @dataclass
 class MagicNumberParams:
     """参数封装：__add_magic_number_and_file_size函数的参数"""
+
     cms_flag: bool
     suffix: bool = False
     code_len: int = 0
@@ -72,6 +76,7 @@ class MagicNumberParams:
 
 
 # ==================== 私有函数 (相当于类的私有方法) ====================
+
 
 def __init_header_values(config: HeaderConfig):
     """初始化头部基本值"""
@@ -131,7 +136,11 @@ def __get_bcm_fields(config):
 
 def __get_tag_fields(config, zero_bytes_32):
     """获取标签相关字段"""
-    code_tag = int(0).to_bytes(16, "big") if config.tag is None else bytes(str(config.tag), "ascii")
+    code_tag = (
+        int(0).to_bytes(16, "big")
+        if config.tag is None
+        else bytes(str(config.tag), "ascii")
+    )
     ver_padding = binascii.a2b_hex("ff" * 0x10)
     padding = binascii.a2b_hex("ff" * 0x44)
     return code_tag, bytes(config.version, "ascii"), ver_padding, padding
@@ -160,10 +169,24 @@ def __build_header_fields(config: HeaderConfig, code_len, zero_bytes_32):
     img_offset, img_sign_obj_len, sign_offset = __get_offset_fields(config, code_len)
 
     # 安全字段
-    sign_len, code_encrypt_flag, code_encrypt_algo, derive_seed, \
-            km_ireation_cnt, code_encrypt_iv, code_encrypt_tag, code_encrypt_add = (
-        512, 0xFFFFFFFF, 0x2, zero_bytes_32, 1000,
-        zero_bytes_32[:16], zero_bytes_32[:16], zero_bytes_32[:16]
+    (
+        sign_len,
+        code_encrypt_flag,
+        code_encrypt_algo,
+        derive_seed,
+        km_ireation_cnt,
+        code_encrypt_iv,
+        code_encrypt_tag,
+        code_encrypt_add,
+    ) = (
+        512,
+        0xFFFFFFFF,
+        0x2,
+        zero_bytes_32,
+        1000,
+        zero_bytes_32[:16],
+        zero_bytes_32[:16],
+        zero_bytes_32[:16],
     )
 
     # 保留字段
@@ -184,15 +207,45 @@ def __build_header_fields(config: HeaderConfig, code_len, zero_bytes_32):
     code_tag, ver_value, ver_padding, padding = __get_tag_fields(config, zero_bytes_32)
 
     return (
-        preamble, rev0, head_len, user_len, user_define_data, code_hash,
-        sub_key_cert_offset, sub_cert_len, uw_rootkey_alg, img_sign_algo,
-        root_pubkey_len, config.n_buf, config.e_buf, img_offset,
-        img_sign_obj_len, sign_offset, sign_len, code_encrypt_flag,
-        code_encrypt_algo, derive_seed, km_ireation_cnt, code_encrypt_iv,
-        code_encrypt_tag, code_encrypt_add, rsv1, h2c_enable, h2c_cert_len,
-        h2c_cert_offset, root_pubkeyinfo, rsv2, head_magic, head_hash,
-        cms_flag, code_nvcnt, code_tag, ver_value, ver_padding,
-        config.certtype, padding
+        preamble,
+        rev0,
+        head_len,
+        user_len,
+        user_define_data,
+        code_hash,
+        sub_key_cert_offset,
+        sub_cert_len,
+        uw_rootkey_alg,
+        img_sign_algo,
+        root_pubkey_len,
+        config.n_buf,
+        config.e_buf,
+        img_offset,
+        img_sign_obj_len,
+        sign_offset,
+        sign_len,
+        code_encrypt_flag,
+        code_encrypt_algo,
+        derive_seed,
+        km_ireation_cnt,
+        code_encrypt_iv,
+        code_encrypt_tag,
+        code_encrypt_add,
+        rsv1,
+        h2c_enable,
+        h2c_cert_len,
+        h2c_cert_offset,
+        root_pubkeyinfo,
+        rsv2,
+        head_magic,
+        head_hash,
+        cms_flag,
+        code_nvcnt,
+        code_tag,
+        ver_value,
+        ver_padding,
+        config.certtype,
+        padding,
     )
 
 
@@ -226,7 +279,9 @@ def __write_header(out, header, params: HeaderWriteParams = None):
     if params is None:
         params = HeaderWriteParams()
     header_base = 0x1000 if params.head_type else 0
-    header_base = (header_base + params.code_len) if params.before_header else header_base
+    header_base = (
+        (header_base + params.code_len) if params.before_header else header_base
+    )
     offset = (0xC000 + header_base) if params.suffix else header_base
     out.seek(offset)
     out.write(header)
@@ -236,13 +291,18 @@ def __write_header_hash(out, params: HeaderHashParams = None):
     if params is None:
         params = HeaderHashParams()
     header_base = 0x1000 if params.head_type else 0
-    offset = header_base if (params.suffix or not params.before_header) else header_base + params.code_len
+    offset = (
+        header_base
+        if (params.suffix or not params.before_header)
+        else header_base + params.code_len
+    )
     out.seek(offset)
     header = out.read(0x560)
-    if params.sm == False:
+    if not params.sm:
         out.write(cal_bin_hash(header))
     else:
-        out.write(sm3_cal(header))
+        raise NotImplementedError("This sm3 algorithm is not implemented yet")
+        # out.write(sm3_cal(header))
 
 
 def __write_raw_img(out, raw, suffix=False, before_header=False):
@@ -320,7 +380,9 @@ def __write_single_header(args, out, hash_buf, code_len, head_type=0):
         gm=False,
     )
     header = __construct_header(header_config)
-    __write_header(out, header, HeaderWriteParams(args.S, head_type, code_len, before_header))
+    __write_header(
+        out, header, HeaderWriteParams(args.S, head_type, code_len, before_header)
+    )
 
 
 def __add_magic_number_and_file_size(args, out, params: MagicNumberParams):
@@ -331,7 +393,9 @@ def __add_magic_number_and_file_size(args, out, params: MagicNumberParams):
 
     out.seek(0, 2)
     # if before_header img code_len >= 4G, img_len = 0 (not used)
-    file_size = 0 if params.before_header and (out.tell() >= 0x100000000) else out.tell()
+    file_size = (
+        0 if params.before_header and (out.tell() >= 0x100000000) else out.tell()
+    )
     s = struct.Struct("QI")
     if params.cms_flag:
         value = (0xABCD1234AA55AA55, file_size)
@@ -360,6 +424,7 @@ def __add_magic_number_and_file_size(args, out, params: MagicNumberParams):
 
 # ==================== 公共函数 ====================
 
+
 def write_header_huawei(args, out, hash_buf, code_len):
     __write_single_header(args, out, hash_buf, code_len)
 
@@ -384,7 +449,9 @@ def write_extern(args, out, data_list):
     before_header = True if (args.position == "before_header") else False
     code_len = data_list[0] if before_header else 0
     if before_header:
-        __write_header_hash(out, HeaderHashParams(args.S, 0, args.sm, code_len, before_header))
+        __write_header_hash(
+            out, HeaderHashParams(args.S, 0, args.sm, code_len, before_header)
+        )
     __add_magic_number_and_file_size(
         args, out, MagicNumberParams(args.addcms, False, code_len, before_header)
     )
