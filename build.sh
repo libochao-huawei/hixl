@@ -69,7 +69,7 @@ checkopts() {
   ENABLE_BENCHMARKS=OFF
   ENABLE_ASAN=OFF
   ENABLE_GCOV=OFF
-  ENABLE_SIGN=OFF
+  ENABLE_SIGN=ON
   CUSTOM_SIGN_SCRIPT="${BASEPATH}/scripts/sign/community_sign_build.py"
 
   # Process the options
