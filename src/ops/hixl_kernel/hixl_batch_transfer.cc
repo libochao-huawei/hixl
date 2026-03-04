@@ -66,12 +66,11 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
   constexpr const char *kBatchTag = "HixlKernel";
   int32_t ret = HcommBatchModeStart(kBatchTag);
   HIXL_LOGI("[HixlBatchPutAndGet] HcommBatchModeStart end");
-  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommBatchModeStart failed, ret is %d", ret);
+  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommBatchModeStart faild, ret is %d", ret);
   ret = HixlBatchTransferTask(is_read, param);
-  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HixlBatchTransferTask failed, ret is %d", ret);
+  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HixlBatchTransferTask faild, ret is %d", ret);
   ret = HcommChannelFenceOnThread(param->thread, param->channel);
-  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommChannelFenceOnThread failed, ret is %d",
-                           ret);
+  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommChannelFenceOnThread faild, ret is %d", ret);
   HIXL_LOGI(
       "[HixlBatchPutAndGet] HcommReadOnThread start to read remote flag, param->flag_size=%u, param->local_flag=%lu, "
       "param->remote_flag=%lu",
@@ -86,29 +85,28 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
       param->local_flag_addr, param->remote_flag_addr, param->flag_size, ret);
   HIXL_LOGI("[HixlBatchPutAndGet] HcommBatchModeEnd start");
   ret = HcommBatchModeEnd(kBatchTag);
-  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommBatchModeEnd failed, ret is %d", ret);
+  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommBatchModeEnd faild, ret is %d", ret);
   HIXL_LOGI("[HixlBatchPutAndGet] HcommBatchModeEnd end");
   return SUCCESS;
 }
 }  // namespace
-
+}  // namespace hixl
 extern "C" {
 uint32_t HixlBatchPut(HixlOneSideOpParam *param) {
-  uint32_t ret = HixlBatchTransfer(true, param);
+  uint32_t ret = hixl::HixlBatchTransfer(true, param);
   if (ret != 0) {
-    HIXL_LOGE(FAILED, "[HixlBatchPut] HixlBatchPut failed, ret is %u", ret);
-    return FAILED;
+    HIXL_LOGE(hixl::FAILED, "[HixlBatchPut] HixlBatchPut faild, ret is %u", ret);
+    return hixl::FAILED;
   }
   return ret;
 }
 
 uint32_t HixlBatchGet(HixlOneSideOpParam *param) {
-  uint32_t ret = HixlBatchTransfer(false, param);
+  uint32_t ret = hixl::HixlBatchTransfer(false, param);
   if (ret != 0) {
-    HIXL_LOGE(FAILED, "[HixlBatchGet] HixlBatchGet failed, ret is %u", ret);
-    return FAILED;
+    HIXL_LOGE(hixl::FAILED, "[HixlBatchGet] HixlBatchGet faild, ret is %u", ret);
+    return hixl::FAILED;
   }
   return ret;
 }
 }  // extern "C"
-}  // namespace hixl

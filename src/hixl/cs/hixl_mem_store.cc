@@ -21,7 +21,7 @@ Status HixlMemStore::RecordMemory(bool is_server, const void *addr, size_t size)
   if (is_server) {  // server侧内存注册
     auto it = server_regions_.find(addr);
     if (it != server_regions_.end()) {
-      HIXL_LOGI("This server mem has been registered yet, addr:%p, size:%zu.", addr, size);
+      HIXL_LOGI("This server mem is already registered., addr:%p, size:%zu.", addr, size);
       return SUCCESS;  // 内存已注册，此时不做处理，直接返回。
     }
     server_regions_[addr] = new_region;
@@ -29,7 +29,7 @@ Status HixlMemStore::RecordMemory(bool is_server, const void *addr, size_t size)
   } else {  // client侧内存注册
     auto it = client_regions_.find(addr);
     if (it != client_regions_.end()) {
-      HIXL_LOGI("This client mem has been registered yet, addr:%p, size:%zu.", addr, size);
+      HIXL_LOGI("This client mem is already registered., addr:%p, size:%zu.", addr, size);
       return PARAM_INVALID;  // 内存已注册
     }
     client_regions_[addr] = new_region;
@@ -80,7 +80,9 @@ bool HixlMemStore::CheckMemoryForRegister(bool is_server, const void *check_addr
   auto overlaps = [s, e](const MemoryRegion &r) {
     auto rs = reinterpret_cast<uintptr_t>(r.addr);
     auto re = rs + r.size;
-    return ((rs <= s) && (s < re)) || ((rs < e) && (e <= re));
+    bool is_overlap = (s < re) && (rs < e); //内存重叠，返回true
+    bool is_same = (s == rs) && (e == re); //当内存块与已注册内存块完全一致时，此时允许重新注册，返回false
+    return is_overlap && !is_same;
   };
 
   auto it = regions.lower_bound(check_addr);
@@ -101,7 +103,7 @@ bool HixlMemStore::CheckMemoryForRegister(bool is_server, const void *check_addr
       return true;
     }
   }
-  return false;  // 与相邻区域都不重叠，允许注册
+  return false;  // 与相邻区域都不重叠，或者内存与已注册内存完全一致，允许注册
 }
 
 bool HixlMemStore::CheckMemoryForAccess(bool is_server, const void *check_addr, size_t check_size) {
@@ -133,9 +135,68 @@ bool HixlMemStore::CheckMemoryForAccess(bool is_server, const void *check_addr, 
       return true;
     }
   }
+  if (it != regions.end()) {
+    return CheckMergedRegionsAccess(regions, s, e, it);
+  }
   return false;
 }
 
+bool HixlMemStore::CheckMergedRegionsAccess(const std::map<const void *, MemoryRegion> &regions, uintptr_t s,
+                                            uintptr_t e, typename std::map<const void *, MemoryRegion>::const_iterator it) {
+  auto contains = [s, e](const MemoryRegion &r) {
+    auto rs = reinterpret_cast<uintptr_t>(r.addr);
+    auto re = rs + r.size;
+    return (s >= rs) && (e <= re);
+  };
+
+  auto start_it = it;
+  auto end_it = it;
+
+  while (start_it != regions.begin()) {
+    auto prev_it = std::prev(start_it);
+    auto &prev = prev_it->second;
+    auto &curr = start_it->second;
+    uintptr_t prev_end = reinterpret_cast<uintptr_t>(prev.addr) + prev.size;
+    uintptr_t curr_start = reinterpret_cast<uintptr_t>(curr.addr);
+    if (prev_end == curr_start) {
+      start_it = prev_it;
+    } else {
+      break;
+    }
+  }
+
+  while (end_it != regions.end()) {
+    auto next_it = std::next(end_it);
+    if (next_it == regions.end()) {
+      break;
+    }
+    auto &curr = end_it->second;
+    auto &next = next_it->second;
+    uintptr_t curr_end = reinterpret_cast<uintptr_t>(curr.addr) + curr.size;
+    uintptr_t next_start = reinterpret_cast<uintptr_t>(next.addr);
+    if (curr_end == next_start) {
+      end_it = next_it;
+    } else {
+      break;
+    }
+  }
+
+  if (start_it == end_it) {
+    return false;
+  }
+
+  auto &first = start_it->second;
+  auto &last = end_it->second;
+  uintptr_t merged_start = reinterpret_cast<uintptr_t>(first.addr);
+  uintptr_t merged_end = reinterpret_cast<uintptr_t>(last.addr) + last.size;
+  MemoryRegion merged(first.addr, merged_end - merged_start);
+
+  if (contains(merged)) {
+    HIXL_LOGI("Merged regions for access check: [%p, %p)", first.addr, reinterpret_cast<void *>(merged_end));
+    return true;
+  }
+  return false;
+}
 
 Status HixlMemStore::ValidateMemoryAccess(const void *server_addr, size_t mem_size, const void *client_addr) {
   std::lock_guard<std::mutex> lock(mutex_);
