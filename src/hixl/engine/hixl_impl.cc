@@ -12,6 +12,7 @@
 #include "hixl/hixl.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_utils.h"
+#include "common/scope_guard.h"
 #include "adxl_engine.h"
 #include "base/err_msg.h"
 #include "engine.h"
@@ -177,8 +178,10 @@ Status Hixl::Initialize(const AscendString &local_engine, const std::map<AscendS
   HIXL_LOGI("Hixl initialize start");
   impl_ = llm::MakeUnique<HixlImpl>(local_engine);
   HIXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check Hixl construct");
+  HIXL_DISMISSABLE_GUARD(rollback, ([this]() { impl_ = nullptr; }));
   const auto ret = impl_->Initialize(options);
   HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to initialize Hixl");
+  HIXL_DISMISS_GUARD(rollback);
   HIXL_LOGI("Hixl initialized successfully");
   return SUCCESS;
 }
