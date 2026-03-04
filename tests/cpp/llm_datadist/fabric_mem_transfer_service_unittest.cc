@@ -415,4 +415,72 @@ TEST_F(FabricMemTransferServiceUTest, TestGetShareHandles) {
   EXPECT_EQ(service_->DeregisterMem(handle), SUCCESS);
 }
 
+// Test HOST memory registration with imported handle and va mapping
+TEST_F(FabricMemTransferServiceUTest, TestRegisterMem_HostMemWithImportedHandle) {
+  ASSERT_EQ(service_->Initialize(kStreamMax, kDefaultTaskStreamNum), SUCCESS);
+  MemDesc mem_desc;
+  mem_desc.addr = kMemAddr;
+  mem_desc.len = kMemLen;
+  MemHandle handle;
+
+  // Register HOST memory, which triggers the imported_va and imported_handle logic
+  EXPECT_EQ(service_->RegisterMem(mem_desc, MemType::MEM_HOST, handle), SUCCESS);
+
+  // Verify GetShareHandles returns handle with imported fields set
+  auto handles = service_->GetShareHandles();
+  EXPECT_EQ(handles.size(), 1);
+  // Deregister should clean up both retained and imported handles
+  EXPECT_EQ(service_->DeregisterMem(handle), SUCCESS);
+}
+
+// Test multiple memory registration and deregistration
+TEST_F(FabricMemTransferServiceUTest, TestRegisterMultipleMems) {
+  ASSERT_EQ(service_->Initialize(kStreamMax, kDefaultTaskStreamNum), SUCCESS);
+  constexpr size_t kMemCount = 3;
+  std::vector<MemHandle> handles;
+  handles.reserve(kMemCount);
+
+  // Register multiple DEVICE memories
+  for (size_t i = 0; i < kMemCount; ++i) {
+    MemDesc mem_desc;
+    mem_desc.addr = kMemAddr + i * kMemLen;
+    mem_desc.len = kMemLen;
+    MemHandle handle;
+    EXPECT_EQ(service_->RegisterMem(mem_desc, MemType::MEM_DEVICE, handle), SUCCESS);
+    handles.push_back(handle);
+  }
+
+  auto share_handles = service_->GetShareHandles();
+  EXPECT_EQ(share_handles.size(), kMemCount);
+
+  // Deregister all memories
+  for (auto handle : handles) {
+    EXPECT_EQ(service_->DeregisterMem(handle), SUCCESS);
+  }
+
+  share_handles = service_->GetShareHandles();
+  EXPECT_EQ(share_handles.size(), 0);
+}
+
+// Test RegisterMem failure cleanup for HOST memory
+TEST_F(FabricMemTransferServiceUTest, TestRegisterMem_HostMemFailCleanup) {
+  ASSERT_EQ(service_->Initialize(kStreamMax, kDefaultTaskStreamNum), SUCCESS);
+
+  MemDesc mem_desc;
+  mem_desc.addr = kMemAddr;
+  mem_desc.len = kMemLen;
+  MemHandle handle;
+
+  // Fail the aclrtMapMem call during HOST memory registration
+  {
+    ScopedRuntimeFunctionFail fail("aclrtMapMem");
+    EXPECT_NE(service_->RegisterMem(mem_desc, MemType::MEM_HOST, handle), SUCCESS);
+  }
+
+  // Service should remain usable after failed registration
+  MemHandle success_handle;
+  EXPECT_EQ(service_->RegisterMem(mem_desc, MemType::MEM_DEVICE, success_handle), SUCCESS);
+  EXPECT_EQ(service_->DeregisterMem(success_handle), SUCCESS);
+}
+
 }  // namespace adxl
