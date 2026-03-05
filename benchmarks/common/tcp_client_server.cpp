@@ -21,6 +21,8 @@
 
 TCPClient::TCPClient() = default;
 
+constexpr int32_t kMaxArraySize = 1024 * 1024;
+
 bool TCPClient::ConnectToServer(const std::string &host, uint16_t port) {
   sock_ = socket(AF_INET, SOCK_STREAM, 0);
   if (sock_ == -1) {
