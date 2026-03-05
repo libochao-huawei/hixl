@@ -22,6 +22,8 @@ class TCPClient {
 
   bool SendUint64(uint64_t data) const;
 
+  bool SendUint64Array(const std::vector<uint64_t> &data_list) const;
+
   bool SendTaskStatus() const;
 
   bool ReceiveTaskStatus() const;
@@ -44,6 +46,8 @@ class TCPServer {
   bool AcceptConnection();
 
   uint64_t ReceiveUint64() const;
+
+  std::vector<uint64_t> ReceiveUint64Array() const;
 
   bool SendTaskStatus() const;
 

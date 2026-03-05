@@ -65,6 +65,36 @@ bool TCPClient::SendUint64(uint64_t data) const {
   return true;
 }
 
+bool TCPClient::SendUint64Array(const std::vector<uint64_t> &data_list) const {
+  if (data_list.empty()) {
+    std::cerr << "[ERROR] Data list is empty" << std::endl;
+    return false;
+  }
+
+  // 先发送数组大小（网络字节序）
+  uint64_t network_size = htobe64(static_cast<uint64_t>(data_list.size()));
+  if (send(sock_, &network_size, sizeof(uint64_t), 0) < 0) {
+    std::cerr << "[ERROR] Failed to send array size" << std::endl;
+    return false;
+  }
+
+  // 转换字节序
+  std::vector<uint64_t> network_data = data_list;
+  for (size_t i = 0; i < network_data.size(); ++i) {
+    network_data[i] = htobe64(network_data[i]);
+  }
+
+  // 发送数据
+  ssize_t bytes_sent = send(sock_, network_data.data(), network_data.size() * sizeof(uint64_t), 0);
+  if (bytes_sent < 0) {
+    std::cerr << "[ERROR] Failed to send array data" << std::endl;
+    return false;
+  }
+
+  std::cout << "[INFO] Successfully sent " << data_list.size() << " uint64_t values" << std::endl;
+  return true;
+}
+
 bool TCPClient::SendTaskStatus() const {
   bool status = true;
   if (send(sock_, &status, sizeof(status), 0) < 0) {
@@ -190,6 +220,47 @@ uint64_t TCPServer::ReceiveUint64() const {
   received_data = be64toh(received_data);
   std::cout << "[INFO] Tcp server received uint64 data success" << std::endl;
   return received_data;
+}
+
+std::vector<uint64_t> TCPServer::ReceiveUint64Array() const {
+  std::vector<uint64_t> result;
+
+  // 先接收数组大小
+  uint64_t network_size = 0;
+  ssize_t size_bytes = recv(client_socket_, &network_size, sizeof(uint64_t), 0);
+  if (size_bytes <= 0) {
+    if (size_bytes == 0) {
+      std::cout << "[INFO] Client disconnected" << std::endl;
+    } else {
+      std::cerr << "[ERROR] Failed to receive array size" << std::endl;
+    }
+    return result;
+  }
+
+  uint64_t array_size = be64toh(network_size);
+  if (array_size > kMaxArraySize) {
+    std::cerr << "[ERROR] Requested array size too large: " << array_size << std::endl;
+    return result;
+  }
+
+  // 准备接受缓冲区
+  result.resize(array_size);
+
+  // 接收数据
+  ssize_t data_bytes = recv(client_socket_, result.data(), array_size * sizeof(uint64_t), 0);
+  if (data_bytes <= 0) {
+    std::cerr << "[ERROR] Failed to receive array data" << std::endl;
+    result.clear();
+    return result;
+  }
+
+  // 字节序转换
+  for (auto &num : result) {
+    num = be64toh(num);
+  }
+
+  std::cout << "[INFO] Successfully received " << array_size << " uint64_t values" << std::endl;
+  return result;
 }
 
 bool TCPServer::SendTaskStatus() const {
