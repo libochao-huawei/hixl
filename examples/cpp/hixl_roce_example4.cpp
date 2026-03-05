@@ -211,7 +211,7 @@ int32_t Register(Hixl &hixl_engine, bool is_host, std::vector<MemDesc> &descs,
     auto ret = hixl_engine.RegisterMem(descs[i], mem_type, handles[i]);
     if (ret != SUCCESS) {
       printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
-      Finalize(hixl_engine, true, is_host, {handles[i]}, {sources[i]});
+      Finalize(hixl_engine, is_host, {handles[i]}, {sources[i]});
       return -1;
     }
     printf("[INFO] RegisterMem success\n");
@@ -331,7 +331,6 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   (void)tcp_client.SendUint64Array(addresses);
 
   auto mem_type = is_host ? MemType::MEM_HOST : MemType::MEM_DEVICE;
-  bool need_register = !(use_buffer_pool && transfer_mode == "d2h");
 
   std::vector<MemDesc> descs;
   std::vector<MemHandle> handles;
@@ -346,23 +345,21 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   }
   
   
-  if (need_register) {
-    const auto start = std::chrono::steady_clock::now();
-    for (int i = 0; i < num; i++) {
-      auto ret = hixl_engine.RegisterMem(descs[i], mem_type, handles[i]);
-      if (ret != SUCCESS) {
-        printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
-        Finalize(hixl_engine, need_register, is_host, std::vector<MemHandle>({handles[i]}), 
-                 std::vector<MemHandle>({addresses[i]}));
-        return -1;
-      }
-      // 3. RegisterMem成功后，将地址保存到本地文件中等待client读取
-      printf("[INFO] RegisterMem success, addr:%ld\n", addresses[i]);
+  const auto start = std::chrono::steady_clock::now();
+  for (int i = 0; i < num; i++) {
+    auto ret = hixl_engine.RegisterMem(descs[i], mem_type, handles[i]);
+    if (ret != SUCCESS) {
+      printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
+      Finalize(hixl_engine, is_host, std::vector<MemHandle>({handles[i]}), 
+                std::vector<MemHandle>({addresses[i]}));
+      return -1;
     }
-    auto time_cost = 
-         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
-    printf("[INFO] Time cost of all client memory register: %ld us\n", time_cost);
+    // 3. RegisterMem成功后，将地址保存到本地文件中等待client读取
+    printf("[INFO] RegisterMem success, addr:%ld\n", addresses[i]);
   }
+  auto time_cost = 
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+  printf("[INFO] Time cost of all client memory register: %ld us\n", time_cost);
 
   // 通过TCP通知Client侧内存已注册
   (void)tcp_client.SendTaskStatus();
@@ -376,7 +373,7 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
 
   // 5. 解注册，释放内存，析构
   for (int i = 0; i < num; i++) {
-    Finalize(hixl_engine, need_register, is_host, std::vector<MemHandle>({handles[i]}), 
+    Finalize(hixl_engine, is_host, std::vector<MemHandle>({handles[i]}), 
              std::vector<MemHandle>({addresses[i]}));
   }
   
@@ -386,7 +383,6 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
 
 int32_t main(int32_t argc, char **argv) {
   bool is_client = false;
-  bool use_buffer_pool = false;
   std::string device_id;
   std::string local_engine;
   std::string remote_engine;
