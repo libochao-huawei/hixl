@@ -134,6 +134,22 @@ class ASCEND_FUNC_VISIBILITY AdxlEngine {
    */
   Status GetNotifies(std::vector<NotifyDesc> &notifies);
 
+  /**
+   * @brief Allocate memory using acl VMM
+   * @param [in] type Memory type
+   * @param [in] size Memory size
+   * @param [out] ptr Virtual address of allocated memory
+   * @return 成功:SUCCESS, 失败:其它.
+   */
+  static Status MallocMem(MemType type, size_t size, void **ptr);
+
+  /**
+   * @brief Free memory allocated by MallocMem
+   * @param [in] ptr Virtual address of memory to free
+   * @return 成功:SUCCESS, 失败:其它.
+   */
+  static Status FreeMem(void *ptr);
+
  private:
   class AdxlEngineImpl;
   std::unique_ptr<AdxlEngineImpl> impl_;

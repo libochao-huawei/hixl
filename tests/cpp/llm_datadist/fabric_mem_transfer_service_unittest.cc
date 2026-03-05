@@ -104,7 +104,6 @@ class FabricMemTransferServiceUTest : public ::testing::Test {
   void SetUp() override {
     mock_runtime_ = std::make_shared<llm::AclRuntimeStub>();
     scoped_mock_ = std::make_unique<ScopedRuntimeMock>(mock_runtime_);
-    VirtualMemoryManager::GetInstance().SetSoName(kSoName);
     VirtualMemoryManager::GetInstance().Initialize();
     service_ = std::make_shared<FabricMemTransferService>();
   }
