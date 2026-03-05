@@ -29,7 +29,7 @@ Status HixlMemStore::RecordMemory(bool is_server, const void *addr, size_t size)
   } else {  // client侧内存注册
     auto it = client_regions_.find(addr);
     if (it != client_regions_.end()) {
-      HIXL_LOGI("This client mem is already registered., addr:%p, size:%zu.", addr, size);
+      HIXL_LOGI("This client mem is already registered, addr:%p, size:%zu.", addr, size);
       return PARAM_INVALID;  // 内存已注册
     }
     client_regions_[addr] = new_region;

@@ -76,6 +76,13 @@ const EndpointDesc &Endpoint::GetEndpoint() const {
 
 Status Endpoint::RegisterMem(const char *mem_tag, const HcommMem &mem, MemHandle &mem_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
+  Status ret = SUCCESS;
+  HcclResult hccl_ret = HcommMemReg(handle_, mem_tag, mem, &mem_handle);
+  if (hccl_ret != HCCL_SUCCESS and hccl_ret != HCCL_E_AGAIN) {
+    ret = hixl::HcclError2Status(hccl_ret);
+    HIXL_LOGE(ret, "HcommMemReg failed, hccl_ret %d", hccl_ret);
+    return ret;
+  }
   HIXL_CHK_HCCL_RET(HcommMemReg(handle_, mem_tag, mem, &mem_handle));
   HixlMemDesc desc{};
   if (mem_tag != nullptr) {
@@ -83,7 +90,7 @@ Status Endpoint::RegisterMem(const char *mem_tag, const HcommMem &mem, MemHandle
   }
   desc.mem = mem;
   reg_mems_[mem_handle] = desc;
-  return SUCCESS;
+  return ret;
 }
 
 Status Endpoint::DeregisterMem(MemHandle mem_handle) {
