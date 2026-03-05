@@ -315,7 +315,7 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   for (int i = 0; i < num; i++) {
     void *buffer = nullptr;
     if (is_host) {
-      CHECK_ACL_RETURN(aclrtMallocHost(&buffer, kTransferMemSize));
+      buffer = malloc(kTransferMemSize);
     } else {
       CHECK_ACL_RETURN(aclrtMalloc(&buffer, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY));
     }
