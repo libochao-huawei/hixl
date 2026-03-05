@@ -12,6 +12,7 @@
 #define HIXL_TCP_CLIENT_SERVER_H
 
 #include <string>
+#include <vector>
 #include <netinet/in.h>
 
 class TCPClient {
