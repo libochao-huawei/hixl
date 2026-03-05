@@ -25,7 +25,7 @@
 using namespace hixl;
 namespace {
 constexpr int32_t kWaitTransTime = 20;
-constexpr int32_t kExpectedArgCnt = 9;
+constexpr int32_t kExpectedArgCnt = 8;
 constexpr uint32_t kArgIndexDeviceId = 1;
 constexpr uint32_t kArgIndexLocalEngine = 2;
 constexpr uint32_t kArgIndexRemoteEngine = 3;
