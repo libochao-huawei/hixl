@@ -429,15 +429,14 @@ int32_t main(int32_t argc, char **argv) {
     printf("[ERROR] Invalid value for transfer_op: %s\n", op_type.c_str());
     return -1;
   }
-  TransferOp transfer_op = (op_type == "read") ? TransferOp::READ : TransferOp::WRITE;
 
   int32_t ret = 0;
   int32_t num = std::stoi(register_num);
   if (is_client) {
     ret = RunClient(local_engine.c_str(), remote_engine.c_str(), 
-                    tcp_port, transfer_mode, transfer_op, num);
+                    tcp_port, transfer_mode, op_type, is_client, num);
   } else {
-    ret = RunServer(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, num);
+    ret = RunServer(local_engine.c_str(), remote_engine.c_str(), tcp_port, transfer_mode, is_client, num);
   }
   CHECK_ACL_RETURN(aclrtResetDevice(device));
   return ret;
