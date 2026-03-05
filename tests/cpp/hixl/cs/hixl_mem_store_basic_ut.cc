@@ -16,27 +16,110 @@ TEST(HixlMemStoreBasicTest, RecordValidateAndUnrecord) {
   HixlMemStore store;
   uint32_t kServerDataAddr = 1;
   uint32_t kClientDataAddr = 2;
-  void* saddr = &kServerDataAddr;
-  void* caddr = &kClientDataAddr;
-  constexpr uint32_t kBlockSizeBytes = 64;      // 远端数据块大小
+  void *saddr = &kServerDataAddr;
+  void *caddr = &kClientDataAddr;
+  constexpr uint32_t kBlockSizeBytes = 64;        // 远端数据块大小
   constexpr uint32_t kClientBufSizeBytes = 4096;  // 客户端缓冲区大小
   // 记录 server/client 内存
-  EXPECT_EQ(store.RecordMemory(true, saddr, kClientBufSizeBytes), hixl::SUCCESS);
-  EXPECT_EQ(store.RecordMemory(false, caddr, kClientBufSizeBytes), hixl::SUCCESS);
+  EXPECT_EQ(store.RecordMemory(true, saddr, kClientBufSizeBytes), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(false, caddr, kClientBufSizeBytes), SUCCESS);
 
   // 校验访问
-  EXPECT_EQ(store.ValidateMemoryAccess(saddr, kBlockSizeBytes, caddr), hixl::SUCCESS);
+  EXPECT_EQ(store.ValidateMemoryAccess(saddr, kBlockSizeBytes, caddr), SUCCESS);
 
   // 重复记录同一server地址跳过记录
-  EXPECT_EQ(store.RecordMemory(true, saddr, kClientBufSizeBytes), hixl::SUCCESS);
+  EXPECT_EQ(store.RecordMemory(true, saddr, kClientBufSizeBytes), SUCCESS);
   // 重复记录同一client地址应返回参数错误
-  EXPECT_EQ(store.RecordMemory(false, caddr, kClientBufSizeBytes), hixl::PARAM_INVALID);
+  EXPECT_EQ(store.RecordMemory(false, caddr, kClientBufSizeBytes), PARAM_INVALID);
 
   // 注销
-  EXPECT_EQ(store.UnrecordMemory(true, saddr), hixl::SUCCESS);
-  EXPECT_EQ(store.UnrecordMemory(false, caddr), hixl::SUCCESS);
+  EXPECT_EQ(store.UnrecordMemory(true, saddr), SUCCESS);
+  EXPECT_EQ(store.UnrecordMemory(false, caddr), SUCCESS);
 
   // 再次注销应参数错误
-  EXPECT_EQ(store.UnrecordMemory(true, saddr), hixl::PARAM_INVALID);
+  EXPECT_EQ(store.UnrecordMemory(true, saddr), PARAM_INVALID);
+}
+
+TEST(HixlMemStoreBasicTest, CheckMergedRegionsAccessTwoAdjacentRegions) {
+  HixlMemStore store;
+  constexpr uint32_t kAddr1 = 100;
+  constexpr uint32_t kAddr2 = 200;
+  void *addr1 = reinterpret_cast<void*>(static_cast<uintptr_t>(kAddr1));
+  void *addr2 = reinterpret_cast<void*>(static_cast<uintptr_t>(kAddr2));
+  constexpr uint32_t kSize = 100;
+
+  EXPECT_EQ(store.RecordMemory(true, addr1, kSize), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(true, addr2, kSize), SUCCESS);
+
+  constexpr uint32_t kTestAddr = 150;
+  void *test_addr = reinterpret_cast<void*>(static_cast<uintptr_t>(kTestAddr));
+  constexpr uint32_t kTestClientAddr = 1;
+  void *test_client_addr = reinterpret_cast<void*>(static_cast<uintptr_t>(kTestClientAddr));
+  EXPECT_EQ(store.RecordMemory(false, test_client_addr, kSize), SUCCESS);
+
+  EXPECT_EQ(store.ValidateMemoryAccess(test_addr, kSize, test_client_addr), SUCCESS);
+}
+
+TEST(HixlMemStoreBasicTest, CheckMergedRegionsAccessThreeAdjacentRegions) {
+  HixlMemStore store;
+  constexpr uint32_t kAddr1 = 100;
+  constexpr uint32_t kAddr2 = 200;
+  constexpr uint32_t kAddr3 = 300;
+  void *addr1 = reinterpret_cast<void*>(static_cast<uintptr_t>(kAddr1));
+  void *addr2 = reinterpret_cast<void*>(static_cast<uintptr_t>(kAddr2));
+  void *addr3 = reinterpret_cast<void*>(static_cast<uintptr_t>(kAddr3));
+  constexpr uint32_t kSize = 100;
+
+  EXPECT_EQ(store.RecordMemory(true, addr1, kSize), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(true, addr2, kSize), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(true, addr3, kSize), SUCCESS);
+
+  constexpr uint32_t kTestAddr = 150;
+  void *test_addr = reinterpret_cast<void*>(static_cast<uintptr_t>(kTestAddr));
+  constexpr uint32_t kTestClientAddr = 1;
+  void *test_client_addr = reinterpret_cast<void*>(static_cast<uintptr_t>(kTestClientAddr));
+  EXPECT_EQ(store.RecordMemory(false, test_client_addr, kSize), SUCCESS);
+
+  EXPECT_EQ(store.ValidateMemoryAccess(test_addr, kSize, test_client_addr), SUCCESS);
+}
+
+TEST(HixlMemStoreBasicTest, CheckAccessAcrossGap) {
+  HixlMemStore store;
+  constexpr uint32_t kAddr1 = 100;
+  constexpr uint32_t kAddr2 = 300;
+  void *addr1 = reinterpret_cast<void*>(static_cast<uintptr_t>(kAddr1));
+  void *addr2 = reinterpret_cast<void*>(static_cast<uintptr_t>(kAddr2));
+  constexpr uint32_t kSize = 100;
+
+  EXPECT_EQ(store.RecordMemory(true, addr1, kSize), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(true, addr2, kSize), SUCCESS);
+
+  constexpr uint32_t kTestAddr = 150;
+  void *test_addr = reinterpret_cast<void*>(static_cast<uintptr_t>(kTestAddr));
+  constexpr uint32_t kTestClientAddr = 1;
+  void *test_client_addr = reinterpret_cast<void*>(static_cast<uintptr_t>(kTestClientAddr));
+  EXPECT_EQ(store.RecordMemory(false, test_client_addr, kSize), SUCCESS);
+
+  EXPECT_EQ(store.ValidateMemoryAccess(test_addr, kSize, test_client_addr), PARAM_INVALID);
+}
+
+TEST(HixlMemStoreBasicTest, CheckMergedRegionsAccessExceedMergedRange) {
+  HixlMemStore store;
+  constexpr uint32_t kAddr1 = 100;
+  constexpr uint32_t kAddr2 = 200;
+  void *addr1 = reinterpret_cast<void*>(static_cast<uintptr_t>(kAddr1));
+  void *addr2 = reinterpret_cast<void*>(static_cast<uintptr_t>(kAddr2));
+  constexpr uint32_t kSize = 100;
+
+  EXPECT_EQ(store.RecordMemory(true, addr1, kSize), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(true, addr2, kSize), SUCCESS);
+
+  constexpr uint32_t kTestAddr = 150;
+  void *test_addr = reinterpret_cast<void*>(static_cast<uintptr_t>(kTestAddr));
+  constexpr uint32_t kTestClientAddr = 1;
+  void *test_client_addr = reinterpret_cast<void*>(static_cast<uintptr_t>(kTestClientAddr));
+  EXPECT_EQ(store.RecordMemory(false, test_client_addr, kSize), SUCCESS);
+
+  EXPECT_EQ(store.ValidateMemoryAccess(test_addr, kSize * 2, test_client_addr), PARAM_INVALID);
 }
 }  // namespace hixl
