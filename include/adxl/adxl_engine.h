@@ -134,6 +134,22 @@ class ASCEND_FUNC_VISIBILITY AdxlEngine {
    */
   Status GetNotifies(std::vector<NotifyDesc> &notifies);
 
+  /**
+   * @brief Allocate fabric memory using aclrtMallocPhysical, aclrtReserveMemAddress and aclrtMapMem
+   * @param [in] size Memory size to allocate
+   * @param [out] va Virtual address of allocated memory
+   * @return 成功:SUCCESS, 失败:其它.
+   * @note This is a static method that maintains internal mapping from VA to PA handle
+   */
+  static Status MallocFabricMemory(size_t size, void *&va);
+
+  /**
+   * @brief Free fabric memory allocated by MallocFabricMemory
+   * @param [in] va Virtual address of memory to free
+   * @return 成功:SUCCESS, 失败:其它.
+   */
+  static Status FreeFabricMemory(void *va);
+
  private:
   class AdxlEngineImpl;
   std::unique_ptr<AdxlEngineImpl> impl_;

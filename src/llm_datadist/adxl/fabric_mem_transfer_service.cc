@@ -12,6 +12,7 @@
 #include <chrono>
 #include <mutex>
 #include <vector>
+#include <unordered_map>
 #include "adxl/adxl_checker.h"
 #include "common/def_types.h"
 #include "common/llm_scope_guard.h"
@@ -23,7 +24,107 @@
 namespace adxl {
 namespace {
 constexpr uint64_t kMillisToMicros = 1000;
+constexpr int32_t kDevicesPerChip = 4;
+constexpr int32_t kNumaNodeStep = 2;
+
+std::mutex g_va_to_pa_mutex;
+std::unordered_map<uintptr_t, aclrtDrvMemHandle> g_va_to_pa_handle_map;
 }  // namespace
+
+Status FabricMemTransferService::MallocFabricMemory(size_t size, void *&va) {
+  ADXL_CHK_BOOL_RET_STATUS(size > 0, PARAM_INVALID, "size should be bigger than zero.");
+
+  aclrtDrvMemHandle pa_handle = nullptr;
+  uintptr_t virtual_addr = 0;
+  ADXL_CHK_STATUS_RET(FabricMemTransferService::AllocatePhysicalMemory(size, pa_handle), "Failed to allocate physical memory");
+
+  LLM_DISMISSABLE_GUARD(fail_guard, ([&pa_handle, &virtual_addr] {
+                          if (virtual_addr != 0) {
+                            VirtualMemoryManager::GetInstance().ReleaseMemory(virtual_addr);
+                          }
+                          if (pa_handle != nullptr) {
+                            LLM_CHK_ACL(aclrtFreePhysical(pa_handle));
+                          }
+                          }));
+
+  ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().ReserveMemory(size, virtual_addr));
+
+  auto va_ptr = llm::ValueToPtr(virtual_addr);
+  ADXL_CHK_ACL_RET(aclrtMapMem(va_ptr, size, 0, pa_handle, 0));
+
+  AddVaToPaMapping(virtual_addr, pa_handle);
+
+  va = llm::ValueToPtr(virtual_addr);
+  LLMLOGI("MallocFabricMemory success, va:%lu, size:%zu", virtual_addr, size);
+  LLM_DISMISS_GUARD(fail_guard);
+  return SUCCESS;
+}
+
+Status FabricMemTransferService::FreeFabricMemory(void *va) {
+  ADXL_CHK_BOOL_RET_STATUS(va != nullptr, PARAM_INVALID, "va can not be nullptr.");
+
+  auto va_addr = llm::PtrToValue(va);
+  aclrtDrvMemHandle pa_handle = nullptr;
+  // Get PA handle from mapping and remove it
+  ADXL_CHK_STATUS_RET(GetPaHandleFromVa(va_addr, pa_handle), "Failed to get pa handle.");
+
+  RemoveVaToPaMapping(va_addr);
+  LLM_CHK_ACL(aclrtUnmapMem(va));
+  VirtualMemoryManager::GetInstance().ReleaseMemory(llm::PtrToValue(va));
+  LLM_CHK_ACL(aclrtFreePhysical(pa_handle));
+
+  LLMLOGI("FreeFabricMemory success, va:%lu", va_addr);
+  return SUCCESS;
+}
+
+Status FabricMemTransferService::AllocatePhysicalMemory(size_t total_size, aclrtDrvMemHandle &handle) {
+  int32_t user_dev_id;
+  LLM_CHK_ACL_RET(aclrtGetDevice(&user_dev_id));
+  int32_t physical_dev_id;
+  LLM_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(user_dev_id, &physical_dev_id));
+
+  aclrtPhysicalMemProp prop = {};
+  prop.handleType = ACL_MEM_HANDLE_TYPE_NONE;
+  prop.allocationType = ACL_MEM_ALLOCATION_TYPE_PINNED;
+  prop.memAttr = ACL_MEM_P2P_HUGE1G;
+  prop.location.type = ACL_MEM_LOCATION_TYPE_HOST_NUMA;
+  // Only 0 2 4 6 is available for fabric mem, map 4 device to one numa.
+  prop.location.id = (physical_dev_id / kDevicesPerChip) * kNumaNodeStep;
+  prop.reserve = 0;
+  LLMLOGI("Malloc host memory for numa:%d", prop.location.id);
+  auto ret = aclrtMallocPhysical(&handle, total_size, &prop, 0);
+  if (ret != ACL_ERROR_NONE) {
+    LLMLOGI("Malloc host memory for numa:%d failed, try common allocate instead.", prop.location.id);
+    prop.location.type = ACL_MEM_LOCATION_TYPE_HOST;
+    prop.location.id = 0;
+    LLM_CHK_ACL_RET(aclrtMallocPhysical(&handle, total_size, &prop, 0));
+  }
+  return SUCCESS;
+}
+
+Status FabricMemTransferService::GetPaHandleFromVa(uintptr_t va_addr, aclrtDrvMemHandle &pa_handle) {
+  std::lock_guard<std::mutex> lock(g_va_to_pa_mutex);
+  auto it = g_va_to_pa_handle_map.find(va_addr);
+  if (it == g_va_to_pa_handle_map.end()) {
+    return FAILED;
+  }
+  pa_handle = it->second;
+  return SUCCESS;
+}
+
+void FabricMemTransferService::AddVaToPaMapping(uintptr_t va_addr, aclrtDrvMemHandle pa_handle) {
+  std::lock_guard<std::mutex> lock(g_va_to_pa_mutex);
+  g_va_to_pa_handle_map.emplace(va_addr, pa_handle);
+}
+
+void FabricMemTransferService::RemoveVaToPaMapping(uintptr_t va_addr) {
+  std::lock_guard<std::mutex> lock(g_va_to_pa_mutex);
+  auto it = g_va_to_pa_handle_map.find(va_addr);
+  if (it != g_va_to_pa_handle_map.end()) {
+    g_va_to_pa_handle_map.erase(it);
+  }
+}
+
 Status FabricMemTransferService::Initialize(size_t max_stream_num, size_t task_stream_num) {
   task_stream_num_ = task_stream_num;
   // async transfer need one plus stream to submit event record for better performance
@@ -68,8 +169,14 @@ void FabricMemTransferService::Finalize() {
     // free all retained and imported pa handle
     std::lock_guard<std::mutex> lock(share_handle_mutex_);
     for (auto &share_handle : share_handles_) {
-      LLM_CHK_ACL(aclrtFreePhysical(share_handle.first));
-      LLM_CHK_ACL(aclrtFreePhysical(share_handle.second.imported_handle));
+      if (share_handle.second.imported_handle != nullptr) {
+        LLM_CHK_ACL(aclrtFreePhysical(share_handle.second.imported_handle));
+        LLMLOGI("Free imported handle:%p.", share_handle.second.imported_handle);
+      }
+      if (share_handle.second.is_retained) {
+        LLM_CHK_ACL(aclrtFreePhysical(share_handle.first));
+        LLMLOGI("Free imported handle:%p.", share_handle.first);
+      }
     }
     share_handles_.clear();
   }
@@ -77,7 +184,15 @@ void FabricMemTransferService::Finalize() {
 
 Status FabricMemTransferService::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
   aclrtDrvMemHandle pa_handle = nullptr;
-  ADXL_CHK_ACL_RET(aclrtMemRetainAllocationHandle(llm::ValueToPtr(mem.addr), &pa_handle));
+  auto ret = aclrtMemRetainAllocationHandle(llm::ValueToPtr(mem.addr), &pa_handle);
+  bool is_retained = true;
+  if (ret == ACL_ERROR_RT_FEATURE_NOT_SUPPORT) {
+    // Get PA handle from mapping and remove it
+    ADXL_CHK_STATUS_RET(GetPaHandleFromVa(mem.addr, pa_handle), "Failed to get pa handle.");
+    is_retained = false;
+  } else {
+    ADXL_CHK_BOOL_RET_STATUS(ret == ACL_ERROR_NONE, PARAM_INVALID, "aclrtMemRetainAllocationHandle failed.");
+  }
   aclrtDrvMemHandle imported_pa_handle = nullptr;
   uintptr_t imported_va = 0;
   LLM_DISMISSABLE_GUARD(fail_guard, ([&pa_handle, &imported_va, &imported_pa_handle] {
@@ -103,15 +218,18 @@ Status FabricMemTransferService::RegisterMem(const MemDesc &mem, MemType type, M
     ADXL_CHK_ACL_RET(aclrtMapMem(llm::ValueToPtr(imported_va), mem.len, 0, imported_pa_handle, 0));
     std::lock_guard<std::mutex> lock(local_va_map_mutex_);
     local_va_to_old_va_[imported_va] = VaInfo{mem.addr, mem.len};
-    LLMLOGI("Add local host mem mapping, src addr:%lu, new mapped addr:%lu, len:%zu.", mem.addr, imported_va,
-            mem.len);
+    LLMLOGI("Add local host mem mapping, src addr:%lu, new mapped addr:%lu, len:%zu, imported handle:%p.", mem.addr,
+            imported_va,
+            mem.len, imported_pa_handle);
   }
 
   std::lock_guard<std::mutex> lock(share_handle_mutex_);
-  share_handles_[pa_handle] = ShareHandleInfo{mem.addr, mem.len, share_handle, imported_pa_handle, imported_va};
+  share_handles_[pa_handle] = ShareHandleInfo{mem.addr, mem.len, share_handle, imported_pa_handle, imported_va,
+                                              is_retained};
   mem_handle = pa_handle;
-  LLMLOGI("Export suc, mem type:%s, mem addr:%lu.", hixl::MemTypeToString(static_cast<hixl::MemType>(type)).c_str(),
-            mem.addr);
+  LLMLOGI("Export suc, mem type:%s, mem addr:%lu, retained:%d, handle:%p.",
+          hixl::MemTypeToString(static_cast<hixl::MemType>(type)).c_str(),
+          mem.addr, is_retained, mem_handle);
   LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
 }
@@ -131,12 +249,19 @@ Status FabricMemTransferService::DeregisterMem(MemHandle mem_handle) {
       local_va_to_old_va_.erase(va_map_it);
     }
 
-    // free retained pa handle
-    LLM_CHK_ACL(aclrtFreePhysical(it->first));
-    // free imported pa handle
-    LLM_CHK_ACL(aclrtFreePhysical(it->second.imported_handle));
+    if (it->second.imported_handle != nullptr) {
+      // free imported pa handle
+      LLM_CHK_ACL(aclrtFreePhysical(it->second.imported_handle));
+      LLMLOGI("Free imported handle:%p.", it->second.imported_handle);
+    }
+    if (it->second.is_retained) {
+      // free retained pa handle
+      LLM_CHK_ACL(aclrtFreePhysical(it->first));
+      LLMLOGI("Free imported handle:%p.", it->first);
+    }
     share_handles_.erase(it);
   }
+  LLMLOGI("Success to deregister mem handle:%p.", mem_handle);
   return SUCCESS;
 }
 
