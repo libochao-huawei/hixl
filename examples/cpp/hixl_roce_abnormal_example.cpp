@@ -255,7 +255,7 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
   if (abnormal_idx != 3) {
     desc.addr = reinterpret_cast<uintptr_t>(src);
     desc.len = kTransferMemSize;
-    auto ret = hixl_engine.RegisterMem(desc, is_host ? MemType::MEM_HOST : MEM_DEVICE, handle);
+    auto ret = hixl_engine.RegisterMem(desc, mem_type, handle);
     if (ret != SUCCESS) {
       printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
       Finalize(hixl_engine, is_host, {handle}, {src});
