@@ -394,10 +394,10 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
   auto mem_type = is_host ? MemType::MEM_HOST : MemType::MEM_DEVICE;
 
   MemDesc desc{};
+  desc.addr = addr;
+  desc.len = kTransferMemSize;
   if (abnormal_idx != 4) {
     // 异常场景(4): server地址未注册，执行传输
-    desc.addr = addr;
-    desc.len = kTransferMemSize;
     auto ret = hixl_engine.RegisterMem(desc, mem_type, handle);
     if (ret != SUCCESS) {
       printf("[ERROR] RegisterMem failed, ret = %u\n", ret);
