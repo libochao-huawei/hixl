@@ -29,7 +29,7 @@ set(targets_list
     "hixl_roce_example2"
     "hixl_roce_example3"
     "hixl_roce_example4"
-    "hixl_roce_abnoraml_example"
+    "hixl_roce_abnormal_example"
 )
 
 file(GLOB COMMON_FILES "${HIXL_CODE_DIR}/benchmarks/common/*.cpp")
