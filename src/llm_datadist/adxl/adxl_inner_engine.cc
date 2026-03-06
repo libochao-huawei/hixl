@@ -451,6 +451,9 @@ Status AdxlInnerEngine::GetTransferType(const ChannelPtr &channel, TransferOp op
         cur_type = TransferType::kWriteD2RD;
       }
     }
+    LLMLOGI("Cur transfer type:%d, local mem type:%s, remote mem type:%s.", static_cast<int32_t>(cur_type),
+            hixl::MemTypeToString(static_cast<hixl::MemType>(local_mem_type)).c_str(),
+            hixl::MemTypeToString(static_cast<hixl::MemType>(remote_mem_type)).c_str());
     LLMLOGD("Cur transfer type:%d, local mem type:%s, remote mem type:%s.", static_cast<int32_t>(cur_type),
             hixl::MemTypeToString(static_cast<hixl::MemType>(local_mem_type)).c_str(),
             hixl::MemTypeToString(static_cast<hixl::MemType>(remote_mem_type)).c_str());
