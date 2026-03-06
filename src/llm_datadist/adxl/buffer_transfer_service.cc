@@ -640,7 +640,13 @@ Status BufferTransferService::HandleBufferResp(const ChannelPtr &channel, Buffer
     ReleaseBuffer(ptr);
     req_id_buffers_[buffer_resp.req_id].erase(ptr);
   }
-  LLMLOGI("Recv resp, req id:%lu.", buffer_resp.req_id);
+  LLMLOGI("Recv resp, req_id:%lu, timeout:%lu, transfer_type:%d, buffer_addr:%lu, src_addrs.size:%zu, buffer_lens.size:%zu",
+        buffer_resp.req_id,
+        buffer_resp.timeout,
+        static_cast<int>(buffer_resp.transfer_type),
+        buffer_resp.buffer_addr,
+        buffer_resp.src_addrs.size(),
+        buffer_resp.buffer_lens.size());
   return SUCCESS;
 }
 
