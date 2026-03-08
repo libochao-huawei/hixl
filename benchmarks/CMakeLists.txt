@@ -19,6 +19,8 @@ file(GLOB COMMON_FILES "${HIXL_CODE_DIR}/benchmarks/common/*.cpp")
 # 只定义目标名称列表（与cpp文件名前缀相同）
 set(targets_list
     "benchmark"
+    "hixl_cs_benchmark"
+    "hixl_cs_benchmark_large"
 )
 
 foreach(target_name IN LISTS targets_list)
@@ -29,6 +31,8 @@ foreach(target_name IN LISTS targets_list)
         add_executable(${target_name} ${source_file} ${COMMON_FILES})
         target_include_directories(${target_name} PRIVATE
             ${HIXL_INC_DIR}
+            ${HIXL_CODE_DIR}/src
+            ${HIXL_CODE_DIR}/include
             ${CANN_INSTALL_PATH}/include
         )
         target_compile_options(${target_name} PRIVATE
