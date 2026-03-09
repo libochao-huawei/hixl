@@ -375,14 +375,32 @@ Status AdxlInnerEngine::GetTransferType(const ChannelPtr &channel, TransferOp op
                                         const std::vector<TransferOpDesc> &op_descs, bool &need_buffer,
                                         TransferType &type) const {
   ADXL_CHK_BOOL_RET_STATUS(segment_table_ != nullptr, FAILED, "Segment table is null.");
+  LLMLOGI("GetTransferType: local_engine=%s, channel_id=%s, operation=%d, op_descs.size=%zu",
+          local_engine_.c_str(), channel->GetChannelId().c_str(), static_cast<int32_t>(operation), op_descs.size());
   for (size_t i = 0; i < op_descs.size(); i++) {
     auto &op_desc = op_descs[i];
+    LLMLOGI("GetTransferType: op_desc[%zu] local_addr=%p, remote_addr=%p, len=%lu",
+            i, op_desc.local_addr, op_desc.remote_addr, op_desc.len);
     auto local_segment =
         segment_table_->FindSegment(local_engine_, op_desc.local_addr, op_desc.local_addr + op_desc.len);
+    LLMLOGI("GetTransferType: local_segment=%p, local_engine_=%s, start=%p, end=%p",
+            static_cast<void*>(const_cast<Segment*>(local_segment.get())),
+            local_engine_.c_str(), op_desc.local_addr, op_desc.local_addr + op_desc.len);
     MemType local_mem_type = local_segment != nullptr ? local_segment->GetMemType() : MemType::MEM_HOST;
+    if (local_segment == nullptr) {
+      LLMLOGW("GetTransferType: local_segment is nullptr! local_addr=%p, len=%lu, defaulting to MEM_HOST",
+              op_desc.local_addr, op_desc.len);
+    }
     auto remote_segment =
         segment_table_->FindSegment(channel->GetChannelId(), op_desc.remote_addr, op_desc.remote_addr + op_desc.len);
+    LLMLOGI("GetTransferType: remote_segment=%p, channel_id=%s, start=%p, end=%p",
+            static_cast<void*>(const_cast<Segment*>(remote_segment.get())),
+            channel->GetChannelId().c_str(), op_desc.remote_addr, op_desc.remote_addr + op_desc.len);
     MemType remote_mem_type = remote_segment != nullptr ? remote_segment->GetMemType() : MemType::MEM_HOST;
+    if (remote_segment == nullptr) {
+      LLMLOGW("GetTransferType: remote_segment is nullptr! remote_addr=%p, len=%lu, defaulting to MEM_HOST",
+              op_desc.remote_addr, op_desc.len);
+    }
     need_buffer = need_buffer || ((local_segment == nullptr) || (remote_segment == nullptr));
 
     TransferType cur_type = DetermineTransferType(operation, local_mem_type, remote_mem_type);
