@@ -15,8 +15,11 @@
 namespace adxl {
 void SegmentTable::RemoveChannel(const std::string &channel_id) {
   std::lock_guard<std::mutex> lock(map_mutex_);
+  LLMLOGI("SegmentTable::RemoveChannel: channel_id=%s", channel_id.c_str());
   auto it = channel_2_segment_.find(channel_id);
   if (it != channel_2_segment_.end()) {
+    LLMLOGI("SegmentTable::RemoveChannel: removing channel_id=%s, segments_size=%zu",
+            channel_id.c_str(), it->second.size());
     channel_2_segment_.erase(it);
   }
 }
@@ -33,6 +36,7 @@ void SegmentTable::AddRange(const std::string &channel_id, uint64_t start, uint6
     new_segment->AddRange(start, end);
     segments.push_back(new_segment);
   }
+  LLMLOGI("SegmentTable::AddRange, channel_id is %s, add range %lu-%lu.", channel_id.c_str(), start, end);
 }
 
 void SegmentTable::RemoveRange(const std::string &channel_id, uint64_t start, uint64_t end, MemType type) {
@@ -47,17 +51,22 @@ void SegmentTable::RemoveRange(const std::string &channel_id, uint64_t start, ui
   if (it != segments.end()) {
     (*it)->RemoveRange(start, end);
   }
+  LLMLOGI("SegmentTable::RemoveRange, channel_id is %s, Remove range %lu-%lu.", channel_id.c_str(), start, end);
 }
 
 SegmentPtr SegmentTable::FindSegment(const std::string &channel_id, uint64_t start, uint64_t end) {
   std::lock_guard<std::mutex> lock(map_mutex_);
   auto channel_it = channel_2_segment_.find(channel_id);
   if (channel_it == channel_2_segment_.end()) {
+    LLMLOGI("SegmentTable::FindSegment: channel_2_segment_ failed to find channel_id, channel_id=%s.",
+            channel_id.c_str());
     return nullptr;
   }
   // only two segments: MEM_DEVICE and MEM_HOST
   for (const auto &segment : channel_it->second) {
     if (segment->Contains(start, end)) {
+      LLMLOGI("SegmentTable::FindSegment: found segment for channel_id=%s, range=[%lu, %lu].",
+            channel_id.c_str(), start, end);
       return segment;
     }
   }
@@ -70,6 +79,7 @@ void Segment::AddRange(uint64_t start, uint64_t end) {
                                return val < range.first;
                              });
   ranges_.insert(it, {start, end});
+  LLMLOGI("SegmentTable::AddRange: add range, range=[%lu, %lu].", start, end);
 }
 
 void Segment::RemoveRange(uint64_t start, uint64_t end) {
