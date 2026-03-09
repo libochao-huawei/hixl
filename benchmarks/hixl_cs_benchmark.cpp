@@ -219,8 +219,8 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
     (void)printf("[ERROR] %s transfer_data aclrtMalloc failed, ret = %d\n", device.c_str(), ret);
     ret = aclrtFreeHost(tmp);
   }
-  uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
-  HIXL_LOGI("The %s transfer_data addr is : %p", device, transfer_data);
+  uint32_t *transfer_data = static_cast<uint32_t *>(tmp); //初始化后的内存
+  HIXL_LOGI("The %s transfer_data addr is : %p", device.c_str(), transfer_data);
   // 如果是写数据，申请内存后，还需要设置内存为1，之后再复制给需要传输的内存
   if ((transfer_op == "write" and is_client) || (transfer_op == "read" and not is_client)) {
     for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
@@ -230,7 +230,7 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
     if (ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] %s transfer_data aclrtMemcpy failed, ret = %d\n", device.c_str(), ret);
     }
-    HIXL_LOGI("The %s transfer_data have been copy to client_mem.", device);
+    HIXL_LOGI("The %s transfer_data have been copy to client_mem.", device.c_str());
   }
   if ((transfer_op == "read" and is_client )|| (transfer_op == "write" and not is_client)) {
     for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
@@ -310,7 +310,11 @@ int32_t RunClient(const Args &args) {
     }
   } else {
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
-    copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
+    if (args.transfer_op == "read") {
+      copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
+    }else {
+      copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
+    }
     mem.type = HCCL_MEM_TYPE_DEVICE;
     mem.size = kTransferMemSize;
     if (acl_ret != ACL_ERROR_NONE) {
@@ -319,7 +323,6 @@ int32_t RunClient(const Args &args) {
       return -1;
     }
   }
-
   ret = HixlCSClientRegMem(client_handle, kClientMemTagName, &mem, &mem_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientRegMem failed, ret = %u\n", ret);
@@ -420,7 +423,11 @@ int32_t RunServer(const Args &args) {
     }
   } else {
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
-    copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
+    if (args.transfer_op == "read") {
+      copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
+    }else {
+      copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
+    }
     mem.type = HCCL_MEM_TYPE_DEVICE;
     mem.size = kTransferMemSize;
     if (acl_ret != ACL_ERROR_NONE) {
