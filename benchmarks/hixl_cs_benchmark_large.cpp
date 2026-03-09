@@ -19,6 +19,7 @@
 #include "nlohmann/json.hpp"
 #include "common/tcp_client_server.h"
 #include "acl/acl.h"
+#include "hixl/common/hixl_log.h"
 #include "cs/hixl_cs.h"
 #include "hixl/common/hixl_log.h"
 #include "hixl/hixl_types.h"
@@ -301,9 +302,14 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
   if (ret != ACL_ERROR_NONE) {
     (void)printf("[ERROR] %s transfer_data aclrtMalloc failed, ret = %d\n", device.c_str(), ret);
     ret = aclrtFreeHost(tmp);
+    return nullptr;
   }
   uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
-  HIXL_LOGI("The %s transfer_data addr is : %p", device, transfer_data);
+  HIXL_LOGI("The %s transfer_data addr is : %p", device.c_str(), transfer_data);
+  if (transfer_data ==nullptr) {
+    HIXL_LOGI("[ERROR] %s transfer_data is nullptr after malloc.",device.c_str());
+    return nullptr;
+  }
   // 如果是写数据，申请内存后，还需要设置内存为1，之后再复制给需要传输的内存
   if ((transfer_op == "write" and is_client) || (transfer_op == "read" and not is_client)) {
     for (uint32_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
@@ -313,7 +319,7 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
     if (ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] %s transfer_data aclrtMemcpy failed, ret = %d\n", device.c_str(), ret);
     }
-    HIXL_LOGI("The %s transfer_data have been copy to client_mem.", device);
+    HIXL_LOGI("The %s transfer_data have been copy to client_mem.", device.c_str());
   }
   if ((transfer_op == "read" and is_client )|| (transfer_op == "write" and not is_client)) {
     for (uint32_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
@@ -377,15 +383,15 @@ int32_t RunClientLargeData(const Args &args) {
   std::vector<uint64_t> test_sizes = {k2GB, k4GB, k8GB};
   uint64_t max_size = k8GB;
   uint64_t block_size = k128MB;
-  aclrtMemcpyKind copy_kind ;
+  aclrtMemcpyKind copy_kind;
   MemHandle mem_handle = nullptr;
   HcommMem mem{};
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
 
   if (is_host) {
+    copy_kind = ACL_MEMCPY_HOST_TO_HOST;
     void *tmp = malloc(max_size);
     mem.addr = tmp;
-    copy_kind = ACL_MEMCPY_HOST_TO_HOST;
     mem.type = HCCL_MEM_TYPE_HOST;
     mem.size = max_size;
     if (tmp == nullptr) {
@@ -395,7 +401,11 @@ int32_t RunClientLargeData(const Args &args) {
     HIXL_LOGI("Client host addr malloc success mem.addr is %p, mem.size is %lu.", mem.addr, mem.size);
   } else {
     aclError acl_ret = aclrtMalloc(&mem.addr, max_size, ACL_MEM_MALLOC_HUGE_ONLY);
-    copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
+    if (args.transfer_op == "read") {
+      copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
+    }else {
+      copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
+    }
     mem.type = HCCL_MEM_TYPE_DEVICE;
     mem.size = max_size;
     if (acl_ret != ACL_ERROR_NONE) {
@@ -405,7 +415,6 @@ int32_t RunClientLargeData(const Args &args) {
     }
     HIXL_LOGI("Client device addr malloc success mem.addr is %p, mem.size is %lu.", mem.addr, mem.size);
   }
-
   ret = HixlCSClientRegMem(client_handle, kClientMemTagName, &mem, &mem_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientRegMem failed, ret = %u\n", ret);
@@ -487,7 +496,11 @@ int32_t RunClientMultiBlock(const Args &args) {
   if (is_host) {
     copy_kind = ACL_MEMCPY_HOST_TO_HOST;
   } else {
-    copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
+    if (args.transfer_op == "read") {
+      copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
+    }else {
+      copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
+    }
   }
   for (uint32_t mem_block_count : mem_block_counts) {
     (void)printf("[INFO] ===== Test with %u memory blocks =====\n", mem_block_count);
@@ -527,6 +540,7 @@ int32_t RunClientMultiBlock(const Args &args) {
         return -1;
       }
       local_addrs[i] = static_cast<uint8_t *>(mems[i].addr);
+      // 写任务，提前初始化host侧的内存，之后拷贝到mem中
       if (args.transfer_op == "write") {
         kClientTransferDataList[i]= mem_alloc(args.transfer_op, true, copy_kind, mems[i]);
       }
@@ -549,7 +563,7 @@ int32_t RunClientMultiBlock(const Args &args) {
       }
     }
 
-    // 5.如果是读数据，传输完成后，基于copy_kind拷贝内存
+    // 5.如果是读数据，传输完成后，基于copy_kind，从mem中拷贝数据到初始化的内存中。
     if (args.transfer_op == "read") {
       for (uint32_t i = 0; i < mem_block_count; ++i) {
         kClientTransferDataList[i] = mem_alloc(args.transfer_op, true, copy_kind, mems[i]);
@@ -624,7 +638,11 @@ int32_t RunServerLargeData(const Args &args) {
     }
   } else {
     aclError acl_ret = aclrtMalloc(&mem.addr, max_size, ACL_MEM_MALLOC_HUGE_ONLY);
-    copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
+    if (args.transfer_op == "read") {
+      copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
+    }else {
+      copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
+    }
     mem.type = HCCL_MEM_TYPE_DEVICE;
     mem.size = max_size;
     if (acl_ret != ACL_ERROR_NONE) {
@@ -706,7 +724,16 @@ int32_t RunServerMultiBlock(const Args &args) {
   constexpr uint64_t kMemBlockSize = 2ULL * 1024 * 1024;
   std::vector<uint32_t> mem_block_counts = {40, 200, 1000};
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
-  aclrtMemcpyKind copy_kind = is_host ? ACL_MEMCPY_HOST_TO_HOST : ACL_MEMCPY_HOST_TO_DEVICE;
+  aclrtMemcpyKind copy_kind;
+  if (is_host) {
+    copy_kind = ACL_MEMCPY_HOST_TO_HOST;
+  } else {
+    if (args.transfer_op == "read") {
+      copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
+    }else {
+      copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
+    }
+  }
 
   for (uint32_t mem_block_count : mem_block_counts) {
     (void)printf("[INFO] ===== Test with %u memory blocks =====\n", mem_block_count);
