@@ -449,9 +449,10 @@ Status AdxlInnerEngine::GetTransferType(const ChannelPtr &channel, TransferOp op
         cur_type = TransferType::kWriteD2RD;
       }
     }
-    LLMLOGD("Cur transfer type:%d, local mem type:%s, remote mem type:%s.", static_cast<int32_t>(cur_type),
-            hixl::MemTypeToString(static_cast<hixl::MemType>(local_mem_type)).c_str(),
-            hixl::MemTypeToString(static_cast<hixl::MemType>(remote_mem_type)).c_str());
+    LLMLOGD(
+        "Judge transfer type for local_addr:%lu, remote_addr:%lu, len:%lu, local_segment is %s, remote_segment is %s, "
+        "transfer type:%d.", op_desc.local_addr, op_desc.remote_addr, op_desc.len,
+        local_segment ? "found" : "not found", remote_segment ? "found" : "not found", static_cast<int32_t>(cur_type));
     if (i > 0) {
       ADXL_CHK_BOOL_RET_STATUS(!need_buffer || (need_buffer && cur_type == type), PARAM_INVALID,
                                "All transfer type need be same in buffer transfer mode.");
