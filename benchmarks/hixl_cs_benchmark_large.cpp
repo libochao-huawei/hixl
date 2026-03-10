@@ -86,8 +86,8 @@ constexpr const char *kClientMemTagName = "client_mem";
 
 constexpr uint64_t k1GB = 1ULL * 1024 * 1024 * 1024;
 constexpr uint64_t k2GB = 2ULL * 1024 * 1024 * 1024;
-constexpr uint64_t k4GB = 8ULL * 1024 * 1024 * 1024;
-constexpr uint64_t k8GB = 32ULL * 1024 * 1024 * 1024;
+constexpr uint64_t k4GB = 4ULL * 1024 * 1024 * 1024;
+constexpr uint64_t k8GB = 8ULL * 1024 * 1024 * 1024;
 constexpr uint64_t k128MB = 128ULL * 1024 * 1024;
 
 constexpr int32_t kTestTypeLargeData = 1;
@@ -467,20 +467,28 @@ int32_t RunClientMultiBlock(const Args &args) {
   // 1. 初始化
   TCPServer tcp_server;
   if (!tcp_server.StartServer(args.tcp_port)) {
+    (void)printf("[ERROR] Failed to start TCP server.\n");
+    return -1;
+  }
+  (void)printf("[INFO] TCP server started.\n");
+  if (!tcp_server.AcceptConnection()) {
     return -1;
   }
   // 创建 HixlClientDesc 结构体
-  EndpointDesc ep;
-  if (InitEndPointInfo(args.remote_comm_res, ep) != 0) {
+  EndpointDesc local_ep;
+  EndpointDesc remote_ep;
+  if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 || InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
     (void)printf("[ERROR] Initialize EndPoint list failed\n");
     return -1;
   }
 
   HixlClientHandle client_handle = nullptr;
-  HixlClientDesc client_desc = {.server_ip = args.remote_engine.c_str(),
-                                 .server_port = static_cast<uint32_t>(std::stoi(args.remote_engine.substr(args.remote_engine.find(':') + 1))),
-                                 .local_endpoint = nullptr,
-                                 .remote_endpoint = &ep};
+  std::string ip = args.remote_engine.substr(0U, args.remote_engine.find(':'));
+  int32_t port = std::stoi(args.remote_engine.substr(args.remote_engine.find(':') + 1U));
+  HixlClientDesc client_desc = {.server_ip = ip.c_str(),
+                                .server_port = static_cast<uint32_t>(port),
+                                .local_endpoint = &local_ep,
+                                .remote_endpoint = &remote_ep};
   HixlClientConfig client_config{};
   auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
   if (ret != HIXL_SUCCESS) {
