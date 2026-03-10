@@ -474,29 +474,7 @@ int32_t RunClientMultiBlock(const Args &args) {
   if (!tcp_server.AcceptConnection()) {
     return -1;
   }
-  // 创建 HixlClientDesc 结构体
-  EndpointDesc local_ep;
-  EndpointDesc remote_ep;
-  if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 || InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
-    (void)printf("[ERROR] Initialize EndPoint list failed\n");
-    return -1;
-  }
-
-  HixlClientHandle client_handle = nullptr;
-  std::string ip = args.remote_engine.substr(0U, args.remote_engine.find(':'));
-  int32_t port = std::stoi(args.remote_engine.substr(args.remote_engine.find(':') + 1U));
-  HixlClientDesc client_desc = {.server_ip = ip.c_str(),
-                                .server_port = static_cast<uint32_t>(port),
-                                .local_endpoint = &local_ep,
-                                .remote_endpoint = &remote_ep};
-  HixlClientConfig client_config{};
-  auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
-  if (ret != HIXL_SUCCESS) {
-    (void)printf("[ERROR] HixlCSClientCreate failed, ret = %u\n", ret);
-    return -1;
-  }
-
-  // 2、按照不同的内存块数目创建传输任务
+  // 按照不同的内存块数目创建传输任务
   constexpr uint64_t kMemBlockSize = 2ULL * 1024 * 1024;
   std::vector<uint32_t> mem_block_counts = {40, 200, 1000};
   aclrtMemcpyKind copy_kind;
@@ -510,7 +488,29 @@ int32_t RunClientMultiBlock(const Args &args) {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     }
   }
+  // 循环测试三组用例，分别注册40、200、1000个内存块用于数据传输
   for (uint32_t mem_block_count : mem_block_counts) {
+    // 1、创建 HixlClientDesc 结构体
+    EndpointDesc local_ep;
+    EndpointDesc remote_ep;
+    if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 || InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
+      (void)printf("[ERROR] Initialize EndPoint list failed\n");
+      return -1;
+    }
+
+    HixlClientHandle client_handle = nullptr;
+    std::string ip = args.remote_engine.substr(0U, args.remote_engine.find(':'));
+    int32_t port = std::stoi(args.remote_engine.substr(args.remote_engine.find(':') + 1U));
+    HixlClientDesc client_desc = {.server_ip = ip.c_str(),
+                                  .server_port = static_cast<uint32_t>(port),
+                                  .local_endpoint = &local_ep,
+                                  .remote_endpoint = &remote_ep};
+    HixlClientConfig client_config{};
+    auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
+    if (ret != HIXL_SUCCESS) {
+      (void)printf("[ERROR] HixlCSClientCreate failed, ret = %u\n", ret);
+      return -1;
+    }
     (void)printf("[INFO] ===== Test with %u memory blocks =====\n", mem_block_count);
     std::vector<uint32_t *> kClientTransferDataList(mem_block_count);
     std::vector<MemHandle> mem_handles(mem_block_count);
@@ -578,7 +578,7 @@ int32_t RunClientMultiBlock(const Args &args) {
       }
     }
 
-    // 6. 解注册，释放内存，析构
+    // 6. 数据传输完成后，解链，注销client注册的内存，准备执行下一组用例
     ClientFinalize(client_handle, mem_handles);
     for (uint32_t i = 0; i < mem_block_count; ++i) {
       auto free_ret = aclrtFreeHost(kClientTransferDataList[i]);
@@ -586,9 +586,9 @@ int32_t RunClientMultiBlock(const Args &args) {
         HIXL_LOGI("kClientTransferDataList[%u] rtFreeHost failed, ret=%d", i, free_ret);
       }
     }
+    (void)tcp_server.SendTaskStatus();
   }
-
-  (void)tcp_server.SendTaskStatus();
+  // 7. 用例执行完之后，注销tcp服务
   tcp_server.DisConnectClient();
   tcp_server.StopServer();
   (void)printf("[INFO] MultiBlock Test Client End\n");
@@ -778,18 +778,45 @@ int32_t RunServerMultiBlock(const Args &args) {
         ServerFinalize(server_handle, mem_handles);
         return -1;
       }
-    }
-    (void)printf("[INFO] Server registered %u memory blocks, each size: %lu bytes\n", mem_block_count, kMemBlockSize);
+      (void)printf("[INFO] Server registered %u memory blocks, each size: %lu bytes\n", mem_block_count, kMemBlockSize);
 
-    std::vector<uint32_t *> server_transfer_data_list(mem_block_count, nullptr);
-    if (args.transfer_op == "read") {
-      for (uint32_t i = 0; i < mem_block_count; ++i) {
-        server_transfer_data_list[i] = mem_alloc(args.transfer_op, false, copy_kind, mems[i]);
+      std::vector<uint32_t *> server_transfer_data_list(mem_block_count, nullptr);
+      if (args.transfer_op == "read") {
+        for (uint32_t i = 0; i < mem_block_count; ++i) {
+          server_transfer_data_list[i] = mem_alloc(args.transfer_op, false, copy_kind, mems[i]);
+        }
       }
-    }
 
-    TCPClient tcp_client;
-    if (!tcp_client.ConnectToServer(args.remote_engine, args.tcp_port)) {
+      TCPClient tcp_client;
+      if (!tcp_client.ConnectToServer(args.remote_engine, args.tcp_port)) {
+        for (uint32_t i = 0; i < mem_block_count; ++i) {
+          if (server_transfer_data_list[i] != nullptr) {
+            auto free_ret = aclrtFreeHost(server_transfer_data_list[i]);
+            if (free_ret != ACL_ERROR_NONE) {
+              HIXL_LOGI("server_transfer_data_list[%u] rtFreeHost failed, ret=%d", i, free_ret);
+            }
+          }
+        }
+        ServerFinalize(server_handle, mem_handles);
+        return -1;
+      }
+      (void)printf("[INFO] Wait transfer begin\n");
+      if (tcp_client.ReceiveTaskStatus()) {
+        (void)printf("[INFO] Wait transfer end\n");
+      }
+      tcp_client.Disconnect();
+
+      if (args.transfer_op == "write") {
+        for (uint32_t i = 0; i < mem_block_count; ++i) {
+          server_transfer_data_list[i] = mem_alloc(args.transfer_op, false, copy_kind, mems[i]);
+        }
+      }
+      //注销server中的内存，但是不用销毁server
+      for (auto handle : mem_handles) {
+        if (handle != nullptr) {
+          HixlCSServerUnregMem(server_handle, handle);
+        }
+      }
       for (uint32_t i = 0; i < mem_block_count; ++i) {
         if (server_transfer_data_list[i] != nullptr) {
           auto free_ret = aclrtFreeHost(server_transfer_data_list[i]);
@@ -798,28 +825,9 @@ int32_t RunServerMultiBlock(const Args &args) {
           }
         }
       }
-      ServerFinalize(server_handle, mem_handles);
-      return -1;
-    }
-    (void)printf("[INFO] Wait transfer begin\n");
-    if (tcp_client.ReceiveTaskStatus()) {
-      (void)printf("[INFO] Wait transfer end\n");
-    }
-    tcp_client.Disconnect();
-
-    if (args.transfer_op == "write") {
-      for (uint32_t i = 0; i < mem_block_count; ++i) {
-        server_transfer_data_list[i] = mem_alloc(args.transfer_op, false, copy_kind, mems[i]);
-      }
-    }
-
-    ServerFinalize(server_handle, mem_handles);
-    for (uint32_t i = 0; i < mem_block_count; ++i) {
-      if (server_transfer_data_list[i] != nullptr) {
-        auto free_ret = aclrtFreeHost(server_transfer_data_list[i]);
-        if (free_ret != ACL_ERROR_NONE) {
-          HIXL_LOGI("server_transfer_data_list[%u] rtFreeHost failed, ret=%d", i, free_ret);
-        }
+      //最后一组用例，销毁server
+      if (mem_block_count==1000U) {
+        ServerFinalize(server_handle, mem_handles);
       }
     }
   }
