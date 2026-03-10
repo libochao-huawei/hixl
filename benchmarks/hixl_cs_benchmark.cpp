@@ -141,16 +141,16 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
       desc_list[j].remote_buf = remote_addr + j * block_size;
       desc_list[j].len = block_size;
     }
-    CompleteHandle *complete_handle = new CompleteHandle();
+    void *complete_handle = nullptr;
     const auto start = std::chrono::steady_clock::now();
     if (transfer_op == "write") {
       HIXL_LOGI("HixlCSClientBatchPutAsync start, trans_num is:%u, remote_addrs is:%p, local_addrs is:%p, lens is:%u.", trans_num, desc_list[0].remote_buf, desc_list[0].local_buf, desc_list[0].len);
       ret =
-          HixlCSClientBatchPutAsync(client_handle, trans_num, desc_list.data(), complete_handle);
+          HixlCSClientBatchPutAsync(client_handle, trans_num, desc_list.data(), &complete_handle);
     } else {
       HIXL_LOGI("HixlCSClientBatchGetAsync start, trans_num is:%u, local_addrs is:%p, remote_addrs is:%p, lens is:%u.", trans_num, desc_list[0].local_buf, desc_list[0].remote_buf, desc_list[0].len);
       ret =
-          HixlCSClientBatchGetAsync(client_handle, trans_num, desc_list.data(), complete_handle);
+          HixlCSClientBatchGetAsync(client_handle, trans_num, desc_list.data(), &complete_handle);
     }
     if (ret != HIXL_SUCCESS) {
       (void)printf("[ERROR] HixlCSClientBatchPutAsync/HixlCSClientBatchGetAsync failed, ret = %u\n", ret);
@@ -177,7 +177,6 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
     (void)printf(
         "[INFO] Transfer success, block size: %u Bytes, transfer num: %u, time cost: %ld us, throughput: %.3lf GB/s\n",
         block_size, trans_num, time_cost, throughput);
-    delete complete_handle;
   }
   return 0;
 }
