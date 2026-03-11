@@ -29,7 +29,6 @@ class MsgReceiver {
 
  private:
   Status RecvHeader();
-  bool CheckDisconnect(ssize_t recv_size) const;
 
   int32_t fd_ = -1;
   RecvState recv_state_ = RecvState::WAITING_FOR_HEADER;
