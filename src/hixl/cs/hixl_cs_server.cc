@@ -10,6 +10,7 @@
 
 #include "hixl_cs_server.h"
 #include <sys/epoll.h>
+#include <netinet/tcp.h> 
 #include "nlohmann/json.hpp"
 #include "common/hixl_checker.h"
 #include "common/ctrl_msg.h"
@@ -29,6 +30,10 @@ constexpr int32_t kMaxEventsNum = 128;  // epoll_wait并发处理事件数量，
 constexpr int32_t kEpollWaitTimeInMillis = 100;  // epoll_wait等待超时时间
 constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";// client用于感知收发完成的标识
 constexpr const char *kTransFlagNameDevice = "_hixl_builtin_dev_trans_flag";// client用于感知收发完成的标识
+constexpr int32_t kKeepAlive = 1;  // 启用 keepalive 机制
+constexpr int32_t kTcpKeepIdle = 60;  // 连接空闲 60 秒后开始发送 keepalive 探测包
+constexpr int32_t kTcpKeepIntvl = 10;  // keepalive 探测包发送间隔
+constexpr int32_t kTcpKeepCnt = 6;  // 连续 6 次探测失败后认为连接断开
 }  // namespace
 
 Status HixlCSServer::InitTransFinishedFlag() {
@@ -349,6 +354,67 @@ void HixlCSServer::ProClientMsg(int32_t fd, std::shared_ptr<MsgReceiver> receive
   }
 }
 
+Status HixlCSServer::SetTcpKeepAlive(int32_t fd) {
+  if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &kKeepAlive, sizeof(kKeepAlive)) < 0) {
+    HIXL_LOGE(FAILED, "Failed to set SO_KEEPALIVE, fd:%d, errno:%d", fd, errno);
+    return FAILED;
+  }
+
+  if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &kTcpKeepIdle, sizeof(kTcpKeepIdle)) < 0) {
+    HIXL_LOGE(FAILED, "Failed to set TCP_KEEPIDLE, fd:%d, errno:%d", fd, errno);
+    return FAILED;
+  }
+
+  if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &kTcpKeepIntvl, sizeof(kTcpKeepIntvl)) < 0) {
+    HIXL_LOGE(FAILED, "Failed to set TCP_KEEPINTVL, fd:%d, errno:%d", fd, errno);
+    return FAILED;
+  }
+
+  if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &kTcpKeepCnt, sizeof(kTcpKeepCnt)) < 0) {
+    HIXL_LOGE(FAILED, "Failed to set TCP_KEEPCNT, fd:%d, errno:%d", fd, errno);
+    return FAILED;
+  }
+
+  HIXL_EVENT("[HixlServer] set tcp keep alive success, fd:%d, keep_idle:%d, keep_intvl:%d, keep_cnt:%d", fd,
+             kTcpKeepIdle, kTcpKeepIntvl, kTcpKeepCnt);
+
+  return SUCCESS;
+}
+
+void HixlCSServer::CleanupClient(int32_t fd) {
+  // 清理 channel
+  {
+    std::lock_guard<std::mutex> lock(chn_mutex_);
+    auto it = channels_.find(fd);
+    if (it != channels_.end()) {
+      auto handle = it->second.endpoint_handle;
+      auto ep = endpoint_store_.GetEndpoint(handle);
+      if (ep != nullptr) {
+        HIXL_CHK_STATUS(ep->DestroyChannel(it->second.channel_handle), "Failed to destroy channel, fd:%d", fd);
+      }
+      channels_.erase(it);
+    }
+  }
+
+  // 清理 epoll
+  if (epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr) < 0) {
+    HIXL_LOGE(FAILED, "Failed to remove fd from epoll, fd:%d, errno:%d", fd, errno);
+  }
+
+  // 关闭 socket
+  if (close(fd) < 0) {
+    HIXL_LOGE(FAILED, "Failed to close client socket, fd:%d, errno:%d", fd, errno);
+  }
+
+  // 清理客户端记录
+  {
+    std::lock_guard<std::mutex> lock(client_mutex_);
+    clients_.erase(fd);
+  }
+
+  HIXL_EVENT("[HixlServer] client disconnected, fd:%d cleaned up", fd);
+}
+
 Status HixlCSServer::DoWait() {
   struct epoll_event event_infos[kMaxEventsNum];
   int32_t event_num = epoll_wait(epoll_fd_, event_infos, kMaxEventsNum, kEpollWaitTimeInMillis);
@@ -359,6 +425,7 @@ Status HixlCSServer::DoWait() {
     if (fd == listen_fd_) {
       int32_t connect_fd = -1;
       HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Accept(listen_fd_, connect_fd), "Failed to accept fd");
+      HIXL_CHK_STATUS_RET(SetTcpKeepAlive(connect_fd), "Failed to set tcp keep alive, fd:%d", connect_fd);
       HIXL_CHK_STATUS_RET(CtrlMsgPlugin::AddFdToEpoll(epoll_fd_, connect_fd), "Failed to add connect fd to epoll");
       HIXL_EVENT("[HixlServer] accept socket success, client fd:%d", connect_fd);
       auto receiver = MakeShared<MsgReceiver>(connect_fd);
@@ -366,6 +433,13 @@ Status HixlCSServer::DoWait() {
       std::lock_guard<std::mutex> lock(client_mutex_);
       clients_[connect_fd] = receiver;
     } else {
+      // 检测客户端断开事件
+      if ((revents & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0U) {
+        HIXL_EVENT("[HixlServer] detected client disconnect event, fd:%d, events:0x%x", fd, revents);
+        CleanupClient(fd);
+        continue;
+      }
+
       // client msg
       std::lock_guard<std::mutex> lock(client_mutex_);
       auto it = clients_.find(fd);

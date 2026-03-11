@@ -21,6 +21,7 @@
 #include "common/ctrl_msg.h"
 #include "common/ctrl_msg_plugin.h"
 #include "dlog_pub.h"
+#include "slog_stub.h"
 
 using namespace std;
 using namespace ::testing;
@@ -28,6 +29,28 @@ using ::testing::Invoke;
 using ::testing::Mock;
 
 namespace hixl {
+class MockSlogStub : public llm::SlogStub {
+ public:
+  void Log(int module_id, int level, const char *fmt, va_list args) override {
+    char buff[2048] = {0};
+    if (Format(buff, sizeof(buff), module_id, level, fmt, args) > 0) {
+      std::string log_msg(buff);
+      // 捕获 CleanupClient 的日志
+      if (log_msg.find("client disconnected") != std::string::npos &&
+          log_msg.find("cleaned up") != std::string::npos) {
+        cleanup_log_captured_ = true;
+        std::cout << log_msg << std::endl;
+      }
+    }
+  }
+
+  bool IsCleanupLogCaptured() const { return cleanup_log_captured_; }
+  void Reset() { cleanup_log_captured_ = false; }
+
+ private:
+  bool cleanup_log_captured_ = false;
+};
+
 static constexpr uint32_t kPort = 16000;
 static constexpr uint32_t kEpAddrId0 = 1U;
 static constexpr uint32_t kEpAddrId1 = 2U;
@@ -36,6 +59,7 @@ static constexpr uint32_t kMemNum = 100U;
 static constexpr uint32_t kBackLog = 1024U;
 static constexpr uint32_t kRecvTimeoutMs = 1000U;
 static constexpr uint32_t kTimeSleepMs = 10U;
+static constexpr uint32_t kTimeCleanUpMs = 100U;
 static constexpr int32_t kNUm1 = 1;
 static constexpr int32_t kNUm2 = 2;
 static std::vector<int32_t> kHostMems(kMemNum, kNUm1);
@@ -196,6 +220,44 @@ TEST_F(HixlCSTest, TestHixlCSClient2Server) {
   EXPECT_EQ(ret, SUCCESS);
   ret = HixlCSServerDestroy(server_handle);
   EXPECT_EQ(ret, SUCCESS);
+}
+
+TEST_F(HixlCSTest, TestHixlCSServerDisconnectionCleanup) {
+  auto mock_slog = std::make_shared<MockSlogStub>();
+  llm::SlogStub::SetInstance(mock_slog);
+
+  HixlServerConfig config{};
+  HixlServerHandle server_handle = nullptr;
+  HixlServerDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = kPort;
+  desc.endpoint_list = &default_eps[0];
+  desc.endpoint_list_num = default_eps.size();
+  auto ret = HixlCSServerCreate(&desc, &config, &server_handle);
+  EXPECT_EQ(ret, SUCCESS);
+  ret = HixlCSServerListen(server_handle, kBackLog);
+  EXPECT_EQ(ret, SUCCESS);
+  
+  int32_t client_fd = -1;
+  ret = CtrlMsgPlugin::Connect("127.0.0.1", kPort, client_fd, 1);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_NE(client_fd, -1);
+  
+  SendCreateChannelReq(client_fd);
+  CreateChannelResp resp_body{};
+  GetCreateChannelResp(client_fd, resp_body);
+
+  (void) close(client_fd);
+  std::this_thread::sleep_for(std::chrono::milliseconds(kTimeCleanUpMs));
+  
+  // 验证 CleanupClient 函数被执行（通过日志捕获）
+  EXPECT_TRUE(mock_slog->IsCleanupLogCaptured()) 
+      << "CleanupClient was not called after client disconnection";
+  ret = HixlCSServerDestroy(server_handle);
+  EXPECT_EQ(ret, SUCCESS);
+  
+  // 恢复默认的 SlogStub，避免影响其他测试用例
+  llm::SlogStub::SetInstance(nullptr);
 }
 
 }  // namespace hixl
