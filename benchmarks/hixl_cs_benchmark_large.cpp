@@ -218,7 +218,7 @@ int32_t TransferMultiBlock(HixlClientHandle client_handle, uint8_t *local_addr,c
   for (uint32_t i = 0; i < list_num; ++i) {
     server_mems[mem_tag_list[i]] = remote_mem_list[i];
   }
-  uint8_t *remote_addr = static_cast<uint8_t *>(server_mems[kServerMemTagName].addr);
+  uint8_t *remote_addr = static_cast<uint8_t *>(server_mems[mem_tag_list[0]].addr);
 
   uint64_t total_size = mem_block_count * mem_block_size;
   uint32_t num_tasks = static_cast<uint32_t>(total_size / transfer_block_size);// 获取传输的任务块数目
@@ -514,28 +514,37 @@ int32_t RunClientMultiBlock(const Args &args) {
   std::vector<MemHandle> mem_handles(mem_block_count);
   std::vector<HcommMem> mems(mem_block_count);
   std::vector<uint8_t *> local_addrs(mem_block_count);
+  //申请一个大的内存块，之后再按照2MB划分成多个内存块
+  uint64_t transfer_buffer_size = mem_block_count* kMemBlockSize;
+  void * transfer_buffer_addr = nullptr;
+  if (is_host) {
+    transfer_buffer_addr = malloc(transfer_buffer_size);
+    if (transfer_buffer_addr == nullptr) {
+      (void)printf("[ERROR] Server host addr malloc failed for block %lu\n", transfer_buffer_size);
+      HIXL_LOGI("[ERROR] Server host addr malloc failed for block %lu\n", transfer_buffer_size);
+      ServerFinalize(client_handle, mem_handles);
+      return -1;
+    }
+  }else {
+    aclError acl_ret = aclrtMalloc(&transfer_buffer_addr, kMemBlockSize, ACL_MEM_MALLOC_HUGE_ONLY);
+    if (acl_ret != ACL_ERROR_NONE) {
+      (void)printf("[ERROR] Server aclrtMalloc failed for block %lu, ret = %d\n", transfer_buffer_size, acl_ret);
+      HIXL_LOGE(acl_ret,"Server aclrtMalloc failed for block %lu.", transfer_buffer_size);
+      ServerFinalize(client_handle, mem_handles);
+      return -1;
+    }
+  }
 
   // 按照内存块个数完成内存注册
   for (uint32_t i = 0; i < mem_block_count; ++i) {
     if (is_host) {
-      void *tmp = malloc(kMemBlockSize);
-      mems[i].addr = tmp;
+      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * transfer_buffer_size);
       mems[i].type = HCCL_MEM_TYPE_HOST;
       mems[i].size = kMemBlockSize;
-      if (tmp == nullptr) {
-        (void)printf("[ERROR] Client host addr malloc failed for block %u\n", i);
-        ClientFinalize(client_handle, mem_handles);
-        return -1;
-      }
     } else {
-      aclError acl_ret = aclrtMalloc(&mems[i].addr, kMemBlockSize, ACL_MEM_MALLOC_HUGE_ONLY);
+      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * transfer_buffer_size);
       mems[i].type = HCCL_MEM_TYPE_DEVICE;
       mems[i].size = kMemBlockSize;
-      if (acl_ret != ACL_ERROR_NONE) {
-        (void)printf("[ERROR] Client aclrtMalloc failed for block %u, ret = %d\n", i, acl_ret);
-        ClientFinalize(client_handle, mem_handles);
-        return -1;
-      }
     }
 
     std::string mem_tag = kClientMemTagName + std::to_string(i);
@@ -745,29 +754,37 @@ int32_t RunServerMultiBlock(const Args &args) {
   std::vector<MemHandle> mem_handles(mem_block_count);
   std::vector<HcommMem> mems(mem_block_count);
   std::vector<uint32_t *> server_transfer_data_list(mem_block_count, nullptr);
+  //申请一个大的内存块，之后再按照2MB划分成多个内存块
+  uint64_t transfer_buffer_size = mem_block_count* kMemBlockSize;
+  void * transfer_buffer_addr = nullptr;
+  if (is_host) {
+
+    transfer_buffer_addr = malloc(transfer_buffer_size);
+    if (transfer_buffer_addr == nullptr) {
+      (void)printf("[ERROR] Server host addr malloc failed for block %lu\n", transfer_buffer_size);
+      HIXL_LOGI("[ERROR] Server host addr malloc failed for block %lu\n", transfer_buffer_size);
+      ServerFinalize(server_handle, mem_handles);
+      return -1;
+    }
+  }else {
+    aclError acl_ret = aclrtMalloc(&transfer_buffer_addr, kMemBlockSize, ACL_MEM_MALLOC_HUGE_ONLY);
+    if (acl_ret != ACL_ERROR_NONE) {
+      (void)printf("[ERROR] Server aclrtMalloc failed for block %lu, ret = %d\n", transfer_buffer_size, acl_ret);
+      HIXL_LOGE(acl_ret,"Server aclrtMalloc failed for block %lu.", transfer_buffer_size);
+      ServerFinalize(server_handle, mem_handles);
+      return -1;
+    }
+  }
 
   for (uint32_t i = 0; i < mem_block_count; ++i) {
     if (is_host) {
-      void *tmp = malloc(kMemBlockSize);
-      mems[i].addr = tmp;
+      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * transfer_buffer_size);
       mems[i].type = HCCL_MEM_TYPE_HOST;
       mems[i].size = kMemBlockSize;
-      if (tmp == nullptr) {
-        (void)printf("[ERROR] Server host addr malloc failed for block %u\n", i);
-        HIXL_LOGI("[ERROR] Server host addr malloc failed for block %u\n", i);
-        ServerFinalize(server_handle, mem_handles);
-        return -1;
-      }
     } else {
-      aclError acl_ret = aclrtMalloc(&mems[i].addr, kMemBlockSize, ACL_MEM_MALLOC_HUGE_ONLY);
+      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * transfer_buffer_size);
       mems[i].type = HCCL_MEM_TYPE_DEVICE;
       mems[i].size = kMemBlockSize;
-      if (acl_ret != ACL_ERROR_NONE) {
-        (void)printf("[ERROR] Server aclrtMalloc failed for block %u, ret = %d\n", i, acl_ret);
-        HIXL_LOGE(acl_ret,"Server aclrtMalloc failed for block %u.", i);
-        ServerFinalize(server_handle, mem_handles);
-        return -1;
-      }
     }
 
     std::string mem_tag = kServerMemTagName + std::to_string(i);
