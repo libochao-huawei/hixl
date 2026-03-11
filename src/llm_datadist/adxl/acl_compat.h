@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -8,12 +8,20 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_LLM_COMMON_H
-#define CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_LLM_COMMON_H
+#ifndef CANN_HIXL_SRC_ACL_COMPAT_H_
+#define CANN_HIXL_SRC_ACL_COMPAT_H_
 
-#include "ge_common/ge_api_types.h"
+#include "acl/acl.h"
 
-namespace llm {
-ge::Status TransRetToLlmCodes(const ge::Status &ret);
-}  // namespace llm
-#endif  // CANN_GRAPH_ENGINE_RUNTIME_LLM_DATADIST_V2_LLM_COMMON_H
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+__attribute__((weak)) aclError aclrtReserveMemAddressNoUCMemory(void **virPtr, size_t size, size_t alignment,
+                                                                void *expectPtr, uint64_t flags);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif  // CANN_HIXL_SRC_ACL_COMPAT_H_

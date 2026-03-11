@@ -1,10 +1,10 @@
 /**
- * This program is free software, you can redistribute it and/or modify it.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -12,6 +12,7 @@
 #include <mutex>
 #include "adxl/adxl_inner_engine.h"
 #include "base/err_msg.h"
+#include "adxl/fabric_mem_transfer_service.h"
 
 namespace adxl {
 namespace {
@@ -312,4 +313,13 @@ Status AdxlEngine::GetNotifies(std::vector<NotifyDesc> &notifies) {
   LLMLOGI("GetNotifies success, got %zu notifies", notifies.size());
   return SUCCESS;
 }
+
+Status AdxlEngine::MallocMem(MemType type, size_t size, void **ptr) {
+  return FabricMemTransferService::MallocMem(type, size, ptr);
+}
+
+Status AdxlEngine::FreeMem(void *ptr) {
+  return FabricMemTransferService::FreeMem(ptr);
+}
+
 }  // namespace adxl

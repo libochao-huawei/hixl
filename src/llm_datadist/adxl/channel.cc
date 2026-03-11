@@ -1,10 +1,10 @@
 /**
- * This program is free software, you can redistribute it and/or modify it.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -165,6 +165,7 @@ void Channel::ClearImportedMem() {
   // free imported pa handle
   for (auto &remote_pa_handle : remote_pa_handles_) {
     LLM_CHK_ACL(aclrtFreePhysical(remote_pa_handle));
+    LLMLOGI("Free imported handle:%p.", remote_pa_handle);
   }
   remote_pa_handles_.clear();
 }
@@ -197,8 +198,9 @@ Status Channel::ImportMem(const std::vector<ShareHandleInfo> &remote_share_handl
     remote_pa_handles_.emplace_back(remote_pa_handle);
     new_va_to_old_va_[remote_va_addr] = {remote_share_handle_info.va_addr, remote_share_handle_info.len};
     LLM_DISMISS_GUARD(free_mem_guard);
-    LLMLOGI("Imported mem from share handle, va:%lu, new mapped va addr:%lu, len:%zu for device:%d.",
-            remote_share_handle_info.va_addr, remote_va_addr, remote_share_handle_info.len, device_id);
+    LLMLOGI("Imported mem from share handle, va:%lu, new mapped va addr:%lu, len:%zu, imported handle:%p for device:%d.",
+            remote_share_handle_info.va_addr, remote_va_addr, remote_share_handle_info.len, remote_pa_handle,
+            device_id);
   }
   LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
