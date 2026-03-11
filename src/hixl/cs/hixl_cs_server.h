@@ -51,12 +51,13 @@ class HixlCSServer {
   Status DestroyChannel(int32_t fd, const char *msg, uint64_t msg_len);
   Status ExportMem(int32_t fd, const char *msg, uint64_t msg_len);
   Status DoWait();
-  void ProClientMsg(int32_t fd, std::shared_ptr<MsgReceiver> receiver);
+  void ProClientMsg(int32_t fd);
   Status InitTransFinishedFlag();
   static Status SendCreateChannelResp(int32_t fd,
                                       const CreateChannelResp &resp);
   static Status SendRemoteMemResp(int32_t fd,
                                   const GetRemoteMemResp &resp);
+  void CleanupClient(int32_t fd);
 
   std::string ip_;
   uint32_t port_ = 0U;
