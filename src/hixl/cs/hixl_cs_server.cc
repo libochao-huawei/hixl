@@ -10,6 +10,7 @@
 
 #include "hixl_cs_server.h"
 #include <sys/epoll.h>
+#include <netinet/tcp.h> 
 #include "nlohmann/json.hpp"
 #include "common/hixl_checker.h"
 #include "common/ctrl_msg.h"
@@ -340,13 +341,38 @@ void HixlCSServer::ProClientMsg(int32_t fd, std::shared_ptr<MsgReceiver> receive
   std::vector<CtrlMsgPtr> msgs;
   (void)receiver->IRecv(msgs);
   for (auto msg : msgs) {
-    if (msg->msg_type == CtrlMsgType::kDestroyChannelReq) {
-      epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr);
-      (void)close(fd);
-      clients_.erase(fd);
-    }
     msg_handler_.SubmitMsg(fd, msg);
   }
+}
+
+void HixlCSServer::CleanupClient(int32_t fd) {
+  // 清理 channel
+  {
+    std::lock_guard<std::mutex> lock(chn_mutex_);
+    auto it = channels_.find(fd);
+    if (it != channels_.end()) {
+      auto handle = it->second.endpoint_handle;
+      auto ep = endpoint_store_.GetEndpoint(handle);
+      if (ep != nullptr) {
+        HIXL_CHK_STATUS(ep->DestroyChannel(it->second.channel_handle), "Failed to destroy channel, fd:%d", fd);
+      }
+      channels_.erase(it);
+    }
+  }
+
+  // 清理 epoll
+  epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr);
+
+  // 关闭 socket
+  close(fd);
+
+  // 清理客户端记录
+  {
+    std::lock_guard<std::mutex> lock(client_mutex_);
+    clients_.erase(fd);
+  }
+
+  HIXL_EVENT("[HixlServer] client disconnected, fd:%d cleaned up", fd);
 }
 
 Status HixlCSServer::DoWait() {
@@ -359,6 +385,7 @@ Status HixlCSServer::DoWait() {
     if (fd == listen_fd_) {
       int32_t connect_fd = -1;
       HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Accept(listen_fd_, connect_fd), "Failed to accept fd");
+      HIXL_CHK_STATUS_RET(CtrlMsgPlugin::SetTcpKeepAlive(connect_fd), "Failed to set tcp keep alive, fd:%d", connect_fd);
       HIXL_CHK_STATUS_RET(CtrlMsgPlugin::AddFdToEpoll(epoll_fd_, connect_fd), "Failed to add connect fd to epoll");
       HIXL_EVENT("[HixlServer] accept socket success, client fd:%d", connect_fd);
       auto receiver = MakeShared<MsgReceiver>(connect_fd);
@@ -366,8 +393,14 @@ Status HixlCSServer::DoWait() {
       std::lock_guard<std::mutex> lock(client_mutex_);
       clients_[connect_fd] = receiver;
     } else {
+      // 检测客户端断开事件
+      if ((revents & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) != 0U) {
+        HIXL_EVENT("[HixlServer] detected client disconnect event, fd:%d, events:0x%x", fd, revents);
+        CleanupClient(fd);
+        continue;
+      }
+
       // client msg
-      std::lock_guard<std::mutex> lock(client_mutex_);
       auto it = clients_.find(fd);
       HIXL_EVENT("[HixlServer] recv socket msg, client fd:%d", fd);
       if ((it != clients_.end()) && ((revents & EPOLLIN) != 0U)) {

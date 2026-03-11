@@ -43,21 +43,6 @@ Status MsgReceiver::RecvHeader() {
   return SUCCESS;
 }
 
-bool MsgReceiver::CheckDisconnect(ssize_t recv_size) const {
-  if (recv_size == 0) {
-    HIXL_LOGI("Connection closed by peer, fd:%d.", fd_);
-    return true;
-  }
-  if (recv_size < 0) {
-    if (errno == EAGAIN || errno == EINTR) {
-      return false;
-    }
-    HIXL_LOGE(FAILED, "recv error on fd:%d, errno:%s", fd_, strerror(errno));
-    return true;
-  }
-  return false;
-}
-
 Status MsgReceiver::IRecv(std::vector<CtrlMsgPtr> &msgs) {
   if (recv_buffer_.size() < received_size_ + kRecvChunkSizeInBytes) {
     recv_buffer_.resize(received_size_ + kRecvChunkSizeInBytes);
@@ -65,14 +50,6 @@ Status MsgReceiver::IRecv(std::vector<CtrlMsgPtr> &msgs) {
   auto buffer = recv_buffer_.data() + received_size_;
   auto buffer_size = recv_buffer_.size() - received_size_;
   ssize_t n = recv(fd_, buffer, buffer_size, 0);
-  if (CheckDisconnect(n)) {
-    auto msg = MakeShared<CtrlMsg>();
-    HIXL_CHECK_NOTNULL(msg);
-    msg->msg_type = CtrlMsgType::kDestroyChannelReq;
-    msgs.emplace_back(msg);
-    return SUCCESS;
-  }
-
   received_size_ += static_cast<size_t>(n);
   while (true) {
     if (recv_state_ == RecvState::WAITING_FOR_HEADER) {
