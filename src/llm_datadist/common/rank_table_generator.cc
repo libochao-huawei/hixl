@@ -12,6 +12,7 @@
 #include <atomic>
 #include <set>
 #include <fstream>
+#include <regex>
 #include "mmpa/mmpa_api.h"
 #include "nlohmann/json.hpp"
 #include "acl/acl.h"
@@ -94,6 +95,7 @@ void LocalCommResGenerator::ExtractIpAddress(const std::string &output_str, std:
 }
 
 ge::Status LocalCommResGenerator::GetHccnOutput(const std::string &command, std::string &result) {
+  LLM_CHK_BOOL_RET_STATUS(IsValidCommand(command), ge::LLM_PARAM_INVALID, "hccn_tool command is invalid, please check the command");
   std::string command_with_stderr = command + " 2>&1";
   std::array<char, kBufferMaxSize> buffer;
   std::unique_ptr<FILE, int (*)(FILE *)> pipe(popen(command_with_stderr.c_str(), "r"), pclose);
@@ -177,6 +179,11 @@ ge::Status LocalCommResGenerator::GetDeviceIp(int32_t phy_device_id, std::string
 
   // hccs does not require device_ip, device_ip will be empty
   return ge::SUCCESS;
+}
+
+bool LocalCommResGenerator::IsValidCommand(const std::string &command) {
+  static const std::regex pattern(R"(^(\/usr\/local\/Ascend\/driver\/tools\/hccn_tool|hccn_tool) -i (0|[1-9][0-9]*) -ip -g$)");
+  return std::regex_match(command, pattern);
 }
 }  // namespace llm
 
