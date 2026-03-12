@@ -169,7 +169,7 @@ TEST_F(HccnToolTest, TestExtractIp) {
 TEST_F(HccnToolTest, TestHccnOutput) {
   std::string cmd = "hccn_tool";
   std::string result = "";
-  EXPECT_EQ(llm::LocalCommResGenerator::GetHccnOutput(cmd, result), ge::SUCCESS);
+  EXPECT_EQ(llm::LocalCommResGenerator::GetHccnOutput(cmd, result), ge::LLM_PARAM_INVALID);
 }
 
 TEST_F(HccnGetIpTest, TestGetIpFromHccnTool) {

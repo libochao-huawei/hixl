@@ -36,6 +36,9 @@ class LocalCommResGenerator {
   static ge::Status GetHccnOutput(const std::string &command, std::string &result);
   static ge::Status ExecuteCommandAndPassIp(const std::string &command, std::string &output, std::string &ip);
   static ge::Status GetIpAddressFromHccnTool(uint32_t phy_device_id, std::string &ip);
+ 
+ private:
+  static bool IsValidCommand(const std::string &command);
 };
 
 class RankTableGeneratorFactory {
