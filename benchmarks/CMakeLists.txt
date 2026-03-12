@@ -21,6 +21,8 @@ set(targets_list
     "benchmark"
     "hixl_cs_benchmark"
     "hixl_cs_benchmark_large"
+    "hixl_cs_benchmark_multi_pair"
+    "hixl_cs_benchmark_multi_thread"
 )
 
 foreach(target_name IN LISTS targets_list)
