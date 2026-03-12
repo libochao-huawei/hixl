@@ -217,8 +217,12 @@ int32_t TransferMultiBlock(HixlClientHandle client_handle, uint8_t *local_addr,c
   std::map<std::string, HcommMem> server_mems;
   for (uint32_t i = 0; i < list_num; ++i) {
     server_mems[mem_tag_list[i]] = remote_mem_list[i];
+    HIXL_LOGI("the num is %u, mem_tag is %s, HcommMem.type is %u, HcommMem.addr is %u, HcommMem.size is %u.",i ,mem_tag_list[i], remote_mem_list[i].type, remote_mem_list[i].addr, remote_mem_list[i].size);
   }
-  uint8_t *remote_addr = static_cast<uint8_t *>(server_mems[mem_tag_list[0]].addr);
+  uint8_t *remote_addr = static_cast<uint8_t *>(server_mems["server_mem0"].addr);
+  HIXL_LOGI("the remote addr is %p.", remote_addr);
+  HIXL_LOGI("the local addr is %p.", local_addr);
+
 
   uint64_t total_size = mem_block_count * mem_block_size;
   uint32_t num_tasks = static_cast<uint32_t>(total_size / transfer_block_size);// 获取传输的任务块数目
@@ -526,7 +530,7 @@ int32_t RunClientMultiBlock(const Args &args) {
       return -1;
     }
   }else {
-    aclError acl_ret = aclrtMalloc(&transfer_buffer_addr, kMemBlockSize, ACL_MEM_MALLOC_HUGE_ONLY);
+    aclError acl_ret = aclrtMalloc(&transfer_buffer_addr, transfer_buffer_size, ACL_MEM_MALLOC_HUGE_ONLY);
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] Server aclrtMalloc failed for block %lu, ret = %d\n", transfer_buffer_size, acl_ret);
       HIXL_LOGE(acl_ret,"Server aclrtMalloc failed for block %lu.", transfer_buffer_size);
@@ -538,11 +542,11 @@ int32_t RunClientMultiBlock(const Args &args) {
   // 按照内存块个数完成内存注册
   for (uint32_t i = 0; i < mem_block_count; ++i) {
     if (is_host) {
-      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * transfer_buffer_size);
+      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
       mems[i].type = HCCL_MEM_TYPE_HOST;
       mems[i].size = kMemBlockSize;
     } else {
-      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * transfer_buffer_size);
+      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
       mems[i].type = HCCL_MEM_TYPE_DEVICE;
       mems[i].size = kMemBlockSize;
     }
@@ -569,7 +573,7 @@ int32_t RunClientMultiBlock(const Args &args) {
     (void)printf("[ERROR] HixlCSClientConnect failed, ret = %u\n", ret);
     return -1;
   }
-
+  HIXL_LOGI("TransferMultiBlock start, local addr is %p.", static_cast<uint8_t *>(mems[0].addr));
   // 4. 与server进行内存传输
   if (TransferMultiBlock(client_handle, static_cast<uint8_t *>(mems[0].addr), args.transfer_op, mem_block_count, kMemBlockSize) !=0) {
     for (uint32_t i = 0; i < mem_block_count; ++i) {
@@ -767,7 +771,7 @@ int32_t RunServerMultiBlock(const Args &args) {
       return -1;
     }
   }else {
-    aclError acl_ret = aclrtMalloc(&transfer_buffer_addr, kMemBlockSize, ACL_MEM_MALLOC_HUGE_ONLY);
+    aclError acl_ret = aclrtMalloc(&transfer_buffer_addr, transfer_buffer_size, ACL_MEM_MALLOC_HUGE_ONLY);
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] Server aclrtMalloc failed for block %lu, ret = %d\n", transfer_buffer_size, acl_ret);
       HIXL_LOGE(acl_ret,"Server aclrtMalloc failed for block %lu.", transfer_buffer_size);
@@ -778,11 +782,11 @@ int32_t RunServerMultiBlock(const Args &args) {
 
   for (uint32_t i = 0; i < mem_block_count; ++i) {
     if (is_host) {
-      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * transfer_buffer_size);
+      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
       mems[i].type = HCCL_MEM_TYPE_HOST;
       mems[i].size = kMemBlockSize;
     } else {
-      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * transfer_buffer_size);
+      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
       mems[i].type = HCCL_MEM_TYPE_DEVICE;
       mems[i].size = kMemBlockSize;
     }
