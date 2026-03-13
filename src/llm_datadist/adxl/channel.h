@@ -23,6 +23,9 @@
 #include "adxl/stream_pool.h"
 
 namespace adxl {
+
+class VirtualMemoryManager;
+
 struct VaInfo {
   uintptr_t va_addr;
   size_t len;
@@ -105,6 +108,7 @@ class Channel {
   bool IsHeartbeatTimeout() const;
   void SetStreamPool(StreamPool *stream_pool);
   StreamPool* GetStreamPool();
+  void SetVirtualMemoryManager(VirtualMemoryManager *vmm);
 
   std::mutex &GetTransferMutex();
   
@@ -175,6 +179,7 @@ class Channel {
   std::unordered_map<uintptr_t, VaInfo> new_va_to_old_va_;
   std::vector<aclrtDrvMemHandle> remote_pa_handles_;
   bool enable_use_fabric_mem_ = false;
+  VirtualMemoryManager *virtual_memory_manager_ = nullptr;
 };
 using ChannelPtr = std::shared_ptr<Channel>;
 }  // namespace adxl

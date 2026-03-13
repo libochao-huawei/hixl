@@ -29,8 +29,9 @@ add_library(cann_hixl SHARED ${HIXL_SRC_LIST})
 target_include_directories(cann_hixl PRIVATE ${HIXL_INC_DIR})
 
 target_compile_options(cann_hixl PRIVATE
+        -g
         -ftrapv
-        -O2
+        -O0
         -fno-common
         -Wfloat-equal
         -Wall
