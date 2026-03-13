@@ -110,9 +110,7 @@ Status VirtualMemoryManager::ReserveMemory(size_t size, uintptr_t &mem_addr) {
   }
 
   if (!initialized_) {
-    ADXL_CHK_STATUS_RET(ReserveMemAddress(global_virtual_memory_, vm_size_));
-    global_virtual_memory_addr_ = llm::PtrToValue(global_virtual_memory_);
-    initialized_ = true;
+    Initialize();
   }
 
   // Calculate number of 1GB blocks needed (round up)
