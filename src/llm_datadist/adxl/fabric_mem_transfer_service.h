@@ -20,9 +20,14 @@
 #include "adxl/acl_compat.h"
 
 namespace adxl {
+
+class VirtualMemoryManager;
+
 class FabricMemTransferService {
  public:
   FabricMemTransferService() = default;
+
+  void SetVirtualMemoryManager(VirtualMemoryManager *vmm);
 
   Status Initialize(size_t max_stream_num, size_t task_stream_num);
 
@@ -90,6 +95,8 @@ class FabricMemTransferService {
   // mutex for local va map and pa handlers
   std::mutex local_va_map_mutex_;
   std::unordered_map<uintptr_t, VaInfo> local_va_to_old_va_;
+
+  VirtualMemoryManager *virtual_memory_manager_ = nullptr;
 };
 }  // namespace adxl
 

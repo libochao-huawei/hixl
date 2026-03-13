@@ -20,7 +20,7 @@
 namespace adxl {
 class VirtualMemoryManager {
  public:
-  static VirtualMemoryManager &GetInstance();
+  VirtualMemoryManager() = default;
   ~VirtualMemoryManager();
   VirtualMemoryManager(const VirtualMemoryManager &) = delete;
   VirtualMemoryManager(const VirtualMemoryManager &&) = delete;
@@ -35,7 +35,8 @@ class VirtualMemoryManager {
   static Status ReserveMemAddress(void *&virtual_address, size_t size);
 
  private:
-  VirtualMemoryManager() = default;
+
+  Status InitProcess();
 
   std::vector<bool> bitmap_;
 
