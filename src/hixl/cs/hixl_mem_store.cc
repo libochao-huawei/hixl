@@ -185,10 +185,15 @@ bool HixlMemStore::CheckMergedRegionsAccess(const std::map<const void *, MemoryR
     return false;
   }
 
+  // Check if end_it is valid (not past-the-end)
+  if (end_it == regions.end()) {
+    return false;
+  }
+
   auto &first = start_it->second;
   auto &last = end_it->second;
-  uintptr_t merged_start = reinterpret_cast<uintptr_t>(first.addr);
-  uintptr_t merged_end = reinterpret_cast<uintptr_t>(last.addr) + last.size;
+  auto merged_start = reinterpret_cast<uintptr_t>(first.addr);
+  auto merged_end = reinterpret_cast<uintptr_t>(last.addr) + last.size;
   MemoryRegion merged(first.addr, merged_end - merged_start);
 
   if (contains(merged)) {
