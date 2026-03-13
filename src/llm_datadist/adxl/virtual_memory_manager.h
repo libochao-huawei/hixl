@@ -37,6 +37,8 @@ class VirtualMemoryManager {
  private:
   VirtualMemoryManager() = default;
 
+  Status InitProcess();
+
   std::vector<bool> bitmap_;
 
   // Allocation metadata: start address -> block count
