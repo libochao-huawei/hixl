@@ -266,9 +266,10 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
   }
   if (event_status != ACL_EVENT_RECORDED_STATUS_COMPLETE) {
     LLMLOGI("Transfer async request not yet completed, req:%lu.", id);
-    status = TransferStatus::WAITING;
-    return SUCCESS;
+    // status = TransferStatus::WAITING;
+    // return SUCCESS;
   }
+  LLMLOGI("[zc] start stream synchronize for transfer async request, req:%lu.", id);
   auto steam_status = aclrtSynchronizeStream(stream);
   if (steam_status != ACL_ERROR_NONE) {
     //stream synchronize failed
