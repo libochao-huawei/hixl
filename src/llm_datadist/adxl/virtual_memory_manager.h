@@ -22,10 +22,6 @@ class VirtualMemoryManager {
  public:
   VirtualMemoryManager() = default;
   ~VirtualMemoryManager() = default;
-  VirtualMemoryManager(const VirtualMemoryManager &) = delete;
-  VirtualMemoryManager(const VirtualMemoryManager &&) = delete;
-  VirtualMemoryManager &operator=(const VirtualMemoryManager &) = delete;
-  VirtualMemoryManager &operator=(const VirtualMemoryManager &&) = delete;
 
   Status Initialize();
   void Finalize();

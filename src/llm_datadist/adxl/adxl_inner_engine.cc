@@ -226,7 +226,7 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   });
 
   llm::LlmDatadistTimer::Instance().Init();
-  statistic_timer_handle_ = llm::LlmDatadistTimer::Instance().CreateTimer([this]() {
+  statistic_timer_handle_ = llm::LlmDatadistTimer::Instance().CreateTimer([]() {
     StatisticManager::GetInstance().Dump();
   });
   constexpr uint32_t kStatisticTimerPeriod = 80U * 1000U;
