@@ -482,6 +482,8 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem &commun
               "that have been created are completed, and then create new transfer tasks.");
     return RESOURCE_EXHAUSTED;
   }
+  // 使用 scope_guard 自动管理 flag 资源的释放
+  HIXL_DISMISSABLE_GUARD(flag_guard, ([this, flag_index]() { ReleaseFlagIndex(flag_index); }));
   uint64_t *flag_addr = &flag_queue_[flag_index];
   EndpointDesc endpoint = local_endpoint_->GetEndpoint();
   const char *kTransFlagName = nullptr;
@@ -497,13 +499,11 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem &commun
               "[HixlClient] HcommReadNbi failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
               "mem_len is %lu, hccl_ret is %d.",
               client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes, hccl_ret);
-    ReleaseFlagIndex(flag_index);
     return FAILED;
   }
   auto *query_mem_handle = new (std::nothrow) CompleteHandle();
   if (query_mem_handle == nullptr) {
     HIXL_LOGE(FAILED, "Memory allocate failed; unable to generate query handle.");
-    ReleaseFlagIndex(flag_index);
     return FAILED;
   }
   query_mem_handle->magic = kRoceCompleteMagic;
@@ -512,6 +512,8 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem &commun
   // 需要先创建query_handle实体，之后再传给指针。
   *query_handle = query_mem_handle;
   live_handles_[flag_index] = query_mem_handle;
+  // 成功后 dismiss guard，避免重复释放
+  HIXL_DISMISS_GUARD(flag_guard);
   return SUCCESS;
 }
 
