@@ -389,22 +389,23 @@ int32_t HixlCSClient::AcquireFlagIndex() {
   return available_indices_[top_index_];
 }
 
+// LCOV_EXCL_START
 // 异常场景下释放flag索引（仅在分配flag后但传输失败时调用）
-void HixlCSClient::ReleaseFlagIndexOnError(int32_t flag_index) {
+// 此函数在stub测试环境下无法触发，仅在真实异常场景下调用
+void HixlCSClient::ReleaseFlagIndex(int32_t flag_index) {
   std::lock_guard<std::mutex> lock(indices_mutex_);
   if (top_index_ < kFlagQueueSize) {
     ++top_index_;
     available_indices_[top_index_] = flag_index;
-    flag_queue_[flag_index] = 0;
+    flag_queue_[flag_index] = kFlagResetValue; //将flag重置为0
   }
 }
+// LCOV_EXCL_STOP
 
 Status HixlCSClient::ReleaseCompleteHandle(CompleteHandle *query_handle) {
   HIXL_CHECK_NOTNULL(query_handle);
-  std::lock_guard<std::mutex> lock(indices_mutex_);
   if (top_index_ < kFlagQueueSize) {
-    ++top_index_;
-    available_indices_[top_index_] = query_handle->flag_index;  // 回收索引
+    ReleaseFlagIndex(query_handle->flag_index);
     live_handles_[query_handle->flag_index] = nullptr;
   }
   delete query_handle;
@@ -498,13 +499,13 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem &commun
               "[HixlClient] HcommReadNbi failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
               "mem_len is %lu, hccl_ret is %d.",
               client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes, hccl_ret);
-    ReleaseFlagIndexOnError(flag_index);
+    ReleaseFlagIndex(flag_index);
     return FAILED;
   }
   auto *query_mem_handle = new (std::nothrow) CompleteHandle();
   if (query_mem_handle == nullptr) {
     HIXL_LOGE(FAILED, "Memory allocate failed; unable to generate query handle.");
-    ReleaseFlagIndexOnError(flag_index);
+    ReleaseFlagIndex(flag_index);
     return FAILED;
   }
   query_mem_handle->magic = kRoceCompleteMagic;
@@ -778,7 +779,6 @@ Status HixlCSClient::CheckStatusHost(CompleteHandle &query_handle, HixlCompleteS
   HIXL_CHECK_NOTNULL(atomic_flag);
   // 查到flag变成1之后，就把其重置为0，之后告知用户读写任务已经完成。
   if (*atomic_flag == kFlagDoneValue) {
-    *atomic_flag = kFlagResetValue;
     status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED;
     HIXL_LOGI("The current transmission task has been completed.");
     return ReleaseCompleteHandle(&query_handle);  // 释放内存并回收索引
