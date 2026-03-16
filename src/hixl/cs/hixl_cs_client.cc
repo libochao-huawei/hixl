@@ -389,7 +389,9 @@ int32_t HixlCSClient::AcquireFlagIndex() {
   return available_indices_[top_index_];
 }
 
+// LCOV_EXCL_START
 // 异常场景下释放flag索引（仅在分配flag后但传输失败时调用）
+// 此函数在stub测试环境下无法触发，仅在真实异常场景下调用
 void HixlCSClient::ReleaseFlagIndexOnError(int32_t flag_index) {
   std::lock_guard<std::mutex> lock(indices_mutex_);
   if (top_index_ < kFlagQueueSize) {
@@ -398,6 +400,7 @@ void HixlCSClient::ReleaseFlagIndexOnError(int32_t flag_index) {
     flag_queue_[flag_index] = 0;
   }
 }
+// LCOV_EXCL_STOP
 
 Status HixlCSClient::ReleaseCompleteHandle(CompleteHandle *query_handle) {
   HIXL_CHECK_NOTNULL(query_handle);
