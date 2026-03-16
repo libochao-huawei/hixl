@@ -389,6 +389,16 @@ int32_t HixlCSClient::AcquireFlagIndex() {
   return available_indices_[top_index_];
 }
 
+// 异常场景下释放flag索引（仅在分配flag后但传输失败时调用）
+void HixlCSClient::ReleaseFlagIndexOnError(int32_t flag_index) {
+  std::lock_guard<std::mutex> lock(indices_mutex_);
+  if (top_index_ < kFlagQueueSize) {
+    ++top_index_;
+    available_indices_[top_index_] = flag_index;
+    flag_queue_[flag_index] = 0;
+  }
+}
+
 Status HixlCSClient::ReleaseCompleteHandle(CompleteHandle *query_handle) {
   HIXL_CHECK_NOTNULL(query_handle);
   std::lock_guard<std::mutex> lock(indices_mutex_);
@@ -488,14 +498,13 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem &commun
               "[HixlClient] HcommReadNbi failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
               "mem_len is %lu, hccl_ret is %d.",
               client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes, hccl_ret);
+    ReleaseFlagIndexOnError(flag_index);
     return FAILED;
   }
-  CompleteHandle *query_mem_handle = new (std::nothrow) CompleteHandle();
+  auto *query_mem_handle = new (std::nothrow) CompleteHandle();
   if (query_mem_handle == nullptr) {
     HIXL_LOGE(FAILED, "Memory allocate failed; unable to generate query handle.");
-    ++top_index_;
-    available_indices_[top_index_] = flag_index;
-    flag_queue_[flag_index] = 0;
+    ReleaseFlagIndexOnError(flag_index);
     return FAILED;
   }
   query_mem_handle->magic = kRoceCompleteMagic;
