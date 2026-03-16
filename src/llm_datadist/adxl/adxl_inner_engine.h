@@ -19,6 +19,7 @@
 #include "buffer_transfer_service.h"
 #include "segment_table.h"
 #include "fabric_mem_transfer_service.h"
+#include "virtual_memory_manager.h"
 
 namespace adxl {
 namespace {
@@ -117,6 +118,8 @@ class AdxlInnerEngine {
   bool enable_use_fabric_mem_ = false;
   std::unique_ptr<FabricMemTransferService> fabric_mem_transfer_service_ = nullptr;
   size_t task_stream_num_ = kDefaultStreamNum;
+
+  std::unique_ptr<VirtualMemoryManager> virtual_memory_manager_ = nullptr;
 };
 }  // namespace adxl
 

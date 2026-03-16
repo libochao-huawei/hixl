@@ -8,6 +8,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <atomic>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -41,40 +42,43 @@ class VirtualMemoryManagerTest : public ::testing::Test {
     // Create a mock runtime stub
     mock_runtime_ = std::make_shared<llm::AclRuntimeStub>();
     scoped_mock_ = std::make_unique<ScopedRuntimeMockForVmManager>(mock_runtime_);
+    manager_ = std::make_unique<VirtualMemoryManager>();
   }
 
   void TearDown() override {
-    VirtualMemoryManager::GetInstance().Finalize();
+    if (manager_) {
+      manager_->Finalize();
+    }
+    manager_.reset();
     scoped_mock_.reset();
     mock_runtime_.reset();
   }
 
   std::shared_ptr<llm::AclRuntimeStub> mock_runtime_;
   std::unique_ptr<ScopedRuntimeMockForVmManager> scoped_mock_;
+  std::unique_ptr<VirtualMemoryManager> manager_;
 };
 
-TEST_F(VirtualMemoryManagerTest, GetInstance_ReturnsSameInstance) {
-  VirtualMemoryManager& instance1 = VirtualMemoryManager::GetInstance();
-  VirtualMemoryManager& instance2 = VirtualMemoryManager::GetInstance();
-  EXPECT_EQ(&instance1, &instance2);
+TEST_F(VirtualMemoryManagerTest, DefaultConstruction_Success) {
+  ASSERT_NE(manager_, nullptr);
 }
 
 TEST_F(VirtualMemoryManagerTest, Initialize_Success) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   EXPECT_EQ(manager.Initialize(), SUCCESS);
   // Second initialization should also succeed
   EXPECT_EQ(manager.Initialize(), SUCCESS);
 }
 
 TEST_F(VirtualMemoryManagerTest, ReserveMemory_ZeroSize_Fails) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   manager.Initialize();
   uintptr_t addr = 0;
   EXPECT_EQ(manager.ReserveMemory(0, addr), PARAM_INVALID);
 }
 
 TEST_F(VirtualMemoryManagerTest, ReserveMemory_1GB_Success) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   manager.Initialize();
   uintptr_t addr = 0;
   EXPECT_EQ(manager.ReserveMemory(kTestSize1GB, addr), SUCCESS);
@@ -82,7 +86,7 @@ TEST_F(VirtualMemoryManagerTest, ReserveMemory_1GB_Success) {
 }
 
 TEST_F(VirtualMemoryManagerTest, ReserveMemory_500MB_RoundsUpTo1GB) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   manager.Initialize();
   uintptr_t addr = 0;
   EXPECT_EQ(manager.ReserveMemory(kTestSize500MB, addr), SUCCESS);
@@ -90,7 +94,7 @@ TEST_F(VirtualMemoryManagerTest, ReserveMemory_500MB_RoundsUpTo1GB) {
 }
 
 TEST_F(VirtualMemoryManagerTest, ReserveMemory_MultipleAllocations) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   manager.Initialize();
   uintptr_t addr1 = 0, addr2 = 0, addr3 = 0;
   EXPECT_EQ(manager.ReserveMemory(kTestSize1GB, addr1), SUCCESS);
@@ -106,7 +110,7 @@ TEST_F(VirtualMemoryManagerTest, ReserveMemory_MultipleAllocations) {
 }
 
 TEST_F(VirtualMemoryManagerTest, ReleaseMemory_Success) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   manager.Initialize();
   uintptr_t addr = 0;
   EXPECT_EQ(manager.ReserveMemory(kTestSize1GB, addr), SUCCESS);
@@ -114,21 +118,21 @@ TEST_F(VirtualMemoryManagerTest, ReleaseMemory_Success) {
 }
 
 TEST_F(VirtualMemoryManagerTest, ReleaseMemory_InvalidAddress_Fails) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   manager.Initialize();
   uintptr_t invalid_addr = 0x1000; // Not 1GB aligned
   EXPECT_EQ(manager.ReleaseMemory(invalid_addr), PARAM_INVALID);
 }
 
 TEST_F(VirtualMemoryManagerTest, ReleaseMemory_UnallocatedAddress_Fails) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   manager.Initialize();
   constexpr uintptr_t unallocated_addr = 1024UL * 1024UL * 1024UL * 1024UL * 40UL; // Start of reserved range
   EXPECT_EQ(manager.ReleaseMemory(unallocated_addr), PARAM_INVALID);
 }
 
 TEST_F(VirtualMemoryManagerTest, ReserveMemory_AfterRelease_ReusesAddress) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   manager.Initialize();
   uintptr_t addr1 = 0;
   EXPECT_EQ(manager.ReserveMemory(kTestSize1GB, addr1), SUCCESS);
@@ -140,7 +144,7 @@ TEST_F(VirtualMemoryManagerTest, ReserveMemory_AfterRelease_ReusesAddress) {
 }
 
 TEST_F(VirtualMemoryManagerTest, ReserveMemory_Exhaustion_Fails) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   manager.Initialize();
   // Try to allocate more than total capacity (128TB)
   constexpr size_t huge_size = 1024UL * 1024UL * 1024UL * 1024UL * 129UL; // 129TB > 128TB
@@ -149,7 +153,7 @@ TEST_F(VirtualMemoryManagerTest, ReserveMemory_Exhaustion_Fails) {
 }
 
 TEST_F(VirtualMemoryManagerTest, Concurrency_MultipleThreads) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   manager.Initialize();
   constexpr int kNumThreads = 4;
   std::vector<std::thread> threads;
@@ -173,7 +177,7 @@ TEST_F(VirtualMemoryManagerTest, Concurrency_MultipleThreads) {
 }
 
 TEST_F(VirtualMemoryManagerTest, SetVirtualMemoryCapacity_Success) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   constexpr size_t kCustomCapacityTB = 32UL; // 32TB
   manager.SetVirtualMemoryCapacity(kCustomCapacityTB);
   EXPECT_EQ(manager.Initialize(), SUCCESS);
@@ -187,7 +191,7 @@ TEST_F(VirtualMemoryManagerTest, SetVirtualMemoryCapacity_Success) {
 }
 
 TEST_F(VirtualMemoryManagerTest, SetVirtualMemoryCapacity_AfterInitialized_Fails) {
-  VirtualMemoryManager& manager = VirtualMemoryManager::GetInstance();
+  VirtualMemoryManager& manager = *manager_;
   EXPECT_EQ(manager.Initialize(), SUCCESS);
 
   // Try to set capacity after initialization - should fail silently
@@ -195,11 +199,10 @@ TEST_F(VirtualMemoryManagerTest, SetVirtualMemoryCapacity_AfterInitialized_Fails
   manager.SetVirtualMemoryCapacity(kCustomCapacityTB);
 
   // The capacity should not change, try to allocate more than default capacity
-  // Default capacity is 64TB (kDefaultNumBlocks = 64 * 1024 blocks = 64TB)
-  // So allocating 65TB should fail
-  constexpr size_t k65TB = 65UL * 1024UL * 1024UL * 1024UL * 1024UL;
+  // Default capacity is 96TB (kDefaultNumBlocks = 96 * 1024 blocks)
+  constexpr size_t k97TB = 97UL * 1024UL * 1024UL * 1024UL * 1024UL;
   uintptr_t addr = 0;
-  EXPECT_EQ(manager.ReserveMemory(k65TB, addr), RESOURCE_EXHAUSTED);
+  EXPECT_EQ(manager.ReserveMemory(k97TB, addr), RESOURCE_EXHAUSTED);
 }
 
 }  // namespace adxl
