@@ -189,6 +189,7 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   std::lock_guard<std::mutex> lk(mutex_);
 
   virtual_memory_manager_ = llm::MakeUnique<VirtualMemoryManager>();
+  ADXL_CHK_BOOL_RET_STATUS(virtual_memory_manager_ != nullptr, FAILED, "Failed to create VirtualMemoryManager");
   ADXL_CHK_STATUS_RET(LoadGlobalResourceConfig(options), "Failed to load global resource config.");
   ADXL_CHK_LLM_RET(llm::HcclAdapter::GetInstance().Initialize(), "HcclSoManager initialize failed.");
   int32_t device_id = -1;
