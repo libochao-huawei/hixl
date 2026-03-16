@@ -30,7 +30,8 @@ class AdxlInnerEngine {
   explicit AdxlInnerEngine(const AscendString &local_engine)
       : local_engine_(local_engine.GetString()),
         msg_handler_(local_engine_, &channel_manager_),
-        is_initialized_{false} {};
+        is_initialized_{false},
+        virtual_memory_manager_(nullptr) {}
 
   ~AdxlInnerEngine() = default;
 
