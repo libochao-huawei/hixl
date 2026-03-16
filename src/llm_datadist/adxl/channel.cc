@@ -247,8 +247,9 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
   if (event_status != RT_EVENT_RECORDED) {
     LLMLOGI("Transfer async request not yet completed, req:%llu.", id);
     status = TransferStatus::WAITING;
-    return SUCCESS;
+    //return SUCCESS;
   }
+  LLMLOGI("[zc] start stream synchronize...");
   auto steam_status = rtStreamSynchronize(stream);
   if (steam_status != RT_ERROR_NONE) {
     //stream synchronize failed
