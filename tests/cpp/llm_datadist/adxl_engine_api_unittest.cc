@@ -18,7 +18,6 @@
 
 #include "adxl/adxl_engine.h"
 #include "adxl/channel_manager.h"
-#include "adxl/virtual_memory_manager.h"
 #include "dlog_pub.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
@@ -662,9 +661,6 @@ TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithStreamSyncFailed) {
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineFabricMemoryCapacityConfig) {
-  // Ensure VirtualMemoryManager is not initialized
-  VirtualMemoryManager::GetInstance().Finalize();
-
   // Test with custom fabric memory capacity (32TB)
   constexpr size_t kCustomCapacityTB = 32UL;
   std::string json_config = R"({
@@ -679,19 +675,9 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineFabricMemoryCapacityConfig) {
   options1[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = AscendString(json_config.c_str());
   options1[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = AscendString("1");
 
-  // Initialize with custom capacity
+  // Initialize with custom capacity - should succeed
   EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options1), SUCCESS);
 
-  // Verify that VirtualMemoryManager is initialized with custom capacity
-  // by trying to allocate memory up to the custom capacity
-  uintptr_t addr = 0;
-  // Try to allocate 1GB - should succeed
-  constexpr size_t k1GB = 1024UL * 1024UL * 1024UL;
-  EXPECT_EQ(VirtualMemoryManager::GetInstance().ReserveMemory(k1GB, addr), SUCCESS);
-  EXPECT_NE(addr, 0);
-  EXPECT_EQ(VirtualMemoryManager::GetInstance().ReleaseMemory(addr), SUCCESS);
-
-  // Clean up
   engine1.Finalize();
 }
 
@@ -747,9 +733,6 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineAutoConnectEnabled) {
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineTaskStreamNumConfig) {
-  // Ensure VirtualMemoryManager is not initialized
-  VirtualMemoryManager::GetInstance().Finalize();
-
   // Test with custom task stream num (valid values 1 to 8)
   for (size_t task_stream_num = 1; task_stream_num <= 8; ++task_stream_num) {
     std::string json_config = R"({
@@ -769,9 +752,6 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineTaskStreamNumConfig) {
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineTaskStreamNumInvalidConfig) {
-  // Ensure VirtualMemoryManager is not initialized
-  VirtualMemoryManager::GetInstance().Finalize();
-
   // Test with task_stream_num = 0 (below minimum)
   {
     std::string json_config = R"({
@@ -807,9 +787,6 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineTaskStreamNumInvalidConfig) {
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineTaskStreamNumInvalidString) {
-  // Ensure VirtualMemoryManager is not initialized
-  VirtualMemoryManager::GetInstance().Finalize();
-
   // Test with invalid task_stream_num string (not a number)
   std::string json_config = R"({
     "fabric_memory.task_stream_num": "not_a_number"
@@ -826,9 +803,6 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineTaskStreamNumInvalidString) {
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineTaskStreamNumEmptyString) {
-  // Ensure VirtualMemoryManager is not initialized
-  VirtualMemoryManager::GetInstance().Finalize();
-
   // Test with empty task_stream_num string
   std::string json_config = R"({
     "fabric_memory.task_stream_num": ""
@@ -845,8 +819,6 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineTaskStreamNumEmptyString) {
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineMallocMemAndFreeMem) {
-  EXPECT_EQ(VirtualMemoryManager::GetInstance().Initialize(), SUCCESS);
-
   void *fabric_ptr = nullptr;
   ASSERT_EQ(AdxlEngine::MallocMem(MEM_HOST, sizeof(int32_t), &fabric_ptr), SUCCESS);
   ASSERT_NE(fabric_ptr, nullptr);
@@ -856,7 +828,6 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineMallocMemAndFreeMem) {
   EXPECT_EQ(*value, 123);
 
   EXPECT_EQ(AdxlEngine::FreeMem(fabric_ptr), SUCCESS);
-  VirtualMemoryManager::GetInstance().Finalize();
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineMallocMemInvalidParam) {

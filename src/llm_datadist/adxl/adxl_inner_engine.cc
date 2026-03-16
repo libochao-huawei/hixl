@@ -127,7 +127,7 @@ Status AdxlInnerEngine::ParseFabricMemoryCapacity(const std::map<AscendString, A
     ADXL_CHK_BOOL_RET_STATUS(capacity_tb <= kMaxCapacityTB, PARAM_INVALID,
                             "max_fabric_memory_capacity exceeds maximum %zu TB, got %zu",
                             kMaxCapacityTB, capacity_tb);
-    VirtualMemoryManager::GetInstance().SetVirtualMemoryCapacity(capacity_tb);
+    virtual_memory_manager_->SetVirtualMemoryCapacity(capacity_tb);
     LLMLOGI("Set fabric memory capacity to %zu TB", capacity_tb);
   }
   return SUCCESS;
@@ -188,7 +188,7 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, As
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   std::lock_guard<std::mutex> lk(mutex_);
 
-  ADXL_CHK_STATUS_RET(LoadGlobalResourceConfig(options), "Failed to load global resource config.");
+
   ADXL_CHK_LLM_RET(llm::HcclAdapter::GetInstance().Initialize(), "HcclSoManager initialize failed.");
   int32_t device_id = -1;
   ADXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
@@ -199,10 +199,15 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
     (void) aclrtDestroyContext(aclrt_context_);
     aclrt_context_ = nullptr;
   }));
+
+  virtual_memory_manager_ = llm::MakeUnique<VirtualMemoryManager>();
+  ADXL_CHK_BOOL_RET_STATUS(virtual_memory_manager_ != nullptr, FAILED, "Failed to create VirtualMemoryManager");
+  ADXL_CHK_STATUS_RET(LoadGlobalResourceConfig(options), "Failed to load global resource config.");
   ADXL_CHK_STATUS_RET(ParseEnableFabricMem(options), "Failed to parse option.");
   if (enable_use_fabric_mem_) {
-    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().Initialize(), "Failed to initialize virtual memory manager.");
+    ADXL_CHK_STATUS_RET(virtual_memory_manager_->Initialize(), "Failed to initialize virtual memory manager.");
     fabric_mem_transfer_service_ = llm::MakeUnique<FabricMemTransferService>();
+    fabric_mem_transfer_service_->SetVirtualMemoryManager(virtual_memory_manager_.get());
     ADXL_CHK_STATUS_RET(fabric_mem_transfer_service_->Initialize(kMaxStreams, task_stream_num_),
                         "Failed to initialize fabric mem transfer service.");
   }
@@ -216,6 +221,7 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
                       "Failed to init channel manager.");
   channel_manager_.SetAutoConnect(auto_connect_);
   channel_manager_.SetStreamPool(stream_pool_.get());
+  channel_manager_.SetVirtualMemoryManager(virtual_memory_manager_.get());
   channel_manager_.RegisterNotifyAckCallback([this](uint64_t req_id) {
     std::lock_guard<std::mutex> lock(notify_mutex_);
     notify_ack_ready_[req_id] = true;
@@ -223,7 +229,7 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   });
 
   llm::LlmDatadistTimer::Instance().Init();
-  statistic_timer_handle_ = llm::LlmDatadistTimer::Instance().CreateTimer([this]() {
+  statistic_timer_handle_ = llm::LlmDatadistTimer::Instance().CreateTimer([]() {
     StatisticManager::GetInstance().Dump();
   });
   constexpr uint32_t kStatisticTimerPeriod = 80U * 1000U;
@@ -378,6 +384,9 @@ void AdxlInnerEngine::Finalize() {
   }
   if (fabric_mem_transfer_service_ != nullptr) {
     fabric_mem_transfer_service_->Finalize();
+  }
+  if (virtual_memory_manager_ != nullptr) {
+    virtual_memory_manager_->Finalize();
   }
   if (aclrt_context_ != nullptr) {
     (void) aclrtDestroyContext(aclrt_context_);

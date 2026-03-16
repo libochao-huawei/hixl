@@ -9,6 +9,7 @@
  */
 
 #include "channel_manager.h"
+#include "virtual_memory_manager.h"
 #include <sys/epoll.h>
 #include <netinet/tcp.h>
 #include <cstring>
@@ -413,6 +414,9 @@ Status ChannelManager::CreateChannel(const ChannelInfo &channel_info, ChannelPtr
   ChannelPtr channel = llm::MakeShared<Channel>(channel_info);
   ADXL_CHECK_NOTNULL(channel);
   ADXL_CHK_STATUS_RET(channel->Initialize(enable_use_fabric_mem), "Failed to init channel");
+  if (virtual_memory_manager_ != nullptr) {
+    channel->SetVirtualMemoryManager(virtual_memory_manager_);
+  }
   channel->SetStreamPool(stream_pool_);
   LLM_DISMISSABLE_GUARD(failed_guard, ([channel]() { (void) channel->Finalize(); }));
   std::lock_guard<std::mutex> lock(mutex_);
@@ -527,6 +531,10 @@ void ChannelManager::ProcessAckMessages() {
 
 void ChannelManager::SetStreamPool(StreamPool *stream_pool) {
   stream_pool_ = stream_pool;
+}
+
+void ChannelManager::SetVirtualMemoryManager(VirtualMemoryManager *vmm) {
+  virtual_memory_manager_ = vmm;
 }
 
 void ChannelManager::SetAutoConnect(bool auto_connect) {

@@ -159,7 +159,9 @@ void Channel::ClearImportedMem() {
   for (auto &it : new_va_to_old_va_) {
     LLMLOGI("Unmap mem:%lu", it.first);
     LLM_CHK_ACL(aclrtUnmapMem(llm::ValueToPtr(it.first)));
-    (void)VirtualMemoryManager::GetInstance().ReleaseMemory(it.first);
+    if (virtual_memory_manager_ != nullptr) {
+      (void)virtual_memory_manager_->ReleaseMemory(it.first);
+    }
   }
   new_va_to_old_va_.clear();
   // free imported pa handle
@@ -174,15 +176,21 @@ void Channel::SetStreamPool(StreamPool *stream_pool) {
   stream_pool_ = stream_pool;
 }
 
+void Channel::SetVirtualMemoryManager(VirtualMemoryManager *vmm) {
+  virtual_memory_manager_ = vmm;
+}
+
 Status Channel::ImportMem(const std::vector<ShareHandleInfo> &remote_share_handles, int32_t device_id) {
+  ADXL_CHK_BOOL_RET_STATUS(virtual_memory_manager_ != nullptr, PARAM_INVALID,
+                           "VirtualMemoryManager not set for fabric mem channel");
   LLM_DISMISSABLE_GUARD(fail_guard, ([this]() { ClearImportedMem(); }));
   for (auto &remote_share_handle_info : remote_share_handles) {
     uintptr_t remote_va_addr = 0;
     aclrtDrvMemHandle remote_pa_handle = nullptr;
-    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().ReserveMemory(remote_share_handle_info.len, remote_va_addr));
-    LLM_DISMISSABLE_GUARD(free_mem_guard, ([&remote_va_addr, &remote_pa_handle]() {
-                            if (remote_va_addr != 0) {
-                              (void)VirtualMemoryManager::GetInstance().ReleaseMemory(remote_va_addr);
+    ADXL_CHK_STATUS_RET(virtual_memory_manager_->ReserveMemory(remote_share_handle_info.len, remote_va_addr));
+    LLM_DISMISSABLE_GUARD(free_mem_guard, ([this, &remote_va_addr, &remote_pa_handle]() {
+                            if (remote_va_addr != 0 && virtual_memory_manager_ != nullptr) {
+                              (void)virtual_memory_manager_->ReleaseMemory(remote_va_addr);
                             }
                             if (remote_pa_handle != nullptr) {
                               LLM_CHK_ACL(aclrtFreePhysical(remote_pa_handle));
