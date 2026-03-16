@@ -25,14 +25,6 @@ constexpr size_t kDefaultGlobalVirtualMemorySize = kBlockSize * kDefaultNumBlock
 constexpr size_t kGlobalVirtualMemoryStartAddr = kBlockSize * 1024UL * 40UL; // 40T
 constexpr uint64_t kReserveFlagHugePage = 1UL;
 }  // namespace
-VirtualMemoryManager &VirtualMemoryManager::GetInstance() {
-  static VirtualMemoryManager instance;
-  return instance;
-}
-
-VirtualMemoryManager::~VirtualMemoryManager() {
-  Finalize();
-}
 
 void VirtualMemoryManager::SetVirtualMemoryCapacity(size_t capacity_in_tb) {
   std::lock_guard<std::mutex> lock(global_virtual_memory_mutex_);
@@ -68,6 +60,11 @@ Status VirtualMemoryManager::Initialize() {
   if (initialized_) {
     return SUCCESS;
   }
+  ADXL_CHK_STATUS_RET(InitProcess());
+  return SUCCESS;
+}
+
+Status VirtualMemoryManager::InitProcess() {
   // Use user-set capacity if already set, otherwise use default
   if (vm_size_ == 0) {
     vm_size_ = kDefaultGlobalVirtualMemorySize;
@@ -76,8 +73,8 @@ Status VirtualMemoryManager::Initialize() {
   ADXL_CHK_STATUS_RET(ReserveMemAddress(global_virtual_memory_, vm_size_));
   global_virtual_memory_addr_ = llm::PtrToValue(global_virtual_memory_);
   // Clear bitmap and allocations map
-  bitmap_.resize(num_blocks_, false);
-  allocations_.clear();
+  // bitmap_.resize(num_blocks_, false);
+  // allocations_.clear();
   initialized_ = true;
   LLMLOGI("VirtualMemoryManager initialized, reserved base virtual mem address: %lu", global_virtual_memory_addr_);
   return SUCCESS;
@@ -90,8 +87,8 @@ void VirtualMemoryManager::Finalize() {
   }
 
   // Clear bitmap and allocations map
-  bitmap_.clear();
-  allocations_.clear();
+  // bitmap_.clear();
+  // allocations_.clear();
   initialized_ = false;
 
   if (global_virtual_memory_ != nullptr) {
@@ -99,6 +96,9 @@ void VirtualMemoryManager::Finalize() {
     global_virtual_memory_ = nullptr;
     global_virtual_memory_addr_ = 0;
   }
+  // Reset capacity to allow re-initialization with different capacity if needed
+  vm_size_ = 0;
+  num_blocks_ = 0;
 }
 
 Status VirtualMemoryManager::ReserveMemory(size_t size, uintptr_t &mem_addr) {
@@ -107,12 +107,6 @@ Status VirtualMemoryManager::ReserveMemory(size_t size, uintptr_t &mem_addr) {
   if (size == 0) {
     LLMLOGE(PARAM_INVALID, "ReserveMemory size cannot be zero");
     return PARAM_INVALID;
-  }
-
-  if (!initialized_) {
-    ADXL_CHK_STATUS_RET(ReserveMemAddress(global_virtual_memory_, vm_size_));
-    global_virtual_memory_addr_ = llm::PtrToValue(global_virtual_memory_);
-    initialized_ = true;
   }
 
   // Calculate number of 1GB blocks needed (round up)

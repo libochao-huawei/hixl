@@ -20,12 +20,7 @@
 namespace adxl {
 class VirtualMemoryManager {
  public:
-  static VirtualMemoryManager &GetInstance();
-  ~VirtualMemoryManager();
-  VirtualMemoryManager(const VirtualMemoryManager &) = delete;
-  VirtualMemoryManager(const VirtualMemoryManager &&) = delete;
-  VirtualMemoryManager &operator=(const VirtualMemoryManager &) = delete;
-  VirtualMemoryManager &operator=(const VirtualMemoryManager &&) = delete;
+  VirtualMemoryManager() = default;
 
   Status Initialize();
   void Finalize();
@@ -35,12 +30,8 @@ class VirtualMemoryManager {
   static Status ReserveMemAddress(void *&virtual_address, size_t size);
 
  private:
-  VirtualMemoryManager() = default;
 
-  std::vector<bool> bitmap_;
-
-  // Allocation metadata: start address -> block count
-  std::unordered_map<uintptr_t, size_t> allocations_;
+  Status InitProcess();
 
   // Initialization flag
   bool initialized_ = false;
@@ -50,6 +41,10 @@ class VirtualMemoryManager {
   uintptr_t global_virtual_memory_addr_{};
   size_t vm_size_ = 0;
   size_t num_blocks_ = 0;
+
+  std::vector<bool> bitmap_;
+  // Allocation metadata: start address -> block count
+  std::unordered_map<uintptr_t, size_t> allocations_;
 };
 }  // namespace adxl
 

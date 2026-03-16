@@ -108,6 +108,7 @@ add_library(adxl_static STATIC ${ADXL_SRC_LIST})
 target_include_directories(adxl_static PRIVATE ${ADXL_INC_DIR})
 
 target_compile_options(adxl_static PRIVATE
+        -g
         -ftrapv
         -fno-common
         -Wfloat-equal

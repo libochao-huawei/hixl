@@ -24,6 +24,8 @@
 
 namespace adxl {
 
+class VirtualMemoryManager;
+
 using NotifyAckCallback = 
   std::function<void(uint64_t req_id)>;
 
@@ -44,6 +46,8 @@ class ChannelManager {
   }
 
   void SetStreamPool(StreamPool *stream_pool);
+
+  void SetVirtualMemoryManager(VirtualMemoryManager *vmm);
 
   Status AddSocketToEpoll(int32_t fd, ChannelPtr channel);
   
@@ -106,6 +110,7 @@ class ChannelManager {
   int epoll_fd_ = -1;
   static int64_t wait_time_in_millis_;
   BufferTransferService *buffer_transfer_service_ = nullptr;
+  VirtualMemoryManager *virtual_memory_manager_ = nullptr;
   std::mutex fd_mutex_;
   std::map<int32_t, ChannelPtr> fd_to_channel_map_;
   StreamPool *stream_pool_ = nullptr;
