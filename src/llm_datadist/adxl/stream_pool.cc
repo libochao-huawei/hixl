@@ -20,18 +20,19 @@ Status StreamPool::TryAllocStream(aclrtStream &stream) {
     if (item.second) {
       item.second = false;
       stream = item.first;
+      LLMLOGI("[zc] Reuse stream=%p, current stream pool size: %zu", static_cast<void *>(stream), pool_.size());
       return SUCCESS;
     }
-  }  
+  }
   if (pool_.size() < max_stream_num_) {
     aclrtStream new_stream = nullptr;
     ADXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&new_stream, 0,
                      ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC));
     pool_[new_stream] = false;
     stream = new_stream;
-    LLMLOGI("Create new stream, current stream pool size: %zu", pool_.size());
+    LLMLOGI("[zc] Create new stream=%p, current stream pool size: %zu", static_cast<void *>(stream), pool_.size());
     return SUCCESS;
-  }  
+  }
   LLMLOGW("Stream Pool capacity limit reached, current stream pool size: %zu", pool_.size());
   return RESOURCE_EXHAUSTED;
 }
@@ -41,6 +42,7 @@ void StreamPool::FreeStream(aclrtStream &stream) {
   auto it = pool_.find(stream);
   if (it != pool_.end()) {
     it->second = true;
+    LLMLOGI("[zc] Free stream=%p, current stream pool size: %zu", static_cast<void *>(stream), pool_.size());
   }
 }
 
@@ -57,6 +59,7 @@ void StreamPool::DestroyStream(aclrtStream &stream) {
   std::lock_guard<std::mutex> lock(pool_mutex_);
   auto it = pool_.find(stream);
   if (it != pool_.end()) {
+    LLMLOGI("[zc] Destroy stream=%p, current stream pool size: %zu", static_cast<void *>(stream), pool_.size());
     auto aclrt_abort = aclrtStreamAbort(stream);
     if (aclrt_abort != ACL_ERROR_NONE) {
       LLMLOGE(FAILED, "Call aclrtStreamAbort ret:%d.", aclrt_abort);

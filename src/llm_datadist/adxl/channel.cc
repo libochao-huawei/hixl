@@ -266,9 +266,10 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
   }
   if (event_status != ACL_EVENT_RECORDED_STATUS_COMPLETE) {
     LLMLOGI("Transfer async request not yet completed, req:%lu.", id);
-    status = TransferStatus::WAITING;
-    return SUCCESS;
+    // status = TransferStatus::WAITING;
+    // return SUCCESS;
   }
+  LLMLOGI("[zc] start stream synchronize for transfer async request, req:%lu.", id);
   auto steam_status = aclrtSynchronizeStream(stream);
   if (steam_status != ACL_ERROR_NONE) {
     //stream synchronize failed
@@ -278,6 +279,15 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
     req_2_async_record_.erase(id);
     LLMLOGE(FAILED, "rtStreamSynchronize failed for req:%lu, ret:%d.", id, steam_status);
     return FAILED;
+  }
+  auto re = aclrtQueryEventStatus(event, &event_status);
+  if (re == ACL_ERROR_NONE) {
+    LLMLOGI(
+    "[zc] after stream synchronize for transfer async request, req:%lu, event status:%d, "
+    "aclrtSynchronizeStream ret:%d.",
+    id, event_status, steam_status);
+  }else {
+    LLMLOGE(FAILED, "aclrtQueryEventStatus failed for req:%lu, ret:%d.", id, re);
   }
   status = TransferStatus::COMPLETED;
   const auto end = std::chrono::steady_clock::now();
