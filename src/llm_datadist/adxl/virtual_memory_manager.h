@@ -30,9 +30,6 @@ class VirtualMemoryManager {
   static Status ReserveMemAddress(void *&virtual_address, size_t size);
 
  private:
-
-  Status InitProcess();
-
   // Initialization flag
   bool initialized_ = false;
 
