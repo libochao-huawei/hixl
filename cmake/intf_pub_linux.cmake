@@ -37,8 +37,8 @@ target_link_options(intf_pub_base INTERFACE
     -Wl,-z,relro
     -Wl,-z,now
     -Wl,-z,noexecstack
-    $<$<CONFIG:Release>:-Wl,--build-id=none>
-    $<$<CONFIG:Release>:-s>
+#    $<$<CONFIG:Release>:-Wl,--build-id=none>
+#    $<$<CONFIG:Release>:-s>
     $<$<BOOL:${ENABLE_ASAN}>:-fsanitize=address -fsanitize=leak -fsanitize-recover=address>
     $<$<BOOL:${ENABLE_GCOV}>:--coverage -fprofile-arcs -ftest-coverage>
 )

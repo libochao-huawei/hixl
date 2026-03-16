@@ -14,6 +14,7 @@
 #include <vector>
 #include <unordered_map>
 #include "adxl/adxl_checker.h"
+#include "adxl/acl_compat.h"
 #include "common/def_types.h"
 #include "common/llm_scope_guard.h"
 #include "common/llm_log.h"
@@ -26,36 +27,57 @@ namespace {
 constexpr uint64_t kMillisToMicros = 1000;
 constexpr int32_t kDevicesPerChip = 4;
 constexpr int32_t kNumaNodeStep = 2;
+constexpr size_t kBlockSize = 1024UL * 1024UL * 1024UL;  // 1GB
+constexpr size_t kGlobalVirtualMemoryStartAddr = kBlockSize * 1024UL * 160UL;  // 160T
+constexpr uint64_t kReserveFlagHugePage = 1UL;
 
 std::mutex g_va_to_pa_mutex;
 std::unordered_map<uintptr_t, aclrtDrvMemHandle> g_va_to_pa_handle_map;
+
+// Reserve virtual address using ACL API directly (independent of VirtualMemoryManager)
+Status ReserveMemAddressForStatic(void *&virtual_address, size_t size) {
+  void *global_start_va = llm::ValueToPtr(kGlobalVirtualMemoryStartAddr);
+  auto ret = aclrtReserveMemAddressNoUCMemory(&virtual_address, size, 0, global_start_va, kReserveFlagHugePage);
+  if (ret == ACL_ERROR_RT_FEATURE_NOT_SUPPORT) {
+    ADXL_CHK_ACL_RET(aclrtReserveMemAddress(&virtual_address, size, 0, nullptr, kReserveFlagHugePage));
+    LLMEVENT("Reserve virtual memory with aclrtReserveMemAddress, size:%zu.", size);
+    return SUCCESS;
+  }
+  ADXL_CHK_BOOL_RET_STATUS(ret == ACL_ERROR_NONE, FAILED, "Failed to reserve mem address.");
+  LLMEVENT("Reserve virtual memory with aclrtReserveMemAddressNoUCMemory, size:%zu.", size);
+  return SUCCESS;
+}
 }  // namespace
+
+void FabricMemTransferService::SetVirtualMemoryManager(VirtualMemoryManager *vmm) {
+  virtual_memory_manager_ = vmm;
+}
 
 Status FabricMemTransferService::MallocMem(MemType type, size_t size, void **ptr) {
   ADXL_CHK_BOOL_RET_STATUS(type == MemType::MEM_HOST, PARAM_INVALID, "Only support malloc host mem.");
   ADXL_CHK_BOOL_RET_STATUS(size > 0, PARAM_INVALID, "size should be bigger than zero.");
 
   aclrtDrvMemHandle pa_handle = nullptr;
-  uintptr_t virtual_addr = 0;
+  void *va_ptr = nullptr;
   ADXL_CHK_STATUS_RET(FabricMemTransferService::AllocatePhysicalMemory(size, pa_handle), "Failed to allocate physical memory");
 
-  LLM_DISMISSABLE_GUARD(fail_guard, ([&pa_handle, &virtual_addr] {
-                          if (virtual_addr != 0) {
-                            VirtualMemoryManager::GetInstance().ReleaseMemory(virtual_addr);
+  LLM_DISMISSABLE_GUARD(fail_guard, ([&pa_handle, &va_ptr] {
+                          if (va_ptr != nullptr) {
+                            LLM_CHK_ACL(aclrtReleaseMemAddress(va_ptr));
                           }
                           if (pa_handle != nullptr) {
                             LLM_CHK_ACL(aclrtFreePhysical(pa_handle));
                           }
                           }));
 
-  ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().ReserveMemory(size, virtual_addr));
+  ADXL_CHK_STATUS_RET(ReserveMemAddressForStatic(va_ptr, size));
 
-  auto va_ptr = llm::ValueToPtr(virtual_addr);
   ADXL_CHK_ACL_RET(aclrtMapMem(va_ptr, size, 0, pa_handle, 0));
 
+  uintptr_t virtual_addr = llm::PtrToValue(va_ptr);
   AddVaToPaMapping(virtual_addr, pa_handle);
 
-  *ptr = llm::ValueToPtr(virtual_addr);
+  *ptr = va_ptr;
   LLMLOGI("MallocFabricMemory success, va:%lu, size:%zu", virtual_addr, size);
   LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
@@ -66,12 +88,11 @@ Status FabricMemTransferService::FreeMem(void *ptr) {
 
   auto va_addr = llm::PtrToValue(ptr);
   aclrtDrvMemHandle pa_handle = nullptr;
-  // Get PA handle from mapping and remove it
   ADXL_CHK_STATUS_RET(GetPaHandleFromVa(va_addr, pa_handle), "Failed to get pa handle.");
 
   RemoveVaToPaMapping(va_addr);
   LLM_CHK_ACL(aclrtUnmapMem(ptr));
-  VirtualMemoryManager::GetInstance().ReleaseMemory(va_addr);
+  LLM_CHK_ACL(aclrtReleaseMemAddress(ptr));
   LLM_CHK_ACL(aclrtFreePhysical(pa_handle));
 
   LLMLOGI("FreeFabricMemory success, va:%lu", va_addr);
@@ -162,7 +183,9 @@ void FabricMemTransferService::Finalize() {
     // unmap and free all imported pa handle
     for (auto &it : local_va_to_old_va_) {
       LLM_CHK_ACL(aclrtUnmapMem(llm::ValueToPtr(it.first)));
-      (void)VirtualMemoryManager::GetInstance().ReleaseMemory(it.first);
+      if (virtual_memory_manager_ != nullptr) {
+        (void)virtual_memory_manager_->ReleaseMemory(it.first);
+      }
     }
     local_va_to_old_va_.clear();
   }
@@ -193,12 +216,12 @@ Status FabricMemTransferService::RegisterMem(const MemDesc &mem, MemType type, M
   }
   aclrtDrvMemHandle imported_pa_handle = nullptr;
   uintptr_t imported_va = 0;
-  LLM_DISMISSABLE_GUARD(fail_guard, ([&pa_handle, &imported_va, &imported_pa_handle] {
+  LLM_DISMISSABLE_GUARD(fail_guard, ([this, &pa_handle, &imported_va, &imported_pa_handle] {
                           if (pa_handle != nullptr) {
                             LLM_CHK_ACL(aclrtFreePhysical(pa_handle));
                           }
-                          if (imported_va != 0) {
-                            (void)VirtualMemoryManager::GetInstance().ReleaseMemory(imported_va);
+                          if (imported_va != 0 && virtual_memory_manager_ != nullptr) {
+                            (void)virtual_memory_manager_->ReleaseMemory(imported_va);
                           }
                           if (imported_pa_handle != nullptr) {
                             LLM_CHK_ACL(aclrtFreePhysical(imported_pa_handle));
@@ -210,7 +233,8 @@ Status FabricMemTransferService::RegisterMem(const MemDesc &mem, MemType type, M
 
   // HOST addr need map to device
   if (type == MEM_HOST) {
-    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().ReserveMemory(mem.len, imported_va));
+    ADXL_CHK_BOOL_RET_STATUS(virtual_memory_manager_ != nullptr, FAILED, "VirtualMemoryManager not set");
+    ADXL_CHK_STATUS_RET(virtual_memory_manager_->ReserveMemory(mem.len, imported_va));
     ADXL_CHK_ACL_RET(aclrtMemImportFromShareableHandleV2(&share_handle, ACL_MEM_SHARE_HANDLE_TYPE_FABRIC, 0U,
       &imported_pa_handle));
     ADXL_CHK_ACL_RET(aclrtMapMem(llm::ValueToPtr(imported_va), mem.len, 0, imported_pa_handle, 0));
@@ -243,7 +267,9 @@ Status FabricMemTransferService::DeregisterMem(MemHandle mem_handle) {
     auto va_map_it = local_va_to_old_va_.find(imported_va);
     if (va_map_it != local_va_to_old_va_.end()) {
       LLM_CHK_ACL(aclrtUnmapMem(llm::ValueToPtr(va_map_it->first)));
-      (void) VirtualMemoryManager::GetInstance().ReleaseMemory(va_map_it->first);
+      if (virtual_memory_manager_ != nullptr) {
+        (void)virtual_memory_manager_->ReleaseMemory(va_map_it->first);
+      }
       local_va_to_old_va_.erase(va_map_it);
     }
 

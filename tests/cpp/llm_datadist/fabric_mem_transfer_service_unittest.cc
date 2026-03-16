@@ -104,17 +104,22 @@ class FabricMemTransferServiceUTest : public ::testing::Test {
   void SetUp() override {
     mock_runtime_ = std::make_shared<llm::AclRuntimeStub>();
     scoped_mock_ = std::make_unique<ScopedRuntimeMock>(mock_runtime_);
-    VirtualMemoryManager::GetInstance().Initialize();
+    vmm_ = std::make_unique<VirtualMemoryManager>();
+    ASSERT_EQ(vmm_->Initialize(), SUCCESS);
     service_ = std::make_shared<FabricMemTransferService>();
+    service_->SetVirtualMemoryManager(vmm_.get());
   }
   void TearDown() override {
     if (service_) {
       service_->Finalize();
     }
+    if (vmm_) {
+      vmm_->Finalize();
+    }
     scoped_mock_.reset();
     mock_runtime_.reset();
-    VirtualMemoryManager::GetInstance().Finalize();
   }
+  std::unique_ptr<VirtualMemoryManager> vmm_;
   std::shared_ptr<FabricMemTransferService> service_;
   std::shared_ptr<llm::AclRuntimeStub> mock_runtime_;
   std::unique_ptr<ScopedRuntimeMock> scoped_mock_;
@@ -138,6 +143,7 @@ TEST_F(FabricMemTransferServiceUTest, TestTransfer) {
   ASSERT_EQ(service_->Initialize(kStreamMax, kDefaultTaskStreamNum), SUCCESS);
 
   auto channel = CreateInitializedChannel();
+  channel->SetVirtualMemoryManager(vmm_.get());
 
   ShareHandleInfo share_info;
   share_info.va_addr = kRemoteAddr;
@@ -179,6 +185,7 @@ TEST_F(FabricMemTransferServiceUTest, TestTransfer) {
 TEST_F(FabricMemTransferServiceUTest, TestTransferAsync) {
   ASSERT_EQ(service_->Initialize(kStreamMax, kDefaultTaskStreamNum), SUCCESS);
   auto channel = CreateInitializedChannel();
+  channel->SetVirtualMemoryManager(vmm_.get());
 
   std::vector<uint8_t> local_buf(kMemLen);
   std::vector<TransferOpDesc> op_descs;
@@ -242,6 +249,7 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync) {
 TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_RemoteAddrNotFound) {
   ASSERT_EQ(service_->Initialize(kStreamMax, kDefaultTaskStreamNum), SUCCESS);
   auto channel = CreateInitializedChannel();
+  channel->SetVirtualMemoryManager(vmm_.get());
   ShareHandleInfo share_info;
   share_info.va_addr = kRemoteAddr;
   share_info.len = kMemLen;
@@ -264,6 +272,7 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_RemoteAddrNotFound) {
 TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_RemoteAddrOutOfRange) {
   ASSERT_EQ(service_->Initialize(kStreamMax, kDefaultTaskStreamNum), SUCCESS);
   auto channel = CreateInitializedChannel();
+  channel->SetVirtualMemoryManager(vmm_.get());
   ShareHandleInfo share_info;
   share_info.va_addr = kRemoteAddr;
   share_info.len = kMemLen;
@@ -286,6 +295,7 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_RemoteAddrOutOfRange) {
 TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_EventCreateFail_CleanupOk) {
   ASSERT_EQ(service_->Initialize(kStreamMax, kDefaultTaskStreamNum), SUCCESS);
   auto channel = CreateInitializedChannel();
+  channel->SetVirtualMemoryManager(vmm_.get());
   ShareHandleInfo share_info;
   share_info.va_addr = kRemoteAddr;
   share_info.len = kMemLen;
@@ -328,6 +338,7 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_EventCreateFail_CleanupO
 TEST_F(FabricMemTransferServiceUTest, TestGetTransferStatus_QueryStatusFail_CleanupOk) {
   ASSERT_EQ(service_->Initialize(kStreamMax, kDefaultTaskStreamNum), SUCCESS);
   auto channel = CreateInitializedChannel();
+  channel->SetVirtualMemoryManager(vmm_.get());
   ShareHandleInfo share_info_test;
   share_info_test.va_addr = kRemoteAddr;
   share_info_test.len = kMemLen;
@@ -365,6 +376,7 @@ TEST_F(FabricMemTransferServiceUTest, TestGetTransferStatus_QueryStatusFail_Clea
 TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_StreamPoolFull) {
   ASSERT_EQ(service_->Initialize(kStreamMax, kDefaultTaskStreamNum), SUCCESS);
   auto channel = CreateInitializedChannel();
+  channel->SetVirtualMemoryManager(vmm_.get());
   ShareHandleInfo share_info;
   share_info.va_addr = kRemoteAddr;
   share_info.len = kMemLen;

@@ -25,14 +25,6 @@ constexpr size_t kDefaultGlobalVirtualMemorySize = kBlockSize * kDefaultNumBlock
 constexpr size_t kGlobalVirtualMemoryStartAddr = kBlockSize * 1024UL * 40UL; // 40T
 constexpr uint64_t kReserveFlagHugePage = 1UL;
 }  // namespace
-VirtualMemoryManager &VirtualMemoryManager::GetInstance() {
-  static VirtualMemoryManager instance;
-  return instance;
-}
-
-VirtualMemoryManager::~VirtualMemoryManager() {
-  Finalize();
-}
 
 void VirtualMemoryManager::SetVirtualMemoryCapacity(size_t capacity_in_tb) {
   std::lock_guard<std::mutex> lock(global_virtual_memory_mutex_);
@@ -68,6 +60,11 @@ Status VirtualMemoryManager::Initialize() {
   if (initialized_) {
     return SUCCESS;
   }
+  ADXL_CHK_STATUS_RET(InitProcess());
+  return SUCCESS;
+}
+
+Status VirtualMemoryManager::InitProcess() {
   // Use user-set capacity if already set, otherwise use default
   if (vm_size_ == 0) {
     vm_size_ = kDefaultGlobalVirtualMemorySize;
@@ -110,9 +107,7 @@ Status VirtualMemoryManager::ReserveMemory(size_t size, uintptr_t &mem_addr) {
   }
 
   if (!initialized_) {
-    ADXL_CHK_STATUS_RET(ReserveMemAddress(global_virtual_memory_, vm_size_));
-    global_virtual_memory_addr_ = llm::PtrToValue(global_virtual_memory_);
-    initialized_ = true;
+    ADXL_CHK_STATUS_RET(InitProcess());
   }
 
   // Calculate number of 1GB blocks needed (round up)
