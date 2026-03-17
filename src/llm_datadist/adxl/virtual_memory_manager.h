@@ -36,6 +36,7 @@ class VirtualMemoryManager {
 
  private:
   VirtualMemoryManager() = default;
+  Status InitProcess();
 
   std::vector<bool> bitmap_;
 
