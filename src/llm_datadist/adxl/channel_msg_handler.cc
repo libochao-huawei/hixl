@@ -428,9 +428,15 @@ Status ChannelMsgHandler::ProcessConnectRequest(int32_t fd, const char *msg, uin
   }
   if (enable_use_fabric_mem_) {
     channel_connect_info.share_handles = fabric_mem_transfer_service_->GetShareHandles();
+    LLMLOGI("GetShareHandles on connect, local engine:%s, share_handles count:%zu.",
+            listen_info_.c_str(), channel_connect_info.share_handles.size());
     for (const auto &share_handle : channel_connect_info.share_handles) {
       LLMLOGD("Share handle: va_addr:%lu, len:%lu, share_handle:%s", share_handle.va_addr, share_handle.len,
               GetDebugStr(share_handle.share_handle).c_str());
+    }
+    if (channel_connect_info.share_handles.empty()) {
+      LLMLOGW("Share handles empty on connect, local engine:%s. RegisterMem may have been done on a different engine.",
+              listen_info_.c_str());
     }
   }
   ADXL_CHK_STATUS_RET(SendMsg(fd, ChannelMsgType::kConnect, channel_connect_info),

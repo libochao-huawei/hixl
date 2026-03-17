@@ -622,6 +622,8 @@ Status FabricMemTransferService::ProcessCopyWithAsync(const std::vector<aclrtStr
 
 std::vector<ShareHandleInfo> FabricMemTransferService::GetShareHandles() {
   std::lock_guard<std::mutex> lock(share_handle_mutex_);
+  LLMLOGI("GetShareHandles called, share_handles_.size:%zu, device_id:%d.",
+          share_handles_.size(), device_id_);
   std::vector<ShareHandleInfo> share_handles;
   share_handles.reserve(share_handles_.size());
   for (auto &share_handle : share_handles_) {
