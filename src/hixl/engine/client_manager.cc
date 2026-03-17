@@ -52,6 +52,10 @@ Status ClientManager::DestroyClient(const std::string &remote_engine) {
   return ret;
 }
 
+bool ClientManager::IsClientListEmpty() {
+  return clients_.empty();
+}
+
 Status ClientManager::Finalize() {
   std::lock_guard<std::mutex> lock(mutex_);
   for (auto &it : clients_) {
