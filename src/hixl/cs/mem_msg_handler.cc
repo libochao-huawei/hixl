@@ -215,6 +215,8 @@ hixl::Status ParseMemDescsArray(const nlohmann::json &arr, std::vector<hixl::Hix
       return ret;
     }
     mem_descs.emplace_back(std::move(desc));
+    desc.export_desc = nullptr;
+    desc.export_len = 0U;
   }
   return hixl::SUCCESS;
 }
