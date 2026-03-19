@@ -13,7 +13,9 @@
 
 #include <string>
 #include <sstream>
+#include <unordered_set>
 #include "hixl/hixl_types.h"
+#include "adxl/adxl_types.h"
 
 namespace hixl {
 constexpr const char *kProtocolRoce = "roce";
@@ -21,6 +23,9 @@ constexpr const char *kProtocolUbCtp = "ub_ctp";
 constexpr const char *kProtocolUbTp = "ub_tp";
 constexpr const char *kPlacementDevice = "device";
 constexpr const char *kPlacementHost = "host";
+
+inline const std::unordered_set<std::string> kOptionsFields = {hixl::OPTION_LOCAL_COMM_RES, hixl::OPTION_BUFFER_POOL, 
+                                                               adxl::OPTION_LOCAL_COMM_RES, adxl::OPTION_BUFFER_POOL};
 
 struct AddrInfo {
   uintptr_t start_addr{0};
