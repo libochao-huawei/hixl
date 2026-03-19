@@ -57,6 +57,8 @@ Status ParseIpAddress(const std::string &ip_str, CommAddr &addr);
 
 Status CheckIp(const std::string &ip);
 
+Status CheckOptions(const std::map<AscendString, AscendString> &options);
+
 std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char delim);
 
 Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);
