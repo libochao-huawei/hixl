@@ -18,7 +18,7 @@
 namespace hixl {
 std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engine,
                                                     const std::map<AscendString, AscendString> &options) {
-  const auto &it = options.find(adxl::OPTION_LOCAL_COMM_RES);
+  const auto &it = options.find(hixl::OPTION_LOCAL_COMM_RES);
   if (it == options.end()) {
     return std::make_unique<AdxlEngine>(AscendString(local_engine.c_str()));
   }
