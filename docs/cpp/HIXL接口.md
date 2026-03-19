@@ -224,6 +224,10 @@ Atlas A3 训练系列产品/Atlas A3 推理系列产品：该场景下采用HCCS
 </table>
 
 如上表格中的环境变量请参考[《环境变量参考》](https://www.hiascend.com/document/redirect/CannCommunityEnvRef)。
+**表 2**  options（Ascend 950PR/Ascend 950DT）
+| 参数名 | 可选/必选 | 描述 |
+| --- | --- | --- |
+| OPTION_LOCAL_COMM_RES | 必选 | 配置本地通信资源信息，格式是json格式的字符串。配置格式参考：<https://gitcode.com/cann/hixl/issues/37>。配置为空不会自动生成相关信息。 |
 
 **调用示例**
 

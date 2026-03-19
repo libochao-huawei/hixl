@@ -62,6 +62,15 @@ Status CheckIp(const std::string &ip) {
   return hixl::SUCCESS;
 }
 
+Status CheckOptions(const std::map<AscendString, AscendString> &options) {
+  for (const auto &pair : options) {
+    HIXL_CHK_BOOL_RET_SPECIAL_STATUS(options_fields.find(pair.first.GetString()) == options_fields.end(), 
+                                     PARAM_INVALID, 
+                                     "Invalid options, options for hixl engine only support OPTION_LOCAL_COMM_RES");
+  }
+  return SUCCESS;
+}
+
 std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char delim) {
   std::vector<std::string, std::allocator<std::string>> elems;
   if (str.empty()) {
