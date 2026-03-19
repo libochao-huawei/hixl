@@ -13,6 +13,7 @@
 
 #include <string>
 #include <sstream>
+#include <unordered_set>
 #include "hixl/hixl_types.h"
 
 namespace hixl {
@@ -21,6 +22,8 @@ constexpr const char *kProtocolUbCtp = "ub_ctp";
 constexpr const char *kProtocolUbTp = "ub_tp";
 constexpr const char *kPlacementDevice = "device";
 constexpr const char *kPlacementHost = "host";
+
+inline const std::unordered_set<std::string> options_fields = {OPTION_LOCAL_COMM_RES};
 
 struct AddrInfo {
   uintptr_t start_addr{0};
