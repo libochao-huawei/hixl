@@ -428,45 +428,79 @@ Status HixlCSClient::ValidateAddress(bool is_get, const CommunicateMem &communic
   return SUCCESS;
 }
 
-Status HixlCSClient::BatchTransferTask(bool is_get, const CommunicateMem &communicate_mem_param) {
-  int32_t hccl_ret = 0;  // hccl_ret值为0时表示hccl接口执行成功
+namespace {
+constexpr int32_t kHcclSuccess = 0;
+constexpr int32_t kHcclRetryRequired = 20;
+
+/**
+ * @brief 封装数据传输接口调用和返回值校验，处理重试逻辑
+ * @param [in] is_get 是否为读操作
+ * @param [in] channel_handle 通道句柄
+ * @param [in] dst_buf 目标缓冲区
+ * @param [in] src_buf 源缓冲区
+ * @param [in] len 传输长度
+ * @return 成功返回SUCCESS，失败返回FAILED
+ */
+int32_t TransferWithRetry(bool is_get, uint64_t channel_handle, void *dst_buf, const void *src_buf, uint64_t len)
+{
+  int32_t hccl_ret = 0;
   if (is_get) {
-    // 批量提交读任务
-    for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      hccl_ret =
-          HcommReadNbiOnThread(static_cast<ThreadHandle>(0), client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-                       const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i]);
-      if (hccl_ret != 0) {
-        HIXL_LOGE(FAILED,
-                  "[HixlClient] HcommReadNbiOnThread failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
-                  "mem_len is %lu, hccl_ret is %d.",
-                  client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-                  const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i],
-                  hccl_ret);
-        return FAILED;
-      }
-    }
+    hccl_ret = HcommReadNbiOnThread(static_cast<ThreadHandle>(0), channel_handle, dst_buf,
+                                     const_cast<void *>(src_buf), len);
   } else {
-    // 批量提交写任务
-    for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      hccl_ret =
-          HcommWriteNbiOnThread(static_cast<ThreadHandle>(0), client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-                        const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i]);
-      if (hccl_ret != 0) {  // ret值为0时表示执行成功
-        HIXL_LOGE(FAILED,
-                  "[HixlClient] HcommWriteNbi failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
-                  "mem_len is %lu, hccl_ret is %d.",
-                  client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-                  const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i],
-                  hccl_ret);
-        return FAILED;
-      }
+    hccl_ret = HcommWriteNbiOnThread(static_cast<ThreadHandle>(0), channel_handle, dst_buf,
+                                      const_cast<void *>(src_buf), len);
+  }
+
+  // 处理需要重试的情况
+  if (hccl_ret == kHcclRetryRequired) {
+    HIXL_LOGI("[HixlClient] Transfer failed with ret=%d, retrying transfer. dst_addr=%p, src_addr=%p, len=%lu, is_get=%d.",
+               hccl_ret, dst_buf, src_buf, len, is_get);
+    // 重新执行 Fence
+    hccl_ret = HcommChannelFenceOnThread(static_cast<ThreadHandle>(0), channel_handle);
+    if (hccl_ret != kHcclSuccess) {
+      HIXL_LOGE(FAILED, "[HixlClient] HcommChannelFenceOnThread failed after retry, channel_handle=%lu, hccl_ret=%d.",
+                channel_handle, hccl_ret);
+      return FAILED;
+    }
+    // 重新执行传输
+    if (is_get) {
+      hccl_ret = HcommReadNbiOnThread(static_cast<ThreadHandle>(0), channel_handle, dst_buf,
+                                       const_cast<void *>(src_buf), len);
+    } else {
+      hccl_ret = HcommWriteNbiOnThread(static_cast<ThreadHandle>(0), channel_handle, dst_buf,
+                                        const_cast<void *>(src_buf), len);
     }
   }
+
+  // 检查最终结果
+  if (hccl_ret != kHcclSuccess) {
+    HIXL_LOGE(FAILED,
+              "[HixlClient] Transfer failed, is_get=%d, channel_handle=%lu, dst_addr=%p, src_addr=%p, "
+              "mem_len=%lu, hccl_ret=%d.",
+              is_get, channel_handle, dst_buf, src_buf, len, hccl_ret);
+    return FAILED;
+  }
+  return SUCCESS;
+}
+}  // namespace
+
+Status HixlCSClient::BatchTransferTask(bool is_get, const CommunicateMem &communicate_mem_param) {
+  // 批量提交传输任务
+  for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
+    auto ret = TransferWithRetry(is_get, client_channel_handle_,
+                                  communicate_mem_param.dst_buf_list[i],
+                                  communicate_mem_param.src_buf_list[i],
+                                  communicate_mem_param.len_list[i]);
+    if (ret != SUCCESS) {
+      return FAILED;
+    }
+  }
+
   // 创建内存隔断，等到通道上所有的读任务执行结束后才会接着执行之后创建的读写任务
-  hccl_ret = HcommChannelFenceOnThread(static_cast<ThreadHandle>(0), client_channel_handle_);
-  if (hccl_ret != 0) {  // ret值为0时表示执行成功
-    HIXL_LOGE(FAILED, "[HixlClient] HcommChannelFenceOnThread failed，client_channel_handle_ is %lu, hccl_ret is %d.",
+  int32_t hccl_ret = HcommChannelFenceOnThread(static_cast<ThreadHandle>(0), client_channel_handle_);
+  if (hccl_ret != kHcclSuccess) {
+    HIXL_LOGE(FAILED, "[HixlClient] HcommChannelFenceOnThread failed, client_channel_handle_ is %lu, hccl_ret is %d.",
               client_channel_handle_, hccl_ret);
     return FAILED;
   }

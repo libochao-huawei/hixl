@@ -23,6 +23,7 @@ set(targets_list
     "hixl_cs_benchmark_large"
     "hixl_cs_benchmark_multi_pair"
     "hixl_cs_benchmark_multi_thread"
+    "hixl_cs_benchmark_exception"
 )
 
 foreach(target_name IN LISTS targets_list)
