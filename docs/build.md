@@ -1,7 +1,7 @@
 # 源码构建
 
 ## 环境准备
-本项目支持源码编译，在源码编译前，需要确保已经安装驱动、固件和CANN软件（Ascend-cann-toolkit和Ascend-cann-ops）。
+本项目支持源码编译，在源码编译前，需要确保已经安装Ascend-cann-toolkit。执行所有样例前，需要确保已经安装驱动和固件；执行python样例前，还需要确保已经安装Ascend-cann-ops。
 
 软件安装方式请根据如下描述进行选择：
 
@@ -47,13 +47,9 @@
 
 ### 场景二：手动安装CANN包
 
-**场景1：已发布版本**
+**场景1：基于master开发和尝试最新特性**
 
-如果您想体验**官网正式发布的CANN包**能力，请访问[CANN官网下载中心](https://www.hiascend.com/cann/download)，选择对应版本CANN软件包（仅支持CANN 8.5.0及后续版本）进行安装。
-
-**场景2：master版本**
-
-如果您想体验**master分支最新能力**，单击[下载链接](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/software/master)获取获取软件包，按照如下步骤进行安装。更多安装指导请参考[CANN软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)。
+如果您想体验**master分支最新能力**，单击[下载链接](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/software/master)获取软件包，按照如下步骤进行安装。更多安装指导请参考[CANN软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)。
 
 1. 安装固件和驱动：请参考[CANN软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)。
 2. 安装依赖。   
@@ -89,6 +85,11 @@
     - \$\{arch\}：表示CPU架构，如aarch64、x86_64。
     - \$\{soc\_name\}：表示NPU型号名称。
     - \$\{install\_path\}：表示指定安装路径，需要与toolkit包安装在相同路径，root用户默认安装在`/usr/local/Ascend`目录。
+
+**场景2：基于已发布版本进行开发**
+
+如果您想体验**官网正式发布的CANN包**能力，请访问[CANN官网下载中心](https://www.hiascend.com/cann/download)，选择对应版本CANN软件包（仅支持CANN 8.5.0及后续版本）进行安装。
+
 
 ## 环境验证
 
