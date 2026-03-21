@@ -88,6 +88,7 @@ constexpr uint64_t k1GB = 1ULL * 1024 * 1024 * 1024;
 constexpr uint64_t k2GB = 2ULL * 1024 * 1024 * 1024;
 constexpr uint64_t k4GB = 4ULL * 1024 * 1024 * 1024;
 constexpr uint64_t k8GB = 8ULL * 1024 * 1024 * 1024;
+constexpr uint64_t k16GB = 16ULL * 1024 * 1024 * 1024;
 constexpr uint64_t k128MB = 128ULL * 1024 * 1024;
 
 constexpr int32_t kTestTypeLargeData = 1;
@@ -384,9 +385,9 @@ int32_t RunClientLargeData(const Args &args) {
   }
   // 2、注册内存地址
   uint32_t *kClientTransferData =nullptr;
-  std::vector<uint64_t> test_sizes = {k2GB, k4GB, k8GB};
-  uint64_t max_size = k8GB;
-  uint64_t block_size = k128MB;
+  std::vector<uint64_t> test_sizes = {k4GB, k8GB, k16GB};
+  uint64_t max_size = k16GB;
+  uint64_t block_size = k2GB;
   aclrtMemcpyKind copy_kind;
   MemHandle mem_handle = nullptr;
   HcommMem mem{};
@@ -638,7 +639,7 @@ int32_t RunServerLargeData(const Args &args) {
 
   // 2. 注册内存地址
   uint32_t *kServerTransferData = nullptr;
-  uint64_t max_size = k8GB;
+  uint64_t max_size = k16GB;
   MemHandle mem_handle = nullptr;
   aclrtMemcpyKind copy_kind ;
   HcommMem mem{};
