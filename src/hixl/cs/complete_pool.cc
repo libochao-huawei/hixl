@@ -355,7 +355,7 @@ Status CompletePool::EnsureThreadLocked(Slot &slot, CommEngine engine, uint32_t 
   if (slot.thread != 0U) {
     return SUCCESS;
   }
-  HIXL_CHK_HCCL_RET(HcommThreadAlloc(engine, thread_num, notify_num_per_thread, &slot.thread));
+  HIXL_CHK_HCCL_RET(HcclProxy::HcommThreadAlloc(engine, thread_num, notify_num_per_thread, &slot.thread));
   return SUCCESS;
 }
 
@@ -379,7 +379,7 @@ void CompletePool::DestroySlotLocked(Slot &slot) const {
     slot.notify = nullptr;
   }
   if (slot.thread != 0U) {
-    HIXL_CHK_ACL(HcommThreadFree(&slot.thread, 1U), "HcommThreadFree failed");
+    HIXL_CHK_ACL(HcclProxy::HcommThreadFree(&slot.thread, 1U), "HcommThreadFree failed");
     slot.thread = 0U;
   }
   if (slot.stream != nullptr) {
