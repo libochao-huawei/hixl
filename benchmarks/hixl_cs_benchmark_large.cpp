@@ -206,7 +206,7 @@ int32_t TransferLargeData(HixlClientHandle client_handle, uint8_t *local_addr,
 int32_t TransferMultiBlock(HixlClientHandle client_handle, uint8_t *local_addr,const std::string &transfer_op,
                              uint32_t mem_block_count, uint64_t mem_block_size) {
   HcommMem *remote_mem_list = nullptr;
-  constexpr uint64_t transfer_block_size = 4ULL * 1024 * 1024;
+  constexpr uint64_t transfer_block_size = 2ULL * 1024 * 1024;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
   auto ret =
