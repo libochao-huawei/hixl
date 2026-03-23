@@ -73,6 +73,7 @@ target_include_directories(llm_datadist_test PRIVATE
         ${HIXL_CODE_DIR}/include
         ${HIXL_CODE_DIR}/src/llm_datadist
         ${HIXL_CODE_DIR}/src/hixl
+        ${HIXL_CODE_DIR}/src
         ${HIXL_CODE_DIR}/tests
         ${HIXL_CODE_DIR}/tests/depends/llm_datadist/src
         )

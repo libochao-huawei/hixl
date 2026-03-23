@@ -25,6 +25,7 @@ file(GLOB HIXL_SRC_LIST
         "${HIXL_CODE_DIR}/src/hixl/common/*.cc"
         "${HIXL_CODE_DIR}/src/hixl/engine/*.cc"
         "${HIXL_CODE_DIR}/src/hixl/cs/*.cc"
+        "${HIXL_CODE_DIR}/src/proxy/*.cc"
         "${HIXL_CODE_DIR}/src/ops/hixl_kernel/*.cc"
 )
 
@@ -63,6 +64,7 @@ target_compile_options(hixl_test PRIVATE
 target_include_directories(hixl_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${HIXL_CODE_DIR}/include
+        ${HIXL_CODE_DIR}/src
         ${HIXL_CODE_DIR}/src/hixl
         ${HIXL_CODE_DIR}/src/llm_datadist
         ${HIXL_CODE_DIR}/src/hixl/cs
