@@ -18,7 +18,7 @@
 #include "common/llm_scope_guard.h"
 #include "common/def_types.h"
 #include "common/llm_log.h"
-#include "virtual_memory_manager.h"
+#include "fabric_va_registry.h"
 
 #include <base/err_msg.h>
 
@@ -37,6 +37,12 @@ Status Channel::Initialize(bool enable_use_fabric_mem) {
   if (enable_use_fabric_mem) {
     LLMLOGI("Initialize channel in use fabric mem mode, channel_id:%s", channel_info_.channel_id.c_str());
     enable_use_fabric_mem_ = enable_use_fabric_mem;
+    fabric_peer_key_ = channel_info_.channel_id;
+    // Refcount only for client: ImportMem runs only for client in ChannelMsgHandler.
+    if (channel_info_.channel_type == ChannelType::kClient) {
+      FabricVaRegistry::GetInstance().RegisterConsumer(fabric_peer_key_);
+      fabric_mem_consumer_registered_ = true;
+    }
     return SUCCESS;
   }
   LLMLOGI("HcclCommInitClusterInfoMemConfig begin, comm_name=%s, local rank_id=%u, rank_table=%s",
@@ -154,20 +160,10 @@ Status Channel::ClearResources() {
 }
 
 void Channel::ClearImportedMem() {
-  // unmap all va
-  std::lock_guard<std::mutex> lock(va_map_mutex_);
-  for (auto &it : new_va_to_old_va_) {
-    LLMLOGI("Unmap mem:%lu", it.first);
-    LLM_CHK_ACL(aclrtUnmapMem(llm::ValueToPtr(it.first)));
-    (void)VirtualMemoryManager::GetInstance().ReleaseMemory(it.first);
+  if (fabric_mem_consumer_registered_) {
+    FabricVaRegistry::GetInstance().UnregisterConsumer(fabric_peer_key_);
+    fabric_mem_consumer_registered_ = false;
   }
-  new_va_to_old_va_.clear();
-  // free imported pa handle
-  for (auto &remote_pa_handle : remote_pa_handles_) {
-    LLM_CHK_ACL(aclrtFreePhysical(remote_pa_handle));
-    LLMLOGI("Free imported handle:%p.", remote_pa_handle);
-  }
-  remote_pa_handles_.clear();
 }
 
 void Channel::SetStreamPool(StreamPool *stream_pool) {
@@ -175,40 +171,11 @@ void Channel::SetStreamPool(StreamPool *stream_pool) {
 }
 
 Status Channel::ImportMem(const std::vector<ShareHandleInfo> &remote_share_handles, int32_t device_id) {
-  LLM_DISMISSABLE_GUARD(fail_guard, ([this]() { ClearImportedMem(); }));
-  for (auto &remote_share_handle_info : remote_share_handles) {
-    uintptr_t remote_va_addr = 0;
-    aclrtDrvMemHandle remote_pa_handle = nullptr;
-    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().ReserveMemory(remote_share_handle_info.len, remote_va_addr));
-    LLM_DISMISSABLE_GUARD(free_mem_guard, ([&remote_va_addr, &remote_pa_handle]() {
-                            if (remote_va_addr != 0) {
-                              (void)VirtualMemoryManager::GetInstance().ReleaseMemory(remote_va_addr);
-                            }
-                            if (remote_pa_handle != nullptr) {
-                              LLM_CHK_ACL(aclrtFreePhysical(remote_pa_handle));
-                            }
-                          }));
-
-    auto share_handle = remote_share_handle_info.share_handle;
-    ADXL_CHK_ACL_RET(aclrtMemImportFromShareableHandleV2(&share_handle, ACL_MEM_SHARE_HANDLE_TYPE_FABRIC, 0U,
-                                                      &remote_pa_handle));
-    void *remote_va = llm::ValueToPtr(remote_va_addr);
-    ADXL_CHK_ACL_RET(aclrtMapMem(remote_va, remote_share_handle_info.len, 0, remote_pa_handle, 0));
-    std::lock_guard<std::mutex> lock(va_map_mutex_);
-    remote_pa_handles_.emplace_back(remote_pa_handle);
-    new_va_to_old_va_[remote_va_addr] = {remote_share_handle_info.va_addr, remote_share_handle_info.len};
-    LLM_DISMISS_GUARD(free_mem_guard);
-    LLMLOGI("Imported mem from share handle, va:%lu, new mapped va addr:%lu, len:%zu, imported handle:%p for device:%d.",
-            remote_share_handle_info.va_addr, remote_va_addr, remote_share_handle_info.len, remote_pa_handle,
-            device_id);
-  }
-  LLM_DISMISS_GUARD(fail_guard);
-  return SUCCESS;
+  return FabricVaRegistry::GetInstance().ImportRemoteShares(fabric_peer_key_, remote_share_handles, device_id);
 }
 
 std::unordered_map<uintptr_t, VaInfo> Channel::GetNewVaToOldVa() {
-  std::lock_guard<std::mutex> lock(va_map_mutex_);
-  return new_va_to_old_va_;
+  return FabricVaRegistry::GetInstance().GetNewVaToOldVa(fabric_peer_key_);
 }
 
 Status Channel::TransferAsync(TransferOp operation,

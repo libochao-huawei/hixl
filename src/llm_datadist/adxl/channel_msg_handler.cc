@@ -343,7 +343,7 @@ Status ChannelMsgHandler::CreateChannel(const ChannelInfo &channel_info, bool is
     segment_table_->AddRange(channel->GetChannelId(), remote_addr.start_addr, remote_addr.end_addr,
                              remote_addr.mem_type);
   }
-  if (enable_use_fabric_mem_) {
+  if (enable_use_fabric_mem_ && is_client) {
     ADXL_CHK_STATUS_RET(channel->ImportMem(peer_channel_info.share_handles, device_id_), "Failed to import mem.");
   }
   LLMLOGI("Success to create channel, channel_id:%s, local_rank:%u, peer_rank:%u, is_client:%d",

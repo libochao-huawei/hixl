@@ -170,10 +170,8 @@ class Channel {
   std::unordered_map<uint64_t, AsyncRecord> req_2_async_record_;
   StreamPool *stream_pool_ = nullptr;
 
-  // mutex for va map and pa handlers
-  std::mutex va_map_mutex_;
-  std::unordered_map<uintptr_t, VaInfo> new_va_to_old_va_;
-  std::vector<aclrtDrvMemHandle> remote_pa_handles_;
+  std::string fabric_peer_key_;
+  bool fabric_mem_consumer_registered_{false};
   bool enable_use_fabric_mem_ = false;
 };
 using ChannelPtr = std::shared_ptr<Channel>;
