@@ -106,6 +106,7 @@ public:
                                                    void *shareableHandle);
   virtual aclError aclrtMemImportFromShareableHandleV2(void *shareableHandle, aclrtMemSharedHandleType type,
                                                      uint64_t flags, aclrtDrvMemHandle *handle);
+  virtual aclError aclrtMemSetAccess(void *virPtr, size_t size, aclrtMemAccessDesc *desc, size_t count);
   virtual aclError aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop, uint64_t flags);
   virtual aclError aclrtFreePhysical(aclrtDrvMemHandle handle);
   virtual aclError aclrtBinaryLoadFromFile(const char *modelPath, aclrtBinaryLoadOptions *options, aclrtBinHandle *binHandle) ;
@@ -136,7 +137,8 @@ private:
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+int GetAclrtMemSetAccessCallCountForTest();
+void ResetAclrtMemSetAccessCallCountForTest();
 #ifdef __cplusplus
 }
 #endif

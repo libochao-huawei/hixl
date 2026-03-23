@@ -20,6 +20,7 @@
 #include "statistic_manager.h"
 #include "virtual_memory_manager.h"
 #include "common/hixl_utils.h"
+#include "fabric_va_registry.h"
 
 namespace adxl {
 namespace {
@@ -138,10 +139,14 @@ Status FabricMemTransferService::Initialize(size_t max_stream_num, size_t task_s
   ADXL_CHK_ACL_RET(aclrtGetDevice(&device_id_));
   LLMLOGI("Get device id:%d", device_id_);
   max_stream_num_ = max_stream_num;
+  aclrtContext ctx = nullptr;
+  ADXL_CHK_ACL_RET(aclrtGetCurrentContext(&ctx));
+  FabricVaRegistry::GetInstance().RegisterImporterContext(device_id_, ctx);
   return SUCCESS;
 }
 
 void FabricMemTransferService::Finalize() {
+  FabricVaRegistry::GetInstance().UnregisterImporterContext(device_id_);
   {
     std::lock_guard<std::mutex> async_req_lock(async_req_mutex_);
     for (auto &req_2_record : req_2_async_record_) {

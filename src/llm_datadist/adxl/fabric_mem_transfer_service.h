@@ -17,7 +17,7 @@
 #include "adxl/adxl_types.h"
 #include "channel.h"
 #include "control_msg_handler.h"
-#include "adxl/acl_compat.h"
+#include "acl/acl.h"
 
 namespace adxl {
 class FabricMemTransferService {

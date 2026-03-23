@@ -496,6 +496,14 @@ aclError AclRuntimeStub::aclrtMemImportFromShareableHandleV2(void *shareableHand
   return ACL_ERROR_NONE;
 }
 
+aclError AclRuntimeStub::aclrtMemSetAccess(void *virPtr, size_t size, aclrtMemAccessDesc *desc, size_t count) {
+  (void)virPtr;
+  (void)size;
+  (void)desc;
+  (void)count;
+  return ACL_ERROR_NONE;
+}
+
 aclError AclRuntimeStub::aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop, uint64_t flags) {
   *handle = (aclrtDrvMemHandle) new uint8_t[8];
   return ACL_ERROR_NONE;
@@ -793,6 +801,13 @@ aclError aclrtMemImportFromShareableHandleV2(void *shareableHandle, aclrtMemShar
                                                               flags, handle);
 }
 
+static int g_aclrt_mem_set_access_calls = 0;
+
+aclError aclrtMemSetAccess(void *virPtr, size_t size, aclrtMemAccessDesc *desc, size_t count) {
+  ++g_aclrt_mem_set_access_calls;
+  return llm::AclRuntimeStub::GetInstance()->aclrtMemSetAccess(virPtr, size, desc, count);
+}
+
 aclError aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop, uint64_t flags) {
   return llm::AclRuntimeStub::GetInstance()->aclrtMallocPhysical(handle, size, prop, flags);
 }
@@ -845,6 +860,14 @@ aclError aclrtLaunchKernelWithConfig(aclrtFuncHandle funcHandle, uint32_t blockD
 
 aclError aclrtBinaryUnLoad(aclrtBinHandle binHandle) {
   return llm::AclRuntimeStub::GetInstance()-> aclrtBinaryUnLoad(binHandle);
+}
+
+int GetAclrtMemSetAccessCallCountForTest() {
+  return g_aclrt_mem_set_access_calls;
+}
+
+void ResetAclrtMemSetAccessCallCountForTest() {
+  g_aclrt_mem_set_access_calls = 0;
 }
 #ifdef __cplusplus
 }
