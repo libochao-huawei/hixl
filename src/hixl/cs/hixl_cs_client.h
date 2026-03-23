@@ -60,7 +60,7 @@ struct UbBatchArgs {
   uint32_t flag_size;
 };
 
-struct MemDev{
+struct MemDev {
   void *dst_buf_list_dev;
   void *src_buf_list_dev;
   uint64_t *len_list_dev;
@@ -156,6 +156,7 @@ class HixlCSClient {
   Status LaunchUbAndStage(bool is_get, UbCompleteHandle &handle, const void *remote_flag);
   void ReleaseLegacyHandlesLocked();
   Status ReleaseUbResourcesLocked();
+
  private:
   std::mutex mutex_;
   // 用于记录内存地址的分配情况
@@ -186,14 +187,14 @@ class HixlCSClient {
   int32_t ub_device_id_ {-1};
   std::mutex ub_mu_;
   bool ub_remote_flag_inited_ {false};
-  void *ub_remote_flag_addr_ {nullptr};   // server 侧地址（远端地址）
-  uint64_t ub_remote_flag_size_ {0ULL};   // 至少 8
+  void *ub_remote_flag_addr_ {nullptr};  // server 侧地址（远端地址）
+  uint64_t ub_remote_flag_size_ {0ULL};  // 至少 8
   // UB kernel load cache
   bool ub_kernel_loaded_ {false};
   aclrtBinHandle ub_kernel_handle_ {nullptr};
   void *ub_func_get_ {nullptr};
   void *ub_func_put_ {nullptr};
-  void *ub_dev_const_one_{nullptr};
+  void *ub_dev_const_one_ {nullptr};
   std::array<MemHandle, CompletePool::kMaxSlots> ub_notify_mem_handles_{};
 };
 }  // namespace hixl
