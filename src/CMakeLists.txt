@@ -9,5 +9,6 @@
 # ----------------------------------------------------------------------------
 
 add_subdirectory(llm_datadist)
+add_subdirectory(proxy)
 add_subdirectory(hixl)
 add_subdirectory(python)
