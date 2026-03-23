@@ -47,7 +47,7 @@
 
 ### 场景二：手动安装CANN包
 
-**场景1：基于master开发和尝试最新特性**
+**场景1：体验master版本能力或基于master版本进行开发**
 
 如果您想体验**master分支最新能力**，单击[下载链接](https://ascend.devcloud.huaweicloud.com/artifactory/cann-run-mirror/software/master)获取软件包，按照如下步骤进行安装。更多安装指导请参考[CANN软件安装指南](https://www.hiascend.com/document/redirect/CannCommunityInstWizard)。
 
@@ -86,7 +86,7 @@
     - \$\{soc\_name\}：表示NPU型号名称。
     - \$\{install\_path\}：表示指定安装路径，需要与toolkit包安装在相同路径，root用户默认安装在`/usr/local/Ascend`目录。
 
-**场景2：基于已发布版本进行开发**
+**场景2：体验已发布版本能力或基于已发布版本进行开发**
 
 如果您想体验**官网正式发布的CANN包**能力，请访问[CANN官网下载中心](https://www.hiascend.com/cann/download)，选择对应版本CANN软件包（仅支持CANN 8.5.0及后续版本）进行安装。
 
