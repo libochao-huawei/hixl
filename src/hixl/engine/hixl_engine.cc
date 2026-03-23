@@ -53,11 +53,9 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
                       local_comm_res.c_str());
   std::string ip;
   int32_t port = 0;
-  HIXL_CHK_STATUS_RET(ParseListenInfo(local_engine_, ip, port), 
-                      "[HixlEngine] Failed to parse ip and port, local_engine should be in form as below:\n"
-                      "ipv4: host_ip:host_port or host_ip\n"
-                      "ipv6: [host_ip]:host_port or [host_ip]\n"
-                      "current local_engine:%s",
+  HIXL_CHK_STATUS_RET(ParseListenInfo(local_engine_, ip, port),
+                      "[HixlEngine] Failed to parse ip and port, local_engine should be in form as below: "
+                      "ipv4: host_ip:host_port or host_ip, ipv6: [host_ip]:host_port or [host_ip], current local_engine:%s",
                       local_engine_.c_str());
   HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_), 
                       "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s, local_comm_res:%s", 
