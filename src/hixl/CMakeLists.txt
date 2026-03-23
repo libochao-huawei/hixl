@@ -48,6 +48,7 @@ target_link_libraries(cann_hixl PRIVATE
         PUBLIC c_sec
         static_mmpa
         adxl_static
+        hcomm_proxy_static
         alog
         error_manager
         acl_rt
