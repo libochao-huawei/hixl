@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <limits>
 #include "common/hixl_utils.h"
 
 using namespace ::testing;
@@ -105,6 +106,137 @@ TEST_F(HixlUtilsUTest, ParseEidAddressEmptyStringTest) {
   // 测试空字符串
   std::string eid_str = "";
   Status st = ParseEidAddress(eid_str, addr);
+  EXPECT_EQ(st, PARAM_INVALID);
+}
+TEST_F(HixlUtilsUTest, EndpointConfigToStringContainsDeviceInfoTest) {
+  EndpointConfig ep;
+  ep.protocol = kProtocolRoce;
+  ep.comm_id = "127.0.0.1";
+  ep.placement = kPlacementDevice;
+  ep.plane = "plane-a";
+  ep.dst_eid = "00010002000300040005000600070008";
+  ep.net_instance_id = "superpod_1";
+  ep.device_info.phy_device_id = 3;
+  ep.device_info.super_device_id = 7;
+  ep.device_info.super_pod_id = 9;
+
+  const std::string text = ep.ToString();
+  EXPECT_THAT(text, HasSubstr("protocol: roce"));
+  EXPECT_THAT(text, HasSubstr("comm_id: 127.0.0.1"));
+  EXPECT_THAT(text, HasSubstr("placement: device"));
+  EXPECT_THAT(text, HasSubstr("net_instance_id: superpod_1"));
+  EXPECT_THAT(text, HasSubstr("device_info: DeviceInfoConfig{"));
+  EXPECT_THAT(text, HasSubstr("phy_device_id: 3"));
+  EXPECT_THAT(text, HasSubstr("super_device_id: 7"));
+  EXPECT_THAT(text, HasSubstr("super_pod_id: 9"));
+}
+
+TEST_F(HixlUtilsUTest, ConvertToEndpointDescDeviceRoceUseDeviceInfoTest) {
+  EndpointConfig ep;
+  ep.protocol = kProtocolRoce;
+  ep.comm_id = "127.0.0.1";
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = 3;
+  ep.device_info.super_device_id = 7;
+  ep.device_info.super_pod_id = 9;
+
+  EndpointDesc endpoint{};
+  Status st = ConvertToEndpointDesc(ep, endpoint, 11U);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(endpoint.protocol, COMM_PROTOCOL_ROCE);
+  EXPECT_EQ(endpoint.loc.locType, ENDPOINT_LOC_TYPE_DEVICE);
+  EXPECT_EQ(endpoint.loc.device.devPhyId, 3U);
+  EXPECT_EQ(endpoint.loc.device.superDevId, 7U);
+  EXPECT_EQ(endpoint.loc.device.superPodIdx, 9U);
+  EXPECT_EQ(endpoint.loc.device.serverIdx, 0U);
+}
+
+TEST_F(HixlUtilsUTest, ConvertToEndpointDescDeviceRoceFallbackPhyIdTest) {
+  EndpointConfig ep;
+  ep.protocol = kProtocolRoce;
+  ep.comm_id = "127.0.0.1";
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = -1;
+  ep.device_info.super_device_id = -1;
+  ep.device_info.super_pod_id = -1;
+
+  EndpointDesc endpoint{};
+  Status st = ConvertToEndpointDesc(ep, endpoint, 15U);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(endpoint.protocol, COMM_PROTOCOL_ROCE);
+  EXPECT_EQ(endpoint.loc.locType, ENDPOINT_LOC_TYPE_DEVICE);
+  EXPECT_EQ(endpoint.loc.device.devPhyId, 15U);
+  EXPECT_EQ(endpoint.loc.device.superDevId, 0U);
+  EXPECT_EQ(endpoint.loc.device.superPodIdx, 0U);
+  EXPECT_EQ(endpoint.loc.device.serverIdx, 0U);
+}
+
+TEST_F(HixlUtilsUTest, ConvertToEndpointDescDeviceHccsUseDeviceInfoTest) {
+  EndpointConfig ep;
+  ep.protocol = kProtocolHccs;
+  ep.comm_id = "5";
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = 2;
+  ep.device_info.super_device_id = 4;
+  ep.device_info.super_pod_id = 8;
+
+  EndpointDesc endpoint{};
+  Status st = ConvertToEndpointDesc(ep, endpoint, 10U);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(endpoint.protocol, COMM_PROTOCOL_HCCS);
+  EXPECT_EQ(endpoint.loc.locType, ENDPOINT_LOC_TYPE_DEVICE);
+  EXPECT_EQ(endpoint.commAddr.id, 5U);
+  EXPECT_EQ(endpoint.loc.device.devPhyId, 2U);
+  EXPECT_EQ(endpoint.loc.device.superDevId, 4U);
+  EXPECT_EQ(endpoint.loc.device.superPodIdx, 8U);
+  EXPECT_EQ(endpoint.loc.device.serverIdx, 0U);
+}
+
+TEST_F(HixlUtilsUTest, ConvertToEndpointDescDeviceHccsInvalidCommIdTest) {
+  EndpointConfig ep;
+  ep.protocol = kProtocolHccs;
+  ep.comm_id = "abc";
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = 2;
+  ep.device_info.super_device_id = 4;
+  ep.device_info.super_pod_id = 8;
+
+  EndpointDesc endpoint{};
+  Status st = ConvertToEndpointDesc(ep, endpoint, 10U);
+  EXPECT_EQ(st, PARAM_INVALID);
+}
+
+TEST_F(HixlUtilsUTest, ConvertToEndpointDescDeviceUbKeepLegacyLogicTest) {
+  EndpointConfig ep;
+  ep.protocol = kProtocolUbCtp;
+  ep.comm_id = "00010002000300040005000600070008";
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = 123;
+  ep.device_info.super_device_id = 456;
+  ep.device_info.super_pod_id = 789;
+
+  EndpointDesc endpoint{};
+  Status st = ConvertToEndpointDesc(ep, endpoint, 6U);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(endpoint.protocol, COMM_PROTOCOL_UBC_CTP);
+  EXPECT_EQ(endpoint.loc.locType, ENDPOINT_LOC_TYPE_DEVICE);
+  EXPECT_EQ(endpoint.loc.device.devPhyId, 6U);
+  EXPECT_EQ(endpoint.loc.device.superDevId, 0U);
+  EXPECT_EQ(endpoint.loc.device.superPodIdx, 0U);
+  EXPECT_EQ(endpoint.loc.device.serverIdx, 0U);
+}
+
+TEST_F(HixlUtilsUTest, ConvertToEndpointDescDeviceRoceSuperDeviceIdOutOfRangeTest) {
+  EndpointConfig ep;
+  ep.protocol = kProtocolRoce;
+  ep.comm_id = "127.0.0.1";
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = 3;
+  ep.device_info.super_device_id = static_cast<int64_t>(std::numeric_limits<uint32_t>::max()) + 1;
+  ep.device_info.super_pod_id = 9;
+
+  EndpointDesc endpoint{};
+  Status st = ConvertToEndpointDesc(ep, endpoint, 11U);
   EXPECT_EQ(st, PARAM_INVALID);
 }
 }  // namespace hixl
