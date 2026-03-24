@@ -10,11 +10,9 @@
 
 #include <arpa/inet.h>
 #include <gtest/gtest.h>
-
 #include <array>
 #include <cstdint>
 #include <cstring>
-
 #include "endpoint_store.h"
 
 namespace hixl {
