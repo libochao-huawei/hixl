@@ -86,6 +86,7 @@ target_link_libraries(hixl_test
         -ldl
         slog_stub
         mmpa_stub
+        msprof_stub
         ascendcl_stub
         runtime_stub
         msprof_headers

@@ -95,6 +95,7 @@ target_link_libraries(llm_datadist_test
         ascendcl_stub
         runtime_stub
         hccl_stub
+        msprof_stub
         msprof_headers
         GTest::gtest GTest::gtest_main
         GTest::gmock
