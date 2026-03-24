@@ -140,6 +140,7 @@ void LogCaptureStub::Log(int module_id, int level, const char *fmt, va_list args
   char buff[2048] = {0};
   if (Format(buff, sizeof(buff), module_id, level, fmt, args) > 0) {
     std::string log_msg(buff);
+    std::lock_guard<std::mutex> lock(log_mutex_);
     captured_logs_.push_back(log_msg);
     
     // 检查是否匹配任何捕获模式
@@ -153,11 +154,13 @@ void LogCaptureStub::Log(int module_id, int level, const char *fmt, va_list args
 }
  
 void LogCaptureStub::AddCapturePattern(const std::string &pattern) {
+  std::lock_guard<std::mutex> lock(log_mutex_);
   capture_patterns_.push_back(pattern);
   pattern_captured_.push_back(false);
 }
  
 bool LogCaptureStub::IsPatternCaptured(const std::string &pattern) const {
+  std::lock_guard<std::mutex> lock(log_mutex_);
   if (pattern.empty()) {
     // 检查是否有任何模式被捕获
     for (bool captured : pattern_captured_) {
@@ -178,10 +181,12 @@ bool LogCaptureStub::IsPatternCaptured(const std::string &pattern) const {
 }
  
 const std::vector<std::string> &LogCaptureStub::GetCapturedLogs() const {
+  std::lock_guard<std::mutex> lock(log_mutex_);
   return captured_logs_;
 }
  
 void LogCaptureStub::Reset() {
+  std::lock_guard<std::mutex> lock(log_mutex_);
   captured_logs_.clear();
   pattern_captured_.assign(capture_patterns_.size(), false);
 }
