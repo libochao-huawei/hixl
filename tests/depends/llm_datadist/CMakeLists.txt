@@ -63,6 +63,7 @@ target_link_libraries(llm_datadist_base PRIVATE
         ascendcl_stub
         runtime_stub
         msprof_headers
+        msprof_stub
         mmpa_stub
         json
         ${DT_COMMON_LINK_OPTION}
