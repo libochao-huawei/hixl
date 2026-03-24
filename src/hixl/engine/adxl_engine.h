@@ -15,6 +15,7 @@
 #include "adxl/adxl_types.h"
 #include "adxl/adxl_inner_engine.h"
 #include "hixl/hixl_types.h"
+#include "common/hixl_inner_types.h"
 
 namespace hixl {
 class AdxlEngine : public Engine {
@@ -57,6 +58,8 @@ class AdxlEngine : public Engine {
 
  private:
   adxl::AdxlInnerEngine adxl_inner_engine_;
+  std::mutex mutex_;
+  std::map<uint64_t, TransferInfo> req_map_;
 };
 }  // namespace hixl
 
