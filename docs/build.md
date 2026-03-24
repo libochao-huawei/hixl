@@ -187,6 +187,8 @@ bash build.sh --cann_3rd_lib_path={your_3rd_party_path}
     ```bash
     # 默认路径安装，root用户默认路径是/usr/local/Ascend/，普通用户默认路径是${HOME}/Ascend
     bash tests/run_test.sh
+    # 如果已自行将第三方开源软件压缩包上传至目录{your_3rd_party_path}，可以使用如下命令进行执行：
+    bash tests/run_test.sh --cann_3rd_lib_path={your_3rd_party_path}
     ```
 
 - 更多执行选项可以用 -h 查看：
