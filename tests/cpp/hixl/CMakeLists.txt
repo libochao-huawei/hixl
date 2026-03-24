@@ -18,6 +18,7 @@ set(HIXL_TEST_FILES
         engine/hixl_client_unittest.cc
         engine/hixl_utils_unittest.cc
         engine/hixl_engine_unittest.cc
+        engine/hixl_profiling_unittest.cc
         ../ops/hixl_kernel/hixl_kernel_basic_unittest.cc
 )
 
@@ -88,6 +89,7 @@ target_link_libraries(hixl_test
         -ldl
         slog_stub
         mmpa_stub
+        msprof_stub
         ascendcl_stub
         runtime_stub
         msprof_headers
