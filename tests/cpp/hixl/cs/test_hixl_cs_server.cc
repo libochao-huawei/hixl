@@ -217,27 +217,37 @@ TEST_F(HixlCSTest, TestHixlCSServerDisconnectionCleanup) {
   EXPECT_EQ(ret, SUCCESS);
   ret = HixlCSServerListen(server_handle, kBackLog);
   EXPECT_EQ(ret, SUCCESS);
-  
+
   int32_t client_fd = -1;
   ret = CtrlMsgPlugin::Connect("127.0.0.1", kPort, client_fd, 1);
   EXPECT_EQ(ret, SUCCESS);
   EXPECT_NE(client_fd, -1);
-  
+
   SendCreateChannelReq(client_fd);
   CreateChannelResp resp_body{};
   GetCreateChannelResp(client_fd, resp_body);
 
   (void) close(client_fd);
-  std::this_thread::sleep_for(std::chrono::milliseconds(kTimeCleanUpMs));
-  
+
+  // 轮询等待后台线程的清理和日志写入，最多等 1 秒 (50 * 20ms)
+  bool is_detected = false;
+  bool is_cleaned_up = false;
+  for (int i = 0; i < 50; ++i) {
+    is_detected = log_capture->IsPatternCaptured("[HixlServer] detected client disconnect event");
+    is_cleaned_up = log_capture->IsPatternCaptured("[HixlServer] client disconnected");
+    if (is_detected && is_cleaned_up) {
+      break; // 如果所需日志都已经捕获到，提前退出等待
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+
   // 验证 CleanupClient 函数被执行（通过日志捕获）
-  EXPECT_TRUE(log_capture->IsPatternCaptured("[HixlServer] detected client disconnect event"))
-      << "Client disconnect event was not detected";
-  EXPECT_TRUE(log_capture->IsPatternCaptured("[HixlServer] client disconnected"))
-      << "CleanupClient was not called after client disconnection";
+  EXPECT_TRUE(is_detected) << "Client disconnect event was not detected by background thread";
+  EXPECT_TRUE(is_cleaned_up) << "CleanupClient was not called after client disconnection";
+
   ret = HixlCSServerDestroy(server_handle);
   EXPECT_EQ(ret, SUCCESS);
-  
+
   // 恢复默认的 SlogStub，避免影响其他测试用例
   llm::SlogStub::SetInstance(nullptr);
 }
