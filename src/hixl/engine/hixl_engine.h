@@ -152,7 +152,7 @@ class HixlEngine : public hixl::Engine {
   HixlServer server_;
   std::map<void *, MemInfo> mem_map_;
   std::vector<EndpointConfig> endpoint_list_;
-  std::map<uint64_t, AscendString> req2client_;
+  std::map<uint64_t, TransferInfo> req_map_;
 };
 }  // namespace hixl
 
