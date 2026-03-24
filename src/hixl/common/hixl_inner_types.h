@@ -11,6 +11,8 @@
 #ifndef CANN_HIXL_SRC_HIXL_COMMON_HIXL_INNER_TYPES_H_
 #define CANN_HIXL_SRC_HIXL_COMMON_HIXL_INNER_TYPES_H_
 
+#define MSPROF_REPORT_HIXL_BASE_TYPE  0x0C0000U
+
 #include <string>
 #include <sstream>
 #include "hixl/hixl_types.h"
@@ -55,6 +57,16 @@ struct MemInfo {
   MemHandle mem_handle;
   MemDesc mem;
   MemType type;
+};
+
+struct TransferInfo {
+  uint64_t start_time;
+  TransferOp op_type;
+  AscendString remote_engine;
+};
+
+enum {
+  HIXL_MODULE_ID = 12
 };
 }  // namespace hixl
 #endif  // CANN_HIXL_SRC_HIXL_COMMON_HIXL_INNER_TYPES_H_
