@@ -25,6 +25,7 @@ file(GLOB HIXL_SRC_LIST
         "${HIXL_CODE_DIR}/src/hixl/common/*.cc"
         "${HIXL_CODE_DIR}/src/hixl/engine/*.cc"
         "${HIXL_CODE_DIR}/src/hixl/cs/*.cc"
+        "${HIXL_CODE_DIR}/src/hixl/proxy/*.cc"
         "${HIXL_CODE_DIR}/src/ops/hixl_kernel/*.cc"
 )
 
@@ -70,6 +71,7 @@ target_include_directories(hixl_test PRIVATE
         ${HIXL_CODE_DIR}/src/ops
         ${HIXL_CODE_DIR}/tests
         ${HIXL_CODE_DIR}/tests/depends/ascendcl/src
+        ${HIXL_CODE_DIR}/tests/depends/slog/src
         )
 
 set_target_properties(hixl_test PROPERTIES CXX_STANDARD 17)

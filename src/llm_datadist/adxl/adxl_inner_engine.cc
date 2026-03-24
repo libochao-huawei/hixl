@@ -32,6 +32,33 @@ constexpr size_t kMemPoolNum = 2U;
 constexpr uint32_t kCheckDisconnetPeriod = 10U; // ms
 constexpr int32_t kConnectWhenTransferTimeout = 3000; // ms
 constexpr size_t kMaxStreams = 512;
+
+// Helper function to determine transfer type based on operation and memory types
+TransferType DetermineTransferType(TransferOp operation, MemType local_mem_type, MemType remote_mem_type) {
+  if (operation == TransferOp::READ) {
+    if (local_mem_type == MemType::MEM_HOST && remote_mem_type == MemType::MEM_HOST) {
+      return TransferType::kReadRH2H;
+    }
+    if (local_mem_type == MemType::MEM_HOST && remote_mem_type == MemType::MEM_DEVICE) {
+      return TransferType::kReadRD2H;
+    }
+    if (local_mem_type == MemType::MEM_DEVICE && remote_mem_type == MemType::MEM_HOST) {
+      return TransferType::kReadRH2D;
+    }
+    return TransferType::kReadRD2D;
+  }
+  // WRITE operation
+  if (local_mem_type == MemType::MEM_HOST && remote_mem_type == MemType::MEM_HOST) {
+    return TransferType::kWriteH2RH;
+  }
+  if (local_mem_type == MemType::MEM_HOST && remote_mem_type == MemType::MEM_DEVICE) {
+    return TransferType::kWriteH2RD;
+  }
+  if (local_mem_type == MemType::MEM_DEVICE && remote_mem_type == MemType::MEM_HOST) {
+    return TransferType::kWriteD2RH;
+  }
+  return TransferType::kWriteD2RD;
+}
 }
 
 Status AdxlInnerEngine::ParseWaterlineRatio(const std::map<AscendString, AscendString>& json_options, 
@@ -95,13 +122,31 @@ Status AdxlInnerEngine::ParseFabricMemoryCapacity(const std::map<AscendString, A
                     "Invalid max_fabric_memory_capacity: %s", fabric_mem_it->second.GetString());
     ADXL_CHK_BOOL_RET_STATUS(capacity_tb > 0, PARAM_INVALID,
                             "max_fabric_memory_capacity must be > 0 TB, got %zu", capacity_tb);
-    // Set reasonable upper limit: 1024 TB (1 PB)
     constexpr size_t kMaxCapacityTB = 1024UL;
     ADXL_CHK_BOOL_RET_STATUS(capacity_tb <= kMaxCapacityTB, PARAM_INVALID,
                             "max_fabric_memory_capacity exceeds maximum %zu TB, got %zu",
                             kMaxCapacityTB, capacity_tb);
-    VirtualMemoryManager::GetInstance().SetVirtualMemoryCapacity(capacity_tb);
+    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().SetVirtualMemoryCapacity(capacity_tb),
+                        "Failed to set fabric memory capacity");
     LLMLOGI("Set fabric memory capacity to %zu TB", capacity_tb);
+  }
+  return SUCCESS;
+}
+
+Status AdxlInnerEngine::ParseFabricMemoryStartAddress(const std::map<AscendString, AscendString>& json_options) const {
+  auto start_addr_it = json_options.find(adxl::OPTION_FABRIC_MEMORY_START_ADDRESS_TB);
+  if (start_addr_it != json_options.end()) {
+    size_t start_addr_tb = 0;
+    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(start_addr_it->second.GetString(), start_addr_tb),
+                    "Invalid fabric_memory.start_address: %s", start_addr_it->second.GetString());
+    constexpr size_t kMinStartAddrTB = 40UL;
+    constexpr size_t kMaxStartAddrTB = 220UL;
+    ADXL_CHK_BOOL_RET_STATUS(start_addr_tb >= kMinStartAddrTB && start_addr_tb <= kMaxStartAddrTB, PARAM_INVALID,
+                            "fabric_memory.start_address must be in [%zu, %zu] TB, got %zu",
+                            kMinStartAddrTB, kMaxStartAddrTB, start_addr_tb);
+    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().SetGlobalStartAddress(start_addr_tb),
+                        "Failed to set fabric memory global start address");
+    LLMLOGI("Set fabric memory global start address to %zu TB", start_addr_tb);
   }
   return SUCCESS;
 }
@@ -153,6 +198,7 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, As
 
   ADXL_CHK_STATUS_RET(ParseChannelPoolConfig(json_options), "Failed to parse channel pool config.");
   ADXL_CHK_STATUS_RET(ParseFabricMemoryCapacity(json_options), "Failed to parse fabric memory capacity.");
+  ADXL_CHK_STATUS_RET(ParseFabricMemoryStartAddress(json_options), "Failed to parse fabric memory start address.");
   ADXL_CHK_STATUS_RET(ParseTaskStreamNum(json_options), "Failed to parse task stream num.");
 
   return SUCCESS;
@@ -415,7 +461,7 @@ void AdxlInnerEngine::Disconnect() {
 
 Status AdxlInnerEngine::GetTransferType(const ChannelPtr &channel, TransferOp operation,
                                         const std::vector<TransferOpDesc> &op_descs, bool &need_buffer,
-                                        TransferType &type) {
+                                        TransferType &type) const {
   ADXL_CHK_BOOL_RET_STATUS(segment_table_ != nullptr, FAILED, "Segment table is null.");
   for (size_t i = 0; i < op_descs.size(); i++) {
     auto &op_desc = op_descs[i];
@@ -427,31 +473,12 @@ Status AdxlInnerEngine::GetTransferType(const ChannelPtr &channel, TransferOp op
     MemType remote_mem_type = remote_segment != nullptr ? remote_segment->GetMemType() : MemType::MEM_HOST;
     need_buffer = need_buffer || ((local_segment == nullptr) || (remote_segment == nullptr));
 
-    TransferType cur_type;
-    if (operation == TransferOp::READ) {
-      if (local_mem_type == MemType::MEM_HOST && remote_mem_type == MemType::MEM_HOST) {
-        cur_type = TransferType::kReadRH2H;
-      } else if (local_mem_type == MemType::MEM_HOST && remote_mem_type == MemType::MEM_DEVICE) {
-        cur_type = TransferType::kReadRD2H;
-      } else if (local_mem_type == MemType::MEM_DEVICE && remote_mem_type == MemType::MEM_HOST) {
-        cur_type = TransferType::kReadRH2D;
-      } else {
-        cur_type = TransferType::kReadRD2D;
-      }
-    } else {
-      if (local_mem_type == MemType::MEM_HOST && remote_mem_type == MemType::MEM_HOST) {
-        cur_type = TransferType::kWriteH2RH;
-      } else if (local_mem_type == MemType::MEM_HOST && remote_mem_type == MemType::MEM_DEVICE) {
-        cur_type = TransferType::kWriteH2RD;
-      } else if (local_mem_type == MemType::MEM_DEVICE && remote_mem_type == MemType::MEM_HOST) {
-        cur_type = TransferType::kWriteD2RH;
-      } else {
-        cur_type = TransferType::kWriteD2RD;
-      }
-    }
-    LLMLOGD("Cur transfer type:%d, local mem type:%s, remote mem type:%s.", static_cast<int32_t>(cur_type),
-            hixl::MemTypeToString(static_cast<hixl::MemType>(local_mem_type)).c_str(),
-            hixl::MemTypeToString(static_cast<hixl::MemType>(remote_mem_type)).c_str());
+    TransferType cur_type = DetermineTransferType(operation, local_mem_type, remote_mem_type);
+    LLMLOGD(
+      "Judge transfer type for local_addr:%lu, remote_addr:%lu, len:%lu, local_segment is %s, remote_segment is %s, "
+      "transfer type:%s.",
+      op_desc.local_addr, op_desc.remote_addr, op_desc.len, local_segment ? "found" : "not found",
+      remote_segment ? "found" : "not found", TransferTypeToString(cur_type).c_str());
     if (i > 0) {
       ADXL_CHK_BOOL_RET_STATUS(!need_buffer || (need_buffer && cur_type == type), PARAM_INVALID,
                                "All transfer type need be same in buffer transfer mode.");
@@ -543,7 +570,7 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
     TransferType type = TransferType::kEnd;
     ADXL_CHK_STATUS_RET(GetTransferType(channel, operation, op_descs, need_buffer, type),
                         "Failed to get transfer type.");
-    LLMLOGI("Transfer type is:%d, cost:%lu us.", type,
+    LLMLOGI("Transfer type is:%s, cost:%lu us.", TransferTypeToString(type).c_str(),
             std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
     if (need_buffer) {
       ADXL_CHK_BOOL_RET_STATUS(type != TransferType::kEnd, PARAM_INVALID, "Transfer type is invalid.");

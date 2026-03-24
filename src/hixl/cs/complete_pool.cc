@@ -9,7 +9,6 @@
  */
 
 #include "complete_pool.h"
-#include <cstdint>
 #include <cstdio>
 #include <mutex>
 #include <securec.h>
@@ -19,6 +18,7 @@
 #include "common/llm_utils.h"
 #include "common/scope_guard.h"
 #include "runtime/runtime/rts/rts_device.h"
+#include "proxy/hcomm_proxy.h"
 
 namespace {
 constexpr uint64_t kFlagInitValue = 0ULL;
@@ -234,7 +234,7 @@ Status CompletePool::InitAllSlotsLocked(int32_t device_id, CommEngine engine, ui
 }
 
 Status CompletePool::InitOneSlotLocked(Slot &slot, uint32_t slot_index, int32_t device_id, CommEngine engine,
-                                       uint32_t thread_num, uint32_t notify_num_per_thread) {
+                                       uint32_t thread_num, uint32_t notify_num_per_thread) const {
   HIXL_CHK_STATUS_RET(EnsureContextLocked(slot, device_id), "[CompletePool] EnsureContextLocked failed");
   HIXL_CHK_STATUS_RET(EnsureStreamLocked(slot), "[CompletePool] EnsureStreamLocked failed");
   HIXL_CHK_STATUS_RET(EnsureThreadLocked(slot, engine, thread_num, notify_num_per_thread),
@@ -282,7 +282,7 @@ Status CompletePool::CreateNotifyLocked(Slot &slot, uint32_t &notify_id) {
   return SUCCESS;
 }
 
-Status CompletePool::GetNotifyAddrLocked(uint32_t notify_id, uint64_t &notify_addr, uint32_t &notify_len) const {
+Status CompletePool::GetNotifyAddrLocked(uint32_t notify_id, uint64_t &notify_addr, uint32_t &notify_len) {
   rtDevResInfo res_info{};
   res_info.dieId = 0U;
   res_info.procType = kDefaultProcType;
@@ -303,7 +303,7 @@ Status CompletePool::GetNotifyAddrLocked(uint32_t notify_id, uint64_t &notify_ad
   return SUCCESS;
 }
 
-Status CompletePool::BuildNotifyTagLocked(uint32_t slot_index, std::array<char, kNotifyTagSize> &tag) const {
+Status CompletePool::BuildNotifyTagLocked(uint32_t slot_index, std::array<char, kNotifyTagSize> &tag) {
   tag.fill('\0');
   const int nret =
       snprintf_s(tag.data(), tag.size(), tag.size() - 1U, "%s_%03u", kUbLocalNotifyTagPrefix, slot_index);
@@ -321,7 +321,7 @@ void CompletePool::DeinitAllSlotsLocked() {
   ResetInitParamsLocked();
 }
 
-Status CompletePool::EnsureContextLocked(Slot &slot, int32_t device_id) {
+Status CompletePool::EnsureContextLocked(Slot &slot, int32_t device_id) const {
   if (slot.ctx != nullptr) {
     return SUCCESS;
   }
@@ -331,7 +331,7 @@ Status CompletePool::EnsureContextLocked(Slot &slot, int32_t device_id) {
   return SUCCESS;
 }
 
-Status CompletePool::EnsureStreamLocked(Slot &slot) {
+Status CompletePool::EnsureStreamLocked(Slot &slot) const {
   if (slot.stream != nullptr) {
     return SUCCESS;
   }
@@ -352,15 +352,15 @@ Status CompletePool::EnsureStreamLocked(Slot &slot) {
 }
 
 Status CompletePool::EnsureThreadLocked(Slot &slot, CommEngine engine, uint32_t thread_num,
-                                        uint32_t notify_num_per_thread) {
+                                        uint32_t notify_num_per_thread) const {
   if (slot.thread != 0U) {
     return SUCCESS;
   }
-  HIXL_CHK_HCCL_RET(HcommThreadAlloc(engine, thread_num, notify_num_per_thread, &slot.thread));
+  HIXL_CHK_HCCL_RET(HcommProxy::ThreadAlloc(engine, thread_num, notify_num_per_thread, &slot.thread));
   return SUCCESS;
 }
 
-Status CompletePool::EnsurePinnedHostFlagLocked(Slot &slot) {
+Status CompletePool::EnsurePinnedHostFlagLocked(Slot &slot) const {
   if (slot.host_flag != nullptr) {
     return SUCCESS;
   }
@@ -372,7 +372,7 @@ Status CompletePool::EnsurePinnedHostFlagLocked(Slot &slot) {
   return SUCCESS;
 }
 
-void CompletePool::DestroySlotLocked(Slot &slot) {
+void CompletePool::DestroySlotLocked(Slot &slot) const {
   llm::TemporaryRtContext with_context(slot.ctx);
 
   if (slot.notify != nullptr) {
@@ -380,7 +380,7 @@ void CompletePool::DestroySlotLocked(Slot &slot) {
     slot.notify = nullptr;
   }
   if (slot.thread != 0U) {
-    HIXL_CHK_ACL(HcommThreadFree(&slot.thread, 1U), "HcommThreadFree failed");
+    HIXL_CHK_ACL(HcommProxy::ThreadFree(&slot.thread, 1U), "HcommThreadFree failed");
     slot.thread = 0U;
   }
   if (slot.stream != nullptr) {

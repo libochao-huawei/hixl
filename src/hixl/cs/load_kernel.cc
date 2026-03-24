@@ -10,17 +10,14 @@
 
 #include "load_kernel.h"
 
-#include <cerrno>
 #include <cstdint>
 #include <cstring>
-
 #include <limits.h>
 #include <unistd.h>
 #include "mmpa/mmpa_api.h"
 #include "common/hixl_log.h"
 #include "common/scope_guard.h"
-
-#include <common/hixl_checker.h>
+#include "common/hixl_checker.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096

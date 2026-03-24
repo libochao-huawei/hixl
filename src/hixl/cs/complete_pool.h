@@ -18,7 +18,7 @@
 #include "acl/acl.h"
 #include "common/hixl_checker.h"
 #include "cs/hixl_cs.h"
-#include "hcomm_compat.h"
+#include "proxy/hcomm_compat.h"
 #include "runtime/runtime/rt.h"
 
 namespace hixl {
@@ -75,19 +75,19 @@ class CompletePool {
   void ResetInitParamsLocked();
   void InitFreeListLocked();
   Status InitOneSlotLocked(Slot &slot, uint32_t slot_index, int32_t device_id, CommEngine engine, uint32_t thread_num,
-                           uint32_t notify_num_per_thread);
-  Status EnsureNotifyRecordLocked(Slot &slot, uint32_t slot_index);
-  void ResetNotifyResourcesLocked(Slot &slot);
-  Status CreateNotifyLocked(Slot &slot, uint32_t &notify_id);
-  Status GetNotifyAddrLocked(uint32_t notify_id, uint64_t &notify_addr, uint32_t &notify_len) const;
-  Status BuildNotifyTagLocked(uint32_t slot_index, std::array<char, kNotifyTagSize> &tag) const;
+                           uint32_t notify_num_per_thread) const;
+  static Status EnsureNotifyRecordLocked(Slot &slot, uint32_t slot_index);
+  static void ResetNotifyResourcesLocked(Slot &slot);
+  static Status CreateNotifyLocked(Slot &slot, uint32_t &notify_id);
+  static Status GetNotifyAddrLocked(uint32_t notify_id, uint64_t &notify_addr, uint32_t &notify_len);
+  static Status BuildNotifyTagLocked(uint32_t slot_index, std::array<char, kNotifyTagSize> &tag);
   Status InitAllSlotsLocked(int32_t device_id, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread);
   void DeinitAllSlotsLocked();
-  Status EnsureContextLocked(Slot &slot, int32_t device_id);
-  Status EnsureStreamLocked(Slot &slot);
-  Status EnsureThreadLocked(Slot &slot, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread);
-  Status EnsurePinnedHostFlagLocked(Slot &slot);
-  void DestroySlotLocked(Slot &slot);
+  Status EnsureContextLocked(Slot &slot, int32_t device_id) const;
+  Status EnsureStreamLocked(Slot &slot) const;
+  Status EnsureThreadLocked(Slot &slot, CommEngine engine, uint32_t thread_num, uint32_t notify_num_per_thread) const;
+  Status EnsurePinnedHostFlagLocked(Slot &slot) const;
+  void DestroySlotLocked(Slot &slot) const;
 
  private:
   mutable std::mutex mu_;

@@ -94,7 +94,14 @@ run_pair() {
     if [ "$flag" -eq "0" ] && [ "$has_error" -eq "1" ]; then
         flag=1
         echo -e "Execution failed.\n"
-        rm -rf "${tmp_files[@]}"
+        for tmp in "${tmp_files[@]}"; do
+            abs_path=$(readlink -f "$tmp" 2>/dev/null)
+            [[ -z "$abs_path" ]] && continue
+            if [[ "$abs_path" =~ ^/tmp/tmp\.[0-9a-zA-Z_]+$ && -f "$abs_path" ]]; then
+                rm -f "$abs_path" 
+                echo "Deleted safe temp file: $abs_path"
+            fi
+        done
         exit 1
     fi
 
@@ -102,7 +109,14 @@ run_pair() {
         echo -e "Execution success.\n"
     fi
 
-    rm -rf "${tmp_files[@]}"
+    for tmp in "${tmp_files[@]}"; do
+        abs_path=$(readlink -f "$tmp" 2>/dev/null)
+        [[ -z "$abs_path" ]] && continue
+        if [[ "$abs_path" =~ ^/tmp/tmp\.[0-9a-zA-Z_]+$ && -f "$abs_path" ]]; then
+            rm -f "$abs_path" 
+            echo "Deleted safe temp file: $abs_path"
+        fi
+    done
 }
 
 all_samples() {
@@ -256,7 +270,7 @@ smoke_test_samples() {
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 hixl_tranfer_backend_sample.py --device_id ${device_id_1} --role p --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3 hixl_tranfer_backend_sample.py --device_id ${device_id_2} --role d --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 push_cache_sample.py --device_id ${device_id_1} --role p --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3 push_cache_sample.py --device_id ${device_id_2} --role d --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 switch_role_sample.py --device_id ${device_id_1} --role p --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3 switch_role_sample.py --device_id ${device_id_2} --role d --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1"
-    run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_xpyd_sample.py --device_id ${device_id_1} --role p --local_ip_port 127.0.0.1:16000" "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_xpyd_sample.py --device_id ${device_id_2} --role d --local_ip_port 10.170.10.0:16001 --remote_ip_port 127.0.0.1:16000"
+    run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_xpyd_sample.py --device_id ${device_id_1} --role p --local_ip_port 127.0.0.1:16000" "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_xpyd_sample.py --device_id ${device_id_2} --role d --local_ip_port 127.0.0.1:16001 --remote_ip_port 127.0.0.1:16000"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 transfer_cache_async_sample.py --device_id ${device_id_1} --role p --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3 transfer_cache_async_sample.py --device_id ${device_id_2} --role d --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3.9 pull_cache_sample.py --device_id ${device_id_1} --cluster_id 1 --is_single true --host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3.9 pull_cache_sample.py --device_id ${device_id_2} --cluster_id 2 --is_single true --host_ip 127.0.0.1"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3.9 pull_blocks_sample.py --device_id ${device_id_1} --cluster_id 1 --is_single true --host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3.9 pull_blocks_sample.py --device_id ${device_id_2} --cluster_id 2 --is_single true --host_ip 127.0.0.1"

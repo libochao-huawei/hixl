@@ -28,7 +28,9 @@
 #include "hccl/hcomm_primitives.h"
 #include "load_kernel.h"
 #include "mem_msg_handler.h"
+#include "proxy/hcomm_proxy.h"
 
+namespace hixl {
 namespace {
 constexpr uint32_t kUbThreadNum = 1U;
 constexpr uint32_t kUbNotifyNumPerThread = 1U;
@@ -101,7 +103,7 @@ void CloseImportedBufs(EndpointHandle ep_handle, std::vector<hixl::HixlMemDesc> 
     if (!b.is_imported) {
       continue;
     }
-    const HcclResult ret = HcommMemUnimport(ep_handle, b.export_desc, b.export_len);
+    const HcclResult ret = HcommProxy::MemUnimport(ep_handle, b.export_desc, b.export_len);
     if (ret != HCCL_SUCCESS) {
       HIXL_LOGW("[HixlClient] HcommMemUnimport failed. addr=%p size=%" PRIu64 " ret=0x%X", b.mem.addr, b.mem.size,
                 static_cast<uint32_t>(ret));
@@ -203,7 +205,6 @@ void FreeMemDev(hixl::MemDev &mem_dev) {
 }
 }  // namespace
 
-namespace hixl {
 HixlCSClient::HixlCSClient() : mem_store_() {
   for (size_t i = 0U; i < kFlagQueueSize; ++i) {
     available_indices_[i] = i;
@@ -310,7 +311,8 @@ Status HixlCSClient::InitUbResource() {
     HIXL_CHK_STATUS_RET(ret, "[HixlClient] InitUbConstMemory failed");
     HIXL_LOGI("[HixlClient] UB Device const one initialized at %p on dev %d", ub_dev_const_one_, ub_device_id_);
   }
-  Status pret = CompletePool::GetInstance().AddRefAndInitIfNeeded(ub_device_id_, kUbEngine, kUbThreadNum, kUbNotifyNumPerThread);
+  Status pret =
+      CompletePool::GetInstance().AddRefAndInitIfNeeded(ub_device_id_, kUbEngine, kUbThreadNum, kUbNotifyNumPerThread);
   HIXL_CHK_STATUS_RET(pret, "[HixlClient] CompletePool AddRefAndInitIfNeeded failed. devId=%d", ub_device_id_);
   for (uint32_t i = 0; i < CompletePool::kMaxSlots; ++i) {
     uint64_t notify_addr = 0;
@@ -342,8 +344,8 @@ Status HixlCSClient::Create(const char *server_ip, uint32_t server_port, const E
       "SrcEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x], "
       "DstEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x]",
       server_ip, server_port, local_endpoint->loc.locType, local_endpoint->protocol, local_endpoint->commAddr.type,
-      local_endpoint->commAddr.id, remote_endpoint->loc.locType, remote_endpoint->protocol, remote_endpoint->commAddr.type,
-      remote_endpoint->commAddr.id);
+      local_endpoint->commAddr.id, remote_endpoint->loc.locType, remote_endpoint->protocol,
+      remote_endpoint->commAddr.type, remote_endpoint->commAddr.id);
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(InitBaseClient(server_ip, server_port, *local_endpoint, *remote_endpoint),
                       "[HixlClient] InitBaseClient failed");
@@ -371,8 +373,7 @@ Status HixlCSClient::RegMem(const char *mem_tag, const HcommMem *mem, MemHandle 
   *mem_handle = ep_mem_handle;
   Status ret = mem_store_.RecordMemory(false, mem->addr, mem->size);  // 记录client侧给endpoint分配的内存信息
   if (ret != SUCCESS) {
-    HIXL_LOGE(FAILED,
-              "[HixlClient] Client record memory failed. mem_addr = %p, mem_size = %u",mem->addr, mem->size);
+    HIXL_LOGE(FAILED, "[HixlClient] Client record memory failed. mem_addr = %p, mem_size = %u", mem->addr, mem->size);
     return FAILED;
   }
   HIXL_LOGI("[HixlClient] Memory register success. ");
@@ -389,12 +390,20 @@ int32_t HixlCSClient::AcquireFlagIndex() {
   return available_indices_[top_index_];
 }
 
-Status HixlCSClient::ReleaseCompleteHandle(CompleteHandle *query_handle) {
-  HIXL_CHECK_NOTNULL(query_handle);
+// 释放flag索引
+void HixlCSClient::ReleaseFlagIndex(int32_t flag_index) {
   std::lock_guard<std::mutex> lock(indices_mutex_);
   if (top_index_ < kFlagQueueSize) {
+    available_indices_[top_index_] = flag_index;
+    flag_queue_[flag_index] = kFlagResetValue;  // 将flag重置为0
     ++top_index_;
-    available_indices_[top_index_] = query_handle->flag_index;  // 回收索引
+  }
+}
+
+Status HixlCSClient::ReleaseCompleteHandle(CompleteHandle *query_handle) {
+  HIXL_CHECK_NOTNULL(query_handle);
+  if (top_index_ < kFlagQueueSize) {
+    ReleaseFlagIndex(query_handle->flag_index);
     live_handles_[query_handle->flag_index] = nullptr;
   }
   delete query_handle;
@@ -424,25 +433,24 @@ Status HixlCSClient::BatchTransferTask(bool is_get, const CommunicateMem &commun
   if (is_get) {
     // 批量提交读任务
     for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      hccl_ret =
-          HcommReadNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-                       const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i]);
+      hccl_ret = HcommProxy::ReadNbiOnThread(
+          static_cast<ThreadHandle>(0), client_channel_handle_, communicate_mem_param.dst_buf_list[i],
+          const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i]);
       if (hccl_ret != 0) {
         HIXL_LOGE(FAILED,
-                  "[HixlClient] HcommReadNbi failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
-                  "mem_len is %lu, hccl_ret is %d.",
-                  client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-                  const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i],
-                  hccl_ret);
+            "[HixlClient] HcommReadNbiOnThread failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
+            "mem_len is %lu, hccl_ret is %d.",
+            client_channel_handle_, communicate_mem_param.dst_buf_list[i],
+            const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i], hccl_ret);
         return FAILED;
       }
     }
   } else {
     // 批量提交写任务
     for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
-      hccl_ret =
-          HcommWriteNbi(client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-                        const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i]);
+      hccl_ret = HcommProxy::WriteNbiOnThread(
+          static_cast<ThreadHandle>(0), client_channel_handle_, communicate_mem_param.dst_buf_list[i],
+          const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i]);
       if (hccl_ret != 0) {  // ret值为0时表示执行成功
         HIXL_LOGE(FAILED,
                   "[HixlClient] HcommWriteNbi failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
@@ -455,9 +463,9 @@ Status HixlCSClient::BatchTransferTask(bool is_get, const CommunicateMem &commun
     }
   }
   // 创建内存隔断，等到通道上所有的读任务执行结束后才会接着执行之后创建的读写任务
-  hccl_ret = HcommChannelFence(client_channel_handle_);
+  hccl_ret = HcommProxy::ChannelFenceOnThread(static_cast<ThreadHandle>(0), client_channel_handle_);
   if (hccl_ret != 0) {  // ret值为0时表示执行成功
-    HIXL_LOGE(FAILED, "[HixlClient] HcommChannelFence failed，client_channel_handle_ is %lu, hccl_ret is %d.",
+    HIXL_LOGE(FAILED, "[HixlClient] HcommChannelFenceOnThread failed，client_channel_handle_ is %lu, hccl_ret is %d.",
               client_channel_handle_, hccl_ret);
     return FAILED;
   }
@@ -473,6 +481,8 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem &commun
               "that have been created are completed, and then create new transfer tasks.");
     return RESOURCE_EXHAUSTED;
   }
+  // 使用 scope_guard 自动管理 flag 资源的释放
+  HIXL_DISMISSABLE_GUARD(flag_guard, ([this, flag_index]() { ReleaseFlagIndex(flag_index); }));
   uint64_t *flag_addr = &flag_queue_[flag_index];
   EndpointDesc endpoint = local_endpoint_->GetEndpoint();
   const char *kTransFlagName = nullptr;
@@ -481,32 +491,28 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem &commun
   } else {
     kTransFlagName = kTransFlagNameDevice;
   }
-  int32_t hccl_ret =
-      HcommReadNbi(client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes);
+  int32_t hccl_ret = HcommProxy::ReadNbiOnThread(static_cast<ThreadHandle>(0), client_channel_handle_, flag_addr,
+                                                 tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes);
   if (hccl_ret != 0) {  // ret值为0时表示执行成功
     HIXL_LOGE(FAILED,
-              "[HixlClient] HcommReadNbi failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
-              "mem_len is %lu, hccl_ret is %d.",
-              client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes, hccl_ret);
+        "[HixlClient] HcommReadNbiOnThread failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
+        "mem_len is %lu, hccl_ret is %d.",
+        client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes, hccl_ret);
     return FAILED;
   }
-  CompleteHandle *query_mem_handle = new (std::nothrow) CompleteHandle();
-  if (query_mem_handle != nullptr) {
-    query_mem_handle->magic = kRoceCompleteMagic;
-    query_mem_handle->flag_index = flag_index;
-    query_mem_handle->flag_address = flag_addr;
-    // 需要先创建query_handle实体，之后再传给指针。
-    *query_handle = query_mem_handle;
-    live_handles_[flag_index] = query_mem_handle;
-  } else {
-    if (top_index_ < kFlagQueueSize) {
-      ++top_index_;
-      available_indices_[top_index_] = query_mem_handle->flag_index;  // 回收索引
-      live_handles_[query_mem_handle->flag_index] = nullptr;
-    }
+  auto *query_mem_handle = new (std::nothrow) CompleteHandle();
+  if (query_mem_handle == nullptr) {
     HIXL_LOGE(FAILED, "Memory allocate failed; unable to generate query handle.");
     return FAILED;
   }
+  query_mem_handle->magic = kRoceCompleteMagic;
+  query_mem_handle->flag_index = flag_index;
+  query_mem_handle->flag_address = flag_addr;
+  // 需要先创建query_handle实体，之后再传给指针。
+  *query_handle = query_mem_handle;
+  live_handles_[flag_index] = query_mem_handle;
+  // 成功后 dismiss guard，避免重复释放
+  HIXL_DISMISS_GUARD(flag_guard);
   return SUCCESS;
 }
 
@@ -644,7 +650,7 @@ Status HixlCSClient::FillUbBatchArgs(const CommunicateMem &mem_param, MemDev &me
   return SUCCESS;
 }
 
-Status HixlCSClient::LaunchUbAndStage(bool is_get, UbCompleteHandle &handle, void *remote_flag) {
+Status HixlCSClient::LaunchUbAndStage(bool is_get, UbCompleteHandle &handle, const void *remote_flag) {
   HIXL_CHECK_NOTNULL(remote_flag);
   const char *kernel_name = is_get ? kUbFuncGet : kUbFuncPut;
   HIXL_LOGI("[HixlClient] LaunchUbAndStageD2H start. kernel=%s", kernel_name);
@@ -710,9 +716,10 @@ Status HixlCSClient::BatchTransferDevice(bool is_get, const CommunicateMem &comm
   HIXL_LOGI("[HixlClient] communicate_mem_param.len_list=%p", communicate_mem_param.len_list);
   void *remote_flag = nullptr;
   HIXL_CHK_STATUS_RET(PrepareUbRemoteFlagAndKernel(remote_flag), "PrepareUbRemoteFlagAndKernel failed");
-  UbCompleteHandle *handle = new (std::nothrow) UbCompleteHandle();
+  auto *handle = new (std::nothrow) UbCompleteHandle();
   if (handle == nullptr) {
     HIXL_LOGE(FAILED, "[HixlClient][UB] new UbCompleteHandle failed");
+    // RAII guards (slot_guard, mem_guard) will automatically clean up resources on return
     return FAILED;
   }
   HIXL_DISMISSABLE_GUARD(handle_guard, [handle]() { delete handle; });
@@ -771,7 +778,6 @@ Status HixlCSClient::CheckStatusHost(CompleteHandle &query_handle, HixlCompleteS
   HIXL_CHECK_NOTNULL(atomic_flag);
   // 查到flag变成1之后，就把其重置为0，之后告知用户读写任务已经完成。
   if (*atomic_flag == kFlagDoneValue) {
-    *atomic_flag = kFlagResetValue;
     status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED;
     HIXL_LOGI("The current transmission task has been completed.");
     return ReleaseCompleteHandle(&query_handle);  // 释放内存并回收索引
@@ -845,7 +851,7 @@ Status HixlCSClient::UnRegMem(MemHandle mem_handle) {
     Status ret = mem_store_.UnrecordMemory(false, desc.mem.addr);  // 删掉记录中client侧给endpoint分配的内存信息
     if (ret != SUCCESS) {
       HIXL_LOGE(FAILED,
-                "[HixlClient] Client record memory failed. mem_addr = %p",desc.mem.addr);
+                "[HixlClient] Client record memory failed. mem_addr = %p", desc.mem.addr);
       return FAILED;
     }
     return SUCCESS;
@@ -1019,7 +1025,6 @@ void HixlCSClient::ReleaseLegacyHandlesLocked() {
         live_handles_[i] = nullptr;
       }
     }
-    top_index_ = 0U;
     for (size_t i = 0U; i < kFlagQueueSize; ++i) {
       available_indices_[i] = static_cast<int32_t>(i);
     }

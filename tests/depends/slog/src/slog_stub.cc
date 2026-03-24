@@ -1,10 +1,10 @@
 /**
- * This program is free software, you can redistribute it and/or modify it.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -18,6 +18,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <iostream>
 
 namespace llm {
 int ge_log_level = DLOG_ERROR;
@@ -126,6 +127,63 @@ int SlogStub::Format(char *buff, size_t buff_len, int module_id, int level, cons
   pos += len;
   // 按照原来的实现，这里有一个裁掉目录，仅保存文件名的步骤，原地打印后，没法使用原来的机制了，所以重写一个。。。
   return EraseFolderFromPath(buff, pos);
+}
+
+
+LogCaptureStub::LogCaptureStub() {
+}
+ 
+LogCaptureStub::~LogCaptureStub() {
+}
+ 
+void LogCaptureStub::Log(int module_id, int level, const char *fmt, va_list args) {
+  char buff[2048] = {0};
+  if (Format(buff, sizeof(buff), module_id, level, fmt, args) > 0) {
+    std::string log_msg(buff);
+    captured_logs_.push_back(log_msg);
+    
+    // 检查是否匹配任何捕获模式
+    for (size_t i = 0; i < capture_patterns_.size(); ++i) {
+      if (log_msg.find(capture_patterns_[i]) != std::string::npos) {
+        pattern_captured_[i] = true;
+        std::cout << log_msg << std::endl;
+      }
+    }
+  }
+}
+ 
+void LogCaptureStub::AddCapturePattern(const std::string &pattern) {
+  capture_patterns_.push_back(pattern);
+  pattern_captured_.push_back(false);
+}
+ 
+bool LogCaptureStub::IsPatternCaptured(const std::string &pattern) const {
+  if (pattern.empty()) {
+    // 检查是否有任何模式被捕获
+    for (bool captured : pattern_captured_) {
+      if (captured) {
+        return true;
+      }
+    }
+    return false;
+  } else {
+    // 检查指定模式是否被捕获
+    for (size_t i = 0; i < capture_patterns_.size(); ++i) {
+      if (capture_patterns_[i] == pattern && pattern_captured_[i]) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+ 
+const std::vector<std::string> &LogCaptureStub::GetCapturedLogs() const {
+  return captured_logs_;
+}
+ 
+void LogCaptureStub::Reset() {
+  captured_logs_.clear();
+  pattern_captured_.assign(capture_patterns_.size(), false);
 }
 }  // namespace llm
 

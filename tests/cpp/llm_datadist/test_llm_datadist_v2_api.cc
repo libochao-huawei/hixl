@@ -1,10 +1,10 @@
 /**
- * This program is free software, you can redistribute it and/or modify it.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This file is a part of the CANN Open Software.
- * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -479,6 +479,37 @@ TEST_F(LlmDataDistSTest, TestUseHixlBackendA5) {
   llm::AutoCommResRuntimeMock::SetDevice(1);
   EXPECT_EQ(llm_datadist_d.Initialize(options_d), SUCCESS);
   TestPullKv(llm_datadist_p, llm_datadist_d);
+  llm_datadist_p.Finalize();
+  llm_datadist_d.Finalize();
+}
+
+TEST_F(LlmDataDistSTest, TestUseHixlBackendA3RepeatedInit) {
+  LlmDataDist llm_datadist_p(1U, LlmRole::kPrompt);
+  std::map<AscendString, AscendString> options_p;
+  options_p[llm_datadist::OPTION_LISTEN_IP_INFO] = "127.0.0.1:26000";
+  options_p[llm_datadist::OPTION_DEVICE_ID] = "0";
+  options_p[llm_datadist::OPTION_TRANSFER_BACKEND] = "hixl";
+
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  EXPECT_EQ(llm_datadist_p.Initialize(options_p), SUCCESS);
+
+  LlmDataDist llm_datadist_d(2U, LlmRole::kDecoder);
+  std::map<AscendString, AscendString> options_d;
+  options_d[llm_datadist::OPTION_LISTEN_IP_INFO] = "127.0.0.1:26001";
+  options_d[llm_datadist::OPTION_DEVICE_ID] = "1";
+  options_d[llm_datadist::OPTION_TRANSFER_BACKEND] = "hixl";
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  EXPECT_EQ(llm_datadist_d.Initialize(options_d), SUCCESS);
+
+  // link
+  ClusterInfo cluster_info{1, 0, {{"127.0.0.1", 26000}}, {{"127.0.0.1", 26000}}};
+  std::vector<ge::Status> rets;
+  EXPECT_EQ(llm_datadist_d.LinkLlmClusters({cluster_info}, rets), ge::SUCCESS);
+
+  // repeat link
+  EXPECT_EQ(llm_datadist_d.LinkLlmClusters({cluster_info}, rets), LLM_ALREADY_LINK);
+
   llm_datadist_p.Finalize();
   llm_datadist_d.Finalize();
 }

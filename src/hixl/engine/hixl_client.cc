@@ -98,7 +98,7 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
   return SUCCESS;
 }
 
-Status HixlClient::SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) {
+Status HixlClient::SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const {
   CtrlMsgHeader header{};
   header.magic = kMagicNumber;
   header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType));
@@ -109,7 +109,7 @@ Status HixlClient::SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) {
   return SUCCESS;
 }
 
-Status HixlClient::RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) {
+Status HixlClient::RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const {
   CtrlMsgHeader header{};
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, &header, static_cast<uint32_t>(sizeof(header)), kCtrlMsgPluginTimeoutMs),
                       "HixlClient receive header failed, fd:%d", fd);
@@ -290,7 +290,7 @@ Status HixlClient::TryMatchUbEndpoints(const EndpointConfig &local_endpoint,
 }
 
 // 解析通信类型
-CommType HixlClient::ParseCommType(const std::string &local_placement, const std::string &remote_placement) {
+CommType HixlClient::ParseCommType(const std::string &local_placement, const std::string &remote_placement) const {
   if (local_placement == kPlacementDevice && remote_placement == kPlacementDevice) {
     return CommType::COMM_TYPE_UB_D2D;
   } else if (local_placement == kPlacementDevice && remote_placement == kPlacementHost) {
@@ -424,7 +424,7 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
     return FAILED;
   }
 
-  HIXL_LOGI("HixlClient connect start, timeout:%u", timeout_ms);
+  HIXL_LOGI("HixlClient connect start, timeout:%u ms", timeout_ms);
   ThreadPool thread_pool("hixl_client_connect", client_handles_.size());
   std::vector<std::future<Status>> connect_futures;
   aclrtContext context = nullptr;
@@ -438,7 +438,7 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
       HIXL_LOGI("HixlClient aclrtSetCurrentContext, context: %p", context);
       try {
         HIXL_CHK_STATUS_RET(HixlCSClientConnect(handle, timeout_ms),
-                            "HixlClient Connect failed for type:%s, client_handle: %p, timeout:%u",
+                            "HixlClient Connect failed for type:%s, client_handle: %p, timeout:%u ms",
                             CommTypeToString(type), handle, timeout_ms);
         return SUCCESS;
       } catch (const std::exception &e) {
@@ -452,11 +452,11 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
     connect_futures.emplace_back(std::move(future));
   }
   for (auto &future : connect_futures) {
-    HIXL_CHK_STATUS_RET(future.get(), "HixlClient Connect failed, timeout:%u", timeout_ms);
+    HIXL_CHK_STATUS_RET(future.get(), "HixlClient Connect failed, timeout:%u ms", timeout_ms);
   }
-  HIXL_LOGI("HixlClient Connect success, timeout:%u", timeout_ms);
+  HIXL_LOGI("HixlClient Connect success, timeout:%u ms", timeout_ms);
 
-  HIXL_CHK_STATUS_RET(ProcessRemoteMem(timeout_ms), "HixlClient ProcessRemoteMem failed, timeout:%u", timeout_ms);
+  HIXL_CHK_STATUS_RET(ProcessRemoteMem(timeout_ms), "HixlClient ProcessRemoteMem failed, timeout:%u ms", timeout_ms);
   std::lock_guard<std::mutex> status_lock(status_mutex_);
   is_connected_ = true;
   return SUCCESS;
@@ -581,7 +581,7 @@ Status HixlClient::UnregisterMemToCsClient(CommType type, const std::vector<MemH
   return ret;
 }
 
-Status HixlClient::GetMemType(const std::vector<SegmentPtr> &segments, uintptr_t addr, size_t len, MemType &mem_type) {
+Status HixlClient::GetMemType(const std::vector<SegmentPtr> &segments, uintptr_t addr, size_t len, MemType &mem_type) const {
   for (const auto &segment : segments) {
     if (segment->Contains(addr, addr + len)) {
       mem_type = segment->GetMemType();
@@ -599,8 +599,8 @@ Status HixlClient::ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs
     {
       std::lock_guard<std::mutex> lock(local_segments_mutex_);
       if (GetMemType(local_segments_, op_desc.local_addr, op_desc.len, local_mem_type) != SUCCESS) {
-        HIXL_LOGE(PARAM_INVALID, "Local memory range does not register, start:0x%lx, end:0x%lx", op_desc.local_addr,
-                  op_desc.local_addr + op_desc.len);
+        HIXL_LOGE(PARAM_INVALID, "Local memory range does not register before connection: start:0x%lx, end:0x%lx",
+                  op_desc.local_addr, op_desc.local_addr + op_desc.len);
         return PARAM_INVALID;
       }
     }
@@ -608,8 +608,8 @@ Status HixlClient::ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs
     {
       std::lock_guard<std::mutex> lock(remote_segments_mutex_);
       if (GetMemType(remote_segments_, op_desc.remote_addr, op_desc.len, remote_mem_type) != SUCCESS) {
-        HIXL_LOGE(PARAM_INVALID, "Remote memory range does not register, start:0x%lx, end:0x%lx", op_desc.remote_addr,
-                  op_desc.remote_addr + op_desc.len);
+        HIXL_LOGE(PARAM_INVALID, "Remote memory range does not register before connection: start:0x%lx, end:0x%lx",
+                  op_desc.remote_addr, op_desc.remote_addr + op_desc.len);
         return PARAM_INVALID;
       }
     }

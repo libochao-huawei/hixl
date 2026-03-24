@@ -17,6 +17,7 @@
 #include "cs/hixl_cs.h"
 #include "hccl/hccl_types.h"
 #include "hixl/hixl_types.h"
+#include "adxl/adxl_types.h"
 #include "hixl_checker.h"
 #include "hixl_inner_types.h"
 
@@ -57,13 +58,15 @@ Status ParseIpAddress(const std::string &ip_str, CommAddr &addr);
 
 Status CheckIp(const std::string &ip);
 
+Status CheckOptions(const std::map<AscendString, AscendString> &options);
+
 std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char delim);
 
 Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, int32_t &listen_port);
 
 Status ParseEidAddress(const std::string &eid_str, CommAddr &addr);
 
-Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t devPhyId = 0);
+Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t dev_phy_id = 0);
 
 Status CheckAddrOverlap(const AddrInfo &cur_info, const std::map<MemHandle, AddrInfo> &addr_map, bool &is_duplicate,
                         MemHandle &existing_handle);
