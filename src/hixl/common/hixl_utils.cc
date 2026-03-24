@@ -167,7 +167,8 @@ Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc
 
   static const std::map<std::string, CommProtocol> protocol_map = {{kProtocolRoce, COMM_PROTOCOL_ROCE},
                                                                    {kProtocolUbCtp, COMM_PROTOCOL_UBC_CTP},
-                                                                   {kProtocolUbTp, COMM_PROTOCOL_UBC_TP}};
+                                                                   {kProtocolUbTp, COMM_PROTOCOL_UBC_TP},
+                                                                   {kProtocolHccs, COMM_PROTOCOL_HCCS}};
 
   // 处理placement
   auto placement_it = placement_map.find(endpoint_config.placement);
@@ -185,9 +186,66 @@ Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc
   }
   endpoint.protocol = protocol_it->second;
 
-  // 处理ROCE协议的comm_id
+  // A5 场景保持 host roce 原逻辑；A2/A3 的 device roce 补充 device_info
   if (endpoint_config.protocol == kProtocolRoce) {
     HIXL_CHK_STATUS_RET(ParseIpAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseIpAddress failed");
+    if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
+      endpoint.loc.device.devPhyId = (endpoint_config.device_info.phy_device_id >= 0)
+                                         ? static_cast<uint32_t>(endpoint_config.device_info.phy_device_id)
+                                         : dev_phy_id;
+      endpoint.loc.device.superDevId = 0U;
+      endpoint.loc.device.superPodIdx = 0U;
+      endpoint.loc.device.serverIdx = 0U;
+
+      if (endpoint_config.device_info.super_device_id >= 0) {
+        HIXL_CHK_BOOL_RET_STATUS(
+            endpoint_config.device_info.super_device_id <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+            PARAM_INVALID, "super_device_id out of range: %" PRId64, endpoint_config.device_info.super_device_id);
+        endpoint.loc.device.superDevId = static_cast<uint32_t>(endpoint_config.device_info.super_device_id);
+      }
+
+      if (endpoint_config.device_info.super_pod_id >= 0) {
+        HIXL_CHK_BOOL_RET_STATUS(
+            endpoint_config.device_info.super_pod_id <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+            PARAM_INVALID, "super_pod_id out of range: %" PRId64, endpoint_config.device_info.super_pod_id);
+        endpoint.loc.device.superPodIdx = static_cast<uint32_t>(endpoint_config.device_info.super_pod_id);
+      }
+    }
+    return SUCCESS;
+  }
+
+  if (endpoint_config.protocol == kProtocolHccs) {
+    uint64_t device_id = 0;
+    try {
+      device_id = std::stoull(endpoint_config.comm_id);
+    } catch (const std::exception &e) {
+      HIXL_LOGE(PARAM_INVALID, "Parse hccs comm_id failed, comm_id:%s, exception:%s", endpoint_config.comm_id.c_str(),
+                e.what());
+      return PARAM_INVALID;
+    }
+    endpoint.commAddr.id = device_id;
+    if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
+      endpoint.loc.device.devPhyId = (endpoint_config.device_info.phy_device_id >= 0)
+                                         ? static_cast<uint32_t>(endpoint_config.device_info.phy_device_id)
+                                         : dev_phy_id;
+      endpoint.loc.device.superDevId = 0U;
+      endpoint.loc.device.superPodIdx = 0U;
+      endpoint.loc.device.serverIdx = 0U;
+
+      if (endpoint_config.device_info.super_device_id >= 0) {
+        HIXL_CHK_BOOL_RET_STATUS(
+            endpoint_config.device_info.super_device_id <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+            PARAM_INVALID, "super_device_id out of range: %" PRId64, endpoint_config.device_info.super_device_id);
+        endpoint.loc.device.superDevId = static_cast<uint32_t>(endpoint_config.device_info.super_device_id);
+      }
+
+      if (endpoint_config.device_info.super_pod_id >= 0) {
+        HIXL_CHK_BOOL_RET_STATUS(
+            endpoint_config.device_info.super_pod_id <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+            PARAM_INVALID, "super_pod_id out of range: %" PRId64, endpoint_config.device_info.super_pod_id);
+        endpoint.loc.device.superPodIdx = static_cast<uint32_t>(endpoint_config.device_info.super_pod_id);
+      }
+    }
     return SUCCESS;
   }
 
@@ -200,6 +258,7 @@ Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc
     }
     return SUCCESS;
   }
+
   return SUCCESS;
 }
 
@@ -238,6 +297,13 @@ Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std:
       item["plane"] = ep.plane;
       item["dst_eid"] = ep.dst_eid;
       item["net_instance_id"] = ep.net_instance_id;
+
+      nlohmann::json device_info;
+      device_info["phy_device_id"] = ep.device_info.phy_device_id;
+      device_info["super_device_id"] = ep.device_info.super_device_id;
+      device_info["super_pod_id"] = ep.device_info.super_pod_id;
+      item["device_info"] = device_info;
+
       j.push_back(item);
     }
     msg_str = j.dump();

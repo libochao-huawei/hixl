@@ -13,7 +13,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "ascendcl_stub.h"
+#define private public
 #include "engine/hixl_engine.h"
+#undef private
 #include "hixl/hixl_types.h"
 #include "cs/hixl_cs_client.h"
 #include "hixl/hixl.h"
@@ -25,6 +28,53 @@ constexpr const int32_t kTimeOut = 1000;
 constexpr const int32_t kMaxRetryCount = 10;
 constexpr const int32_t kInterval = 10;
 }
+
+class MockEngineAclRuntimeStub : public llm::AclRuntimeStub {
+public:
+  std::string soc_name_ = "Ascend910B1";
+  int32_t device_id_ = 0;
+  int32_t phy_device_id_ = 0;
+  int64_t super_pod_id_ = 8;
+  int64_t super_device_id_ = 9;
+
+  const char *aclrtGetSocName() override {
+    return soc_name_.c_str();
+  }
+
+  aclError aclrtGetDevice(int32_t *deviceId) override {
+    if (deviceId == nullptr) {
+      return ACL_ERROR_FAILURE;
+    }
+    *deviceId = device_id_;
+    return ACL_SUCCESS;
+  }
+
+  aclError aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, int32_t *const phyDevId) override {
+    (void)logicDevId;
+    if (phyDevId == nullptr) {
+      return ACL_ERROR_FAILURE;
+    }
+    *phyDevId = phy_device_id_;
+    return ACL_SUCCESS;
+  }
+
+  aclError aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value) override {
+    (void)deviceId;
+    if (value == nullptr) {
+      return ACL_ERROR_FAILURE;
+    }
+    if (attr == ACL_DEV_ATTR_SUPER_POD_ID) {
+      *value = super_pod_id_;
+      return ACL_SUCCESS;
+    }
+    if (attr == ACL_DEV_ATTR_SUPER_POD_DEVIDE_ID) {
+      *value = super_device_id_;
+      return ACL_SUCCESS;
+    }
+    *value = 0;
+    return ACL_SUCCESS;
+  }
+};
 
 class HixlEngineTest : public ::testing::Test {
  protected:
@@ -72,13 +122,34 @@ class HixlEngineTest : public ::testing::Test {
     )";
   }
 
-  void TearDown() override {}
+  void TearDown() override {
+    llm::AclRuntimeStub::Reset();
+  }
 
   void Register(HixlEngine &engine, int32_t *ptr, MemHandle &handle) {
     MemDesc mem{};
     mem.addr = reinterpret_cast<uintptr_t>(ptr);
     mem.len = sizeof(int32_t);
     EXPECT_EQ(engine.RegisterMem(mem, MEM_DEVICE, handle), SUCCESS);
+  }
+
+  std::shared_ptr<MockEngineAclRuntimeStub> acl_stub_;
+
+  void SetSocStub(const std::string &soc_name, int32_t device_id, int32_t phy_device_id,
+                  int64_t super_device_id, int64_t super_pod_id) {
+    acl_stub_ = std::make_shared<MockEngineAclRuntimeStub>();
+    acl_stub_->soc_name_ = soc_name;
+    acl_stub_->device_id_ = device_id;
+    acl_stub_->phy_device_id_ = phy_device_id;
+    acl_stub_->super_device_id_ = super_device_id;
+    acl_stub_->super_pod_id_ = super_pod_id;
+    llm::AclRuntimeStub::SetInstance(acl_stub_);
+  }
+
+  std::map<AscendString, AscendString> BuildOptions(const std::string &local_comm_res) {
+    std::map<AscendString, AscendString> options;
+    options[adxl::OPTION_LOCAL_COMM_RES] = AscendString(local_comm_res.c_str());
+    return options;
   }
 
  private:
@@ -354,5 +425,152 @@ TEST_F(HixlEngineTest, TestSendAndGetNotifies) {
   EXPECT_EQ(engine2.GetNotifies(notifies), UNSUPPORTED);
   engine1.Finalize();
   engine2.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestInitializeFillDeviceInfoForA2FullConfigured) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88);
+
+  const std::string local_comm_res = R"(
+  {
+    "net_instance_id": "sp_a2",
+    "endpoint_list": [
+      {
+        "protocol": "roce",
+        "comm_id": "127.0.0.1",
+        "placement": "device"
+      },
+      {
+        "protocol": "hccs",
+        "comm_id": "5",
+        "placement": "device"
+      }
+    ],
+    "version": "1.3"
+  }
+  )";
+
+  HixlEngine engine("127.0.0.1");
+  auto options = BuildOptions(local_comm_res);
+  EXPECT_EQ(engine.Initialize(options), SUCCESS);
+  ASSERT_EQ(engine.endpoint_list_.size(), 2U);
+
+  for (const auto &ep : engine.endpoint_list_) {
+    EXPECT_EQ(ep.placement, kPlacementDevice);
+    EXPECT_EQ(ep.device_info.phy_device_id, 12);
+    EXPECT_EQ(ep.device_info.super_device_id, -1);
+    EXPECT_EQ(ep.device_info.super_pod_id, -1);
+  }
+
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestInitializeFillDeviceInfoForA3FullConfigured) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+
+  const std::string local_comm_res = R"(
+  {
+    "net_instance_id": "sp_a3",
+    "endpoint_list": [
+      {
+        "protocol": "roce",
+        "comm_id": "127.0.0.1",
+        "placement": "device"
+      },
+      {
+        "protocol": "hccs",
+        "comm_id": "7",
+        "placement": "device"
+      }
+    ],
+    "version": "1.3"
+  }
+  )";
+
+  HixlEngine engine("127.0.0.1");
+  auto options = BuildOptions(local_comm_res);
+  EXPECT_EQ(engine.Initialize(options), SUCCESS);
+  ASSERT_EQ(engine.endpoint_list_.size(), 2U);
+
+  for (const auto &ep : engine.endpoint_list_) {
+    EXPECT_EQ(ep.placement, kPlacementDevice);
+    EXPECT_EQ(ep.device_info.phy_device_id, 23);
+    EXPECT_EQ(ep.device_info.super_device_id, 45);
+    EXPECT_EQ(ep.device_info.super_pod_id, 67);
+  }
+
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestInitializeDoNotFillDeviceInfoWhenVersionIsNot13) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+
+  const std::string local_comm_res = R"(
+  {
+    "net_instance_id": "sp_old",
+    "endpoint_list": [
+      {
+        "protocol": "roce",
+        "comm_id": "127.0.0.1",
+        "placement": "device"
+      }
+    ],
+    "version": "1.2"
+  }
+  )";
+
+  HixlEngine engine("127.0.0.1");
+  auto options = BuildOptions(local_comm_res);
+  EXPECT_EQ(engine.Initialize(options), SUCCESS);
+  ASSERT_EQ(engine.endpoint_list_.size(), 1U);
+
+  const auto &ep = engine.endpoint_list_[0];
+  EXPECT_EQ(ep.placement, kPlacementDevice);
+  EXPECT_EQ(ep.device_info.phy_device_id, -1);
+  EXPECT_EQ(ep.device_info.super_device_id, -1);
+  EXPECT_EQ(ep.device_info.super_pod_id, -1);
+
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestInitializeFillDeviceInfoOnlyForDevicePlacement) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+
+  const std::string local_comm_res = R"(
+  {
+    "net_instance_id": "sp_mix",
+    "endpoint_list": [
+      {
+        "protocol": "roce",
+        "comm_id": "127.0.0.1",
+        "placement": "host"
+      },
+      {
+        "protocol": "hccs",
+        "comm_id": "7",
+        "placement": "device"
+      }
+    ],
+    "version": "1.3"
+  }
+  )";
+
+  HixlEngine engine("127.0.0.1");
+  auto options = BuildOptions(local_comm_res);
+  EXPECT_EQ(engine.Initialize(options), SUCCESS);
+  ASSERT_EQ(engine.endpoint_list_.size(), 2U);
+
+  const auto &host_ep = engine.endpoint_list_[0];
+  EXPECT_EQ(host_ep.placement, kPlacementHost);
+  EXPECT_EQ(host_ep.device_info.phy_device_id, -1);
+  EXPECT_EQ(host_ep.device_info.super_device_id, -1);
+  EXPECT_EQ(host_ep.device_info.super_pod_id, -1);
+
+  const auto &device_ep = engine.endpoint_list_[1];
+  EXPECT_EQ(device_ep.placement, kPlacementDevice);
+  EXPECT_EQ(device_ep.device_info.phy_device_id, 23);
+  EXPECT_EQ(device_ep.device_info.super_device_id, 45);
+  EXPECT_EQ(device_ep.device_info.super_pod_id, 67);
+
+  engine.Finalize();
 }
 }  // namespace hixl
