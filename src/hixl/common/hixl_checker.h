@@ -111,7 +111,7 @@ inline hixl::Status ConvertAclRetToStatus(int32_t acl_ret) {
 
 #define HIXL_CHK_HCCL(expr)                                                                          \
   do {                                                                                               \
-    const HcclResult _ret = (expr);                                                                  \
+    const HcclResult _ret = (expr);                                          \
     if (_ret != HCCL_SUCCESS) {                                                                      \
       REPORT_INNER_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_ret)); \
       const auto _hixl_ret = hixl::HcclError2Status(_ret);                                           \
