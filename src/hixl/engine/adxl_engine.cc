@@ -9,6 +9,8 @@
  */
 
 #include "adxl_engine.h"
+#include "profiling/prof_api_reg.h"
+#include "common/hixl_log.h"
 
 namespace hixl {
 Status AdxlEngine::Initialize(const std::map<AscendString, AscendString> &options) {
@@ -52,6 +54,8 @@ Status AdxlEngine::TransferSync(const AscendString &remote_engine, TransferOp op
   for (const auto &op_desc : op_descs) {
     adxl_op_descs.emplace_back(adxl::TransferOpDesc{op_desc.local_addr, op_desc.remote_addr, op_desc.len});
   }
+  HixlProfType type = (operation == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
+  HIXL_API_PROFILING(type);
   return adxl_inner_engine_.TransferSync(remote_engine, adxl_operation, adxl_op_descs, timeout_in_millis);
 }
 
@@ -65,13 +69,35 @@ Status AdxlEngine::TransferAsync(const AscendString &remote_engine, TransferOp o
     adxl_op_descs.emplace_back(adxl::TransferOpDesc{op_desc.local_addr, op_desc.remote_addr, op_desc.len});
   }
   adxl::TransferArgs adxl_optional_args;
-  return adxl_inner_engine_.TransferAsync(remote_engine, adxl_operation, adxl_op_descs, adxl_optional_args, req);
+  auto ret = adxl_inner_engine_.TransferAsync(remote_engine, adxl_operation, adxl_op_descs, adxl_optional_args, req);
+  auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
+  uint64_t start_time = 0;
+  start_time = HixlProfilingReporter::GetSysCycleTime();
+  TransferInfo transfer_info = {start_time, operation, remote_engine};
+  std::lock_guard<std::mutex> lock(mutex_);
+  req_map_.emplace(id, transfer_info);
+  return ret;
 }
 
 Status AdxlEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
+  auto it = req_map_.find(id);
+  if (it == req_map_.cend()) {
+    status = TransferStatus::FAILED;
+    HIXL_LOGE(PARAM_INVALID, "[HixlEngine] Request not found, request has been completed or does not exist, req: %p", req);
+    return PARAM_INVALID;
+  }
   adxl::TransferStatus adxl_status;
   auto ret = adxl_inner_engine_.GetTransferStatus(req, adxl_status);
   status = static_cast<hixl::TransferStatus>(adxl_status);
+  if (status == TransferStatus::COMPLETED) {
+    auto op_type = it->second.op_type;
+    auto start_time = it->second.start_time;
+    HixlProfType type = (op_type == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
+    HIXL_API_PROFILING_WITH_TIME(type, start_time);
+    req_map_.erase(it);
+  }
   return ret;
 }
 
