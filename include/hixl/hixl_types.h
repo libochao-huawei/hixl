@@ -83,6 +83,12 @@ struct NotifyDesc {
   AscendString name;
   AscendString notify_msg;
 };
+
+struct TransferInfo {
+  uint64_t start_time;
+  TransferOp op_type;
+  AscendString remote_engine;
+};
 }  // namespace hixl
 
 #endif  // CANN_HIXL_INCLUDE_HIXL_HIXL_TYPES_H_
