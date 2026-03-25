@@ -136,20 +136,22 @@ Status Channel::ClearResources() {
     const auto &async_resources = transfer_req.second.async_resources;
     ADXL_CHK_BOOL_RET_STATUS(!async_resources.empty(), FAILED, "Failed to get request async resources, req:%lu.",
                              transfer_req.first);
-    aclrtEvent event = async_resources[0].first;
-    aclrtStream stream = async_resources[0].second;
-    if (event != nullptr) {
-      auto aclrt_ret = aclrtDestroyEvent(event);
-      if (aclrt_ret != ACL_ERROR_NONE) {
-        LLMLOGE(FAILED, "Call aclrtDestroyEvent ret:%d.", aclrt_ret);
-        ret = FAILED;
+    for (const auto &async_resource : async_resources) {
+      aclrtStream stream = async_resource.first;
+      aclrtEvent event = async_resource.second;
+      if (event != nullptr) {
+        auto aclrt_ret = aclrtDestroyEvent(event);
+        if (aclrt_ret != ACL_ERROR_NONE) {
+          LLMLOGE(FAILED, "Call aclrtDestroyEvent ret:%d.", aclrt_ret);
+          ret = FAILED;
+        }
+      }
+      if (stream != nullptr) {
+        stream_pool_->DestroyStream(stream);
       }
     }
-    //during exceptional scenarios, destroy the stream when destroying the channel.
-    if (stream != nullptr) {
-      stream_pool_->DestroyStream(stream);
-    }
   }
+  req_2_async_record_.clear();
   return ret;
 }
 
@@ -216,25 +218,33 @@ Status Channel::TransferAsync(TransferOp operation,
                               const TransferArgs &optional_args,
                               TransferReq &req) {
   (void)optional_args;
-  aclrtStream stream = nullptr;
-  ADXL_CHK_STATUS_RET(stream_pool_->TryAllocStream(stream), "Stream pool get stream failed.");
+  aclrtStream record_stream = nullptr;
+  aclrtStream work_stream = nullptr;
+  ADXL_CHK_STATUS_RET(stream_pool_->TryAllocStream(record_stream), "Record stream pool get stream failed.");
+  ADXL_CHK_STATUS_RET(stream_pool_->TryAllocStream(work_stream), "Work stream pool get stream failed.");
   auto id = reinterpret_cast<uint64_t>(req);
   aclrtEvent event = nullptr;
   LLM_DISMISSABLE_GUARD(fail_guard, ([&]() {
     if (event != nullptr) {
       aclrtDestroyEvent(event);
     }
-    if (stream != nullptr) {
-      stream_pool_->DestroyStream(stream);
+    if (record_stream != nullptr) {
+      stream_pool_->DestroyStream(record_stream);
+    }
+    if (work_stream != nullptr) {
+      stream_pool_->DestroyStream(work_stream);
     }
   }));
   const auto transfer_start = std::chrono::steady_clock::now();
-  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream), "Channel transfer async failed.");
+  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, work_stream), "Channel transfer async failed.");
   LLM_CHK_ACL_RET(aclrtCreateEvent(&event));
-  LLM_CHK_ACL_RET(aclrtRecordEvent(event, stream));
+  LLM_CHK_ACL_RET(aclrtRecordEvent(event, record_stream));
+  LLM_CHK_ACL_RET(aclrtStreamWaitEvent(work_stream, event));
   std::lock_guard<std::mutex> lock(transfer_reqs_mutex_);
   std::vector<AsyncResource> async_resources;
-  async_resources.emplace_back(event, stream);
+  async_resources.reserve(2U);
+  async_resources.emplace_back(record_stream, nullptr);
+  async_resources.emplace_back(work_stream, event);
   req_2_async_record_[id] = AsyncRecord{std::move(async_resources), transfer_start};
   LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
@@ -252,30 +262,38 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
 
   const auto &async_resources = it->second.async_resources;
   ADXL_CHK_BOOL_RET_STATUS(!async_resources.empty(), FAILED, "Failed to get request async resources.");
-  auto event = async_resources[0].first;
-  auto stream = async_resources[0].second;
+  auto record_stream = async_resources[0].first;
+  auto work_stream = async_resources[1].first;
+  auto event = async_resources[1].second;
+  LLM_DISMISSABLE_GUARD(fail_guard, ([&]() {
+    if (event != nullptr) {
+      (void)aclrtDestroyEvent(event);
+    }
+    if (work_stream != nullptr) {
+      stream_pool_->DestroyStream(work_stream);
+    }
+    if (record_stream != nullptr) {
+      stream_pool_->DestroyStream(record_stream);
+    }
+    req_2_async_record_.erase(id);
+  }));
   aclrtEventRecordedStatus event_status{};
   auto ret = aclrtQueryEventStatus(event, &event_status);
   if (ret != ACL_ERROR_NONE) {
     LLMLOGE(FAILED, "aclrtQueryEventStatus failed for req:%lu, ret:%d.", id, ret);
-    aclrtDestroyEvent(event);
-    stream_pool_->DestroyStream(stream);
-    req_2_async_record_.erase(id);
     status = TransferStatus::FAILED;
     return FAILED;
   }
   if (event_status != ACL_EVENT_RECORDED_STATUS_COMPLETE) {
     LLMLOGI("Transfer async request not yet completed, req:%lu.", id);
     status = TransferStatus::WAITING;
+    LLM_DISMISS_GUARD(fail_guard);
     return SUCCESS;
   }
-  auto steam_status = aclrtSynchronizeStream(stream);
+  auto steam_status = aclrtSynchronizeStream(work_stream);
   if (steam_status != ACL_ERROR_NONE) {
     //stream synchronize failed
     status = TransferStatus::FAILED;
-    aclrtDestroyEvent(event);
-    stream_pool_->DestroyStream(stream);
-    req_2_async_record_.erase(id);
     LLMLOGE(FAILED, "rtStreamSynchronize failed for req:%lu, ret:%d.", id, steam_status);
     return FAILED;
   }
@@ -284,8 +302,10 @@ Status Channel::GetTransferStatus(const TransferReq &req, TransferStatus &status
   const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - it->second.real_start).count();
   LLMLOGI("Transfer async request completed, req:%lu, time cost:%lu us.", id, cost);
   aclrtDestroyEvent(event);
-  stream_pool_->FreeStream(stream);
+  stream_pool_->FreeStream(work_stream);
+  stream_pool_->FreeStream(record_stream);
   req_2_async_record_.erase(id);
+  LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
 }
 
