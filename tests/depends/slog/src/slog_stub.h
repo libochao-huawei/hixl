@@ -15,6 +15,7 @@
 #include <map>
 #include <vector>
 #include <stdarg.h>
+#include <mutex>
 #include "dlog_pub.h"
 namespace llm {
 class SlogStub {
@@ -141,6 +142,7 @@ class LogCaptureStub : public SlogStub {
   std::vector<std::string> capture_patterns_;  // 要捕获的日志模式
   std::vector<std::string> captured_logs_;     // 捕获到的日志
   std::vector<bool> pattern_captured_;         // 每个模式的捕获状态
+  mutable std::mutex log_mutex_; 
 };
 }  // namespace llm
 #endif  // AIR_CXX_TESTS_DEPENDS_SLOG_SRC_SLOG_STUB_H_
