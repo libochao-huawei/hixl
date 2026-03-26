@@ -143,7 +143,7 @@ bool TCPServer::StartServer(uint16_t port) {
 }
 
 bool TCPServer::AcceptConnection() {
-  int timeout_ms= 5000;
+  int timeout_ms= 15000;
   struct pollfd pfd;
   pfd.fd = server_fd_;
   pfd.events = POLLIN;

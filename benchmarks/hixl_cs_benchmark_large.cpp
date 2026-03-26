@@ -385,8 +385,8 @@ int32_t RunClientLargeData(const Args &args) {
   }
   // 2、注册内存地址
   uint32_t *kClientTransferData =nullptr;
-  std::vector<uint64_t> test_sizes = {k4GB, k8GB, k16GB};
-  uint64_t max_size = k16GB;
+  std::vector<uint64_t> test_sizes = {k2GB, k4GB, k8GB};
+  uint64_t max_size = k8GB;
   uint64_t block_size = k2GB;
   aclrtMemcpyKind copy_kind;
   MemHandle mem_handle = nullptr;
@@ -433,6 +433,7 @@ int32_t RunClientLargeData(const Args &args) {
   }
 
   // 3、建链
+  HIXL_LOGI("start to create channel.");
   ret = HixlCSClientConnect(client_handle, kClientConnectTimeoutMs);
   if (ret != HIXL_SUCCESS) {
     ClientFinalize(client_handle, {});
@@ -639,7 +640,7 @@ int32_t RunServerLargeData(const Args &args) {
 
   // 2. 注册内存地址
   uint32_t *kServerTransferData = nullptr;
-  uint64_t max_size = k16GB;
+  uint64_t max_size = k8GB;
   MemHandle mem_handle = nullptr;
   aclrtMemcpyKind copy_kind ;
   HcommMem mem{};
