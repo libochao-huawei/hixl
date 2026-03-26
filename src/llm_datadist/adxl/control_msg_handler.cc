@@ -9,6 +9,7 @@
  */
 
 #include "control_msg_handler.h"
+#include "sys/socket.h"
 namespace adxl {
 namespace {
 Status kNoNeedRetry = 1U;
@@ -55,12 +56,13 @@ Status ControlMsgHandler::Write(int32_t fd, const void *buf, size_t len, uint64_
   const char *pos = static_cast<const char *>(buf);
   size_t nbytes = len;
   while (nbytes > 0U) {
-    auto rc = write(fd, pos, nbytes);
-    if (rc < 0 && (errno == EAGAIN || errno == EINTR)) {
-      continue;
-    } else if (rc < 0) {
+    auto rc = send(fd, pos, nbytes, MSG_NOSIGNAL);
+    if (rc < 0) {
+      if (errno == EAGAIN || errno == EINTR) {
+        continue;
+      }
       Status ret = FAILED;
-      if (errno == EPIPE || errno == EBADF) {
+      if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
         ret = kNoNeedRetry;
       }
       LLMLOGE(FAILED, "Socket write failed, error msg:%s, errno:%d", strerror(errno), errno);
