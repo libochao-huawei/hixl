@@ -192,6 +192,7 @@ HixlStatus HixlCSClientConnect(HixlClientHandle client_handle, uint32_t timeout_
   HIXL_CHECK_NOTNULL(client_handle);
   auto *client = static_cast<hixl::HixlCSClient *>(client_handle);
   HIXL_CHECK_NOTNULL(client);
+  HIXL_LOGI("HixlCSClientConnect start to create channel, timeout:%u ms", timeout_ms);
   const auto ret = client->Connect(timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "HixlCSClientConnect failed, client_handle is %p, timeout:%u ms", client_handle, timeout_ms);
   return HIXL_SUCCESS;
