@@ -1146,14 +1146,14 @@ Status HixlCSClient::Connect(uint32_t timeout_ms) {
   HIXL_CHECK_NOTNULL(local_endpoint_);
   HIXL_CHK_BOOL_RET_STATUS(remote_endpoint_.protocol != COMM_PROTOCOL_RESERVED, PARAM_INVALID,
                            "[HixlClient] Connect called but remote_endpoint is not set in Create");
-  HIXL_EVENT("[HixlClient] Connect start. Target=%s:%u, timeout=%u ms", server_ip_.c_str(), server_port_, timeout_ms);
+  HIXL_LOGI("[HixlClient] Connect start. Target=%s:%u, timeout=%u ms", server_ip_.c_str(), server_port_, timeout_ms);
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip_, server_port_, socket_, timeout_ms),
                       "[HixlClient] Connect socket to %s:%u failed", server_ip_.c_str(), server_port_);
   HIXL_LOGI("[HixlClient] Socket connected (TCP ready). fd=%d", socket_);
   HIXL_CHK_STATUS_RET(ExchangeEndpointAndCreateChannelLocked(timeout_ms),
                       "[HixlClient] Exchange endpoint info failed. fd=%d, Target=%s:%u", socket_, server_ip_.c_str(),
                       server_port_);
-  HIXL_EVENT("[HixlClient] Connect success. target=%s:%u, fd=%d, remote_ep_handle=%" PRIu64 ", ch=%p",
+  HIXL_LOGI("[HixlClient] Connect success. target=%s:%u, fd=%d, remote_ep_handle=%" PRIu64 ", ch=%p",
              server_ip_.c_str(), server_port_, socket_, remote_endpoint_handle_, client_channel_handle_);
   return SUCCESS;
 }
