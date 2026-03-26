@@ -64,11 +64,11 @@ void SlogStub::SetLevel(int level) {
 
 std::shared_ptr<SlogStub> stub_ins = nullptr;
 SlogStub *SlogStub::GetInstance() {
-  static DefaultSlogStub stub;
+  static DefaultSlogStub* stub = new DefaultSlogStub();
   if (stub_ins != nullptr) {
     return stub_ins.get();
   }
-  return &stub;
+  return stub;
 }
 void SlogStub::SetInstance(std::shared_ptr<SlogStub> stub) {
   stub_ins = std::move(stub);
