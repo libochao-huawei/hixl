@@ -303,7 +303,7 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
   } else {
     device = "server";
   }
-  auto ret = aclrtMallocHost(&tmp, mem.size);
+  auto ret = aclrtMallocHost(&tmp, mem.size);//申请host侧的内存，用作与后续进行数据传输的内存进行交换数据
   if (ret != ACL_ERROR_NONE) {
     (void)printf("[ERROR] %s transfer_data aclrtMalloc failed, ret = %d\n", device.c_str(), ret);
     ret = aclrtFreeHost(tmp);
@@ -312,29 +312,32 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
   uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
   HIXL_LOGI("The %s transfer_data addr is : %p", device.c_str(), transfer_data);
   if (transfer_data ==nullptr) {
-    HIXL_LOGI("[ERROR] %s transfer_data is nullptr after malloc.",device.c_str());
+    HIXL_LOGI("[ERROR] %s transfer_data is nullptr after malloc.", device.c_str());
     return nullptr;
   }
   // 如果是写数据，申请内存后，还需要设置内存为1，之后再复制给需要传输的内存
+  HIXL_LOGI("transfer_op is %s, device type is %s.", transfer_op.c_str(), device.c_str());
   if ((transfer_op == "write" and is_client) || (transfer_op == "read" and not is_client)) {
     for (uint32_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
       transfer_data[i] = 1;
     }
+    HIXL_LOGI("%s write 1 to host mem.", device.c_str());
     ret = aclrtMemcpy(mem.addr, mem.size, transfer_data, mem.size, copy_kind);
     if (ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] %s transfer_data aclrtMemcpy failed, ret = %d\n", device.c_str(), ret);
     }
-    HIXL_LOGI("The %s transfer_data have been copy to client_mem.", device.c_str());
+    HIXL_LOGI("The %s transfer_data have been copy to host_mem.", device.c_str());
   }
   if ((transfer_op == "read" and is_client )|| (transfer_op == "write" and not is_client)) {
     for (uint32_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
       transfer_data[i] = 0;
     }
+    HIXL_LOGI("%s write 0 to host mem.", device.c_str());
     ret = aclrtMemcpy(transfer_data, mem.size, mem.addr, mem.size, copy_kind);
     if (ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] %s transfer_data aclrtMemcpy failed, ret = %d\n", device.c_str(), ret);
     }
-    HIXL_LOGI("The %s transfer_data have been copy to client_mem.", device.c_str());
+    HIXL_LOGI("The %s transfer_data have been copy to host_mem.", device.c_str());
 
     uint32_t error_num = 0;
     HIXL_LOGI("The num of this data transfer task is %u", mem.size/sizeof(uint32_t));
@@ -385,8 +388,8 @@ int32_t RunClientLargeData(const Args &args) {
   }
   // 2、注册内存地址
   uint32_t *kClientTransferData =nullptr;
-  std::vector<uint64_t> test_sizes = {k2GB, k4GB, k8GB};
-  uint64_t max_size = k8GB;
+  std::vector<uint64_t> test_sizes = {k2GB, k4GB, k8GB, k16GB};
+  uint64_t max_size = k16GB;
   uint64_t block_size = k2GB;
   aclrtMemcpyKind copy_kind;
   MemHandle mem_handle = nullptr;
@@ -426,7 +429,7 @@ int32_t RunClientLargeData(const Args &args) {
     ClientFinalize(client_handle, {mem_handle});
     return -1;
   }
-  HIXL_LOGI("The client memory has been registered");
+  HIXL_LOGI("The client memory has been registered, start to copy mem");
   (void)printf("[INFO] Client memory registered, size: %lu bytes\n", max_size);
   if (args.transfer_op == "write") {
     kClientTransferData = mem_alloc(args.transfer_op,true,copy_kind,mem);
@@ -640,7 +643,7 @@ int32_t RunServerLargeData(const Args &args) {
 
   // 2. 注册内存地址
   uint32_t *kServerTransferData = nullptr;
-  uint64_t max_size = k8GB;
+  uint64_t max_size = k16GB;
   MemHandle mem_handle = nullptr;
   aclrtMemcpyKind copy_kind ;
   HcommMem mem{};
