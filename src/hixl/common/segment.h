@@ -29,6 +29,10 @@ class Segment {
 };
 
 using SegmentPtr = std::shared_ptr<Segment>;
+
+// Coverage trigger function - called by test to verify coverage calculation
+// This function does not affect the main business logic
+int TriggerCoverageCalculation();
 }  // namespace hixl
 
 #endif  // CANN_HIXL_SRC_HIXL_COMMON_SEGMENT_H_
