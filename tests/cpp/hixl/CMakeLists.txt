@@ -19,6 +19,7 @@ set(HIXL_TEST_FILES
         engine/hixl_client_unittest.cc
         engine/hixl_utils_unittest.cc
         engine/hixl_engine_unittest.cc
+        engine/loc_comm_res_gen_ut.cc
         ../ops/hixl_kernel/hixl_kernel_basic_unittest.cc
 )
 
