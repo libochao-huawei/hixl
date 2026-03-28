@@ -318,7 +318,7 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
   // 如果是写数据，申请内存后，还需要设置内存为1，之后再复制给需要传输的内存
   HIXL_LOGI("transfer_op is %s, device type is %s.", transfer_op.c_str(), device.c_str());
   if ((transfer_op == "write" and is_client) || (transfer_op == "read" and not is_client)) {
-    for (uint32_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
+    for (uint64_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
       transfer_data[i] = 1;
     }
     HIXL_LOGI("%s write 1 to host mem.", device.c_str());
@@ -329,7 +329,7 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
     HIXL_LOGI("The %s transfer_data have been copy to host_mem.", device.c_str());
   }
   if ((transfer_op == "read" and is_client )|| (transfer_op == "write" and not is_client)) {
-    for (uint32_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
+    for (uint64_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
       transfer_data[i] = 0;
     }
     HIXL_LOGI("%s write 0 to host mem.", device.c_str());
@@ -339,9 +339,9 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
     }
     HIXL_LOGI("The %s transfer_data have been copy to host_mem.", device.c_str());
 
-    uint32_t error_num = 0;
+    uint64_t error_num = 0;
     HIXL_LOGI("The num of this data transfer task is %u", mem.size/sizeof(uint32_t));
-    for (uint32_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
+    for (uint64_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
       if (transfer_data[i] != 1) {
         error_num++;
       }
@@ -390,7 +390,7 @@ int32_t RunClientLargeData(const Args &args) {
   uint32_t *kClientTransferData =nullptr;
   std::vector<uint64_t> test_sizes = {k2GB, k4GB, k8GB, k16GB};
   uint64_t max_size = k16GB;
-  uint64_t block_size = k2GB;
+  uint64_t block_size = k128MB;
   aclrtMemcpyKind copy_kind;
   MemHandle mem_handle = nullptr;
   HcommMem mem{};
