@@ -264,6 +264,10 @@ Status HixlCSClient::InitBaseClient(const char *server_ip, uint32_t server_port,
   server_port_ = server_port;
   local_endpoint_ = MakeShared<Endpoint>(local_endpoint);
   HIXL_CHECK_NOTNULL(local_endpoint_);
+  bool has_host_ep = true;
+  if (local_endpoint_->GetEndpoint().loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
+    has_host_ep = false;
+  }
   Status ret = local_endpoint_->Initialize();
   HIXL_CHK_STATUS_RET(ret,
                       "[HixlClient] Failed to initialize src endpoint. "
@@ -273,8 +277,10 @@ Status HixlCSClient::InitBaseClient(const char *server_ip, uint32_t server_port,
   remote_endpoint_ = remote_endpoint;
   CtrlMsgPlugin::Initialize();
   HIXL_LOGD("[HixlClient] CtrlMsgPlugin initialized");
-  Status init_ret = InitFlagQueue();
-  HIXL_CHK_STATUS_RET(init_ret, "[HixlClient] Failed to initialize flag queue.");
+  if (has_host_ep) {
+    Status init_ret = InitFlagQueue();
+    HIXL_CHK_STATUS_RET(init_ret, "[HixlClient] Failed to initialize flag queue.");
+  }
   return SUCCESS;
 }
 
