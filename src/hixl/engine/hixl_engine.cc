@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <set>
 #include <regex>
 #include <string>
 #include "nlohmann/json.hpp"
@@ -25,32 +24,6 @@
 namespace hixl {
 namespace {
 constexpr const char kConfigVersion[] = "1.3";
-constexpr const char kSocA2[] = "Ascend910B1";
-
-const static std::set<std::string> kV2Version = {"Ascend910_9391", "Ascend910_9381", "Ascend910_9392",
-                                                 "Ascend910_9382", "Ascend910_9372", "Ascend910_9362"};
-
-enum class SocType { kA2, kA3, kOther };
-
-SocType GetSocTypeByName(const std::string &soc_name) {
-  if (soc_name == kSocA2) {
-    return SocType::kA2;
-  }
-
-  if (kV2Version.find(soc_name) != kV2Version.end()) {
-    return SocType::kA3;
-  }
-
-  return SocType::kOther;
-}
-
-Status GetSocType(SocType &soc_type) {
-  const char *soc_name_cstr = aclrtGetSocName();
-  HIXL_CHK_BOOL_RET_STATUS(soc_name_cstr != nullptr, FAILED, "aclrtGetSocName returned nullptr");
-  std::string soc_name = soc_name_cstr;
-  soc_type = GetSocTypeByName(soc_name);
-  return SUCCESS;
-}
 
 bool IsVersionOnlyLocalCommRes(const nlohmann::json &j) {
   const bool has_version = j.contains("version") && j["version"].is_string();
@@ -105,10 +78,20 @@ Status GetVersionFromLocalCommRes(const std::string &local_comm_res, std::string
   return SUCCESS;
 }
 
-Status FillEndpointDeviceInfoIfNeeded(const std::string &local_comm_res, std::vector<EndpointConfig> &endpoint_list) {
-  std::string version;
-  HIXL_CHK_STATUS_RET(GetVersionFromLocalCommRes(local_comm_res, version), "GetVersionFromLocalCommRes failed");
+static void ConvertLocCommResInfoToEndpointList(const loc_comm_res::LocCommResInfo &loc_comm_res_info,
+                                                std::vector<EndpointConfig> &endpoint_list) {
+  endpoint_list.clear();
+  for (const auto &ep_info : loc_comm_res_info.endpoint_list) {
+    EndpointConfig ep;
+    ep.protocol = ep_info.protocol;
+    ep.comm_id = ep_info.comm_id;
+    ep.placement = ep_info.placement;
+    ep.net_instance_id = loc_comm_res_info.net_instance_id;
+    endpoint_list.emplace_back(ep);
+  }
+}
 
+Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::vector<EndpointConfig> &endpoint_list) {
   if (version != kConfigVersion) {
     return SUCCESS;
   }
@@ -165,6 +148,13 @@ Status FillEndpointDeviceInfoIfNeeded(const std::string &local_comm_res, std::ve
   return SUCCESS;
 }
 
+Status FillEndpointDeviceInfoIfNeeded(const std::string &local_comm_res, std::vector<EndpointConfig> &endpoint_list) {
+  std::string version;
+  HIXL_CHK_STATUS_RET(GetVersionFromLocalCommRes(local_comm_res, version), "GetVersionFromLocalCommRes failed");
+
+  return FillEndpointDeviceInfoIfNeededByVersion(version, endpoint_list);
+}
+
 }  // namespace
 
 void from_json(const nlohmann::json &j, hixl::EndpointConfig &ep) {
@@ -204,19 +194,24 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
   bool need_auto_generate = false;
   HIXL_CHK_STATUS_RET(NeedAutoGenerateLocalCommRes(local_comm_res, need_auto_generate),
                       "[HixlEngine] NeedAutoGenerateLocalCommRes failed");
+  endpoint_list_.clear();
   if (need_auto_generate) {
     int32_t device_id = 0;
     HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
-    HIXL_CHK_STATUS_RET(LocCommResGenerator::Generate(device_id, local_comm_res),
-                        "[HixlEngine] Generate local_comm_res failed");
+    loc_comm_res::LocCommResInfo loc_comm_res_info{};
+    HIXL_CHK_STATUS_RET(LocCommResGenerator::GenerateInfo(device_id, local_engine_, loc_comm_res_info),
+                        "[HixlEngine] GenerateInfo failed");
+    ConvertLocCommResInfoToEndpointList(loc_comm_res_info, endpoint_list_);
+    HIXL_CHK_STATUS_RET(FillEndpointDeviceInfoIfNeededByVersion(loc_comm_res_info.version, endpoint_list_),
+                        "[HixlEngine] FillEndpointDeviceInfoIfNeededByVersion failed");
+  } else {
+    HIXL_CHK_STATUS_RET(ParseEndPoint(local_comm_res, endpoint_list_),
+                        "[HixlEngine] Failed to parse endpoint from local_comm_res, local_comm_res:%s",
+                        local_comm_res.c_str());
+    HIXL_CHK_STATUS_RET(FillEndpointDeviceInfoIfNeeded(local_comm_res, endpoint_list_),
+                        "[HixlEngine] FillEndpointDeviceInfoIfNeeded failed, local_comm_res:%s",
+                        local_comm_res.c_str());
   }
-  endpoint_list_.clear();
-  HIXL_CHK_STATUS_RET(ParseEndPoint(local_comm_res, endpoint_list_),
-                      "[HixlEngine] Failed to parse endpoint from local_comm_res, local_comm_res:%s",
-                      local_comm_res.c_str());
-  HIXL_CHK_STATUS_RET(FillEndpointDeviceInfoIfNeeded(local_comm_res, endpoint_list_),
-                      "[HixlEngine] FillEndpointDeviceInfoIfNeeded failed, local_comm_res:%s",
-                      local_comm_res.c_str());
   std::string ip;
   int32_t port = 0;
   HIXL_CHK_STATUS_RET(ParseListenInfo(local_engine_, ip, port), 

@@ -9,16 +9,13 @@
  */
 
 #include "loc_comm_res_generator.h"
-
 #include <array>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <memory>
-#include <set>
 #include <string>
-
 #include "acl/acl.h"
 #include "mmpa/mmpa_api.h"
 #include "nlohmann/json.hpp"
@@ -28,10 +25,6 @@ namespace hixl {
 namespace {
 constexpr const char kConfigVersion[] = "1.3";
 constexpr uint32_t kBufferMaxSize = 128U;
-constexpr const char kSocA2[] = "Ascend910B1";
-
-const static std::set<std::string> kV2Version = {"Ascend910_9391", "Ascend910_9381", "Ascend910_9392",
-                                                 "Ascend910_9382", "Ascend910_9372", "Ascend910_9362"};
 bool IsIntraRoceEnabled() {
   const char *env_ret = std::getenv("HCCL_INTRA_ROCE_ENABLE");
   if (env_ret == nullptr) {
@@ -57,22 +50,33 @@ static void to_json(nlohmann::json &j, const LocCommResInfo &r) {
 }
 }  // namespace loc_comm_res
 
-Status LocCommResGenerator::Generate(int32_t device_id, std::string &loc_comm_res) {
+Status LocCommResGenerator::GenerateInfo(int32_t device_id, const std::string &local_engine,
+                                         loc_comm_res::LocCommResInfo &loc_comm_res_info) {
   int32_t phy_device_id = 0;
   aclError acl_ret = aclrtGetPhyDevIdByLogicDevId(device_id, &phy_device_id);
   if (acl_ret != ACL_SUCCESS) {
     return FAILED;
   }
 
-  loc_comm_res::LocCommResInfo loc_comm_res_info{};
+  loc_comm_res_info = {};
   loc_comm_res_info.version = kConfigVersion;
 
-  Status ret = BuildNetInstanceId(device_id, loc_comm_res_info.net_instance_id);
+  Status ret = BuildNetInstanceId(device_id, local_engine, loc_comm_res_info.net_instance_id);
   if (ret != SUCCESS) {
     return ret;
   }
 
-  ret = BuildEndpointList(device_id, phy_device_id, loc_comm_res_info.endpoint_list);
+  ret = BuildEndpointList(phy_device_id, loc_comm_res_info.endpoint_list);
+  if (ret != SUCCESS) {
+    return ret;
+  }
+
+  return SUCCESS;
+}
+
+Status LocCommResGenerator::Generate(int32_t device_id, const std::string &local_engine, std::string &loc_comm_res) {
+  loc_comm_res::LocCommResInfo loc_comm_res_info{};
+  Status ret = GenerateInfo(device_id, local_engine, loc_comm_res_info);
   if (ret != SUCCESS) {
     return ret;
   }
@@ -87,14 +91,15 @@ Status LocCommResGenerator::Generate(int32_t device_id, std::string &loc_comm_re
   return SUCCESS;
 }
 
-Status LocCommResGenerator::BuildNetInstanceId(int32_t device_id, std::string &net_instance_id) {
-  std::string soc_name;
-  Status ret = GetSocName(soc_name);
+Status LocCommResGenerator::BuildNetInstanceId(int32_t device_id, const std::string &local_engine,
+                                               std::string &net_instance_id) {
+  SocType soc_type = SocType::kOther;
+  Status ret = GetSocType(soc_type);
   if (ret != SUCCESS) {
     return ret;
   }
 
-  if (IsA3Soc(soc_name)) {
+  if (soc_type == SocType::kA3) {
     int64_t super_pod_id = 0;
     aclError acl_ret = aclrtGetDeviceInfo(static_cast<uint32_t>(device_id), ACL_DEV_ATTR_SUPER_POD_ID, &super_pod_id);
     if (acl_ret != ACL_SUCCESS) {
@@ -104,14 +109,14 @@ Status LocCommResGenerator::BuildNetInstanceId(int32_t device_id, std::string &n
     return SUCCESS;
   }
 
-  if (IsA2Soc(soc_name)) {
-    return GetHostIp(net_instance_id);
+  if (soc_type == SocType::kA2) {
+    return GetHostIpFromLocalEngine(local_engine, net_instance_id);
   }
 
   return PARAM_INVALID;
 }
 
-Status LocCommResGenerator::BuildEndpointList(int32_t device_id, int32_t phy_device_id,
+Status LocCommResGenerator::BuildEndpointList(int32_t phy_device_id,
                                               std::vector<loc_comm_res::EndpointInfo> &endpoint_list) {
   endpoint_list.clear();
 
@@ -124,7 +129,6 @@ Status LocCommResGenerator::BuildEndpointList(int32_t device_id, int32_t phy_dev
 
   if (IsIntraRoceEnabled()) {
     HIXL_LOGI("HCCL_INTRA_ROCE_ENABLE=1, only generate ROCE endpoint");
-    (void)device_id;
     return SUCCESS;
   }
 
@@ -135,7 +139,6 @@ Status LocCommResGenerator::BuildEndpointList(int32_t device_id, int32_t phy_dev
   }
   endpoint_list.emplace_back(hccs_endpoint);
 
-  (void)device_id;
   return SUCCESS;
 }
 
@@ -159,41 +162,23 @@ Status LocCommResGenerator::BuildHccsEndpoint(int32_t phy_device_id, loc_comm_re
   return SUCCESS;
 }
 
-Status LocCommResGenerator::GetHostIp(std::string &host_ip) {
-  std::unique_ptr<FILE, int (*)(FILE *)> pipe(popen("hostname -I | awk '{print $1}' 2>&1", "r"), pclose);
-  if (!pipe) {
-    return FAILED;
-  }
-
-  std::array<char, kBufferMaxSize> buffer{};
-  char *ret = fgets(buffer.data(), static_cast<int32_t>(buffer.size()), pipe.get());
-  if (ret == nullptr) {
-    return FAILED;
-  }
-
-  host_ip = buffer.data();
-  while (!host_ip.empty() && (host_ip.back() == '\n' || host_ip.back() == '\r' || host_ip.back() == ' ')) {
-    host_ip.pop_back();
+Status LocCommResGenerator::GetHostIpFromLocalEngine(const std::string &local_engine, std::string &host_ip) {
+  int32_t host_port = 0;
+  Status ret = ParseListenInfo(local_engine, host_ip, host_port);
+  if (ret != SUCCESS) {
+    HIXL_LOGE(ret, "Failed to parse host ip from local_engine:%s", local_engine.c_str());
+    return ret;
   }
 
   if (host_ip.empty()) {
     return FAILED;
   }
 
-  return SUCCESS;
-}
-
-Status LocCommResGenerator::GetSocName(std::string &soc_name) {
-  const char *soc_name_ptr = aclrtGetSocName();
-  if (soc_name_ptr == nullptr) {
-    return FAILED;
+  if (host_ip == "0.0.0.0" || host_ip == "::") {
+    HIXL_LOGE(PARAM_INVALID, "Wildcard ip is not allowed for auto-generated net_instance_id, local_engine:%s",
+              local_engine.c_str());
+    return PARAM_INVALID;
   }
-
-  soc_name = soc_name_ptr;
-  if (soc_name.empty()) {
-    return FAILED;
-  }
-
   return SUCCESS;
 }
 
@@ -308,13 +293,5 @@ Status LocCommResGenerator::GetDeviceIp(int32_t phy_device_id, std::string &devi
 
   HIXL_LOGE(FAILED, "Failed to get device ip from hccn.conf and hccn_tool, phy_device_id:%d", phy_device_id);
   return FAILED;
-}
-
-bool LocCommResGenerator::IsA2Soc(const std::string &soc_name) {
-  return soc_name == kSocA2;
-}
-
-bool LocCommResGenerator::IsA3Soc(const std::string &soc_name) {
-  return kV2Version.find(soc_name) != kV2Version.end();
 }
 }  // namespace hixl

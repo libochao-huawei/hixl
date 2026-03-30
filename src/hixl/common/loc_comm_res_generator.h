@@ -33,23 +33,24 @@ struct LocCommResInfo {
 
 class LocCommResGenerator {
  public:
-  static Status Generate(int32_t device_id, std::string &loc_comm_res);
+  static Status GenerateInfo(int32_t device_id, const std::string &local_engine,
+                             loc_comm_res::LocCommResInfo &loc_comm_res_info);
+  static Status Generate(int32_t device_id, const std::string &local_engine, std::string &loc_comm_res);
   static Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip);
 
  private:
-  static Status BuildNetInstanceId(int32_t device_id, std::string &net_instance_id);
-  static Status BuildEndpointList(int32_t device_id, int32_t phy_device_id,
+  static Status BuildNetInstanceId(int32_t device_id,
+                                   const std::string &local_engine,
+                                   std::string &net_instance_id);
+  static Status BuildEndpointList(int32_t phy_device_id,
                                   std::vector<loc_comm_res::EndpointInfo> &endpoint_list);
   static Status BuildRoceEndpoint(int32_t phy_device_id, loc_comm_res::EndpointInfo &endpoint);
   static Status BuildHccsEndpoint(int32_t phy_device_id, loc_comm_res::EndpointInfo &endpoint);
-  static Status GetHostIp(std::string &host_ip);
-  static Status GetSocName(std::string &soc_name);
+  static Status GetHostIpFromLocalEngine(const std::string &local_engine, std::string &host_ip);
   static void ExtractIpAddress(const std::string &output_str, std::string &ip);
   static Status GetHccnOutput(const std::string &command, std::string &result);
   static Status ExecuteCommandAndParseIp(const std::string &command, std::string &output, std::string &ip);
   static Status GetIpAddressFromHccnTool(uint32_t phy_device_id, std::string &ip);
-  static bool IsA2Soc(const std::string &soc_name);
-  static bool IsA3Soc(const std::string &soc_name);
 };
 }  // namespace hixl
 

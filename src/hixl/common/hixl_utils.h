@@ -22,6 +22,7 @@
 #include "hixl_inner_types.h"
 
 namespace hixl {
+enum class SocType { kA2, kA3, kOther };
 template <typename _Tp, typename... _Args>
 static inline std::shared_ptr<_Tp> MakeShared(_Args &&... __args) {
   using _Tp_nc = typename std::remove_const<_Tp>::type;
@@ -72,6 +73,12 @@ Status CheckAddrOverlap(const AddrInfo &cur_info, const std::map<MemHandle, Addr
                         MemHandle &existing_handle);
 
 Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str);
+
+Status GetSocName(std::string &soc_name);
+
+SocType GetSocTypeByName(const std::string &soc_name);
+
+Status GetSocType(SocType &soc_type);
 
 std::string MemTypeToString(MemType type);
 std::string TransferOpToString(TransferOp op);

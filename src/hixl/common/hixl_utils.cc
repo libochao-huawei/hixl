@@ -11,13 +11,21 @@
 #include "hixl_utils.h"
 
 #include <arpa/inet.h>
+#include <set>
 #include <unordered_set>
 #include "securec.h"
 #include "nlohmann/json.hpp"
+#include "acl/acl.h"
 #include "hixl_log.h"
 #include "hixl_checker.h"
 
 namespace hixl {
+namespace {
+constexpr const char kSocA2[] = "Ascend910B1";
+
+const static std::set<std::string> kV2Version = {"Ascend910_9391", "Ascend910_9381", "Ascend910_9392",
+                                                 "Ascend910_9382", "Ascend910_9372", "Ascend910_9362"};
+}  // namespace
 Status HcclError2Status(HcclResult ret) {
   static const std::map<HcclResult, Status> result2status = {
       {HCCL_SUCCESS, SUCCESS},
@@ -158,6 +166,33 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
     }
   }
   addr.type = COMM_ADDR_TYPE_EID;
+  return SUCCESS;
+}
+
+Status GetSocName(std::string &soc_name) {
+  const char *soc_name_cstr = aclrtGetSocName();
+  HIXL_CHK_BOOL_RET_STATUS(soc_name_cstr != nullptr, FAILED, "aclrtGetSocName returned nullptr");
+  soc_name = soc_name_cstr;
+  HIXL_CHK_BOOL_RET_STATUS(!soc_name.empty(), FAILED, "soc_name is empty");
+  return SUCCESS;
+}
+
+SocType GetSocTypeByName(const std::string &soc_name) {
+  if (soc_name == kSocA2) {
+    return SocType::kA2;
+  }
+
+  if (kV2Version.find(soc_name) != kV2Version.end()) {
+    return SocType::kA3;
+  }
+
+  return SocType::kOther;
+}
+
+Status GetSocType(SocType &soc_type) {
+  std::string soc_name;
+  HIXL_CHK_STATUS_RET(GetSocName(soc_name), "GetSocName failed");
+  soc_type = GetSocTypeByName(soc_name);
   return SUCCESS;
 }
 
