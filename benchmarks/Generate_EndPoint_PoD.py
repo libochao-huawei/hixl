@@ -10,9 +10,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-
 """
-Generate endpoint configuration files from topology, rootinfo, and route.conf.
+Generate endpoint configuration files from HCCL topology, rootinfo, and route.conf.
 
 Input files (supports optional CLI arguments for --local mode):
 - hccl_rootinfo.json (contains topo_file_path reference)
@@ -62,6 +61,7 @@ def parse_route_conf(route_conf_path: Path) -> Dict[int, Dict[str, str]]:
                 current_device_id = int(parts[1])
                 current_pair = {'dev_id': current_device_id, 'local_eid': None, 'remote_eid': None}
                 pairs[current_device_id] = current_pair
+                print(f"current_device_id: {current_device_id}")
             elif '_local_eid=' in line:
                 # Extract local EID: pairX_chan0_local_eid=0x...
                 eid = line.split('=')[1].strip().replace('0x', '')
@@ -290,7 +290,7 @@ def generate_endpoint_list(
     return endpoint_list
 
 
-def main():
+if __name__ == "__main__":
     """Main entry point for endpoint config generation."""
     parser = argparse.ArgumentParser(
         description="Generate NPU endpoint configuration files from HCCL topology and route.conf."
@@ -319,20 +319,27 @@ def main():
         args.topo_path = "pod06_cpu5/atlas_950_1.json"
         args.route_path = "pod06_cpu5/route.conf"
 
-    mode_str = f"local (pod06_cpu5)" if use_local else "server (/etc & /lib)"
+    mode_str = f"local" if use_local else "server"
     print(f"Running in {mode_str} mode")
+    if args.server:
+        args.rootinfo_path = "/etc/hccl_rootinfo.json"
+        args.route_path = "/lib/route.conf"
+
     if args.dry_run:
         print("Dry run mode: parsing only, no output files will be written")
 
     # Parse route.conf
-    print("Loading route configuration...")
-    route_pairs = parse_route_conf(Path(args.route_path))
+    print(f"Loading: {args.route_path}")
+    route_pairs = parse_route_conf(args.route_path)
     print(f"Found {len(route_pairs)} device pairs (device_id: {sorted(route_pairs.keys())})")
 
     # Load hccl_rootinfo.json
     print(f"Loading: {args.rootinfo_path}")
     with open(args.rootinfo_path) as f:
         hccl_rootinfo = json.load(f)
+
+    if args.server:
+        args.topo_path = Path(hccl_rootinfo['topo_file_path'])
 
     # Load topology file
     print(f"Loading topology: {args.topo_path}")
@@ -376,17 +383,18 @@ def main():
             "endpoint_list": endpoint_list
         }
 
-        output_path = Path(f"ub_endpoint_npu_{device_id}.json")
+        output_path = Path(f"./hixlep/ub_endpoint_npu_{device_id}.json")
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
 
         if not args.dry_run:
-            with open(output_path, "w") as f:
+            with open(output_path, "w", encoding='utf-8') as f:
                 json.dump(output, f, indent=2)
             print(f"Generated: {output_path}")
         else:
             print(f"[Dry run] Would generate: {output_path}")
 
-    print(f"\\n{'Dry run: Would generate' if args.dry_run else 'Generated'} {len(route_pairs)} endpoint configuration files.")
+    print(f"{'Dry run: Would generate' if args.dry_run else 'Generated'} {len(route_pairs)} endpoint configuration files.")
 
 
-if __name__ == "__main__":
-    exit(main())
+
