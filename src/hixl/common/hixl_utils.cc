@@ -270,7 +270,8 @@ Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc
 
   static const std::map<std::string, CommProtocol> protocol_map = {{kProtocolRoce, COMM_PROTOCOL_ROCE},
                                                                    {kProtocolUbCtp, COMM_PROTOCOL_UBC_CTP},
-                                                                   {kProtocolUbTp, COMM_PROTOCOL_UBC_TP}};
+                                                                   {kProtocolUbTp, COMM_PROTOCOL_UBC_TP},
+                                                                   {kProtocolUboe, COMM_PROTOCOL_UBOE}};
 
   // 处理placement
   auto placement_it = placement_map.find(endpoint_config.placement);
@@ -288,8 +289,13 @@ Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc
   }
   endpoint.protocol = protocol_it->second;
 
+  // placement 为device则需要填写device结构体中的物理id
+  if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
+    endpoint.loc.device.devPhyId = dev_phy_id;
+  }
+
   // 处理ROCE协议的comm_id
-  if (endpoint_config.protocol == kProtocolRoce) {
+  if (endpoint_config.protocol == kProtocolRoce || endpoint_config.protocol == kProtocolUboe) {
     HIXL_CHK_STATUS_RET(ParseIpAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseIpAddress failed");
     return SUCCESS;
   }
@@ -297,10 +303,6 @@ Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc
   // 处理UB协议的comm_id
   if (endpoint_config.protocol == kProtocolUbCtp || endpoint_config.protocol == kProtocolUbTp) {
     HIXL_CHK_STATUS_RET(ParseEidAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseEidAddress failed");
-    // placement 为device则需要填写device结构体中的物理id
-    if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
-      endpoint.loc.device.devPhyId = dev_phy_id;
-    }
     return SUCCESS;
   }
   return SUCCESS;
