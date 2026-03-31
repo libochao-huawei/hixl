@@ -23,7 +23,6 @@
 #include "common/hixl_inner_types.h"
 #include "common/segment.h"
 #include "common/ctrl_msg.h"
-#include "nlohmann/json.hpp"
 
 namespace hixl {
 
@@ -155,13 +154,9 @@ class HixlClient {
    * @param [out] status         传输状态
    * @return 操作结果状态码
    */
-  Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
+ Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
 
  private:
-  static Status Deserialize(const std::string &json_str, std::vector<EndpointConfig> &endpoint_list);
-
-  static Status ParseJsonField(const nlohmann::json &json_obj, const std::string &field_name, std::string &field_value);
-
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
 
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const;
@@ -173,6 +168,9 @@ class HixlClient {
                    const std::vector<EndpointConfig> &remote_endpoint_list) const;
 
   Status TryMatchRoceEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
+                               const std::vector<EndpointConfig> &remote_endpoint_list);
+
+  Status TryMatchHccsEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
                                const std::vector<EndpointConfig> &remote_endpoint_list);
 
   Status TryMatchUbEndpoints(const EndpointConfig &local_endpoint,

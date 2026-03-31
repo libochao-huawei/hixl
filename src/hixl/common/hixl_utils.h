@@ -91,8 +91,6 @@ Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc
 Status CheckAddrOverlap(const AddrInfo &cur_info, const std::map<MemHandle, AddrInfo> &addr_map, bool &is_duplicate,
                         MemHandle &existing_handle);
 
-Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str);
-
 std::string MemTypeToString(MemType type);
 std::string TransferOpToString(TransferOp op);
 
