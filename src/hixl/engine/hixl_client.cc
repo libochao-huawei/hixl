@@ -47,6 +47,8 @@ const char *CommTypeToString(CommType type) {
       return "ROCE";
     case CommType::COMM_TYPE_HCCS:
       return "HCCS";
+    case CommType::COMM_TYPE_UBOE:
+      return "UBOE";
     default:
       return "UNKNOWN";
   }
@@ -192,8 +194,25 @@ Status HixlClient::ParseJsonField(const nlohmann::json &json_obj, const std::str
   }
 }
 
+Status HixlClient::TryMatchUboeEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
+                                         const std::vector<EndpointConfig> &remote_endpoint_list) {
+  auto local_it = std::find_if(local_endpoint_list.begin(), local_endpoint_list.end(),
+                                [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolUboe; });
+  auto remote_it = std::find_if(remote_endpoint_list.begin(), remote_endpoint_list.end(),
+                                 [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolUboe; });
+  if (local_it != local_endpoint_list.end() && remote_it != remote_endpoint_list.end()) {
+    return CreateCsClients(*local_it, *remote_it, CommType::COMM_TYPE_UBOE);
+  }
+  // 不打印错误日志，因为非UBOE场景下找不到是正常的
+  return FAILED;
+}
+
 Status HixlClient::FindMatchedEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
                                         const std::vector<EndpointConfig> &remote_endpoint_list) {
+  // 优先尝试uboe协议连接。
+  if (TryMatchUboeEndpoints(local_endpoint_list, remote_endpoint_list)) {
+    return SUCCESS;
+  }
   // 如果必须使用ROCE，直接匹配并创建ROCE链路
   if (MustUseRoce(local_endpoint_list, remote_endpoint_list)) {
     return TryMatchRoceEndpoints(local_endpoint_list, remote_endpoint_list);
