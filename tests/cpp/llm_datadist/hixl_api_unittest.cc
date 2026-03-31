@@ -11,6 +11,8 @@
 #include <memory>
 #include <vector>
 #include <cstdlib>
+#include <fstream>
+#include <sys/stat.h>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
@@ -27,6 +29,18 @@ using namespace ::testing;
 using ::testing::Invoke;
 using ::testing::Mock;
 namespace hixl {
+namespace {
+std::string CreateExecutableScript(const std::string &name, const std::string &content) {
+  const std::string path = "/tmp/" + name;
+  std::ofstream ofs(path);
+  EXPECT_TRUE(ofs.is_open());
+  ofs << content;
+  ofs.close();
+  chmod(path.c_str(), 0755);
+  return path;
+}
+}  // namespace
+
 class HixlUTest : public ::testing::Test {
  protected:
   // 在测试类中设置一些准备工作，如果需要的话
@@ -71,35 +85,34 @@ class HixlUTest : public ::testing::Test {
   }
 };
 
-class HccnToolTest : public ::testing::Test {
-  protected:
-  void SetUp() override {
-    llm::MockMmpaForHcclApi::Install();
-    llm::AutoCommResRuntimeMock::InstallWithoutHccnConfFile();
-    llm::AutoCommResRuntimeMock::DeleteHccnConfIfExist();
-    llm::HcclAdapter::GetInstance().Initialize();
-  }
-
-  void TearDown() override {
-    llm::HcclAdapter::GetInstance().Finalize();
-    llm::MockMmpaForHcclApi::Reset();
-    llm::AutoCommResRuntimeMock::Reset();
-  }
-};
-
 class HccnGetIpTest : public ::testing::Test {
   protected:
   void SetUp() override {
-    llm::MockHccnTool::Install();
-    llm::AutoCommResRuntimeMock::Install();
-    llm::HcclAdapter::GetInstance().Initialize();
+    llm::MockGetHccnResult::Install();
+    llm::AutoCommResRuntimeMock::InstallWithoutHccnConfFile();
+    llm::AutoCommResRuntimeMock::DeleteHccnConfIfExist();
+    const char *old_path = std::getenv("PATH");
+    old_path_ = (old_path == nullptr) ? "" : old_path;
+    tool_path_ = CreateExecutableScript(
+        "hccn_tool",
+        "#!/bin/sh\n"
+        "echo \"ipaddr:172.16.1.20\"\n");
+    setenv("PATH", "/tmp", 1);
   }
 
   void TearDown() override {
-    llm::HcclAdapter::GetInstance().Finalize();
-    llm::AutoCommResRuntimeMock::Reset();
-    llm::MockHccnTool::Reset();
+    llm::AutoCommResRuntimeMock::ResetWithoutHccnConfFile();
+    llm::MockGetHccnResult::Reset();
+    if (!old_path_.empty()) {
+      setenv("PATH", old_path_.c_str(), 1);
+    } else {
+      unsetenv("PATH");
+    }
+    (void)remove(tool_path_.c_str());
   }
+
+  std::string old_path_;
+  std::string tool_path_;
 };
 
 class HccnGetOutputTest : public ::testing::Test {
@@ -107,11 +120,9 @@ class HccnGetOutputTest : public ::testing::Test {
   void SetUp() override {
     llm::MockGetHccnResult::Install();
     llm::AutoCommResRuntimeMock::Install();
-    llm::HcclAdapter::GetInstance().Initialize();
   }
 
   void TearDown() override {
-    llm::HcclAdapter::GetInstance().Finalize();
     llm::AutoCommResRuntimeMock::Reset();
     llm::MockGetHccnResult::Reset();
   }
@@ -159,32 +170,16 @@ TEST_F(HixlUTest, TestHixl) {
   engine2.Finalize();
 }
 
-TEST_F(HccnToolTest, TestExtractIp) {
-  std::string output = "ipaddr:127.0.0.1";
-  std::string ip = "";
-  llm::LocalCommResGenerator::ExtractIpAddress(output, ip);
-  EXPECT_EQ(ip, "127.0.0.1");
+TEST_F(HccnGetIpTest, TestGetDeviceIpFromHccnTool) {
+  std::string device_ip;
+  EXPECT_EQ(llm::LocalCommResGenerator::GetDeviceIp(0, device_ip), ge::SUCCESS);
+  EXPECT_FALSE(device_ip.empty());
 }
 
-TEST_F(HccnToolTest, TestHccnOutput) {
-  std::string cmd = "hccn_tool";
-  std::string result = "";
-  EXPECT_EQ(llm::LocalCommResGenerator::GetHccnOutput(cmd, result), ge::SUCCESS);
-}
-
-TEST_F(HccnGetIpTest, TestGetIpFromHccnTool) {
-  std::string ip = "";
-  EXPECT_EQ(llm::LocalCommResGenerator::GetIpAddressFromHccnTool(0, ip), ge::SUCCESS);
-}
-
-TEST_F(HccnGetOutputTest, TestGetOutput) {
-  std::string ip = "";
-  EXPECT_EQ(llm::LocalCommResGenerator::GetIpAddressFromHccnTool(0, ip), ge::SUCCESS);
-}
-
-TEST_F(HccnGetOutputTest, TestGetIp) {
+TEST_F(HccnGetOutputTest, TestGetDeviceIpReturnsSuccessWhenIpIsEmpty) {
   std::string device_ip = "";
   EXPECT_EQ(llm::LocalCommResGenerator::GetDeviceIp(0, device_ip), ge::SUCCESS);
+  EXPECT_TRUE(device_ip.empty());
 }
 
 TEST_F(HixlUTest, TestHixlInitFailed) {
@@ -463,7 +458,7 @@ TEST_F(HixlUTest, TestHixlTransferAsyncWithMultiThread) {
 }
 
 TEST_F(HixlUTest, TestHixlGetTransferStatusFalied) {
-  llm:AutoCommResRuntimeMock::SetDevice(0);
+  llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
   std::map<AscendString, AscendString> options1;
   EXPECT_EQ(engine1.Initialize("127.0.0.1", options1), SUCCESS);
