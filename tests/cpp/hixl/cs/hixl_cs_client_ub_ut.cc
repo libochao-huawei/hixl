@@ -36,7 +36,7 @@ class MockAclRuntimeStub : public llm::AclRuntimeStub {
 
 namespace {
 
-constexpr uint32_t kUbDevId = 2U;
+constexpr uint32_t kDeviceDevId = 2U;
 constexpr uint32_t kDummyPort = 12345U;
 
 constexpr uint32_t kListNum1 = 1U;
@@ -44,7 +44,7 @@ constexpr uint64_t kLen8 = 8ULL;
 
 constexpr const char *kTransFlagNameDevice = "_hixl_builtin_dev_trans_flag";
 
-EndpointDesc MakeUbDeviceEp(CommProtocol protocol, uint32_t dev_id) {
+EndpointDesc MakeDeviceEp(CommProtocol protocol, uint32_t dev_id) {
   EndpointDesc ep{};
   ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
   ep.protocol = protocol;
@@ -54,10 +54,10 @@ EndpointDesc MakeUbDeviceEp(CommProtocol protocol, uint32_t dev_id) {
 }
 
 void PrepareKernelReadyForUt(HixlCSClient &cli) {
-  cli.ub_kernel_loaded_ = true;
+  cli.device_kernel_loaded_ = true;
   static uint8_t kNonNullStub = 0U;
-  cli.ub_func_get_ = static_cast<void *>(&kNonNullStub);
-  cli.ub_func_put_ = static_cast<void *>(&kNonNullStub);
+  cli.device_func_get_ = static_cast<void *>(&kNonNullStub);
+  cli.device_func_put_ = static_cast<void *>(&kNonNullStub);
 }
 
 void RecordMemForBatchTransfer(HixlCSClient &cli, void *remote_addr, size_t remote_size, void *local_addr,
@@ -119,17 +119,17 @@ public:
   }
 };
 
-class HixlCSClientUbFixture : public ::testing::Test {
+class HixlCSClientDeviceFixture : public ::testing::Test {
  protected:
   void SetUp() override {
-    const EndpointDesc src = MakeUbDeviceEp(COMM_PROTOCOL_UBC_TP, kUbDevId);
-    const EndpointDesc dst = MakeUbDeviceEp(COMM_PROTOCOL_UBC_TP, kUbDevId);
+    const EndpointDesc src = MakeDeviceEp(COMM_PROTOCOL_UBC_TP, kDeviceDevId);
+    const EndpointDesc dst = MakeDeviceEp(COMM_PROTOCOL_UBC_TP, kDeviceDevId);
 
     HixlClientConfig config{};
     ASSERT_EQ(cli_.Create("127.0.0.1", kDummyPort, &src, &dst, &config), SUCCESS);
 
     cli_.client_channel_handle_ = static_cast<ChannelHandle>(1ULL);
-    cli_.ub_remote_flag_inited_ = false;
+    cli_.device_remote_flag_inited_ = false;
     remote_flag_dev_ = 0ULL;
     FillTagMem(cli_, kTransFlagNameDevice, static_cast<void *>(&remote_flag_dev_), sizeof(uint64_t));
 
@@ -138,7 +138,7 @@ class HixlCSClientUbFixture : public ::testing::Test {
 
   void TearDown() override {
     (void)cli_.Destroy();
-    unsetenv("HIXL_UT_UB_FLAG_HACK");
+    unsetenv("HIXL_UT_DEVICE_FLAG_HACK");
   }
 
   CommunicateMem SetupBatchTransfer(bool is_get) {
@@ -177,8 +177,8 @@ class HixlCSClientUbFixture : public ::testing::Test {
   CommunicateMem mem_{};
 };
 
-TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceSuccessUseMemcpyHackFlag) {
-  setenv("HIXL_UT_UB_FLAG_HACK", "1", 1);
+TEST_F(HixlCSClientDeviceFixture, BatchPutDeviceSuccessUseMemcpyHackFlag) {
+  setenv("HIXL_UT_DEVICE_FLAG_HACK", "1", 1);
   CommunicateMem mem = SetupBatchTransfer(false);
 
   void *qh = nullptr;
@@ -191,8 +191,8 @@ TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceSuccessUseMemcpyHackFlag) {
   EXPECT_EQ(st, HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED);
 }
 
-TEST_F(HixlCSClientUbFixture, BatchGetUbDeviceSuccessUseMemcpyHackFlag) {
-  setenv("HIXL_UT_UB_FLAG_HACK", "1", 1);
+TEST_F(HixlCSClientDeviceFixture, BatchGetDeviceSuccessUseMemcpyHackFlag) {
+  setenv("HIXL_UT_DEVICE_FLAG_HACK", "1", 1);
   CommunicateMem mem = SetupBatchTransfer(true);
 
   void *qh = nullptr;
@@ -205,16 +205,16 @@ TEST_F(HixlCSClientUbFixture, BatchGetUbDeviceSuccessUseMemcpyHackFlag) {
   EXPECT_EQ(st, HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED);
 }
 
-TEST_F(HixlCSClientUbFixture, PrepareUbRemoteFlagAndKernelMissingTagFail) {
-  cli_.ub_remote_flag_inited_ = false;
+TEST_F(HixlCSClientDeviceFixture, PrepareDeviceRemoteFlagAndKernelMissingTagFail) {
+  cli_.device_remote_flag_inited_ = false;
   cli_.tag_mem_descs_.clear();
 
   void *remote_flag = nullptr;
-  EXPECT_EQ(cli_.PrepareUbRemoteFlagAndKernel(remote_flag), PARAM_INVALID);
+  EXPECT_EQ(cli_.PrepareDeviceRemoteFlagAndKernel(remote_flag), PARAM_INVALID);
   EXPECT_EQ(remote_flag, nullptr);
 }
 
-TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceNotifyWaitFail) {
+TEST_F(HixlCSClientDeviceFixture, BatchPutDeviceNotifyWaitFail) {
   CommunicateMem mem = SetupBatchTransfer(false);
   void *qh = nullptr;
 
@@ -232,8 +232,8 @@ TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceNotifyWaitFail) {
   EXPECT_EQ(CompletePool::GetInstance().GetInUseCount(), 0U);
 }
 
-TEST_F(HixlCSClientUbFixture, BatchPutUbDeviceSlotExhaustedFail) {
-  setenv("HIXL_UT_UB_FLAG_HACK", "1", 1);
+TEST_F(HixlCSClientDeviceFixture, BatchPutDeviceSlotExhaustedFail) {
+  setenv("HIXL_UT_DEVICE_FLAG_HACK", "1", 1);
   CommunicateMem mem = SetupBatchTransfer(false);
   std::vector<void *> handles;
   handles.reserve(CompletePool::kMaxSlots);
@@ -297,8 +297,8 @@ TEST_F(LoadKernelFixture, NoEnvAndFileNotFound) {
   llm::MmpaStub::GetInstance().SetImpl(mock_mmpa);
   unsetenv("ASCEND_HOME_PATH");
   aclrtBinHandle bin_handle = nullptr;
-  UbFuncHandles func_handles{};
-  Status ret = LoadUbKernelAndGetHandles("GetFunc", "PutFunc", bin_handle, func_handles);
+  DeviceFuncHandles func_handles{};
+  Status ret = LoadDeviceKernelAndGetHandles("GetFunc", "PutFunc", bin_handle, func_handles);
   EXPECT_EQ(ret, PARAM_INVALID);
 }
 
@@ -307,12 +307,12 @@ TEST_F(LoadKernelFixture, AclLoadBinaryFailed) {
   std::string file_path = "./test_opp/opp/built-in/op_impl/aicpu/config/libcann_hixl_kernel.json";
   CreateDummyJson(file_path, true);
   aclrtBinHandle bin_handle = nullptr;
-  UbFuncHandles func_handles{};
+  DeviceFuncHandles func_handles{};
   MockAclRuntimeStub mock_acl;
   llm::AclRuntimeStub::Install(&mock_acl);
   EXPECT_CALL(mock_acl, aclrtBinaryLoadFromFile(testing::_, testing::_, testing::_))
       .WillOnce(testing::Return(static_cast<aclError>(FAILED)));
-  Status ret = LoadUbKernelAndGetHandles("GetFunc", "PutFunc", bin_handle, func_handles);
+  Status ret = LoadDeviceKernelAndGetHandles("GetFunc", "PutFunc", bin_handle, func_handles);
   llm::AclRuntimeStub::UnInstall(&mock_acl);
   EXPECT_EQ(ret, FAILED);
 }
@@ -320,22 +320,22 @@ TEST_F(LoadKernelFixture, AclLoadBinaryFailed) {
 TEST_F(LoadKernelFixture, GetFuncHandleInvalidParams) {
   setenv("ASCEND_HOME_PATH", "./test_opp", 1);
   aclrtBinHandle dummy_bin_handle = reinterpret_cast<aclrtBinHandle>(0xDEADBEEF);
-  UbFuncHandles func_handles{};
-  Status ret = LoadUbKernelAndGetHandles(nullptr, "PutFunc", dummy_bin_handle, func_handles);
+  DeviceFuncHandles func_handles{};
+  Status ret = LoadDeviceKernelAndGetHandles(nullptr, "PutFunc", dummy_bin_handle, func_handles);
   EXPECT_EQ(ret, PARAM_INVALID);
-  ret = LoadUbKernelAndGetHandles("GetFunc", nullptr, dummy_bin_handle, func_handles);
+  ret = LoadDeviceKernelAndGetHandles("GetFunc", nullptr, dummy_bin_handle, func_handles);
   EXPECT_EQ(ret, PARAM_INVALID);
 }
 
 TEST_F(LoadKernelFixture, GetFuncHandleAclGetFuncFailed) {
   setenv("ASCEND_HOME_PATH", "./test_opp", 1);
   aclrtBinHandle dummy_bin_handle = reinterpret_cast<aclrtBinHandle>(0xDEADBEEF);
-  UbFuncHandles func_handles{};
+  DeviceFuncHandles func_handles{};
   MockAclRuntimeStub mock_acl;
   llm::AclRuntimeStub::Install(&mock_acl);
   EXPECT_CALL(mock_acl, aclrtBinaryGetFunction(testing::_, testing::_, testing::_))
       .WillOnce(testing::Return(static_cast<aclError>(FAILED)));
-  Status ret = LoadUbKernelAndGetHandles("GetFunc", "PutFunc", dummy_bin_handle, func_handles);
+  Status ret = LoadDeviceKernelAndGetHandles("GetFunc", "PutFunc", dummy_bin_handle, func_handles);
   llm::AclRuntimeStub::UnInstall(&mock_acl);
   EXPECT_EQ(ret, FAILED);
 }

@@ -11,13 +11,78 @@
 #include "hixl_utils.h"
 
 #include <arpa/inet.h>
+#include <array>
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <set>
 #include <unordered_set>
 #include "securec.h"
 #include "nlohmann/json.hpp"
+#include "acl/acl.h"
+#include "mmpa/mmpa_api.h"
 #include "hixl_log.h"
 #include "hixl_checker.h"
 
 namespace hixl {
+namespace {
+constexpr const char kSocA2[] = "Ascend910B1";
+constexpr uint32_t kBufferMaxSize = 128U;
+constexpr const char kHccnConfPath[] = "/etc/hccn.conf";
+constexpr const char kHccnToolPath[] = "/usr/local/Ascend/driver/tools/hccn_tool";
+
+const static std::set<std::string> kV2Version = {"Ascend910_9391", "Ascend910_9381", "Ascend910_9392",
+                                                 "Ascend910_9382", "Ascend910_9372", "Ascend910_9362"};
+
+void ExtractIpAddress(const std::string &output_str, std::string &ip) {
+  const std::string prefix = "ipaddr:";
+  auto pos = output_str.find(prefix);
+  if (pos == std::string::npos) {
+    return;
+  }
+  pos += prefix.length();
+  auto end = output_str.find("\n", pos);
+  ip = output_str.substr(pos, end - pos);
+}
+
+Status GetHccnOutput(const std::string &command, std::string &result) {
+  std::string command_with_stderr = command + " 2>&1";
+  std::array<char, kBufferMaxSize> buffer{};
+  std::unique_ptr<FILE, int (*)(FILE *)> pipe(popen(command_with_stderr.c_str(), "r"), pclose);
+  if (!pipe) {
+    HIXL_LOGE(FAILED, "calling command %s failed, cannot create subprocess.", command_with_stderr.c_str());
+    return FAILED;
+  }
+
+  while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+    result += buffer.data();
+  }
+  return SUCCESS;
+}
+
+Status GetIpAddressFromHccnTool(uint32_t phy_device_id, std::string &ip) {
+  std::string command;
+  std::string output;
+  if (mmAccess(kHccnToolPath) == EN_OK) {
+    command = std::string(kHccnToolPath) + " -i " + std::to_string(phy_device_id) + " -ip -g";
+  } else {
+    std::string check_cmd = "command -v hccn_tool > /dev/null 2>&1";
+    if (system(check_cmd.c_str()) != 0) {
+      HIXL_LOGI("hccn_tool is not found in default path or PATH, skip querying device ip by tool.");
+      return SUCCESS;
+    }
+    command = "hccn_tool -i " + std::to_string(phy_device_id) + " -ip -g";
+  }
+
+  HIXL_CHK_STATUS_RET(GetHccnOutput(command, output), "Getting hccn output failed.");
+  ExtractIpAddress(output, ip);
+  if (ip.empty()) {
+    HIXL_LOGW("Please make sure device ip is set correctly.");
+  }
+  return SUCCESS;
+}
+}  // namespace
 Status HcclError2Status(HcclResult ret) {
   static const std::map<HcclResult, Status> result2status = {
       {HCCL_SUCCESS, SUCCESS},
@@ -161,40 +226,157 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
   return SUCCESS;
 }
 
-Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t dev_phy_id) {
-  static const std::map<std::string, EndpointLocType> placement_map = {{kPlacementHost, ENDPOINT_LOC_TYPE_HOST},
+Status GetSocName(std::string &soc_name) {
+  const char *soc_name_cstr = aclrtGetSocName();
+  HIXL_CHK_BOOL_RET_STATUS(soc_name_cstr != nullptr, FAILED, "aclrtGetSocName returned nullptr");
+  soc_name = soc_name_cstr;
+  HIXL_CHK_BOOL_RET_STATUS(!soc_name.empty(), FAILED, "soc_name is empty");
+  return SUCCESS;
+}
+
+SocType GetSocTypeByName(const std::string &soc_name) {
+  if (soc_name == kSocA2) {
+    return SocType::kA2;
+  }
+
+  if (kV2Version.find(soc_name) != kV2Version.end()) {
+    return SocType::kA3;
+  }
+
+  return SocType::kOther;
+}
+
+Status GetSocType(SocType &soc_type) {
+  std::string soc_name;
+  HIXL_CHK_STATUS_RET(GetSocName(soc_name), "GetSocName failed");
+  soc_type = GetSocTypeByName(soc_name);
+  return SUCCESS;
+}
+
+Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip) {
+  char resolved_path[MMPA_MAX_PATH] = {};
+  auto mm_ret = mmRealPath(kHccnConfPath, resolved_path, MMPA_MAX_PATH);
+  if (mm_ret == EN_OK) {
+    HIXL_CHK_BOOL_RET_STATUS(mmAccess(resolved_path) == EN_OK, FAILED, "Can not access file:%s, reason:%s",
+                             resolved_path, strerror(errno));
+
+    std::ifstream file(resolved_path);
+    HIXL_CHK_BOOL_RET_STATUS(file.is_open(), FAILED, "Failed to open file:%s", kHccnConfPath);
+
+    std::string line;
+    std::string target_key = "address_" + std::to_string(phy_device_id) + "=";
+    constexpr size_t kValidItemNum = 2U;
+    while (std::getline(file, line)) {
+      if (line.find(target_key) != 0) {
+        continue;
+      }
+
+      const auto address_val = Split(line, '=');
+      HIXL_CHK_BOOL_RET_STATUS(address_val.size() == kValidItemNum, FAILED,
+                               "address format is invalid: %s, expect address_${phy_device_id}=${device_ip}",
+                               line.c_str());
+      device_ip = address_val.back();
+      HIXL_CHK_STATUS_RET(CheckIp(device_ip), "device ip:%s is invalid.", device_ip.c_str());
+      return SUCCESS;
+    }
+  } else {
+    HIXL_LOGI("%s does not exist, trying to use hccn_tool to get device_ip.", kHccnConfPath);
+  }
+
+  std::string ip;
+  HIXL_CHK_STATUS_RET(GetIpAddressFromHccnTool(static_cast<uint32_t>(phy_device_id), ip),
+                      "Getting ip from hccn tool failed.");
+  if (!ip.empty()) {
+    device_ip = ip;
+    HIXL_CHK_STATUS_RET(CheckIp(device_ip), "device ip:%s is invalid.", device_ip.c_str());
+  }
+
+  return SUCCESS;
+}
+
+namespace {
+Status FillDeviceLocInfo(const EndpointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t dev_phy_id) {
+  endpoint.loc.device.devPhyId = (endpoint_config.device_info.phy_device_id >= 0)
+                                     ? static_cast<uint32_t>(endpoint_config.device_info.phy_device_id)
+                                     : dev_phy_id;
+  endpoint.loc.device.superDevId = 0U;
+  endpoint.loc.device.superPodIdx = 0U;
+  endpoint.loc.device.serverIdx = 0U;
+  if (endpoint_config.device_info.super_device_id >= 0) {
+    HIXL_CHK_BOOL_RET_STATUS(
+        endpoint_config.device_info.super_device_id <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+        PARAM_INVALID, "super_device_id out of range: %" PRId64, endpoint_config.device_info.super_device_id);
+    endpoint.loc.device.superDevId = static_cast<uint32_t>(endpoint_config.device_info.super_device_id);
+  }
+  if (endpoint_config.device_info.super_pod_id >= 0) {
+    HIXL_CHK_BOOL_RET_STATUS(
+        endpoint_config.device_info.super_pod_id <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+        PARAM_INVALID, "super_pod_id out of range: %" PRId64, endpoint_config.device_info.super_pod_id);
+    endpoint.loc.device.superPodIdx = static_cast<uint32_t>(endpoint_config.device_info.super_pod_id);
+  }
+
+  return SUCCESS;
+}
+
+Status ParseEndpointPlacement(const EndpointConfig &endpoint_config, EndpointDesc &endpoint) {
+  static const std::map<std::string, EndpointLocType> kPlacementMap = {{kPlacementHost, ENDPOINT_LOC_TYPE_HOST},
                                                                        {kPlacementDevice, ENDPOINT_LOC_TYPE_DEVICE}};
 
-  static const std::map<std::string, CommProtocol> protocol_map = {{kProtocolRoce, COMM_PROTOCOL_ROCE},
-                                                                   {kProtocolUbCtp, COMM_PROTOCOL_UBC_CTP},
-                                                                   {kProtocolUbTp, COMM_PROTOCOL_UBC_TP}};
-
-  // 处理placement
-  auto placement_it = placement_map.find(endpoint_config.placement);
-  if (placement_it == placement_map.end()) {
+  auto placement_it = kPlacementMap.find(endpoint_config.placement);
+  if (placement_it == kPlacementMap.end()) {
     HIXL_LOGE(PARAM_INVALID, "Unsupported placement: %s", endpoint_config.placement.c_str());
     return PARAM_INVALID;
   }
   endpoint.loc.locType = placement_it->second;
+  return SUCCESS;
+}
 
-  // 处理protocol
-  auto protocol_it = protocol_map.find(endpoint_config.protocol);
-  if (protocol_it == protocol_map.end()) {
+Status ParseEndpointProtocol(const EndpointConfig &endpoint_config, EndpointDesc &endpoint) {
+  static const std::map<std::string, CommProtocol> kProtocolMap = {{kProtocolRoce, COMM_PROTOCOL_ROCE},
+                                                                   {kProtocolUbCtp, COMM_PROTOCOL_UBC_CTP},
+                                                                   {kProtocolUbTp, COMM_PROTOCOL_UBC_TP},
+                                                                   {kProtocolHccs, COMM_PROTOCOL_HCCS}};
+  auto protocol_it = kProtocolMap.find(endpoint_config.protocol);
+  if (protocol_it == kProtocolMap.end()) {
     HIXL_LOGE(PARAM_INVALID, "Unsupported protocol: %s", endpoint_config.protocol.c_str());
     return PARAM_INVALID;
   }
   endpoint.protocol = protocol_it->second;
+  return SUCCESS;
+}
+}  // namespace
 
-  // 处理ROCE协议的comm_id
+Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t dev_phy_id) {
+  HIXL_CHK_STATUS_RET(ParseEndpointPlacement(endpoint_config, endpoint), "ParseEndpointPlacement failed");
+  HIXL_CHK_STATUS_RET(ParseEndpointProtocol(endpoint_config, endpoint), "ParseEndpointProtocol failed");
   if (endpoint_config.protocol == kProtocolRoce) {
     HIXL_CHK_STATUS_RET(ParseIpAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseIpAddress failed");
+    if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
+      HIXL_CHK_STATUS_RET(FillDeviceLocInfo(endpoint_config, endpoint, dev_phy_id), "FillDeviceLocInfo failed");
+    }
     return SUCCESS;
   }
-
-  // 处理UB协议的comm_id
+  if (endpoint_config.protocol == kProtocolHccs) {
+    uint64_t device_id = 0;
+    try {
+      device_id = std::stoull(endpoint_config.comm_id);
+    } catch (const std::exception &e) {
+      HIXL_LOGE(PARAM_INVALID, "Parse hccs comm_id failed, comm_id:%s, exception:%s",
+                endpoint_config.comm_id.c_str(), e.what());
+      return PARAM_INVALID;
+    }
+    HIXL_CHK_BOOL_RET_STATUS(device_id <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
+                             PARAM_INVALID, "hccs comm_id out of range: %s",
+                             endpoint_config.comm_id.c_str());
+    endpoint.commAddr.type = COMM_ADDR_TYPE_ID;
+    endpoint.commAddr.id = static_cast<uint32_t>(device_id);
+    if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
+      HIXL_CHK_STATUS_RET(FillDeviceLocInfo(endpoint_config, endpoint, dev_phy_id), "FillDeviceLocInfo failed");
+    }
+    return SUCCESS;
+  }
   if (endpoint_config.protocol == kProtocolUbCtp || endpoint_config.protocol == kProtocolUbTp) {
     HIXL_CHK_STATUS_RET(ParseEidAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseEidAddress failed");
-    // placement 为device则需要填写device结构体中的物理id
     if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
       endpoint.loc.device.devPhyId = dev_phy_id;
     }
@@ -238,6 +420,13 @@ Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std:
       item["plane"] = ep.plane;
       item["dst_eid"] = ep.dst_eid;
       item["net_instance_id"] = ep.net_instance_id;
+
+      nlohmann::json device_info;
+      device_info["phy_device_id"] = ep.device_info.phy_device_id;
+      device_info["super_device_id"] = ep.device_info.super_device_id;
+      device_info["super_pod_id"] = ep.device_info.super_pod_id;
+      item["device_info"] = device_info;
+
       j.push_back(item);
     }
     msg_str = j.dump();

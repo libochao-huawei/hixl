@@ -160,6 +160,7 @@ Status HixlClient::Deserialize(const std::string &json_str, std::vector<Endpoint
     return PARAM_INVALID;
   }
 
+  endpoint_list.clear();
   for (const auto &item : j) {
     EndpointConfig endpoint{};
     // 解析字段
@@ -170,6 +171,19 @@ Status HixlClient::Deserialize(const std::string &json_str, std::vector<Endpoint
     HIXL_CHK_STATUS_RET(ParseJsonField(item, "placement", endpoint.placement), "Failed to parse placement");
     HIXL_CHK_STATUS_RET(ParseJsonField(item, "plane", endpoint.plane), "Failed to parse plane");
     HIXL_CHK_STATUS_RET(ParseJsonField(item, "dst_eid", endpoint.dst_eid), "Failed to parse dst_eid");
+
+    if (item.contains("device_info") && item["device_info"].is_object()) {
+      const auto &device_info = item["device_info"];
+      if (device_info.contains("phy_device_id") && device_info["phy_device_id"].is_number_integer()) {
+        endpoint.device_info.phy_device_id = device_info["phy_device_id"].get<int32_t>();
+      }
+      if (device_info.contains("super_device_id") && device_info["super_device_id"].is_number_integer()) {
+        endpoint.device_info.super_device_id = device_info["super_device_id"].get<int64_t>();
+      }
+      if (device_info.contains("super_pod_id") && device_info["super_pod_id"].is_number_integer()) {
+        endpoint.device_info.super_pod_id = device_info["super_pod_id"].get<int64_t>();
+      }
+    }
 
     endpoint_list.emplace_back(std::move(endpoint));
   }
@@ -219,7 +233,14 @@ Status HixlClient::FindMatchedEndpoints(const std::vector<EndpointConfig> &local
     HIXL_LOGW("Found only %u/%u expected UB endpoint pairs", count, kMaxUbCsClientNum);
     return SUCCESS;
   }
-  HIXL_LOGE(FAILED, "Failed to find matched UB endpoints");
+
+  // A5继续按原UB逻辑；A2/A3由于没有UB，会在这里继续尝试HCCS匹配
+  HIXL_LOGI("No matched UB endpoints found, try HCCS matching");
+  if (TryMatchHccsEndpoints(local_endpoint_list, remote_endpoint_list) == SUCCESS) {
+    return SUCCESS;
+  }
+
+  HIXL_LOGE(FAILED, "Failed to find matched UB/HCCS endpoints");
   return FAILED;
 }
 
@@ -252,6 +273,21 @@ Status HixlClient::TryMatchRoceEndpoints(const std::vector<EndpointConfig> &loca
     HIXL_LOGE(FAILED, "Failed to find matched ROCE endpoints");
     return FAILED;
   }
+}
+
+Status HixlClient::TryMatchHccsEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
+                                         const std::vector<EndpointConfig> &remote_endpoint_list) {
+  auto local_it = std::find_if(local_endpoint_list.begin(), local_endpoint_list.end(),
+                               [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolHccs; });
+  auto remote_it = std::find_if(remote_endpoint_list.begin(), remote_endpoint_list.end(),
+                                [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolHccs; });
+
+  if (local_it != local_endpoint_list.end() && remote_it != remote_endpoint_list.end()) {
+    return CreateCsClients(*local_it, *remote_it, CommType::COMM_TYPE_HCCS);
+  }
+
+  HIXL_LOGE(FAILED, "Failed to find matched HCCS endpoints");
+  return FAILED;
 }
 
 void HixlClient::BuildEndpointsMatchMap(const std::vector<EndpointConfig> &endpoint_list,
@@ -393,6 +429,7 @@ Status HixlClient::RegisterMemToCsClient(const MemDesc &mem, const MemType type)
     comm_types_to_register.push_back(CommType::COMM_TYPE_UB_H2H);
   }
   comm_types_to_register.push_back(CommType::COMM_TYPE_ROCE);
+  comm_types_to_register.push_back(CommType::COMM_TYPE_HCCS);
 
   // 注册内存到对应的cs client
   std::lock_guard<std::mutex> lock(client_handles_mutex_);
@@ -614,12 +651,18 @@ Status HixlClient::ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs
       }
     }
 
-    // 如果是roce，直接将op_desc保存在op_descs_table中
     {
       std::lock_guard<std::mutex> lock(client_handles_mutex_);
+      // 如果是roce，直接将op_desc保存在op_descs_table中
       if (client_handles_.find(CommType::COMM_TYPE_ROCE) != client_handles_.end()) {
         op_descs_table[CommType::COMM_TYPE_ROCE].push_back(op_desc);
         HIXL_LOGI("Current communication type: %s.", CommTypeToString(CommType::COMM_TYPE_ROCE));
+        continue;
+      }
+      // 如果是hccs，直接将op_desc保存在op_descs_table中
+      if (client_handles_.find(CommType::COMM_TYPE_HCCS) != client_handles_.end()) {
+        op_descs_table[CommType::COMM_TYPE_HCCS].push_back(op_desc);
+        HIXL_LOGI("Current communication type: %s.", CommTypeToString(CommType::COMM_TYPE_HCCS));
         continue;
       }
     }
