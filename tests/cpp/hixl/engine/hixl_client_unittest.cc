@@ -41,6 +41,8 @@ static constexpr uint32_t kNUm1 = 1;
 static constexpr uint32_t kNUm2 = 2;
 static constexpr uint32_t default_list_num = 2;
 static constexpr uint32_t list_num_4ub = 4;
+static constexpr uint8_t kDefaultRdmaTc = 132;
+static constexpr uint8_t kDefaultRdmaSl = 4;
 static std::vector<uint32_t> kLocalMems(kMemNum, kNUm1);
 static std::vector<uint32_t> kRemoteMems(kMemNum, kNUm2);
 enum class MockHixlServerMode : uint32_t {
@@ -322,7 +324,7 @@ class HixlClientUTest : public ::testing::Test {
  protected:
   void SetUp() override {
     server_ = MakeUnique<MockHixlServer>();
-    client_ = MakeUnique<HixlClient>("127.0.0.1", kServerPort);
+    client_ = MakeUnique<HixlClient>("127.0.0.1", kServerPort, kDefaultRdmaTc, kDefaultRdmaSl);
   }
 
   void TearDown() override {

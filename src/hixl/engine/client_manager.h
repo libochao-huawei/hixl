@@ -19,14 +19,21 @@
 
 namespace hixl {
 using ClientPtr = std::shared_ptr<HixlClient>;
+
+struct ClientConfig {
+  std::vector<EndpointConfig> endpoint_list;
+  std::string remote_engine;
+  uint8_t rdma_tc;
+  uint8_t rdma_sl;
+};
+
 class ClientManager {
  public:
   ClientManager() = default;
   ~ClientManager() = default;
   Status Initialize();
   Status Finalize();
-  Status CreateClient(const std::vector<EndpointConfig> &endpoint_list,
-                      const std::string &remote_engine,
+  Status CreateClient(const ClientConfig &client_config,
                       ClientPtr &client_ptr);
   ClientPtr GetClient(const std::string &remote_engine);
   Status DestroyClient(const std::string &remote_engine);
