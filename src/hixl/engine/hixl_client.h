@@ -175,6 +175,9 @@ class HixlClient {
   Status TryMatchRoceEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
                                const std::vector<EndpointConfig> &remote_endpoint_list);
 
+  Status TryMatchHccsEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
+                               const std::vector<EndpointConfig> &remote_endpoint_list);
+
   Status TryMatchUbEndpoints(const EndpointConfig &local_endpoint,
                              const std::map<MatchKey, EndpointConfig> &peer_match_endpoints,
                              std::map<CommType, bool> &expected_pairs, uint32_t &count);
