@@ -16,6 +16,7 @@
 #include "common/hixl_checker.h"
 #include "common/ctrl_msg.h"
 #include "common/ctrl_msg_plugin.h"
+#include "common/endpoint_generator.h"
 #include "common/hixl_inner_types.h"
 #include "common/hixl_utils.h"
 
@@ -53,7 +54,7 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
       (void)msg;
       (void)msg_len;
       std::string msg_str;
-      HIXL_CHK_STATUS_RET(SerializeEndpointConfigList(data_endpoint_config_list_, msg_str),
+      HIXL_CHK_STATUS_RET(EndpointGenerator::SerializeEndpointConfigList(data_endpoint_config_list_, msg_str),
                           "Failed to serialize endpoint config.");
       CtrlMsgHeader header{};
       header.magic = kMagicNumber;
