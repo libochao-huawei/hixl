@@ -270,7 +270,8 @@ Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc
 
   static const std::map<std::string, CommProtocol> protocol_map = {{kProtocolRoce, COMM_PROTOCOL_ROCE},
                                                                    {kProtocolUbCtp, COMM_PROTOCOL_UBC_CTP},
-                                                                   {kProtocolUbTp, COMM_PROTOCOL_UBC_TP}};
+                                                                   {kProtocolUbTp, COMM_PROTOCOL_UBC_TP},
+                                                                   {kProtocolUboe, COMM_PROTOCOL_UBOE}};
 
   // 处理placement
   auto placement_it = placement_map.find(endpoint_config.placement);
