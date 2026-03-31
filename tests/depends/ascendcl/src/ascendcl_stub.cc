@@ -757,6 +757,21 @@ aclError aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, int32_t *const p
   return llm::AclRuntimeStub::GetInstance()->aclrtGetPhyDevIdByLogicDevId(logicDevId, phyDevId);
 }
 
+aclError aclrtGetLogicDevIdByPhyDevId(const int32_t phyDevId, int32_t *const logicDevId) {
+  *logicDevId = phyDevId;
+  return ACL_SUCCESS;
+}
+aclError aclrtHostRegister(void *ptr, uint64_t size, aclrtHostRegisterType type, void **devPtr) {
+  (void)size;
+  (void)type;
+  *devPtr = ptr;
+  return ACL_SUCCESS;
+}
+aclError aclrtHostUnregister(void *ptr) {
+  (void)ptr;
+  return ACL_SUCCESS;
+}
+
 aclError aclrtMemcpyBatch(void **dsts, size_t *destMax, void **srcs, size_t *sizes, size_t numBatches,
                           aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs, size_t *failIndex)
 {
