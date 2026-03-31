@@ -35,20 +35,20 @@ struct CompleteHandle {
   uint64_t *flag_address;
 };
 
-enum class UbOpType : uint32_t {
+enum class DeviceOpType : uint32_t {
   kGet = 0U,
   kPut = 1U,
 };
 
-struct UbBatchKernelArgs {
+struct DeviceBatchKernelArgs {
   ThreadHandle thread;
   ChannelHandle channel;
   void *dev_flag;         // device 地址（notify 映射得到）
   uint32_t list_num;
-  UbOpType op;
+  DeviceOpType op;
 };
 
-struct UbBatchArgs {
+struct DeviceBatchArgs {
   ThreadHandle thread;
   ChannelHandle channel;
   uint32_t list_num;
@@ -66,11 +66,11 @@ struct MemDev {
   uint64_t *len_list_dev;
 };
 
-struct UbCompleteHandle {
+struct DeviceCompleteHandle {
   uint32_t magic;
   uint32_t reserved;
   CompletePool::SlotHandle slot;
-  UbBatchArgs args;
+  DeviceBatchArgs args;
   MemDev mem_dev;
 };
 
@@ -126,35 +126,34 @@ class HixlCSClient {
  private:
   void ReleaseFlagIndex(int32_t flag_index);
   Status InitBaseClient(const HixlClientDesc *client_desc);
-  Status InitUbResource();
-  Status InitUbConstMemory();
+  Status InitDeviceResource();
+  Status InitDeviceConstMemory();
   Status ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms);
   Status InitFlagQueue() noexcept;
   int32_t AcquireFlagIndex();
   Status ReleaseCompleteHandle(CompleteHandle *queryhandle);
-  Status ReleaseUbCompleteHandle(UbCompleteHandle &ub_handle);
+  Status ReleaseDeviceCompleteHandle(DeviceCompleteHandle &device_handle);
   Status CheckStatusHost(CompleteHandle &queryhandle, HixlCompleteStatus &status);
-  Status CheckStatusDevice(UbCompleteHandle &queryhandle, HixlCompleteStatus &status);
+  Status CheckStatusDevice(DeviceCompleteHandle &queryhandle, HixlCompleteStatus &status);
   Status BatchTransferHost(bool is_get, const CommunicateMem& p, void** queryhandle);
   Status BatchTransferDevice(bool is_get, const CommunicateMem& p, void** queryhandle);
-  Status EnsureUbRemoteFlagInitedLocked();
-  Status EnsureUbKernelLoadedLocked();
-  void *UbGetKernelStubFunc(bool is_get);
+  Status EnsureDeviceRemoteFlagInitedLocked();
+  Status EnsureDeviceKernelLoadedLocked();
+  void *DeviceGetKernelStubFunc(bool is_get);
   Status ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, CommMem **remote_mem_list, char ***mem_tag_list,
                          uint32_t *list_num);
   Status ValidateAddress(bool is_get, const CommunicateMem &communicate_mem_param);
   Status BatchTransferTask(bool is_get, const CommunicateMem &communicate_mem_param);
   void FillOutputParams(ImportCtx &ctx, CommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
   Status ClearRemoteMemInfo();
-  Status ValidateUbInputs(bool is_get, const CommunicateMem &mem_param, void *&query_handle) const;
-  Status PrepareUbRemoteFlagAndKernel(void *&remote_flag);
-  Status AcquireUbSlot(CompletePool::SlotHandle &slot);
-  Status FillUbBatchArgs(const CommunicateMem &mem_param, MemDev &mem_dev, const CompletePool::SlotHandle &slot,
-                         void *remote_flag, UbBatchArgs &args);
-  Status LaunchUbAndStage(bool is_get, UbCompleteHandle &handle, const void *remote_flag);
+  Status ValidateDeviceInputs(bool is_get, const CommunicateMem &mem_param, void *&query_handle) const;
+  Status PrepareDeviceRemoteFlagAndKernel(void *&remote_flag);
+  Status AcquireDeviceSlot(CompletePool::SlotHandle &slot);
+  Status FillDeviceBatchArgs(const CommunicateMem &mem_param, MemDev &mem_dev, const CompletePool::SlotHandle &slot,
+                         void *remote_flag, DeviceBatchArgs &args);
+  Status LaunchDeviceAndStage(bool is_get, DeviceCompleteHandle &handle, const void *remote_flag);
   void ReleaseLegacyHandlesLocked();
-  Status ReleaseUbResourcesLocked();
-
+  Status ReleaseDeviceResourcesLocked();
  private:
   std::mutex mutex_;
   // 用于记录内存地址的分配情况
@@ -183,19 +182,18 @@ class HixlCSClient {
   std::vector<CommMem> imported_remote_bufs_;
   std::vector<HixlMemDesc> desc_list_;
   bool is_device_ {false};
-  bool is_ub_mode_{false};
-  int32_t ub_device_id_ {-1};
-  std::mutex ub_mu_;
-  bool ub_remote_flag_inited_ {false};
-  void *ub_remote_flag_addr_ {nullptr};   // server 侧地址（远端地址）
-  uint64_t ub_remote_flag_size_ {0ULL};   // 至少 8
+  int32_t device_id_ {-1};
+  std::mutex device_mu_;
+  bool device_remote_flag_inited_ {false};
+  void *device_remote_flag_addr_ {nullptr};   // server 侧地址（远端地址）
+  uint64_t device_remote_flag_size_ {0ULL};   // 至少 8
   // UB kernel load cache
-  bool ub_kernel_loaded_ {false};
-  aclrtBinHandle ub_kernel_handle_ {nullptr};
-  void *ub_func_get_ {nullptr};
-  void *ub_func_put_ {nullptr};
-  void *ub_dev_const_one_{nullptr};
-  std::array<MemHandle, CompletePool::kMaxSlots> ub_notify_mem_handles_{};
+  bool device_kernel_loaded_ {false};
+  aclrtBinHandle device_kernel_handle_ {nullptr};
+  void *device_func_get_ {nullptr};
+  void *device_func_put_ {nullptr};
+  void *device_const_one_{nullptr};
+  std::array<MemHandle, CompletePool::kMaxSlots> device_notify_mem_handles_{};
 };
 }  // namespace hixl
 
