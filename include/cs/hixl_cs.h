@@ -42,6 +42,9 @@ struct HixlClientDesc {
   uint32_t server_port;
   const EndpointDesc *local_endpoint;
   const EndpointDesc *remote_endpoint;
+  uint8_t tc;
+  uint8_t sl;
+  uint8_t reserved[128] = {};
 };
 
 struct HixlServerDesc {
@@ -49,6 +52,7 @@ struct HixlServerDesc {
   uint32_t server_port;
   const EndpointDesc *endpoint_list;
   uint32_t endpoint_list_num;
+  uint8_t reserved[128] = {};
 };
 
 struct HixlOneSideOpDesc {
