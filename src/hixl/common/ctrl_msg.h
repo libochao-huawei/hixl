@@ -43,6 +43,8 @@ struct CtrlMsg {
 struct CreateChannelReq {
   EndpointDesc src;
   EndpointDesc dst;
+  uint8_t tc;
+  uint8_t sl;
 };
 
 struct CreateChannelResp {

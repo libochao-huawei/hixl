@@ -91,7 +91,8 @@ class HixlClient {
    * @param [in] server_ip  服务端监听 IPv4 地址
    * @param [in] server_port  服务端监听端口号
    */
-  HixlClient(const std::string &server_ip, uint32_t server_port) : server_ip_(server_ip), server_port_(server_port) {};
+  HixlClient(const std::string &server_ip, uint32_t server_port, uint8_t rdma_tc, uint8_t rdma_sl)
+      : server_ip_(server_ip), server_port_(server_port), rdma_tc_(rdma_tc), rdma_sl_(rdma_sl) {};
   ~HixlClient() = default;
 
   /**
@@ -197,6 +198,8 @@ class HixlClient {
 
   std::string server_ip_;
   uint32_t server_port_;
+  uint8_t rdma_tc_{132};
+  uint8_t rdma_sl_{4};
   bool is_connected_{false};  // true为已建链；false未建链
   bool is_finalized_{false};
   std::map<CommType, HixlClientHandle> client_handles_;  // ub链路时会创建4个 cs_client，roce链路会创建1个 cs_client

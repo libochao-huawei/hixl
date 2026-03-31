@@ -106,7 +106,8 @@ Status Endpoint::ExportMem(std::vector<HixlMemDesc> &mem_descs) {
   return SUCCESS;
 }
 
-Status Endpoint::CreateChannel(const EndpointDesc &remote_endpoint, ChannelHandle &channel_handle) {
+Status Endpoint::CreateChannel(const EndpointDesc &remote_endpoint, uint8_t tc, uint8_t sl,
+                               ChannelHandle &channel_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[channel] CreateChannel called before Initialize");
   CommEngine engine = CommEngine::COMM_ENGINE_RESERVED;
@@ -124,6 +125,11 @@ Status Endpoint::CreateChannel(const EndpointDesc &remote_endpoint, ChannelHandl
   ch_desc.remoteEndpoint = remote_endpoint;
   ch_desc.notifyNum = 1U;
   ch_desc.exchangeAllMems = true;
+  if (endpoint_.protocol == CommProtocol::COMM_PROTOCOL_ROCE) {
+    ch_desc.roceAttr.tc = static_cast<uint32_t>(tc);
+    ch_desc.roceAttr.sl = static_cast<uint32_t>(sl);
+    HIXL_LOGI("[channel] ROCE attributes set, tc=%u, sl=%u", ch_desc.roceAttr.tc, ch_desc.roceAttr.sl);
+  }
   ChannelPtr channel = MakeShared<Channel>();
   HIXL_CHECK_NOTNULL(channel);
   Status ret = channel->Create(handle_, ch_desc, engine);
