@@ -144,6 +144,8 @@ class HixlEngine : public hixl::Engine {
 
  private:
   Status ParseEndPoint(const std::string &local_comm_res, std::vector<EndpointConfig> &endpoint_list);
+  Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
+  Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
 
   std::mutex mutex_;
 
@@ -153,6 +155,9 @@ class HixlEngine : public hixl::Engine {
   std::map<void *, MemInfo> mem_map_;
   std::vector<EndpointConfig> endpoint_list_;
   std::map<uint64_t, AscendString> req2client_;
+
+  uint8_t rdma_traffic_class_{132};
+  uint8_t rdma_service_level_{4};
 };
 }  // namespace hixl
 
