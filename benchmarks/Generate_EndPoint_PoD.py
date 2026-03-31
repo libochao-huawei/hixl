@@ -1,15 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# ----------------------------------------------------------------------------
-# Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-# See LICENSE in the root of the software repository for the full text of the License.
-# ----------------------------------------------------------------------------
-
 """
 Generate endpoint configuration files from HCCL topology, rootinfo, and route.conf.
 
@@ -128,9 +116,9 @@ def find_peer_eid_from_1dmesh(
                 for port in ports:
                     eid_port_to_device[(eid, port)] = dev_id
 
-    # Find which topology index corresponds to our device
-    # For 8-device 1D ring (devices 32-39), they map to indices 0-7
-    topo_my_index = device_id - 32  # device 32 -> index 0, 33 -> 1, etc.
+    # just use x ~ x+7, e.g. 32~39
+    topo_my_index = device_id
+
 
     # Find edges involving our device and identify the peer
     for edge in p2p_edges:
@@ -162,7 +150,7 @@ def find_peer_eid_from_1dmesh(
                     # and find EID with this port
                     peer_device_id = None
                     for rank in rootinfo.get('rank_list', []):
-                        if rank['device_id'] != peer_topo_index + 32:  # +32 for devices 32-39
+                        if rank['device_id'] != peer_topo_index:
                             continue
                         for level in rank.get('level_list', []):
                             if level.get('net_layer') != 0:
@@ -185,6 +173,8 @@ def get_protocol_from_eid(
     Determine protocol for an EID based on topology and net layer.
 
     Returns: 'ub_ctp' or 'ub_tp'.
+
+    todo: 'roce', 'uboe'
     """
     # For net_layer 0 (1DMESH), always use ub_ctp
     if net_layer == 0:
@@ -203,19 +193,19 @@ def get_protocol_from_eid(
 
                 # If there's any port overlap, this edge applies to this device
                 if all_edge_ports & device_port_set:
-                    if 'UB_TP' in protocols:
-                        return 'ub_tp'
-                    elif 'UB_CTP' in protocols:
+                    if 'UB_CTP' in protocols:
                         return 'ub_ctp'
+                    elif 'UB_TP' in protocols:
+                        return 'ub_tp'
 
     return 'ub_ctp'
 
 
 def get_h2d_plane_id(device_id: int, rootinfo: Dict) -> str:
     """
-    Find the H2D endpoint (with 6 ports) for a device and return its plane_id.
+    Find the host endpoint (with 6 ports) for a device and return its plane_id.
 
-    H2D endpoints are located at net_layer=1 (CLOS layer) and have exactly 6 ports.
+    Host endpoints are located at net_layer=1 (CLOS layer), on the UDIE with larger PG.
 
     Args:
         device_id: The NPU device ID (e.g., 32, 33, 34, etc.)
@@ -229,7 +219,8 @@ def get_h2d_plane_id(device_id: int, rootinfo: Dict) -> str:
             for level in rank.get('level_list', []):
                 if level.get('net_layer') == 1:  # CLOS layer
                     for addr_entry in level.get('rank_addr_list', []):
-                        if len(addr_entry.get('ports', [])) == 6:  # H2D has 6 ports
+                        if len(addr_entry.get('ports', [])) == 6:  
+                            # 1DPoD: H2D on the UDIE with PG = 6 ports
                             return addr_entry.get('plane_id', 'plane_0')
     return 'plane_0'  # Default fallback if not found
 
@@ -315,9 +306,9 @@ if __name__ == "__main__":
 
     # Set default paths for local mode
     if use_local and not args.rootinfo_path:
-        args.rootinfo_path = "pod06_cpu5/hccl_rootinfo.json"
-        args.topo_path = "pod06_cpu5/atlas_950_1.json"
-        args.route_path = "pod06_cpu5/route.conf"
+        args.rootinfo_path = "D:/gitrep/newfeature/localcommres/pod06_cpu5/hccl_rootinfo.json"
+        args.topo_path = "D:/gitrep/newfeature/localcommres/pod06_cpu5/atlas_950_1.json"
+        args.route_path = "D:/gitrep/newfeature/localcommres/pod06_cpu5/route.conf"
 
     mode_str = f"local" if use_local else "server"
     print(f"Running in {mode_str} mode")
@@ -383,7 +374,7 @@ if __name__ == "__main__":
             "endpoint_list": endpoint_list
         }
 
-        output_path = Path(f"./hixlep/ub_endpoint_npu_{device_id}.json")
+        output_path = Path(f"/etc/hixlep/ub_endpoint_npu_{device_id}.json")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -395,6 +386,4 @@ if __name__ == "__main__":
             print(f"[Dry run] Would generate: {output_path}")
 
     print(f"{'Dry run: Would generate' if args.dry_run else 'Generated'} {len(route_pairs)} endpoint configuration files.")
-
-
 
