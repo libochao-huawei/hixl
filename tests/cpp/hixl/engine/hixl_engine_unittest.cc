@@ -218,6 +218,7 @@ class HixlEngineTest : public ::testing::Test {
 };
 
 TEST_F(HixlEngineTest, TestHixl) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88);
   Hixl engine1;
   EXPECT_EQ(engine1.Initialize("127.0.0.1", options1), SUCCESS);
 
@@ -265,6 +266,7 @@ TEST_F(HixlEngineTest, TestHixl) {
 }
 
 TEST_F(HixlEngineTest, TestHixlEngine) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88);
   // IPV4
   HixlEngine engine1("127.0.0.1");
   EXPECT_EQ(engine1.Initialize(options1), SUCCESS);
@@ -333,6 +335,7 @@ TEST_F(HixlEngineTest, TestHixlEngine) {
 }
 
 TEST_F(HixlEngineTest, TestTransferAsync) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88);
   std::string local_engine1 = "127.0.0.1";
   HixlEngine engine1(AscendString(local_engine1.c_str()));
   EXPECT_EQ(engine1.Initialize(options1), SUCCESS);
@@ -385,6 +388,7 @@ TEST_F(HixlEngineTest, TestTransferAsync) {
 }
 
 TEST_F(HixlEngineTest, TestInitFailed) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88);
   // invalid ip
   std::string local_engine = "ad.0.0.1:26000";
   HixlEngine engine(AscendString(local_engine.c_str()));
@@ -393,6 +397,7 @@ TEST_F(HixlEngineTest, TestInitFailed) {
 }
 
 TEST_F(HixlEngineTest, TestNotListenFailed) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88);
   std::string local_engine = "127.0.0.1:16000";
   HixlEngine engine(AscendString(local_engine.c_str()));
   EXPECT_EQ(engine.Initialize(options1), SUCCESS);
@@ -402,6 +407,7 @@ TEST_F(HixlEngineTest, TestNotListenFailed) {
 }
 
 TEST_F(HixlEngineTest, TestAlreadyConnectedFailed) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88);
   std::string local_engine1 = "127.0.0.1";
   HixlEngine engine1(AscendString(local_engine1.c_str()));
   EXPECT_EQ(engine1.Initialize(options1), SUCCESS);
@@ -416,6 +422,7 @@ TEST_F(HixlEngineTest, TestAlreadyConnectedFailed) {
 }
 
 TEST_F(HixlEngineTest, TestDeregisterUnregisteredMem) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88);
   std::string local_engine = "127.0.0.1";
   HixlEngine engine(AscendString(local_engine.c_str()));
   EXPECT_EQ(engine.Initialize(options1), SUCCESS);
@@ -426,6 +433,7 @@ TEST_F(HixlEngineTest, TestDeregisterUnregisteredMem) {
 }
 
 TEST_F(HixlEngineTest, TestGetTransferStatusWithInterrupt) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88);
   std::string local_engine1 = "127.0.0.1";
   HixlEngine engine1(AscendString(local_engine1.c_str()));
 
@@ -455,6 +463,7 @@ TEST_F(HixlEngineTest, TestGetTransferStatusWithInterrupt) {
 }
 
 TEST_F(HixlEngineTest, TestSendAndGetNotifies) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88);
   std::string local_engine1 = "127.0.0.1";
   HixlEngine engine1(AscendString(local_engine1.c_str()));
   EXPECT_EQ(engine1.Initialize(options1), SUCCESS);

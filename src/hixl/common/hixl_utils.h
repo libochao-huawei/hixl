@@ -79,6 +79,7 @@ Status GetSocName(std::string &soc_name);
 SocType GetSocTypeByName(const std::string &soc_name);
 
 Status GetSocType(SocType &soc_type);
+Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip);
 
 std::string MemTypeToString(MemType type);
 std::string TransferOpToString(TransferOp op);

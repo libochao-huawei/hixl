@@ -47,10 +47,6 @@ class LocCommResGenerator {
   static Status BuildRoceEndpoint(int32_t phy_device_id, loc_comm_res::EndpointInfo &endpoint);
   static Status BuildHccsEndpoint(int32_t phy_device_id, loc_comm_res::EndpointInfo &endpoint);
   static Status GetHostIpFromLocalEngine(const std::string &local_engine, std::string &host_ip);
-  static void ExtractIpAddress(const std::string &output_str, std::string &ip);
-  static Status GetHccnOutput(const std::string &command, std::string &result);
-  static Status ExecuteCommandAndParseIp(const std::string &command, std::string &output, std::string &ip);
-  static Status GetIpAddressFromHccnTool(uint32_t phy_device_id, std::string &ip);
 };
 }  // namespace hixl
 

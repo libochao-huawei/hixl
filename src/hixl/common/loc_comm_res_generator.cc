@@ -9,22 +9,15 @@
  */
 
 #include "loc_comm_res_generator.h"
-#include <array>
-#include <cerrno>
 #include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <memory>
 #include <string>
 #include "acl/acl.h"
-#include "mmpa/mmpa_api.h"
 #include "nlohmann/json.hpp"
 #include "common/hixl_utils.h"
 
 namespace hixl {
 namespace {
 constexpr const char kConfigVersion[] = "1.3";
-constexpr uint32_t kBufferMaxSize = 128U;
 bool IsIntraRoceEnabled() {
   const char *env_ret = std::getenv("HCCL_INTRA_ROCE_ENABLE");
   if (env_ret == nullptr) {
@@ -148,6 +141,10 @@ Status LocCommResGenerator::BuildRoceEndpoint(int32_t phy_device_id, loc_comm_re
   if (ret != SUCCESS) {
     return ret;
   }
+  if (device_ip.empty()) {
+    HIXL_LOGE(FAILED, "Failed to get device ip, phy_device_id:%d", phy_device_id);
+    return FAILED;
+  }
 
   endpoint.protocol = kProtocolRoce;
   endpoint.comm_id = device_ip;
@@ -182,116 +179,15 @@ Status LocCommResGenerator::GetHostIpFromLocalEngine(const std::string &local_en
   return SUCCESS;
 }
 
-void LocCommResGenerator::ExtractIpAddress(const std::string &output_str, std::string &ip) {
-  const std::string prefix = "ipaddr:";
-  auto pos = output_str.find(prefix);
-  if (pos != std::string::npos) {
-    pos += prefix.length();
-    auto end = output_str.find("\n", pos);
-    ip = output_str.substr(pos, end - pos);
+Status LocCommResGenerator::GetDeviceIp(int32_t phy_device_id, std::string &device_ip) {
+  Status ret = hixl::GetDeviceIp(phy_device_id, device_ip);
+  if (ret != SUCCESS) {
+    return ret;
   }
-}
-
-Status LocCommResGenerator::GetHccnOutput(const std::string &command, std::string &result) {
-  std::string command_with_stderr = command + " 2>&1";
-  std::array<char, kBufferMaxSize> buffer{};
-  std::unique_ptr<FILE, int (*)(FILE *)> pipe(popen(command_with_stderr.c_str(), "r"), pclose);
-  if (!pipe) {
+  if (device_ip.empty()) {
+    HIXL_LOGE(FAILED, "Failed to get device ip from hccn.conf and hccn_tool, phy_device_id:%d", phy_device_id);
     return FAILED;
   }
-
-  while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-    result += buffer.data();
-  }
-
   return SUCCESS;
-}
-
-Status LocCommResGenerator::ExecuteCommandAndParseIp(const std::string &command, std::string &output, std::string &ip) {
-  Status ret = GetHccnOutput(command, output);
-  if (ret != SUCCESS) {
-    return ret;
-  }
-
-  ExtractIpAddress(output, ip);
-  return SUCCESS;
-}
-
-Status LocCommResGenerator::GetIpAddressFromHccnTool(uint32_t phy_device_id, std::string &ip) {
-  std::string command;
-  std::string output;
-  constexpr const char *kHccnToolPath = "/usr/local/Ascend/driver/tools/hccn_tool";
-
-  if (mmAccess(kHccnToolPath) == EN_OK) {
-    command = std::string(kHccnToolPath) + " -i " + std::to_string(phy_device_id) + " -ip -g";
-  } else {
-    std::string check_cmd = "command -v hccn_tool > /dev/null 2>&1";
-    if (system(check_cmd.c_str()) != 0) {
-      return SUCCESS;
-    }
-    command = "hccn_tool -i " + std::to_string(phy_device_id) + " -ip -g";
-  }
-
-  Status ret = ExecuteCommandAndParseIp(command, output, ip);
-  if (ret != SUCCESS) {
-    return ret;
-  }
-
-  return SUCCESS;
-}
-
-Status LocCommResGenerator::GetDeviceIp(int32_t phy_device_id, std::string &device_ip) {
-  constexpr const char *kFilePath = "/etc/hccn.conf";
-  char resolved_path[MMPA_MAX_PATH] = {};
-  auto mm_ret = mmRealPath(kFilePath, resolved_path, MMPA_MAX_PATH);
-
-  if (mm_ret == EN_OK) {
-    if (mmAccess(resolved_path) != EN_OK) {
-      return FAILED;
-    }
-
-    std::ifstream file(resolved_path);
-    if (!file.is_open()) {
-      return FAILED;
-    }
-
-    std::string line;
-    std::string target_key = "address_" + std::to_string(phy_device_id) + "=";
-    constexpr size_t kValidItemNum = 2U;
-
-    while (std::getline(file, line)) {
-      if (line.find(target_key) != 0) {
-        continue;
-      }
-
-      const auto address_val = Split(line, '=');
-      if (address_val.size() != kValidItemNum) {
-        return FAILED;
-      }
-
-      device_ip = address_val.back();
-      if (CheckIp(device_ip) != SUCCESS) {
-        return PARAM_INVALID;
-      }
-      return SUCCESS;
-    }
-  }
-
-  std::string ip;
-  Status ret = GetIpAddressFromHccnTool(static_cast<uint32_t>(phy_device_id), ip);
-  if (ret != SUCCESS) {
-    return ret;
-  }
-
-  if (!ip.empty()) {
-    device_ip = ip;
-    if (CheckIp(device_ip) != SUCCESS) {
-      return PARAM_INVALID;
-    }
-    return SUCCESS;
-  }
-
-  HIXL_LOGE(FAILED, "Failed to get device ip from hccn.conf and hccn_tool, phy_device_id:%d", phy_device_id);
-  return FAILED;
 }
 }  // namespace hixl
