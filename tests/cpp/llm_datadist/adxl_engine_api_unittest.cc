@@ -470,7 +470,7 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineTransferAsyncWithMultiThread) {
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineGetTransferStatusFalied) {
-  llm:AutoCommResRuntimeMock::SetDevice(0);
+  llm::AutoCommResRuntimeMock::SetDevice(0);
   AdxlEngine engine1;
   std::map<AscendString, AscendString> options1;
   EXPECT_EQ(engine1.Initialize("127.0.0.1", options1), SUCCESS);
