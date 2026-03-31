@@ -91,7 +91,7 @@ hixl::Status CheckRespResultAndSetHandle(const hixl::CreateChannelResp &resp, ui
 }  // namespace
 namespace hixl {
 Status ConnMsgHandler::SendCreateChannelRequest(int32_t socket, const EndpointDesc &local_endpoint,
-                                                const EndpointDesc &remote_endpoint) {
+                                                const EndpointDesc &remote_endpoint, uint8_t tc, uint8_t sl) {
   HIXL_EVENT("SendCreateChannelRequest start. socket: %d", socket);
   CtrlMsgHeader header{};
   header.magic = kMagicNumber;
@@ -102,6 +102,8 @@ Status ConnMsgHandler::SendCreateChannelRequest(int32_t socket, const EndpointDe
   CreateChannelReq body{};
   body.src = local_endpoint;
   body.dst = remote_endpoint;
+  body.tc = tc;
+  body.sl = sl;
 
   Status ret = SendHeaderTypeBody(socket, header, msg_type, &body, static_cast<uint64_t>(sizeof(body)));
   if (ret == SUCCESS) {
