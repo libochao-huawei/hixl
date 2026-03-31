@@ -17,6 +17,8 @@
 #include "hixl/hixl_types.h"
 #include "cs/hixl_cs_client.h"
 #include "hixl/hixl.h"
+#include "slog_stub.h"
+#include "depends/mmpa/src/mmpa_stub.h"
 
 namespace hixl {
 
@@ -24,6 +26,7 @@ namespace {
 constexpr const int32_t kTimeOut = 1000;
 constexpr const int32_t kMaxRetryCount = 10;
 constexpr const int32_t kInterval = 10;
+constexpr const uint32_t kCaptureLogTimeoutMs = 1000U;
 }
 
 class HixlEngineTest : public ::testing::Test {
@@ -354,5 +357,153 @@ TEST_F(HixlEngineTest, TestSendAndGetNotifies) {
   EXPECT_EQ(engine2.GetNotifies(notifies), UNSUPPORTED);
   engine1.Finalize();
   engine2.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestParseTcAndSlWithValidValue) {
+  auto log_capture = std::make_shared<llm::LogCaptureStub>();
+  std::string tc_log_pattern = "Set rdma traffic class to 128";
+  std::string sl_log_pattern = "Set rdma service level to 5";
+  std::string channel_desc_log_pattern = "[channel] ROCE attributes set, tc=128, sl=5";
+  log_capture->AddCapturePattern(tc_log_pattern);
+  log_capture->AddCapturePattern(sl_log_pattern);
+  log_capture->AddCapturePattern(channel_desc_log_pattern);
+  log_capture->SetLevelInfo();
+  llm::SlogStub::SetInstance(log_capture);
+
+  mmSetEnv("HCCL_RDMA_TC", "120", 1);
+  mmSetEnv("HCCL_RDMA_SL", "3", 1);
+  options1[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "128";
+  options1[adxl::OPTION_RDMA_SERVICE_LEVEL] = "5";
+  HixlEngine engine1("127.0.0.1");
+  EXPECT_EQ(engine1.Initialize(options1), SUCCESS);
+  HixlEngine engine2("127.0.0.1:16000");
+  EXPECT_EQ(engine2.Initialize(options2), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  engine1.Disconnect();
+  engine1.Finalize();
+  engine2.Disconnect();
+  engine2.Finalize();
+  unsetenv("HCCL_RDMA_TC");
+  unsetenv("HCCL_RDMA_SL");
+
+  // 等待所有预期的日志模式被捕获
+  EXPECT_TRUE(log_capture->WaitForAllPatternsCaptured(kCaptureLogTimeoutMs));
+  EXPECT_TRUE(log_capture->IsPatternCaptured(tc_log_pattern)) << "tc log capture failed";
+  EXPECT_TRUE(log_capture->IsPatternCaptured(sl_log_pattern)) << "sl log capture failed";
+  EXPECT_TRUE(log_capture->IsPatternCaptured(channel_desc_log_pattern)) << "channel desc log capture failed";
+  // 恢复默认的 SlogStub，避免影响其他测试用例
+  llm::SlogStub::SetInstance(nullptr);
+}
+
+TEST_F(HixlEngineTest, TestParseTcSlInvalidValue) {
+  options1[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "129";
+  HixlEngine engine("127.0.0.1");
+  EXPECT_EQ(engine.Initialize(options1), PARAM_INVALID);
+  engine.Finalize();
+  options1[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "256";
+  EXPECT_EQ(engine.Initialize(options1), PARAM_INVALID);
+  engine.Finalize();
+  options1[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "invalid";
+  EXPECT_EQ(engine.Initialize(options1), PARAM_INVALID);
+  engine.Finalize();
+  options2[hixl::OPTION_RDMA_SERVICE_LEVEL] = "8";
+  EXPECT_EQ(engine.Initialize(options2), PARAM_INVALID);
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestParseTcAndSlWithEnv) {
+  auto log_capture = std::make_shared<llm::LogCaptureStub>();
+  std::string tc_log_pattern = "Set rdma traffic class to 128";
+  std::string sl_log_pattern = "Set rdma service level to 5";
+  std::string channel_desc_log_pattern = "[channel] ROCE attributes set, tc=128, sl=5";
+  log_capture->AddCapturePattern(tc_log_pattern);
+  log_capture->AddCapturePattern(sl_log_pattern);
+  log_capture->AddCapturePattern(channel_desc_log_pattern);
+  log_capture->SetLevelInfo();
+  llm::SlogStub::SetInstance(log_capture);
+
+  mmSetEnv("HCCL_RDMA_TC", "128", 1);
+  mmSetEnv("HCCL_RDMA_SL", "5", 1);
+  HixlEngine engine1("127.0.0.1");
+  EXPECT_EQ(engine1.Initialize(options1), SUCCESS);
+  HixlEngine engine2("127.0.0.1:16000");
+  EXPECT_EQ(engine2.Initialize(options2), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  engine1.Disconnect();
+  engine1.Finalize();
+  engine2.Disconnect();
+  engine2.Finalize();
+  unsetenv("HCCL_RDMA_TC");
+  unsetenv("HCCL_RDMA_SL");
+
+  // 等待所有预期的日志模式被捕获
+  EXPECT_TRUE(log_capture->WaitForAllPatternsCaptured(kCaptureLogTimeoutMs));
+  EXPECT_TRUE(log_capture->IsPatternCaptured(tc_log_pattern)) << "tc log capture failed";
+  EXPECT_TRUE(log_capture->IsPatternCaptured(sl_log_pattern)) << "sl log capture failed";
+  EXPECT_TRUE(log_capture->IsPatternCaptured(channel_desc_log_pattern)) << "channel desc log capture failed";
+  // 恢复默认的 SlogStub，避免影响其他测试用例
+  llm::SlogStub::SetInstance(nullptr);
+}
+
+TEST_F(HixlEngineTest, TestParseTcAndSlWithDefault) {
+  auto log_capture = std::make_shared<llm::LogCaptureStub>();
+  std::string channel_desc_log_pattern = "[channel] ROCE attributes set, tc=132, sl=4";
+  log_capture->AddCapturePattern(channel_desc_log_pattern);
+  log_capture->SetLevelInfo();
+  llm::SlogStub::SetInstance(log_capture);
+
+  HixlEngine engine1("127.0.0.1");
+  EXPECT_EQ(engine1.Initialize(options1), SUCCESS);
+  HixlEngine engine2("127.0.0.1:16000");
+  EXPECT_EQ(engine2.Initialize(options2), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  engine1.Disconnect();
+  engine1.Finalize();
+  engine2.Disconnect();
+  engine2.Finalize();
+
+  // 等待所有预期的日志模式被捕获
+  EXPECT_TRUE(log_capture->WaitForAllPatternsCaptured(kCaptureLogTimeoutMs));
+  EXPECT_TRUE(log_capture->IsPatternCaptured(channel_desc_log_pattern)) << "channel desc log capture failed";
+  // 恢复默认的 SlogStub，避免影响其他测试用例
+  llm::SlogStub::SetInstance(nullptr);
+}
+
+TEST_F(HixlEngineTest, TestTcAndSlWithUb) {
+  auto log_capture = std::make_shared<llm::LogCaptureStub>();
+  std::string channel_desc_log_pattern = "[channel] ROCE attributes set";
+  log_capture->AddCapturePattern(channel_desc_log_pattern);
+  log_capture->SetLevelInfo();
+  llm::SlogStub::SetInstance(log_capture);
+
+  std::map<AscendString, AscendString> options3;
+  options3[hixl::OPTION_LOCAL_COMM_RES] = R"(
+    {
+        "net_instance_id": "superpod1_1",
+        "endpoint_list": [
+            {
+                "protocol": "ub_ctp",
+                "comm_id": "000000000000000000000000c0a80563",
+                "placement": "device",
+                "dst_eid": "000000000000000000000000c0a80463"
+            }
+        ],
+        "version": "1.3"
+    }
+    )";
+  HixlEngine engine1("127.0.0.1");
+  EXPECT_EQ(engine1.Initialize(options1), SUCCESS);
+  HixlEngine engine2("127.0.0.1:16000");
+  EXPECT_EQ(engine2.Initialize(options3), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  engine1.Disconnect();
+  engine1.Finalize();
+  engine2.Disconnect();
+  engine2.Finalize();
+
+  // 等待所有预期的日志模式被捕获
+  EXPECT_FALSE(log_capture->WaitForAllPatternsCaptured(kCaptureLogTimeoutMs));
+  // 恢复默认的 SlogStub，避免影响其他测试用例
+  llm::SlogStub::SetInstance(nullptr);
 }
 }  // namespace hixl
