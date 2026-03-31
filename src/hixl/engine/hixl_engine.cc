@@ -138,13 +138,13 @@ Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in
 
 Status HixlEngine::Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis) {
   HIXL_LOGI("[HixlEngine] Disconnection started, local_engine:%s, remote_engine:%s, timeout:%d ms",
-            local_engine_.c_str(), remote_engine.GetString());
+            local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
   (void)timeout_in_millis;
   HIXL_CHK_STATUS_RET(client_manager_.DestroyClient(remote_engine.GetString()),
                       "[HixlEngine] Failed to disconnect, local_engine:%s, remote_engine:%s, timeout:%d ms", 
                       local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
   HIXL_LOGI("[HixlEngine] Disconnection succeeded, local_engine:%s, remote_engine:%s, timeout:%d ms",
-            local_engine_.c_str(), remote_engine.GetString());
+            local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
   return SUCCESS;
 }
 
