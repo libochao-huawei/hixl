@@ -61,6 +61,8 @@ Status CheckIp(const std::string &ip);
 
 Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip);
 
+Status GetBondIpAddress(int32_t phy_device_id, std::string &ip);
+
 Status CheckOptions(const std::map<AscendString, AscendString> &options);
 
 std::vector<std::string, std::allocator<std::string>> Split(const std::string &str, const char delim);
