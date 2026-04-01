@@ -16,6 +16,7 @@
 
 #include "hixl/hixl.h"
 #include "adxl/channel_manager.h"
+#include "common/hixl_utils.h"
 #include "common/rank_table_generator.h"
 #include "dlog_pub.h"
 #include "depends/mmpa/src/mmpa_stub.h"
@@ -159,32 +160,15 @@ TEST_F(HixlUTest, TestHixl) {
   engine2.Finalize();
 }
 
-TEST_F(HccnToolTest, TestExtractIp) {
-  std::string output = "ipaddr:127.0.0.1";
-  std::string ip = "";
-  llm::LocalCommResGenerator::ExtractIpAddress(output, ip);
-  EXPECT_EQ(ip, "127.0.0.1");
-}
-
-TEST_F(HccnToolTest, TestHccnOutput) {
-  std::string cmd = "hccn_tool";
-  std::string result = "";
-  EXPECT_EQ(llm::LocalCommResGenerator::GetHccnOutput(cmd, result), ge::SUCCESS);
-}
-
-TEST_F(HccnGetIpTest, TestGetIpFromHccnTool) {
-  std::string ip = "";
-  EXPECT_EQ(llm::LocalCommResGenerator::GetIpAddressFromHccnTool(0, ip), ge::SUCCESS);
-}
-
-TEST_F(HccnGetOutputTest, TestGetOutput) {
-  std::string ip = "";
-  EXPECT_EQ(llm::LocalCommResGenerator::GetIpAddressFromHccnTool(0, ip), ge::SUCCESS);
-}
-
-TEST_F(HccnGetOutputTest, TestGetIp) {
+TEST_F(HccnGetOutputTest, TestGetDeviceIpFromHccnConf) {
   std::string device_ip = "";
-  EXPECT_EQ(llm::LocalCommResGenerator::GetDeviceIp(0, device_ip), ge::SUCCESS);
+  EXPECT_EQ(hixl::GetDeviceIp(0, device_ip), hixl::SUCCESS);
+  EXPECT_EQ(device_ip, "1.1.1.0");
+}
+
+TEST_F(HccnToolTest, TestGetDeviceIpWithoutHccnConf) {
+  std::string device_ip = "";
+  EXPECT_EQ(hixl::GetDeviceIp(0, device_ip), hixl::SUCCESS);
 }
 
 TEST_F(HixlUTest, TestHixlInitFailed) {
