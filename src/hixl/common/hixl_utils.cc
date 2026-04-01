@@ -163,6 +163,31 @@ Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip) {
   return SUCCESS;
 }
 
+Status GetBondIpAddress(int32_t phy_device_id, std::string &ip) {
+  // query command is 'hccn_tool -g -ip -i 0 -d bond0'
+  const std::string bond_name = "bond" + std::to_string(phy_device_id);
+  std::string command;
+  if (mmAccess(kHccnToolPath) == EN_OK) {
+    command = std::string(kHccnToolPath) + " -g -ip -i " + std::to_string(phy_device_id) + " -d " + bond_name;
+  } else {
+    std::string check_cmd = "command -v hccn_tool > /dev/null 2>&1";
+    if (system(check_cmd.c_str()) != 0) {
+      HIXL_LOGI("hccn_tool is not found in default path or PATH, skip querying bond ip by tool.");
+      return SUCCESS;
+    }
+    command = "hccn_tool -g -ip -i " + std::to_string(phy_device_id) + " -d " + bond_name;
+  }
+  std::string output;
+  HIXL_CHK_STATUS_RET(GetHccnOutput(command, output), "Getting hccn output for bond ip failed, command=%s.",
+                      command.c_str());
+  ExtractIpAddress(output, ip);
+  HIXL_CHK_BOOL_RET_STATUS(
+      !ip.empty(), FAILED,
+      "query device=%d bond ip is empty, please make sure bond ip is set correctly, query command=%s.", phy_device_id,
+      command.c_str());
+  return SUCCESS;
+}
+
 Status CheckOptions(const std::map<AscendString, AscendString> &options) {
   static std::unordered_set<std::string> kOptionsFields = {hixl::OPTION_LOCAL_COMM_RES, hixl::OPTION_BUFFER_POOL, 
                                                            adxl::OPTION_LOCAL_COMM_RES, adxl::OPTION_BUFFER_POOL,
