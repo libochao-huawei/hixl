@@ -18,6 +18,8 @@
 #include <cstdio>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include "ascendcl_stub.h"
+#include "acl_runtime_test_helper.h"
 #include "cs/hixl_cs.h"
 #define private public
 #include "engine/hixl_client.h"
@@ -48,6 +50,7 @@ static std::vector<uint32_t> kRemoteMems(kMemNum, kNUm2);
 enum class MockHixlServerMode : uint32_t {
   k4UbNormal = 0,
   k2UbNormal,
+  kHostRoceNormal,
   // GetEndpointInfoResp 相关异常
   kGetEndpointInfoResp_BadMagic,
   kGetEndpointInfoResp_BadMsgType,
@@ -70,6 +73,24 @@ static CommMem local_mem_list_4ub[] = {{COMM_MEM_TYPE_DEVICE, &kLocalMems[0], si
                                         {COMM_MEM_TYPE_DEVICE, &kLocalMems[2], sizeof(uint32_t)},
                                         {COMM_MEM_TYPE_HOST, &kLocalMems[4], sizeof(uint32_t)},
                                         {COMM_MEM_TYPE_HOST, &kLocalMems[6], sizeof(uint32_t)}};
+
+class MockClientAclRuntimeStub : public FailingGetDeviceAclRuntimeStub {
+ public:
+  int get_current_context_calls_ = 0;
+  int set_current_context_calls_ = 0;
+
+  aclError aclrtGetCurrentContext(aclrtContext *context) override {
+    ++get_current_context_calls_;
+    (void)context;
+    return ACL_ERROR_FAILURE;
+  }
+
+  aclError aclrtSetCurrentContext(aclrtContext context) override {
+    ++set_current_context_calls_;
+    (void)context;
+    return ACL_ERROR_FAILURE;
+  }
+};
 
 class MockHixlServer {
  public:
@@ -170,6 +191,7 @@ class MockHixlServer {
   // JSON字符串常量
   static const std::string kErrorJson;
   static const std::string kRoceEndpointJson;
+  static const std::string kHostRoceEndpointJson;
   static const std::string kUbCtpHostEndpointJson;
   static const std::string kUbCtpDeviceEndpointJson;
   static const std::string kUbCtpPlaneAEndpointJson;
@@ -203,6 +225,10 @@ class MockHixlServer {
       case MockHixlServerMode::k2UbNormal:
         SendResponseImpl(kMagicNumber, CtrlMsgType::kGetEndpointInfoResp, sizeof(CtrlMsgType) + k2UbJson.size(),
                          k2UbJson);
+        break;
+      case MockHixlServerMode::kHostRoceNormal:
+        SendResponseImpl(kMagicNumber, CtrlMsgType::kGetEndpointInfoResp,
+                         sizeof(CtrlMsgType) + kHostRoceEndpointJson.size(), kHostRoceEndpointJson);
         break;
       case MockHixlServerMode::kGetEndpointInfoResp_BadMagic:
         SendResponseImpl(0xDEADBEEF, CtrlMsgType::kGetEndpointInfoResp, sizeof(CtrlMsgType) + k4UbJson.size(),
@@ -243,6 +269,15 @@ const std::string MockHixlServer::kRoceEndpointJson = R"({
       "placement": "device",
       "net_instance_id": "superpod1-1"
     })";
+
+const std::string MockHixlServer::kHostRoceEndpointJson = R"([{
+      "protocol": "roce",
+      "comm_id": "127.0.0.1",
+      "dst_eid": "",
+      "plane": "",
+      "placement": "host",
+      "net_instance_id": "superpod2-2"
+    }])";
 
 const std::string MockHixlServer::kUbCtpHostEndpointJson = R"({
       "protocol": "ub_ctp",
@@ -330,6 +365,7 @@ class HixlClientUTest : public ::testing::Test {
   void TearDown() override {
     client_->Finalize();
     server_->DestroyServerAndUnreg();
+    llm::AclRuntimeStub::Reset();
   }
 
   void StartServer(MockHixlServerMode mode) {
@@ -348,8 +384,23 @@ class HixlClientUTest : public ::testing::Test {
     server_->ListenServer();
   }
 
+  void StartHostRoceServer(MockHixlServerMode mode) {
+    server_->SetMode(mode);
+    auto st = server_->CreateServer(MakeHostRoceRemoteEpList());
+    ASSERT_EQ(st, SUCCESS) << "Failed to start mock host roce server";
+    server_->RegMem(default_remote_mem_list, default_list_num);
+    server_->ListenServer();
+  }
+
+  void InstallAclStub(uint32_t device_count = 0U) {
+    acl_stub_ = std::make_shared<MockClientAclRuntimeStub>();
+    acl_stub_->device_count_ = device_count;
+    llm::AclRuntimeStub::SetInstance(acl_stub_);
+  }
+
   std::unique_ptr<HixlClient> client_;
   std::unique_ptr<MockHixlServer> server_;
+  std::shared_ptr<MockClientAclRuntimeStub> acl_stub_;
 
   EndpointConfig MakeRoceHostLocalEp() {
     EndpointConfig ep{};
@@ -478,6 +529,24 @@ class HixlClientUTest : public ::testing::Test {
     return ep;
   }
 
+  EndpointConfig MakeHostRoceLocalEp() {
+    EndpointConfig ep{};
+    ep.protocol = "roce";
+    ep.comm_id = "127.0.0.1";
+    ep.placement = "host";
+    ep.net_instance_id = "superpod1-1";
+    return ep;
+  }
+
+  EndpointConfig MakeHostRoceRemoteEp() {
+    EndpointConfig ep{};
+    ep.protocol = "roce";
+    ep.comm_id = "127.0.0.1";
+    ep.placement = "host";
+    ep.net_instance_id = "superpod2-2";
+    return ep;
+  }
+
   std::vector<EndpointConfig> Make4UbRemoteEpList() {
     std::vector<EndpointConfig> ep_list;
     ep_list.push_back(MakeRoceHostRemoteEp());
@@ -486,6 +555,10 @@ class HixlClientUTest : public ::testing::Test {
     ep_list.push_back(MakeUbDeviceRemoteEp3());
     ep_list.push_back(MakeUbHostRemoteEp4());
     return ep_list;
+  }
+
+  std::vector<EndpointConfig> MakeHostRoceRemoteEpList() {
+    return {MakeHostRoceRemoteEp()};
   }
 
   std::vector<MemInfo> MakeMemInfoList() {
@@ -1046,6 +1119,21 @@ TEST_F(HixlClientUTest, ClassifyTransfersUseHccsWhenHccsHandleExists) {
   EXPECT_TRUE(op_descs_table[CommType::COMM_TYPE_ROCE].empty());
 
   client_->client_handles_.clear();
+}
+
+TEST_F(HixlClientUTest, HostRoceConnectDoesNotRequireAclCalls) {
+  InstallAclStub(0U);
+  StartHostRoceServer(MockHixlServerMode::kHostRoceNormal);
+
+  std::vector<EndpointConfig> local_endpoint_list = {MakeHostRoceLocalEp()};
+  EXPECT_EQ(client_->Initialize(local_endpoint_list), SUCCESS);
+  EXPECT_EQ(client_->SetLocalMemInfo(MakeMemInfoList()), SUCCESS);
+  EXPECT_EQ(client_->Connect(kDefaultTimeoutMs), SUCCESS);
+
+  ASSERT_NE(acl_stub_, nullptr);
+  EXPECT_EQ(acl_stub_->get_device_calls_, 0);
+  EXPECT_EQ(acl_stub_->get_current_context_calls_, 0);
+  EXPECT_EQ(acl_stub_->set_current_context_calls_, 0);
 }
 
 }  // namespace hixl
