@@ -65,6 +65,10 @@ Status MsgReceiver::IRecv(std::vector<CtrlMsgPtr> &msgs) {
   auto buffer_size = recv_buffer_.size() - received_size_;
   ssize_t n = recv(fd_, buffer, buffer_size, 0);
   if (!CheckRecv(n)) {
+    auto msg = MakeShared<CtrlMsg>(); 
+    HIXL_CHECK_NOTNULL(msg); 
+    msg->msg_type = CtrlMsgType::kDestroyChannelReq; 
+    msgs.emplace_back(msg);
     return SUCCESS;
   }
   received_size_ += static_cast<size_t>(n);
