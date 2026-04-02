@@ -24,10 +24,11 @@ namespace hixl {
 
 class ConnMsgHandler {
  public:
-  // 发送 CreateChannelReq，携带本端 local_endpoint 和远端 remote_endpoint
-  static Status SendCreateChannelRequest(int32_t socket, const EndpointDesc &local_endpoint, const EndpointDesc &remote_endpoint);
-  // 接收 CreateChannelResp，解析出对端 endpoint_handle
-  static Status RecvCreateChannelResponse(int32_t socket, uint64_t &remote_endpoint_handle, uint32_t timeout_ms);
+  static Status SendMatchEndpointRequest(int32_t socket, const EndpointDesc &dst);
+  static Status RecvMatchEndpointResponse(int32_t socket, uint64_t &remote_endpoint_handle, uint32_t timeout_ms);
+  // 发送 CreateChannelReq，携带本端 local_endpoint 与 Match 阶段得到的 dst_ep_handle
+  static Status SendCreateChannelRequest(int32_t socket, const EndpointDesc &local_endpoint, uint64_t dst_ep_handle);
+  static Status RecvCreateChannelResponse(int32_t socket, uint32_t timeout_ms);
 };
 
 }  // namespace hixl
