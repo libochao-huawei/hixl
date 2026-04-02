@@ -1,25 +1,33 @@
 """
 Generate endpoint configuration files from HCCL topology, rootinfo, and route.conf.
 
-Input files (supports optional CLI arguments for --local mode):
+Input files (supports POD and SERVER topologies):
 - hccl_rootinfo.json (contains topo_file_path reference)
+- atlas_xxx.json (topology file)
 - route.conf (CPU-device pair EID mappings)
 
 Output files: ub_endpoint_npu_*.json (one file per NPU device_id)
 
-CLI Arguments (for --local mode):
-- --local, -l: Use local testing paths (default: pod06_cpu5/)
-- --server, -s: Use server production paths (/etc and /lib)
+CLI Arguments:
+- --local, -l: Use local testing paths (default, supports --pod or --server modes)
+- --pod, -p: POD mode: 1D PoD topology
+- --server, -s: Server mode: 0+8 server topology
 - --dry-run, -n: Parse files but do not write output
-- --rootinfo-path: Path to hccl_rootinfo.json (only valid with --local)
+- --rootinfo-path: Path to hccl_rootinfo.json file (only valid with --local)
 - --topo-path: Path to topology JSON file (only valid with --local)
 - --route-path: Path to route.conf file (only valid with --local)
 
+Example topologies:
+- POD mode: 1D PoD topology with devices 8-15
+- SERVER mode: 0+8 server topology with devices 0-7
+
 Example usage:
-python generate_endpoint_configs.py --local
-python generate_endpoint_configs.py --local --rootinfo-path pod06_cpu5/hccl_rootinfo.json
+python generate_endpoint_configs.py --local --pod
+python generate_endpoint_configs.py --local --server
+python generate_endpoint_configs.py --local --pod --rootinfo-path pod06_cpu5/hccl_rootinfo.json
      --topo-path pod06_cpu5/atlas_950_1.json --route-path pod06_cpu5/route.conf
-python generate_endpoint_configs.py --server
+python generate_endpoint_configs.py --local --server --rootinfo-path server/hccl_rootinfo_08server.json
+     --topo-path server/atlas_850_1.json --route-path server/route.conf
 """
 import argparse
 import json
@@ -201,28 +209,30 @@ def get_protocol_from_eid(
     return 'ub_ctp'
 
 
-def get_h2d_plane_id(device_id: int, rootinfo: Dict) -> str:
+def get_h2d_plane_id(device_id: int, rootinfo: Dict, mode: str) -> str:
     """
-    Find the host endpoint (with 6 ports) for a device and return its plane_id.
+    Find the host endpoint and return its plane_id.
 
-    Host endpoints are located at net_layer=1 (CLOS layer), on the UDIE with larger PG.
+    POD mode: H2D has 6 ports (1DPoD topology)
+    SERVER mode: H2D has 8 ports (0+8 server topology)
 
     Args:
         device_id: The NPU device ID (e.g., 32, 33, 34, etc.)
         rootinfo: Parsed hccl_rootinfo.json data
+        mode: Topology mode ('pod' or 'server')
 
     Returns:
-        The plane_id from the H2D endpoint, or 'plane_0' if not found
+        The plane_id from the H2D endpoint, or 'plane_x' if not found
     """
+    port_count = 8 if mode == 'server' else 6
     for rank in rootinfo.get('rank_list', []):
         if rank['device_id'] == device_id:
             for level in rank.get('level_list', []):
                 if level.get('net_layer') == 1:  # CLOS layer
                     for addr_entry in level.get('rank_addr_list', []):
-                        if len(addr_entry.get('ports', [])) == 6:  
-                            # 1DPoD: H2D on the UDIE with PG = 6 ports
-                            return addr_entry.get('plane_id', 'plane_0')
-    return 'plane_0'  # Default fallback if not found
+                        if len(addr_entry.get('ports', [])) == port_count:
+                            return addr_entry.get('plane_id', 'plane_x')
+    return 'plane_x'
 
 
 def generate_endpoint_list(
@@ -286,10 +296,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Generate NPU endpoint configuration files from HCCL topology and route.conf."
     )
-    parser.add_argument("--local", "-l", action="store_true", default=True,
-                       help="Use local testing paths (pod06_cpu5 directory)")
+    parser.add_argument("--local", "-l", action="store_true", default=False,
+                       help="Use local testing paths (supports --pod or --server modes)")
+    parser.add_argument("--pod", "-p", action="store_true",
+                       help="POD mode: 1D PoD topology (6-port H2D, devices 32-39)")
     parser.add_argument("--server", "-s", action="store_true",
-                       help="Use server production paths (/etc and /lib)")
+                       help="Server mode: 0+8 server topology (8-port H2D, devices 0-7)")
     parser.add_argument("--dry-run", "-n", action="store_true",
                        help="Parse files but do not write output")
     parser.add_argument("--rootinfo-path", type=str, default=None,
@@ -301,18 +313,26 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Determine mode
-    use_local = not args.server
+    # Determine mode: pod or server (server takes priority if both specified)
+    use_local = args.local  # local testing mode or production mode
+    mode = 'server' if args.server else 'pod' if args.pod else 'pod'
 
     # Set default paths for local mode
     if use_local and not args.rootinfo_path:
-        args.rootinfo_path = "D:/gitrep/newfeature/localcommres/pod06_cpu5/hccl_rootinfo.json"
-        args.topo_path = "D:/gitrep/newfeature/localcommres/pod06_cpu5/atlas_950_1.json"
-        args.route_path = "D:/gitrep/newfeature/localcommres/pod06_cpu5/route.conf"
+        if mode == 'pod':
+            args.rootinfo_path = "localcommres/pod06_cpu5/hccl_rootinfo.json"
+            args.topo_path = "localcommres/pod06_cpu5/atlas_950_1.json"
+            args.route_path = "localcommres/pod06_cpu5/route.conf"
+        else:  # server mode
+            args.rootinfo_path = "localcommres/server/hccl_rootinfo_08server.json"
+            args.topo_path = "localcommres/server/atlas_850_1.json"
+            args.route_path = "localcommres/server/route.conf"
 
-    mode_str = f"local" if use_local else "server"
+    mode_str = f"local {mode}" if use_local else "production"
     print(f"Running in {mode_str} mode")
-    if args.server:
+    
+    # Production mode: use /etc and /lib paths (same for both modes)
+    if not use_local:
         args.rootinfo_path = "/etc/hccl_rootinfo.json"
         args.route_path = "/lib/route.conf"
 
@@ -329,7 +349,7 @@ if __name__ == "__main__":
     with open(args.rootinfo_path) as f:
         hccl_rootinfo = json.load(f)
 
-    if args.server:
+    if not use_local:
         args.topo_path = Path(hccl_rootinfo['topo_file_path'])
 
     # Load topology file
@@ -358,15 +378,24 @@ if __name__ == "__main__":
 
         # Add CPU host endpoint from route.conf
         if 'local_eid' in route_pair_info:
-            h2d_plane_id = get_h2d_plane_id(device_id, hccl_rootinfo)
-            host_endpoint = {
-                "protocol": "ub_ctp",
-                "comm_id": route_pair_info['local_eid'],
-                "placement": "host",
-                "plane": h2d_plane_id
-            }
-            # Insert host endpoint at beginning
-            endpoint_list.insert(0, host_endpoint)
+            h2d_plane_id = get_h2d_plane_id(device_id, hccl_rootinfo, mode)
+            if h2d_plane_id == 'plane_x':
+                print(f"Warning: host plane not found in hccl_rootinfo")
+                ub_host_endpoint = {
+                    "protocol": "ub_ctp",
+                    "comm_id": route_pair_info['local_eid'],
+                    "placement": "host",
+                    "dst_eid": "None"
+                }
+            else:
+                ub_host_endpoint = {
+                    "protocol": "ub_ctp",
+                    "comm_id": route_pair_info['local_eid'],
+                    "placement": "host",
+                    "plane": h2d_plane_id
+                }
+            # Insert host endpoint at the end
+            endpoint_list.append(ub_host_endpoint)
 
         output = {
             "version": "1.3",
@@ -374,7 +403,10 @@ if __name__ == "__main__":
             "endpoint_list": endpoint_list
         }
 
-        output_path = Path(f"/etc/hixlep/ub_endpoint_npu_{device_id}.json")
+        if use_local:
+            output_path = Path(f"./hixlep/ub_endpoint_npu_{device_id}.json")
+        else:
+            output_path = Path(f"/etc/hixlep/ub_endpoint_npu_{device_id}.json")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -386,4 +418,3 @@ if __name__ == "__main__":
             print(f"[Dry run] Would generate: {output_path}")
 
     print(f"{'Dry run: Would generate' if args.dry_run else 'Generated'} {len(route_pairs)} endpoint configuration files.")
-
