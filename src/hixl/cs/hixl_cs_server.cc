@@ -96,12 +96,36 @@ Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list
                                     [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
                                       return this->ExportMem(fd, msg, msg_len);
                                     });
+  msg_handler_.RegisterMsgProcessor(CtrlMsgType::kDestroyChannelReq,
+                                    [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
+                                      return this->DestroyChannel(fd, msg, msg_len);
+                                    });
   CtrlMsgPlugin::Initialize();
   msg_handler_.Initialize();
   HIXL_CHK_STATUS_RET(InitTransFinishedFlag(), "Failed to init trans finished flag");
   HIXL_EVENT("[HixlServer] init success, endpoint_list_num:%u", list_num);
   return SUCCESS;
 }
+
+Status HixlCSServer::DestroyChannel(int32_t fd, const char *msg, uint64_t msg_len) { 
+   (void)msg; 
+   (void)msg_len; 
+   std::lock_guard<std::mutex> lock(chn_mutex_); 
+   auto it = channels_.find(fd); 
+   Status status = SUCCESS;
+   if (it != channels_.end()) { 
+     auto handle = it->second.endpoint_handle; 
+     auto ep = endpoint_store_.GetEndpoint(handle); 
+     HIXL_CHECK_NOTNULL(ep); 
+     auto ret = ep->DestroyChannel(it->second.channel_handle);
+     if (ret != SUCCESS) {
+      status = ret;
+     }
+     channels_.erase(it); 
+   } 
+   HIXL_CHK_BOOL_RET_STATUS(status == SUCCESS, status, "Failed to destroy channel");
+   return SUCCESS; 
+ }
 
 Status HixlCSServer::Finalize() {
   if (listener_running_) {
@@ -327,17 +351,10 @@ void HixlCSServer::ProClientMsg(int32_t fd, std::shared_ptr<MsgReceiver> receive
 
 void HixlCSServer::CleanupClient(int32_t fd) {
   // 清理 channel
-  {
-    std::lock_guard<std::mutex> lock(chn_mutex_);
-    auto it = channels_.find(fd);
-    if (it != channels_.end()) {
-      auto handle = it->second.endpoint_handle;
-      auto ep = endpoint_store_.GetEndpoint(handle);
-      if (ep != nullptr) {
-        HIXL_CHK_STATUS(ep->DestroyChannel(it->second.channel_handle), "Failed to destroy channel, fd:%d", fd);
-      }
-      channels_.erase(it);
-    }
+  std::lock_guard<std::mutex> lock(client_mutex_);
+  auto it = clients_.find(fd);
+  if (it != clients_.end()) {
+    ProClientMsg(fd, it->second);
   }
 
   // 清理 epoll
@@ -347,10 +364,7 @@ void HixlCSServer::CleanupClient(int32_t fd) {
   close(fd);
 
   // 清理客户端记录
-  {
-    std::lock_guard<std::mutex> lock(client_mutex_);
-    clients_.erase(fd);
-  }
+  clients_.erase(fd);
 
   HIXL_EVENT("[HixlServer] client disconnected, fd:%d cleaned up", fd);
 }
