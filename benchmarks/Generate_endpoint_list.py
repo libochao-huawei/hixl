@@ -1,34 +1,20 @@
-"""
-Generate endpoint configuration files from HCCL topology, rootinfo, and route.conf.
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright 2026. Huawei Technologies Co.,Ltd. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 
-Input files (supports POD and SERVER topologies):
-- hccl_rootinfo.json (contains topo_file_path reference)
-- atlas_xxx.json (topology file)
-- route.conf (CPU-device pair EID mappings)
-
-Output files: ub_endpoint_npu_*.json (one file per NPU device_id)
-
-CLI Arguments:
-- --local, -l: Use local testing paths (default, supports --pod or --server modes)
-- --pod, -p: POD mode: 1D PoD topology
-- --server, -s: Server mode: 0+8 server topology
-- --dry-run, -n: Parse files but do not write output
-- --rootinfo-path: Path to hccl_rootinfo.json file (only valid with --local)
-- --topo-path: Path to topology JSON file (only valid with --local)
-- --route-path: Path to route.conf file (only valid with --local)
-
-Example topologies:
-- POD mode: 1D PoD topology with devices 8-15
-- SERVER mode: 0+8 server topology with devices 0-7
-
-Example usage:
-python generate_endpoint_configs.py --local --pod
-python generate_endpoint_configs.py --local --server
-python generate_endpoint_configs.py --local --pod --rootinfo-path pod06_cpu5/hccl_rootinfo.json
-     --topo-path pod06_cpu5/atlas_950_1.json --route-path pod06_cpu5/route.conf
-python generate_endpoint_configs.py --local --server --rootinfo-path server/hccl_rootinfo_08server.json
-     --topo-path server/atlas_850_1.json --route-path server/route.conf
-"""
 import argparse
 import json
 from pathlib import Path
