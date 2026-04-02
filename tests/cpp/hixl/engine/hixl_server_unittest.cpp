@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "ascendcl_stub.h"
 #include "engine/hixl_server.h"
 #include "hixl/hixl_types.h"
 #include "common/hixl_inner_types.h"
@@ -19,6 +20,26 @@ static constexpr uint32_t kMemAddr2 = 0x1080;  // Overlaps
 static constexpr uint32_t kMemAddr3 = 0x1100;  // No overlap
 static constexpr uint32_t kMemLen = 0x100;
 static constexpr uint32_t kPort = 16000;
+
+class MockServerAclRuntimeStub : public llm::AclRuntimeStub {
+ public:
+  uint32_t device_count_ = 0U;
+  int get_device_calls_ = 0;
+
+  aclError aclrtGetDeviceCount(uint32_t *count) override {
+    if (count == nullptr) {
+      return ACL_ERROR_FAILURE;
+    }
+    *count = device_count_;
+    return ACL_SUCCESS;
+  }
+
+  aclError aclrtGetDevice(int32_t *deviceId) override {
+    ++get_device_calls_;
+    (void)deviceId;
+    return ACL_ERROR_FAILURE;
+  }
+};
 
 class HixlServerTest : public ::testing::Test {
  protected:
@@ -39,7 +60,15 @@ class HixlServerTest : public ::testing::Test {
     mem_.len = kMemLen;
   }
 
-  void TearDown() override {}
+  void TearDown() override {
+    llm::AclRuntimeStub::Reset();
+  }
+
+  void InstallAclStub(uint32_t device_count = 0U) {
+    acl_stub_ = std::make_shared<MockServerAclRuntimeStub>();
+    acl_stub_->device_count_ = device_count;
+    llm::AclRuntimeStub::SetInstance(acl_stub_);
+  }
 
  private:
   HixlServer server_;
@@ -47,6 +76,7 @@ class HixlServerTest : public ::testing::Test {
   MemDesc mem_{};
   std::string ip_ = "127.0.0.1";
   int32_t port_ = kPort;
+  std::shared_ptr<MockServerAclRuntimeStub> acl_stub_;
 };
 
 TEST_F(HixlServerTest, RegisterMemWithoutInit) {
@@ -165,6 +195,20 @@ TEST_F(HixlServerTest, NormalInitRegisterDeregisterFinalize) {
   EXPECT_EQ(server_.RegisterMem(mem_, MemType::MEM_DEVICE, handle), SUCCESS);
   EXPECT_NE(handle, nullptr);
   EXPECT_EQ(server_.DeregisterMem(handle), SUCCESS);
+  EXPECT_EQ(server_.Finalize(), SUCCESS);
+}
+
+TEST_F(HixlServerTest, InitializeHostOnlyWithoutAclDeviceCalls) {
+  InstallAclStub(0U);
+  std::vector<EndpointConfig> host_only_eps;
+  EndpointConfig ep;
+  ep.protocol = "roce";
+  ep.comm_id = "127.0.0.1";
+  ep.placement = "host";
+  host_only_eps.emplace_back(ep);
+
+  EXPECT_EQ(server_.Initialize(ip_, 0, host_only_eps), SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_calls_, 0);
   EXPECT_EQ(server_.Finalize(), SUCCESS);
 }
 }  // namespace hixl

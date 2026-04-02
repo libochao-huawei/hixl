@@ -10,6 +10,7 @@
 
 #include "hixl_utils.h"
 
+#include <algorithm>
 #include <arpa/inet.h>
 #include <array>
 #include <cerrno>
@@ -267,6 +268,9 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
 }
 
 Status GetSocName(std::string &soc_name) {
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  HIXL_CHK_BOOL_RET_STATUS(has_device, FAILED, "aclrtGetSocName is unavailable because no device is present");
   const char *soc_name_cstr = aclrtGetSocName();
   HIXL_CHK_BOOL_RET_STATUS(soc_name_cstr != nullptr, FAILED, "aclrtGetSocName returned nullptr");
   soc_name = soc_name_cstr;
@@ -433,6 +437,28 @@ Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std:
     HIXL_LOGE(PARAM_INVALID, "Failed to dump endpoint list, exception:%s", e.what());
     return PARAM_INVALID;
   }
+  return SUCCESS;
+}
+
+bool IsDeviceEndpoint(const EndpointConfig &endpoint) {
+  return endpoint.placement == kPlacementDevice;
+}
+
+bool HasDeviceEndpoint(const std::vector<EndpointConfig> &endpoint_list) {
+  return std::any_of(endpoint_list.begin(), endpoint_list.end(), [](const EndpointConfig &endpoint) {
+    return IsDeviceEndpoint(endpoint);
+  });
+}
+
+Status HasAvailableDevice(bool &has_device) {
+  has_device = false;
+  uint32_t device_count = 0U;
+  const aclError acl_ret = aclrtGetDeviceCount(&device_count);
+  if (acl_ret != ACL_SUCCESS) {
+    HIXL_LOGW("aclrtGetDeviceCount failed, treat as no available device, acl_ret=%d", static_cast<int32_t>(acl_ret));
+    return SUCCESS;
+  }
+  has_device = (device_count > 0U);
   return SUCCESS;
 }
 

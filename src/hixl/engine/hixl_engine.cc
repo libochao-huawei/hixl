@@ -53,14 +53,24 @@ Status NeedAutoGenerateLocalCommRes(const std::string &local_comm_res, bool &nee
     return SUCCESS;
   }
 
+  if (!IsVersionOnlyLocalCommRes(j)) {
+    return SUCCESS;
+  }
+
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  HIXL_CHK_BOOL_RET_STATUS(has_device, PARAM_INVALID,
+                           "LocalCommRes must be configured explicitly when no local device is available");
+
   SocType soc_type = SocType::kOther;
   HIXL_CHK_STATUS_RET(GetSocType(soc_type), "GetSocType failed");
 
-  if ((soc_type == SocType::kA2 || soc_type == SocType::kA3) && IsVersionOnlyLocalCommRes(j)) {
+  if (soc_type == SocType::kA2 || soc_type == SocType::kA3) {
     need_auto_generate = true;
+    return SUCCESS;
   }
-
-  return SUCCESS;
+  HIXL_LOGE(PARAM_INVALID, "Auto-generated LocalCommRes only supports A2/A3 device scenarios");
+  return PARAM_INVALID;
 }
 
 Status GetVersionFromLocalCommRes(const std::string &local_comm_res, std::string &version) {
@@ -95,6 +105,15 @@ Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::
   if (version != kConfigVersion) {
     return SUCCESS;
   }
+
+  if (!HasDeviceEndpoint(endpoint_list)) {
+    return SUCCESS;
+  }
+
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  HIXL_CHK_BOOL_RET_STATUS(has_device, FAILED,
+                           "Device endpoint requires local ACL runtime device resources, but none are available");
 
   SocType soc_type = SocType::kOther;
   HIXL_CHK_STATUS_RET(GetSocType(soc_type), "GetSocType failed");
