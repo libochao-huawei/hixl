@@ -226,6 +226,7 @@ run() {
                   -d ${BUILD_PATH}/tests/cpp/hixl/CMakeFiles/hixl_test.dir \
                   -d ${BUILD_PATH}/tests/depends/python/CMakeFiles/llm_datadist_wrapper_stub.dir \
                   -d ${BUILD_PATH}/tests/depends/python/CMakeFiles/metadef_wrapper_stub.dir \
+               --ignore-errors mismatch \
                -o cov/tmp.info
           lcov -e cov/tmp.info "${BASEPATH}/src/*" -o cov/coverage.info
           cd ${BASEPATH}/cov
