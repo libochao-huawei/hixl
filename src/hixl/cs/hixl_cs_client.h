@@ -140,6 +140,9 @@ class HixlCSClient {
   Status CheckStatusDevice(DeviceCompleteHandle &queryhandle, HixlCompleteStatus &status);
   Status BatchTransferHost(bool is_get, const CommunicateMem &p, void **queryhandle);
   Status BatchTransferDevice(bool is_get, const CommunicateMem &p, void **queryhandle);
+  template <typename T>
+  Status ConvertAddr(bool is_server, const char *name, T addr, T &converted_addr);
+  Status BatchTransferByUboe(bool is_get, const CommunicateMem &communicate_mem_param, void **query_handle);
   Status EnsureDeviceRemoteFlagInitedLocked();
   Status EnsureDeviceKernelLoadedLocked();
   void *GetDeviceKernelFunc(bool is_get);
