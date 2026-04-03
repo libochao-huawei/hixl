@@ -222,7 +222,7 @@ run() {
       rm -rf ${BASEPATH}/cov
       mk_dir ${BASEPATH}/cov
       if [[ "X$ENABLE_CPP_TEST" = "XON" ]]; then
-          lcov -c -d ${BUILD_PATH}/tests/cpp/llm_datadist/CMakeFiles/llm_datadist_test.dir \
+          lcov -c --ignore-errors empty,negative,mismatch -d ${BUILD_PATH}/tests/cpp/llm_datadist/CMakeFiles/llm_datadist_test.dir \
                   -d ${BUILD_PATH}/tests/cpp/hixl/CMakeFiles/hixl_test.dir \
                   -d ${BUILD_PATH}/tests/depends/python/CMakeFiles/llm_datadist_wrapper_stub.dir \
                   -d ${BUILD_PATH}/tests/depends/python/CMakeFiles/metadef_wrapper_stub.dir \
