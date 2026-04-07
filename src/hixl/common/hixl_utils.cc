@@ -10,6 +10,7 @@
 
 #include "hixl_utils.h"
 
+#include <algorithm>
 #include <arpa/inet.h>
 #include <array>
 #include <cerrno>
@@ -80,6 +81,27 @@ Status GetIpAddressFromHccnTool(uint32_t phy_device_id, std::string &ip) {
   if (ip.empty()) {
     HIXL_LOGW("Please make sure device ip is set correctly.");
   }
+  return SUCCESS;
+}
+
+Status GetSocNameUnchecked(std::string &soc_name) {
+  const char *soc_name_cstr = aclrtGetSocName();
+  HIXL_CHK_BOOL_RET_STATUS(soc_name_cstr != nullptr, FAILED, "aclrtGetSocName returned nullptr");
+  soc_name = soc_name_cstr;
+  HIXL_CHK_BOOL_RET_STATUS(!soc_name.empty(), FAILED, "soc_name is empty");
+  return SUCCESS;
+}
+
+Status GetCurrentLogicDeviceIdUnchecked(int32_t &logic_device_id) {
+  logic_device_id = -1;
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&logic_device_id), "aclrtGetDevice failed");
+  return SUCCESS;
+}
+
+Status GetPhyDeviceIdByLogicDeviceIdUnchecked(int32_t logic_device_id, int32_t &phy_device_id) {
+  phy_device_id = -1;
+  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(logic_device_id, &phy_device_id),
+                   "aclrtGetPhyDevIdByLogicDevId failed, logic_device_id=%d", logic_device_id);
   return SUCCESS;
 }
 }  // namespace
@@ -270,11 +292,10 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
 }
 
 Status GetSocName(std::string &soc_name) {
-  const char *soc_name_cstr = aclrtGetSocName();
-  HIXL_CHK_BOOL_RET_STATUS(soc_name_cstr != nullptr, FAILED, "aclrtGetSocName returned nullptr");
-  soc_name = soc_name_cstr;
-  HIXL_CHK_BOOL_RET_STATUS(!soc_name.empty(), FAILED, "soc_name is empty");
-  return SUCCESS;
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  HIXL_CHK_BOOL_RET_STATUS(has_device, FAILED, "aclrtGetSocName is unavailable because no device is present");
+  return GetSocNameUnchecked(soc_name);
 }
 
 SocType GetSocTypeByName(const std::string &soc_name) {
@@ -293,6 +314,17 @@ Status GetSocType(SocType &soc_type) {
   std::string soc_name;
   HIXL_CHK_STATUS_RET(GetSocName(soc_name), "GetSocName failed");
   soc_type = GetSocTypeByName(soc_name);
+  return SUCCESS;
+}
+
+Status TryGetCurrentAclContext(aclrtContext &context) {
+  context = nullptr;
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  if (!has_device) {
+    return SUCCESS;
+  }
+  HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&context), "aclrtGetCurrentContext failed");
   return SUCCESS;
 }
 
@@ -439,6 +471,69 @@ Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std:
   return SUCCESS;
 }
 
+bool IsDeviceEndpoint(const EndpointConfig &endpoint) {
+  return endpoint.placement == kPlacementDevice;
+}
+
+bool HasDeviceEndpoint(const std::vector<EndpointConfig> &endpoint_list) {
+  return std::any_of(endpoint_list.begin(), endpoint_list.end(), [](const EndpointConfig &endpoint) {
+    return IsDeviceEndpoint(endpoint);
+  });
+}
+
+Status HasAvailableDevice(bool &has_device) {
+  has_device = false;
+  uint32_t device_count = 0U;
+  const aclError acl_ret = aclrtGetDeviceCount(&device_count);
+  if (acl_ret != ACL_SUCCESS) {
+    HIXL_LOGW("aclrtGetDeviceCount failed, treat as no available device, acl_ret=%d", static_cast<int32_t>(acl_ret));
+    return SUCCESS;
+  }
+  has_device = (device_count > 0U);
+  return SUCCESS;
+}
+
+Status GetCurrentLogicDeviceId(int32_t &logic_device_id) {
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  HIXL_CHK_BOOL_RET_STATUS(has_device, FAILED, "aclrtGetDevice is unavailable because no device is present");
+  return GetCurrentLogicDeviceIdUnchecked(logic_device_id);
+}
+
+Status GetPhyDeviceIdByLogicDeviceId(int32_t logic_device_id, int32_t &phy_device_id) {
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  HIXL_CHK_BOOL_RET_STATUS(has_device, FAILED,
+                           "aclrtGetPhyDevIdByLogicDevId is unavailable because no device is present");
+  return GetPhyDeviceIdByLogicDeviceIdUnchecked(logic_device_id, phy_device_id);
+}
+
+Status QueryLocalDeviceInfo(LocalDeviceInfo &device_info) {
+  device_info = {};
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(device_info.has_device), "HasAvailableDevice failed");
+  if (!device_info.has_device) {
+    return SUCCESS;
+  }
+
+  std::string soc_name;
+  HIXL_CHK_STATUS_RET(GetSocNameUnchecked(soc_name), "GetSocNameUnchecked failed");
+  device_info.soc_type = GetSocTypeByName(soc_name);
+  HIXL_CHK_STATUS_RET(GetCurrentLogicDeviceIdUnchecked(device_info.logic_device_id),
+                      "GetCurrentLogicDeviceIdUnchecked failed");
+  HIXL_CHK_STATUS_RET(GetPhyDeviceIdByLogicDeviceIdUnchecked(device_info.logic_device_id, device_info.phy_device_id),
+                      "GetPhyDeviceIdByLogicDeviceIdUnchecked failed");
+
+  if (device_info.soc_type == SocType::kA3) {
+    HIXL_CHK_ACL_RET(aclrtGetDeviceInfo(static_cast<uint32_t>(device_info.logic_device_id), ACL_DEV_ATTR_SUPER_POD_ID,
+                                        &device_info.super_pod_id),
+                     "aclrtGetDeviceInfo SUPER_POD_ID failed, device_id=%d", device_info.logic_device_id);
+    HIXL_CHK_ACL_RET(aclrtGetDeviceInfo(static_cast<uint32_t>(device_info.logic_device_id),
+                                        ACL_DEV_ATTR_SUPER_POD_DEVIDE_ID, &device_info.super_device_id),
+                     "aclrtGetDeviceInfo SUPER_DEVICE_ID failed, device_id=%d", device_info.logic_device_id);
+  }
+  return SUCCESS;
+}
+
 std::string MemTypeToString(MemType type) {
   switch (type) {
     case MEM_DEVICE:
@@ -462,7 +557,7 @@ std::string TransferOpToString(TransferOp op) {
 }
 
 TemporaryRtContext::TemporaryRtContext(aclrtContext context) {
-  (void)aclrtGetCurrentContext(&prev_context_);
+  (void)TryGetCurrentAclContext(prev_context_);
   HIXL_LOGI("Get current aclrt ctx:%p", prev_context_);
   if (context != nullptr && prev_context_ != context) {
     HIXL_CHK_ACL(aclrtSetCurrentContext(context));

@@ -21,7 +21,6 @@
 #define private public
 #define protected public
 #include "hixl_cs_client.h"
-#include "complete_pool.h"
 #undef protected
 #undef private
 

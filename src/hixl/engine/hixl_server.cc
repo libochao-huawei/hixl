@@ -20,20 +20,54 @@
 #include "common/hixl_utils.h"
 
 namespace hixl {
-Status HixlServer::Initialize(const std::string &ip, int32_t port,
-                              const std::vector<EndpointConfig> &data_endpoint_config_list) {
-  data_endpoint_config_list_ = data_endpoint_config_list;
-  std::vector<EndpointDesc> data_end_point_list;
-  int32_t dev_logic_id = 0;
-  int32_t dev_phy_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
-  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
+namespace {
+Status ConvertEndpointConfigListForHostOnly(const std::vector<EndpointConfig> &data_endpoint_config_list,
+                                            std::vector<EndpointDesc> &data_end_point_list) {
+  HIXL_CHK_BOOL_RET_STATUS(!HasDeviceEndpoint(data_endpoint_config_list), FAILED,
+                           "Device endpoint requires local ACL runtime device resources, but none are available");
   for (const auto &it : data_endpoint_config_list) {
     EndpointDesc end_point_info{};
-    HIXL_CHK_STATUS_RET(ConvertToEndpointDesc(it, end_point_info, static_cast<uint32_t>(dev_phy_id)),
+    HIXL_CHK_STATUS_RET(ConvertToEndpointDesc(it, end_point_info), "Failed to convert endpoint config to endpoint info.");
+    data_end_point_list.emplace_back(end_point_info);
+  }
+  return SUCCESS;
+}
+
+Status ConvertEndpointConfigListForDevice(const std::vector<EndpointConfig> &data_endpoint_config_list,
+                                          const LocalDeviceInfo &local_device_info,
+                                          std::vector<EndpointDesc> &data_end_point_list) {
+  const uint32_t dev_phy_id = static_cast<uint32_t>(local_device_info.phy_device_id);
+  for (const auto &it : data_endpoint_config_list) {
+    EndpointDesc end_point_info{};
+    HIXL_CHK_STATUS_RET(ConvertToEndpointDesc(it, end_point_info, dev_phy_id),
                         "Failed to convert endpoint config to endpoint info.");
     data_end_point_list.emplace_back(end_point_info);
   }
+  return SUCCESS;
+}
+
+Status RegisterListenProcessor(void *server_handle, const std::vector<EndpointConfig> &data_endpoint_config_list) {
+  MsgProcessor send_endpoint_cb = [&data_endpoint_config_list](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
+    (void)msg;
+    (void)msg_len;
+    std::string msg_str;
+    HIXL_CHK_STATUS_RET(SerializeEndpointConfigList(data_endpoint_config_list, msg_str),
+                        "Failed to serialize endpoint config.");
+    CtrlMsgHeader header{};
+    header.magic = kMagicNumber;
+    header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + msg_str.size());
+    CtrlMsgType msg_type = CtrlMsgType::kGetEndpointInfoResp;
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &header, static_cast<uint64_t>(sizeof(header))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, msg_str.c_str(), static_cast<uint64_t>(msg_str.size())));
+    return SUCCESS;
+  };
+  return HixlCSServerRegProc(server_handle, CtrlMsgType::kGetEndpointInfoReq, send_endpoint_cb);
+}
+}  // namespace
+
+Status HixlServer::CreateAndListenServer(const std::string &ip, int32_t port,
+                                         std::vector<EndpointDesc> &data_end_point_list) {
   const EndpointDesc *endpoints = data_end_point_list.data();
   if (port < 0) {
     port = 0;
@@ -43,33 +77,45 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
   server_desc.server_ip = ip.c_str();
   server_desc.server_port = static_cast<uint32_t>(port);
   server_desc.endpoint_list = endpoints;
-  server_desc.endpoint_list_num = static_cast<uint32_t>(data_endpoint_config_list.size());
+  server_desc.endpoint_list_num = static_cast<uint32_t>(data_endpoint_config_list_.size());
   HIXL_CHK_STATUS_RET(HixlCSServerCreate(&server_desc, &config, &server_handle_),
                       "Failed to create hixl server, ip:%s, port:%d.", ip.c_str(), port);
-  // port > 0 初始化hixl server，否则作为hixl client注册内存用
   if (port > 0) {
-    // 注册回调函数且监听端口
-    MsgProcessor send_endpoint_cb = [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
-      (void)msg;
-      (void)msg_len;
-      std::string msg_str;
-      HIXL_CHK_STATUS_RET(SerializeEndpointConfigList(data_endpoint_config_list_, msg_str),
-                          "Failed to serialize endpoint config.");
-      CtrlMsgHeader header{};
-      header.magic = kMagicNumber;
-      header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + msg_str.size());
-      CtrlMsgType msg_type = CtrlMsgType::kGetEndpointInfoResp;
-      HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &header, static_cast<uint64_t>(sizeof(header))));
-      HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))));
-      HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, msg_str.c_str(), static_cast<uint64_t>(msg_str.size())));
-      return SUCCESS;
-    };
-    HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetEndpointInfoReq, send_endpoint_cb),
+    HIXL_CHK_STATUS_RET(RegisterListenProcessor(server_handle_, data_endpoint_config_list_),
                         "Failed to register send endpoint info processor.");
     HIXL_CHK_STATUS_RET(HixlCSServerListen(server_handle_, static_cast<uint32_t>(port)),
                         "HixlServer listen failed, port:%d.", port);
   }
   return SUCCESS;
+}
+
+Status HixlServer::Initialize(const std::string &ip, int32_t port,
+                              const std::vector<EndpointConfig> &data_endpoint_config_list,
+                              RuntimeMode runtime_mode, const LocalDeviceInfo &local_device_info) {
+  if (runtime_mode == RuntimeMode::kDevice) {
+    return InitializeDevice(ip, port, data_endpoint_config_list, local_device_info);
+  }
+  return InitializeHostOnly(ip, port, data_endpoint_config_list);
+}
+
+Status HixlServer::InitializeHostOnly(const std::string &ip, int32_t port,
+                                      const std::vector<EndpointConfig> &data_endpoint_config_list) {
+  data_endpoint_config_list_ = data_endpoint_config_list;
+  std::vector<EndpointDesc> data_end_point_list;
+  HIXL_CHK_STATUS_RET(ConvertEndpointConfigListForHostOnly(data_endpoint_config_list, data_end_point_list),
+                      "ConvertEndpointConfigListForHostOnly failed");
+  return CreateAndListenServer(ip, port, data_end_point_list);
+}
+
+Status HixlServer::InitializeDevice(const std::string &ip, int32_t port,
+                                    const std::vector<EndpointConfig> &data_endpoint_config_list,
+                                    const LocalDeviceInfo &local_device_info) {
+  data_endpoint_config_list_ = data_endpoint_config_list;
+  std::vector<EndpointDesc> data_end_point_list;
+  HIXL_CHK_STATUS_RET(ConvertEndpointConfigListForDevice(data_endpoint_config_list, local_device_info,
+                                                         data_end_point_list),
+                      "ConvertEndpointConfigListForDevice failed");
+  return CreateAndListenServer(ip, port, data_end_point_list);
 }
 
 Status HixlServer::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {

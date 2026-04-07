@@ -9,6 +9,8 @@
  */
 
 #include <gtest/gtest.h>
+#include "ascendcl_stub.h"
+#include "acl_runtime_test_helper.h"
 #include "engine/hixl_server.h"
 #include "hixl/hixl_types.h"
 #include "common/hixl_inner_types.h"
@@ -39,7 +41,22 @@ class HixlServerTest : public ::testing::Test {
     mem_.len = kMemLen;
   }
 
-  void TearDown() override {}
+  void TearDown() override {
+    llm::AclRuntimeStub::Reset();
+  }
+
+  void InstallAclStub(uint32_t device_count = 0U) {
+    acl_stub_ = std::make_shared<FailingGetDeviceAclRuntimeStub>();
+    acl_stub_->device_count_ = device_count;
+    llm::AclRuntimeStub::SetInstance(acl_stub_);
+  }
+
+  LocalDeviceInfo MakeLocalDeviceInfo() const {
+    LocalDeviceInfo info{};
+    info.has_device = true;
+    info.phy_device_id = 0;
+    return info;
+  }
 
  private:
   HixlServer server_;
@@ -47,6 +64,7 @@ class HixlServerTest : public ::testing::Test {
   MemDesc mem_{};
   std::string ip_ = "127.0.0.1";
   int32_t port_ = kPort;
+  std::shared_ptr<FailingGetDeviceAclRuntimeStub> acl_stub_;
 };
 
 TEST_F(HixlServerTest, RegisterMemWithoutInit) {
@@ -61,12 +79,12 @@ TEST_F(HixlServerTest, FinalizeWithoutInit) {
 }
 
 TEST_F(HixlServerTest, InitializePortZero) {
-  EXPECT_EQ(server_.Initialize(ip_, 0, default_eps), SUCCESS);
+  EXPECT_EQ(server_.Initialize(ip_, 0, default_eps, RuntimeMode::kDevice, MakeLocalDeviceInfo()), SUCCESS);
   EXPECT_EQ(server_.Finalize(), SUCCESS);
 }
 
 TEST_F(HixlServerTest, RegisterMemSameTwice) {
-  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps), SUCCESS);
+  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps, RuntimeMode::kDevice, MakeLocalDeviceInfo()), SUCCESS);
   MemHandle handle1 = nullptr;
   MemHandle handle2 = nullptr;
   EXPECT_EQ(server_.RegisterMem(mem_, MemType::MEM_DEVICE, handle1), SUCCESS);
@@ -75,7 +93,7 @@ TEST_F(HixlServerTest, RegisterMemSameTwice) {
 }
 
 TEST_F(HixlServerTest, RegisterMemOverlap) {
-  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps), SUCCESS);
+  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps, RuntimeMode::kDevice, MakeLocalDeviceInfo()), SUCCESS);
   MemDesc mem1{};
   mem1.addr = kMemAddr1;
   mem1.len = kMemLen;
@@ -90,7 +108,7 @@ TEST_F(HixlServerTest, RegisterMemOverlap) {
 }
 
 TEST_F(HixlServerTest, DeregisterMemDoubleFree) {
-  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps), SUCCESS);
+  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps, RuntimeMode::kDevice, MakeLocalDeviceInfo()), SUCCESS);
   MemHandle handle = nullptr;
   EXPECT_EQ(server_.RegisterMem(mem_, MemType::MEM_DEVICE, handle), SUCCESS);
 
@@ -105,7 +123,7 @@ TEST_F(HixlServerTest, DeregisterMemDoubleFree) {
 }
 
 TEST_F(HixlServerTest, RegisterMemBoundary) {
-  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps), SUCCESS);
+  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps, RuntimeMode::kDevice, MakeLocalDeviceInfo()), SUCCESS);
 
   MemDesc mem1{};
   mem1.addr = kMemAddr1;
@@ -123,7 +141,7 @@ TEST_F(HixlServerTest, RegisterMemBoundary) {
 }
 
 TEST_F(HixlServerTest, RegisterMemOverlapDifferentType) {
-  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps), SUCCESS);
+  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps, RuntimeMode::kDevice, MakeLocalDeviceInfo()), SUCCESS);
 
   MemDesc mem1{};
   mem1.addr = kMemAddr1;
@@ -141,7 +159,7 @@ TEST_F(HixlServerTest, RegisterMemOverlapDifferentType) {
 }
 
 TEST_F(HixlServerTest, DeregisterNonExistent) {
-  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps), SUCCESS);
+  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps, RuntimeMode::kDevice, MakeLocalDeviceInfo()), SUCCESS);
 
   MemHandle handle = nullptr;
   EXPECT_EQ(server_.RegisterMem(mem_, MemType::MEM_DEVICE, handle), SUCCESS);
@@ -152,7 +170,7 @@ TEST_F(HixlServerTest, DeregisterNonExistent) {
 }
 
 TEST_F(HixlServerTest, RegisterAfterFinalize) {
-  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps), SUCCESS);
+  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps, RuntimeMode::kDevice, MakeLocalDeviceInfo()), SUCCESS);
   EXPECT_EQ(server_.Finalize(), SUCCESS);
 
   MemHandle handle = nullptr;
@@ -160,11 +178,25 @@ TEST_F(HixlServerTest, RegisterAfterFinalize) {
 }
 
 TEST_F(HixlServerTest, NormalInitRegisterDeregisterFinalize) {
-  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps), SUCCESS);
+  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps, RuntimeMode::kDevice, MakeLocalDeviceInfo()), SUCCESS);
   MemHandle handle = nullptr;
   EXPECT_EQ(server_.RegisterMem(mem_, MemType::MEM_DEVICE, handle), SUCCESS);
   EXPECT_NE(handle, nullptr);
   EXPECT_EQ(server_.DeregisterMem(handle), SUCCESS);
+  EXPECT_EQ(server_.Finalize(), SUCCESS);
+}
+
+TEST_F(HixlServerTest, InitializeHostOnlyWithoutAclDeviceCalls) {
+  InstallAclStub(0U);
+  std::vector<EndpointConfig> host_only_eps;
+  EndpointConfig ep;
+  ep.protocol = "roce";
+  ep.comm_id = "127.0.0.1";
+  ep.placement = "host";
+  host_only_eps.emplace_back(ep);
+
+  EXPECT_EQ(server_.Initialize(ip_, 0, host_only_eps, RuntimeMode::kHostOnly), SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_calls_, 0);
   EXPECT_EQ(server_.Finalize(), SUCCESS);
 }
 }  // namespace hixl

@@ -18,6 +18,7 @@
 #include "hixl_server.h"
 #include "hixl/hixl_types.h"
 #include "common/hixl_inner_types.h"
+#include "common/hixl_utils.h"
 
 namespace hixl {
 class HixlEngine : public hixl::Engine {
@@ -143,9 +144,23 @@ class HixlEngine : public hixl::Engine {
   void Finalize() override;
 
  private:
+  Status InitializeHostOnly(const std::map<AscendString, AscendString> &options);
+  Status InitializeDevice(const std::map<AscendString, AscendString> &options);
+  Status PrepareInitialize(const std::map<AscendString, AscendString> &options, std::string &local_comm_res);
+  Status PrepareNetworkOptions(const std::map<AscendString, AscendString> &options);
+  Status GetRequiredLocalCommRes(const std::map<AscendString, AscendString> &options, std::string &local_comm_res) const;
+  Status InitEndpointListForHostOnly(const std::string &local_comm_res);
+  Status InitEndpointListForDevice(const std::string &local_comm_res);
+  Status ParseServerListenInfo(std::string &ip, int32_t &port) const;
+  Status InitServerHostOnly(const std::string &local_comm_res);
+  Status InitServerDevice(const std::string &local_comm_res);
   Status ParseEndPoint(const std::string &local_comm_res, std::vector<EndpointConfig> &endpoint_list);
   Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
   Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
+  Status ConnectHostOnly(const AscendString &remote_engine, int32_t timeout_in_millis);
+  Status ConnectDevice(const AscendString &remote_engine, int32_t timeout_in_millis);
+  Status PrepareConnect(const AscendString &remote_engine, ClientPtr &client_ptr, ClientConfig &config,
+                        std::vector<MemInfo> &mem_info_list);
 
   std::mutex mutex_;
 
@@ -158,6 +173,8 @@ class HixlEngine : public hixl::Engine {
   uint8_t rdma_traffic_class_{kRdmaTrafficClass};
   uint8_t rdma_service_level_{kRdmaServiceLevel};
   std::map<uint64_t, TransferInfo> req_map_;
+  RuntimeMode runtime_mode_{RuntimeMode::kHostOnly};
+  LocalDeviceInfo local_device_info_{};
 };
 }  // namespace hixl
 

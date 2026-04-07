@@ -19,6 +19,7 @@
 #include <map>
 #include "cs/hixl_cs.h"
 #include "common/hixl_inner_types.h"
+#include "common/hixl_utils.h"
 #include "common/segment.h"
 #include "common/ctrl_msg.h"
 #include "nlohmann/json.hpp"
@@ -30,6 +31,8 @@ struct ClientConfig {
   std::string remote_engine;
   uint8_t rdma_tc;
   uint8_t rdma_sl;
+  RuntimeMode runtime_mode{RuntimeMode::kHostOnly};
+  LocalDeviceInfo local_device_info{};
 };
 
 enum class CommType : uint32_t {
@@ -99,7 +102,12 @@ class HixlClient {
    * @param [in] server_port  服务端监听端口号
    */
   HixlClient(const std::string &server_ip, uint32_t server_port, const ClientConfig &config)
-      : server_ip_(server_ip), server_port_(server_port), rdma_tc_(config.rdma_tc), rdma_sl_(config.rdma_sl) {};
+      : server_ip_(server_ip),
+        server_port_(server_port),
+        rdma_tc_(config.rdma_tc),
+        rdma_sl_(config.rdma_sl),
+        runtime_mode_(config.runtime_mode),
+        local_device_info_(config.local_device_info) {};
   ~HixlClient() = default;
 
   /**
@@ -163,6 +171,7 @@ class HixlClient {
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
 
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const;
+  Status FetchRemoteEndpointList(std::vector<EndpointConfig> &remote_endpoint_list) const;
 
   // 解析通信类型
   CommType ParseCommType(const std::string &local_placement, const std::string &remote_placement) const;
@@ -171,24 +180,28 @@ class HixlClient {
                    const std::vector<EndpointConfig> &remote_endpoint_list) const;
 
   Status TryMatchRoceEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
-                               const std::vector<EndpointConfig> &remote_endpoint_list);
+                               const std::vector<EndpointConfig> &remote_endpoint_list, bool use_device_path);
 
   Status TryMatchHccsEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
-                               const std::vector<EndpointConfig> &remote_endpoint_list);
+                               const std::vector<EndpointConfig> &remote_endpoint_list, bool use_device_path);
 
   Status TryMatchUbEndpoints(const EndpointConfig &local_endpoint,
                              const std::map<MatchKey, EndpointConfig> &peer_match_endpoints,
-                             std::map<CommType, bool> &expected_pairs, uint32_t &count);
+                             std::map<CommType, bool> &expected_pairs, uint32_t &count, bool use_device_path);
 
   void BuildEndpointsMatchMap(const std::vector<EndpointConfig> &endpoint_list,
                               std::map<MatchKey, EndpointConfig> &peer_match_endpoints) const;
 
   Status FindMatchedEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
-                              const std::vector<EndpointConfig> &remote_endpoint_list);
+                              const std::vector<EndpointConfig> &remote_endpoint_list, bool use_device_path);
 
   // 创建cs_client
+  Status CreateCsClientsForHostOnly(const EndpointConfig &local_endpoint_config,
+                                    const EndpointConfig &remote_endpoint_config, CommType type);
+  Status CreateCsClientsForDevice(const EndpointConfig &local_endpoint_config,
+                                  const EndpointConfig &remote_endpoint_config, CommType type);
   Status CreateCsClients(const EndpointConfig &local_endpoint_config, const EndpointConfig &remote_endpoint_config,
-                         CommType type);
+                         CommType type, bool use_device_path);
 
   Status GetMemType(const std::vector<SegmentPtr> &segments, uintptr_t addr, size_t len, MemType &mem_type) const;
 
@@ -203,21 +216,30 @@ class HixlClient {
   Status ProcessRemoteMem(uint32_t timeout_ms);
 
   Status RegisterMemToCsClient(const MemDesc &mem, const MemType type);
-
   Status UnregisterMemToCsClient(CommType type, const std::vector<MemHandle> &mem_handles);
+  Status ConvertRemoteEndpoint(const EndpointConfig &remote_endpoint_config, EndpointDesc &remote_endpoint) const;
+  Status CreateCsClientHandle(const EndpointDesc &local_endpoint, const EndpointDesc &remote_endpoint, CommType type,
+                              bool needs_acl);
+  Status PrepareInitializeEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
+                                    std::vector<EndpointConfig> &remote_endpoint_list) const;
+  Status PrepareConnect();
+  bool UseDevicePath() const;
+  bool NeedsAclContext() const;
 
   std::string server_ip_;
   uint32_t server_port_;
   uint8_t rdma_tc_{kRdmaTrafficClass};
   uint8_t rdma_sl_{kRdmaServiceLevel};
+  RuntimeMode runtime_mode_{RuntimeMode::kHostOnly};
+  LocalDeviceInfo local_device_info_{};
   bool is_connected_{false};  // true为已建链；false未建链
   bool is_finalized_{false};
   std::map<CommType, HixlClientHandle> client_handles_;  // ub链路时会创建4个 cs_client，roce链路会创建1个 cs_client
+  std::map<CommType, bool> client_requires_acl_;
   std::map<TransferReq, std::vector<TransferCompleteInfo>> complete_handles_;  // 保存异步传输的完成句柄
   std::map<CommType, std::vector<MemHandle>> client_mem_handles_;              // 每种类型 cs client 注册的内存句柄
   std::vector<SegmentPtr> local_segments_;  // 内存段数组，包含 MEM_DEVICE and MEM_HOST 两种 std::shared_ptr<Segment>
   std::vector<SegmentPtr> remote_segments_;
-
   std::mutex status_mutex_;            // 保护is_connected_和is_finalized_
   std::mutex client_handles_mutex_;    // 保护client_handles_
   std::mutex complete_handles_mutex_;  // 保护complete_handles_
