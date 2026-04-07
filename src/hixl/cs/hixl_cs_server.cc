@@ -32,51 +32,49 @@ constexpr const char *kTransFlagNameDevice = "_hixl_builtin_dev_trans_flag";// c
 }  // namespace
 
 Status HixlCSServer::InitTransFinishedFlag() {
-  bool has_host_ep = false;
-  bool has_device_ep = false;
-  auto all_handles = endpoint_store_.GetAllEndpointHandles();
-  for (auto handle : all_handles) {
-    auto endpoint = endpoint_store_.GetEndpoint(handle);
-    if (endpoint) {
-      if (endpoint->GetEndpoint().loc.locType == ENDPOINT_LOC_TYPE_HOST) {
-        has_host_ep = true;
-      } else if (endpoint->GetEndpoint().loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
-        has_device_ep = true;
-      }
-    }
-  }
-  if (has_host_ep) {
-    void* host_flag = nullptr;
-    host_flag = malloc(sizeof(int64_t));
-    *static_cast<int64_t*>(host_flag) = 1;
-    CommMem mem{};
-    mem.type = COMM_MEM_TYPE_HOST;
-    mem.addr = host_flag;
-    mem.size = sizeof(int64_t);
-    MemHandle handle = nullptr;
-    HIXL_CHK_STATUS_RET(RegisterMem(kTransFlagNameHost, &mem, &handle),
-                        "Failed to reg HOST trans finished flag");
+  void *host_flag = nullptr;
+  host_flag = malloc(sizeof(int64_t));
+  HIXL_CHK_BOOL_RET_STATUS(host_flag != nullptr, FAILED, "Failed to malloc host trans finished flag");
 
-    host_trans_flag_ = host_flag;
-    host_trans_flag_handle_ = handle;
-  }
-  if (has_device_ep) {
-    void* dev_flag = nullptr;
-    HIXL_CHK_ACL_RET(aclrtMalloc(&dev_flag, sizeof(int64_t),
-        static_cast<aclrtMemMallocPolicy>(ACL_MEM_TYPE_HIGH_BAND_WIDTH | ACL_MEM_MALLOC_HUGE_ONLY)));
-    int64_t val = 1;
-    HIXL_CHK_ACL_RET(aclrtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), ACL_MEMCPY_HOST_TO_DEVICE));
-    CommMem mem{};
-    mem.type = COMM_MEM_TYPE_DEVICE;
-    mem.addr = dev_flag;
-    mem.size = sizeof(int64_t);
+  *static_cast<int64_t *>(host_flag) = 1;
+  CommMem host_mem{};
+  host_mem.type = COMM_MEM_TYPE_HOST;
+  host_mem.addr = host_flag;
+  host_mem.size = sizeof(int64_t);
 
-    MemHandle handle = nullptr;
-    HIXL_CHK_STATUS_RET(RegisterMem(kTransFlagNameDevice, &mem, &handle),
-                        "Failed to reg DEVICE trans finished flag");
-    dev_trans_flag_ = dev_flag;
-    dev_trans_flag_handle_ = handle;
-  }
+  MemHandle host_handle = nullptr;
+  HIXL_CHK_STATUS_RET(RegisterMem(kTransFlagNameHost, &host_mem, &host_handle),
+                      "Failed to reg HOST trans finished flag");
+
+  host_trans_flag_ = host_flag;
+  host_trans_flag_handle_ = host_handle;
+
+  void *dev_flag = nullptr;
+  HIXL_CHK_ACL_RET(aclrtMalloc(&dev_flag,
+                               sizeof(int64_t),
+                               static_cast<aclrtMemMallocPolicy>(ACL_MEM_TYPE_HIGH_BAND_WIDTH |
+                                                                 ACL_MEM_MALLOC_HUGE_ONLY)));
+
+  int64_t val = 1;
+  HIXL_CHK_ACL_RET(aclrtMemcpy(dev_flag,
+                               sizeof(int64_t),
+                               &val,
+                               sizeof(int64_t),
+                               ACL_MEMCPY_HOST_TO_DEVICE));
+
+  CommMem dev_mem{};
+  dev_mem.type = COMM_MEM_TYPE_DEVICE;
+  dev_mem.addr = dev_flag;
+  dev_mem.size = sizeof(int64_t);
+
+  MemHandle dev_handle = nullptr;
+  HIXL_LOGI("JZY HixlCSServer::InitTransFinishedFlag() RegisterMem mem_tag=%s", kTransFlagNameDevice);
+  HIXL_CHK_STATUS_RET(RegisterMem(kTransFlagNameDevice, &dev_mem, &dev_handle),
+                      "Failed to reg DEVICE trans finished flag");
+
+  dev_trans_flag_ = dev_flag;
+  dev_trans_flag_handle_ = dev_handle;
+
   return SUCCESS;
 }
 
@@ -177,6 +175,7 @@ Status HixlCSServer::RegisterMem(const char *mem_tag, const CommMem *mem, MemHan
   auto all_handles = endpoint_store_.GetAllEndpointHandles();
   HIXL_CHK_BOOL_RET_STATUS(all_handles.size() > 0, PARAM_INVALID, "no endpoint is available");
   std::vector<EndpointMemInfo> ep_mem_infos;
+  HIXL_LOGI("JZY HixlCSServer::RegisterMem mem_tag=%s", mem_tag);
   for (auto handle : all_handles) {
     auto endpoint = endpoint_store_.GetEndpoint(handle);
     HIXL_CHECK_NOTNULL(endpoint);

@@ -66,6 +66,7 @@ const EndpointDesc &Endpoint::GetEndpoint() const {
 Status Endpoint::RegisterMem(const char *mem_tag, const CommMem &mem, MemHandle &mem_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
   Status ret = SUCCESS;
+  HIXL_LOGI("JZY Endpoint::RegisterMem mem_tag=%s", mem_tag);
   HcclResult hccl_ret = HcommProxy::MemReg(handle_, mem_tag, &mem, &mem_handle);
   if (hccl_ret != HCCL_SUCCESS && hccl_ret != HCCL_E_AGAIN) {
     ret = hixl::HcclError2Status(hccl_ret);
