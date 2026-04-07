@@ -297,12 +297,12 @@ Status FabricMemTransferService::Transfer(const ChannelPtr &channel, TransferOp 
   }
   uint64_t real_copy_cost =
       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - real_copy_start).count();
-  StatisticManager::GetInstance().UpdateFabricMemRealCopyCost(channel->GetChannelId(), real_copy_cost);
   LLM_DISMISS_GUARD(fail_guard);
   ReleaseStreams(streams);
   uint64_t transfer_cost =
       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
-  StatisticManager::GetInstance().UpdateFabricMemTransferCost(channel->GetChannelId(), transfer_cost);
+  StatisticManager::GetInstance().UpdateFabricMemCosts(channel->GetStatisticChannelId(), transfer_cost, real_copy_cost,
+                                                       GetTransferBytes(op_descs));
   LLMLOGI("Transfer time cost:%lu us, real cost:%lu us.", transfer_cost, real_copy_cost);
   return SUCCESS;
 }
@@ -352,7 +352,8 @@ Status FabricMemTransferService::TransferAsync(const ChannelPtr &channel, Transf
   }
   {
     std::lock_guard<std::mutex> lock(async_req_mutex_);
-    req_2_async_record_[llm::PtrToValue(req)] = AsyncRecord{std::move(async_resources), real_copy_start};
+    req_2_async_record_[llm::PtrToValue(req)] = AsyncRecord{std::move(async_resources), start, real_copy_start,
+                                                            GetTransferBytes(op_descs)};
   }
   auto cost = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
   LLMLOGI("Transfer async call end, channel:%s, req:%lu, time cost:%lu us.", channel->GetChannelId().c_str(),
@@ -423,10 +424,14 @@ Status FabricMemTransferService::GetTransferStatus(const ChannelPtr &channel, co
       req_2_async_record_.erase(req_id);
     }
     auto end = std::chrono::steady_clock::now();
-    uint64_t cost = std::chrono::duration_cast<std::chrono::microseconds>(end - async_record.real_start).count();
-    StatisticManager::GetInstance().UpdateFabricMemTransferCost(channel->GetChannelId(), cost);
-    LLMLOGI("Transfer async request completed, channel:%s, req:%lu, cost:%lu us.", channel->GetChannelId().c_str(),
-            req_id, cost);
+    uint64_t real_copy_cost =
+        std::chrono::duration_cast<std::chrono::microseconds>(end - async_record.real_copy_start).count();
+    uint64_t transfer_cost =
+        std::chrono::duration_cast<std::chrono::microseconds>(end - async_record.transfer_start).count();
+    StatisticManager::GetInstance().UpdateFabricMemCosts(channel->GetStatisticChannelId(), transfer_cost,
+                                                         real_copy_cost, async_record.transfer_bytes);
+    LLMLOGI("Transfer async request completed, channel:%s, req:%lu, transfer cost:%lu us, real copy cost:%lu us.",
+            channel->GetChannelId().c_str(), req_id, transfer_cost, real_copy_cost);
   }
   LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
