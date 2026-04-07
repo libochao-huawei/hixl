@@ -129,6 +129,8 @@ class HixlCSClient {
   Status InitUbResource();
   Status InitUbConstMemory();
   Status ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms);
+  // Pre: mutex_ held. Match 成功后拉取并导入远端内存（与 GetRemoteMem 主体一致）。
+  Status GetRemoteMemLocked(uint32_t timeout_ms, CommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
   Status InitFlagQueue() noexcept;
   int32_t AcquireFlagIndex();
   Status ReleaseCompleteHandle(CompleteHandle *queryhandle);
