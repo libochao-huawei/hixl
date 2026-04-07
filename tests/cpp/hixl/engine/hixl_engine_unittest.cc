@@ -14,6 +14,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include "ascendcl_stub.h"
+#include "acl_runtime_test_helper.h"
 #define private public
 #include "engine/hixl_engine.h"
 #undef private
@@ -81,19 +82,23 @@ std::string BuildLocalCommRes(const std::string &net_instance_id,
 }
 }
 
-class MockEngineAclRuntimeStub : public llm::AclRuntimeStub {
-public:
+class MockEngineAclRuntimeStub : public DeviceCountAclRuntimeStub {
+ public:
   std::string soc_name_ = "Ascend910B1";
   int32_t device_id_ = 0;
   int32_t phy_device_id_ = 0;
   int64_t super_pod_id_ = 8;
   int64_t super_device_id_ = 9;
+  int get_device_calls_ = 0;
+  int get_current_context_calls_ = 0;
+  int set_current_context_calls_ = 0;
 
   const char *aclrtGetSocName() override {
     return soc_name_.c_str();
   }
 
   aclError aclrtGetDevice(int32_t *deviceId) override {
+    ++get_device_calls_;
     if (deviceId == nullptr) {
       return ACL_ERROR_FAILURE;
     }
@@ -222,9 +227,10 @@ class HixlEngineTest : public ::testing::Test {
   std::shared_ptr<MockEngineAclRuntimeStub> acl_stub_;
 
   void SetSocStub(const std::string &soc_name, int32_t device_id, int32_t phy_device_id,
-                  int64_t super_device_id, int64_t super_pod_id) {
+                  int64_t super_device_id, int64_t super_pod_id, uint32_t device_count = 1U) {
     acl_stub_ = std::make_shared<MockEngineAclRuntimeStub>();
     acl_stub_->soc_name_ = soc_name;
+    acl_stub_->device_count_ = device_count;
     acl_stub_->device_id_ = device_id;
     acl_stub_->phy_device_id_ = phy_device_id;
     acl_stub_->super_device_id_ = super_device_id;
@@ -725,5 +731,36 @@ TEST_F(HixlEngineTest, TestInitializeFillDeviceInfoOnlyForDevicePlacement) {
   EXPECT_EQ(device_ep.device_info.super_pod_id, 67);
 
   engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestInitializeHostOnlyNoAclDeviceCallsWhenNoDeviceAvailable) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88, 0U);
+
+  const std::string local_comm_res = BuildLocalCommRes(
+      "host_only_sp",
+      "1.3",
+      {
+          BuildHostRoceEndpoint("127.0.0.1")
+      });
+
+  HixlEngine engine("127.0.0.1");
+  auto options = BuildOptions(local_comm_res);
+  EXPECT_EQ(engine.Initialize(options), SUCCESS);
+  ASSERT_EQ(engine.endpoint_list_.size(), 1U);
+  EXPECT_EQ(engine.endpoint_list_[0].placement, kPlacementHost);
+  EXPECT_EQ(engine.endpoint_list_[0].device_info.phy_device_id, -1);
+  EXPECT_EQ(acl_stub_->get_device_calls_, 0);
+
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestInitializeAutoGenerateLocalCommResFailWhenNoDeviceAvailable) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88, 0U);
+
+  HixlEngine engine("127.0.0.1");
+  std::map<AscendString, AscendString> options;
+  options[adxl::OPTION_LOCAL_COMM_RES] = AscendString(R"({"version":"1.3"})");
+  EXPECT_EQ(engine.Initialize(options), PARAM_INVALID);
+  EXPECT_EQ(acl_stub_->get_device_calls_, 0);
 }
 }  // namespace hixl

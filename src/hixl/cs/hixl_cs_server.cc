@@ -9,6 +9,7 @@
  */
 
 #include "hixl_cs_server.h"
+#include <algorithm>
 #include <sys/epoll.h>
 #include "nlohmann/json.hpp"
 #include "common/hixl_checker.h"
@@ -103,6 +104,9 @@ Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list
     EndpointHandle handle = nullptr;
     HIXL_CHK_STATUS_RET(endpoint_store_.CreateEndpoint(endpoint_list[i], handle), "Failed to create endpoint.");
   }
+  const bool has_device_endpoint = std::any_of(endpoint_list, endpoint_list + list_num, [](const EndpointDesc &endpoint) {
+    return endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE;
+  });
   msg_handler_.RegisterMsgProcessor(CtrlMsgType::kMatchEndpointReq,
                                     [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
                                       return this->MatchEndpointMsg(fd, msg, msg_len);
@@ -120,7 +124,7 @@ Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list
                                       return this->DestroyChannel(fd, msg, msg_len);
                                     });
   CtrlMsgPlugin::Initialize();
-  msg_handler_.Initialize();
+  msg_handler_.Initialize(has_device_endpoint);
   HIXL_CHK_STATUS_RET(InitTransFinishedFlag(), "Failed to init trans finished flag");
   HIXL_EVENT("[HixlServer] init success, endpoint_list_num:%u", list_num);
   return SUCCESS;
