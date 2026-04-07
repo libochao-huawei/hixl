@@ -125,7 +125,7 @@ void PrintThroughput(uint64_t size_bytes, int64_t time_us) {
 }
 
 int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std::string &transfer_op) {
-  HcommMem *remote_mem_list = nullptr;
+  CommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
   auto ret =
@@ -134,7 +134,7 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
     (void)printf("[ERROR] HixlCSClientGetRemoteMem failed, ret = %u\n", ret);
     return -1;
   }
-  std::map<std::string, HcommMem> server_mems;
+  std::map<std::string, CommMem> server_mems;
   for (uint32_t i = 0; i < list_num; ++i) {
     server_mems[mem_tag_list[i]] = remote_mem_list[i];
   }
@@ -303,7 +303,7 @@ int32_t RunClient(const Args &args) {
   // 2. Register 2GB memory
   uint32_t *kClientTransferData = nullptr;
   MemHandle mem_handle = nullptr;
-  HcommMem mem{};
+  CommMem mem{};
   aclrtMemcpyKind copy_kind;
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
 
@@ -311,7 +311,7 @@ int32_t RunClient(const Args &args) {
     void *tmp = malloc(kTransferMemSize);
     mem.addr = tmp;
     copy_kind = ACL_MEMCPY_HOST_TO_HOST;
-    mem.type = HCCL_MEM_TYPE_HOST;
+    mem.type = COMM_MEM_TYPE_HOST;
     mem.size = kTransferMemSize;
     if (tmp == nullptr) {
       HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Client host addr malloc failed.");
@@ -325,7 +325,7 @@ int32_t RunClient(const Args &args) {
     } else {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     }
-    mem.type = HCCL_MEM_TYPE_DEVICE;
+    mem.type = COMM_MEM_TYPE_DEVICE;
     mem.size = kTransferMemSize;
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] aclrtMalloc failed, ret = %d\n", acl_ret);
@@ -423,14 +423,14 @@ int32_t RunServer(const Args &args) {
   uint32_t *kServerTransferData = nullptr;
   MemHandle mem_handle = nullptr;
   aclrtMemcpyKind copy_kind;
-  HcommMem mem{};
+  CommMem mem{};
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
 
   if (is_host) {
     void *tmp = malloc(kTransferMemSize);
     mem.addr = tmp;
     copy_kind = ACL_MEMCPY_HOST_TO_HOST;
-    mem.type = HCCL_MEM_TYPE_HOST;
+    mem.type = COMM_MEM_TYPE_HOST;
     mem.size = kTransferMemSize;
     if (tmp == nullptr) {
       HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Server host addr malloc failed.");
@@ -444,7 +444,7 @@ int32_t RunServer(const Args &args) {
     } else {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
     }
-    mem.type = HCCL_MEM_TYPE_DEVICE;
+    mem.type = COMM_MEM_TYPE_DEVICE;
     mem.size = kTransferMemSize;
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] Server aclrtMalloc failed, ret = %d\n", acl_ret);
