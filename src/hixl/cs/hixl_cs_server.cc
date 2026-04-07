@@ -72,6 +72,7 @@ Status HixlCSServer::InitTransFinishedFlag() {
     mem.size = sizeof(int64_t);
 
     MemHandle handle = nullptr;
+    HIXL_LOGI("JZY HixlCSServer::InitTransFinishedFlag() RegisterMem mem_tag=%s", kTransFlagNameDevice);
     HIXL_CHK_STATUS_RET(RegisterMem(kTransFlagNameDevice, &mem, &handle),
                         "Failed to reg DEVICE trans finished flag");
     dev_trans_flag_ = dev_flag;
@@ -177,6 +178,7 @@ Status HixlCSServer::RegisterMem(const char *mem_tag, const CommMem *mem, MemHan
   auto all_handles = endpoint_store_.GetAllEndpointHandles();
   HIXL_CHK_BOOL_RET_STATUS(all_handles.size() > 0, PARAM_INVALID, "no endpoint is available");
   std::vector<EndpointMemInfo> ep_mem_infos;
+  HIXL_LOGI("JZY HixlCSServer::RegisterMem mem_tag=%s", mem_tag);
   for (auto handle : all_handles) {
     auto endpoint = endpoint_store_.GetEndpoint(handle);
     HIXL_CHECK_NOTNULL(endpoint);
