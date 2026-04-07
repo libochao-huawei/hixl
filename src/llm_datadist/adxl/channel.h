@@ -57,7 +57,8 @@ struct ChannelInfo {
 using AsyncResource = std::pair<aclrtStream, aclrtEvent>;
 struct AsyncRecord {
   std::vector<AsyncResource> async_resources;
-  std::chrono::steady_clock::time_point real_start;
+  std::chrono::steady_clock::time_point transfer_start;
+  std::chrono::steady_clock::time_point real_copy_start;
 };
 
 class BufferedTransfer {
