@@ -62,6 +62,7 @@ __attribute__((weak)) int32_t HcommChannelFenceOnThread(ThreadHandle thread, Cha
 namespace hixl {
 HcclResult HcommProxy::MemReg(EndpointHandle endpoint_handle, const char *mem_tag, const CommMem *mem,
                               HcommMemHandle *mem_handle) {
+  HIXL_LOGI("JZY HcommProxy::MemReg mem_tag=%s", mem_tag);
   HIXL_CHK_BOOL_RET_STATUS(&HcommMemReg != nullptr, HCCL_E_NOT_SUPPORT,
                            "function HcommMemReg is null, maybe unsupported.");
   return static_cast<HcclResult>(HcommMemReg(endpoint_handle, mem_tag, mem, mem_handle));
