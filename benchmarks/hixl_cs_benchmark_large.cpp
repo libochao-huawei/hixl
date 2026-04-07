@@ -136,7 +136,7 @@ void PrintThroughput(uint64_t size_bytes, int64_t time_us) {
 int32_t TransferLargeData(HixlClientHandle client_handle, uint8_t *local_addr, 
                            const std::vector<uint64_t> &test_sizes, const std::string &transfer_op,
                            uint64_t block_size) {
-  HcommMem *remote_mem_list = nullptr;
+  CommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
   auto ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
@@ -144,7 +144,7 @@ int32_t TransferLargeData(HixlClientHandle client_handle, uint8_t *local_addr,
     (void)printf("[ERROR] HixlCSClientGetRemoteMem failed, ret = %u\n", ret);
     return -1;
   }
-  std::map<std::string, HcommMem> server_mems;
+  std::map<std::string, CommMem> server_mems;
   for (uint32_t i = 0; i < list_num; ++i) {
     server_mems[mem_tag_list[i]] = remote_mem_list[i];
   }
@@ -205,7 +205,7 @@ int32_t TransferLargeData(HixlClientHandle client_handle, uint8_t *local_addr,
 
 int32_t TransferMultiBlock(HixlClientHandle client_handle, uint8_t *local_addr,const std::string &transfer_op,
                              uint32_t mem_block_count, uint64_t mem_block_size) {
-  HcommMem *remote_mem_list = nullptr;
+  CommMem *remote_mem_list = nullptr;
   constexpr uint64_t transfer_block_size = 2ULL * 1024 * 1024;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
@@ -215,10 +215,10 @@ int32_t TransferMultiBlock(HixlClientHandle client_handle, uint8_t *local_addr,c
     (void)printf("[ERROR] HixlCSClientGetRemoteMem failed, ret = %u\n", ret);
     return -1;
   }
-  std::map<std::string, HcommMem> server_mems;
+  std::map<std::string, CommMem> server_mems;
   for (uint32_t i = 0; i < list_num; ++i) {
     server_mems[mem_tag_list[i]] = remote_mem_list[i];
-    HIXL_LOGI("the num is %u, mem_tag is %s, HcommMem.type is %u, HcommMem.addr is %u, HcommMem.size is %u.",i ,mem_tag_list[i], remote_mem_list[i].type, remote_mem_list[i].addr, remote_mem_list[i].size);
+    HIXL_LOGI("the num is %u, mem_tag is %s, CommMem.type is %u, CommMem.addr is %u, CommMem.size is %u.",i ,mem_tag_list[i], remote_mem_list[i].type, remote_mem_list[i].addr, remote_mem_list[i].size);
   }
   uint8_t *remote_addr = static_cast<uint8_t *>(server_mems["server_mem0"].addr);
   HIXL_LOGI("the remote addr is %p.", remote_addr);
@@ -295,7 +295,7 @@ void ServerFinalize(HixlClientHandle server_handle, const std::vector<MemHandle>
   }
 }
 
-uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyKind copy_kind, HcommMem mem) {
+uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyKind copy_kind, CommMem mem) {
   void *tmp = nullptr;
   std::string device;
   if (is_client) {
@@ -393,14 +393,14 @@ int32_t RunClientLargeData(const Args &args) {
   uint64_t block_size = k128MB;
   aclrtMemcpyKind copy_kind;
   MemHandle mem_handle = nullptr;
-  HcommMem mem{};
+  CommMem mem{};
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
 
   if (is_host) {
     copy_kind = ACL_MEMCPY_HOST_TO_HOST;
     void *tmp = malloc(max_size);
     mem.addr = tmp;
-    mem.type = HCCL_MEM_TYPE_HOST;
+    mem.type = COMM_MEM_TYPE_HOST;
     mem.size = max_size;
     if (tmp == nullptr) {
       HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Client host addr malloc failed.");
@@ -414,7 +414,7 @@ int32_t RunClientLargeData(const Args &args) {
     }else {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     }
-    mem.type = HCCL_MEM_TYPE_DEVICE;
+    mem.type = COMM_MEM_TYPE_DEVICE;
     mem.size = max_size;
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] aclrtMalloc failed, ret = %d\n", acl_ret);
@@ -521,7 +521,7 @@ int32_t RunClientMultiBlock(const Args &args) {
   (void)printf("[INFO] ===== Test with %u memory blocks =====\n", mem_block_count);
   std::vector<uint32_t *> kClientTransferDataList(mem_block_count);
   std::vector<MemHandle> mem_handles(mem_block_count);
-  std::vector<HcommMem> mems(mem_block_count);
+  std::vector<CommMem> mems(mem_block_count);
   std::vector<uint8_t *> local_addrs(mem_block_count);
   //申请一个大的内存块，之后再按照2MB划分成多个内存块
   uint64_t transfer_buffer_size = mem_block_count* kMemBlockSize;
@@ -548,11 +548,11 @@ int32_t RunClientMultiBlock(const Args &args) {
   for (uint32_t i = 0; i < mem_block_count; ++i) {
     if (is_host) {
       mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
-      mems[i].type = HCCL_MEM_TYPE_HOST;
+      mems[i].type = COMM_MEM_TYPE_HOST;
       mems[i].size = kMemBlockSize;
     } else {
       mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
-      mems[i].type = HCCL_MEM_TYPE_DEVICE;
+      mems[i].type = COMM_MEM_TYPE_DEVICE;
       mems[i].size = kMemBlockSize;
     }
 
@@ -646,14 +646,14 @@ int32_t RunServerLargeData(const Args &args) {
   uint64_t max_size = k16GB;
   MemHandle mem_handle = nullptr;
   aclrtMemcpyKind copy_kind ;
-  HcommMem mem{};
+  CommMem mem{};
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
 
   if (is_host) {
     void *tmp = malloc(max_size);
     mem.addr = tmp;
     copy_kind = ACL_MEMCPY_HOST_TO_HOST;
-    mem.type = HCCL_MEM_TYPE_HOST;
+    mem.type = COMM_MEM_TYPE_HOST;
     mem.size = max_size;
     if (tmp == nullptr) {
       HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Server host addr malloc failed.");
@@ -666,7 +666,7 @@ int32_t RunServerLargeData(const Args &args) {
     }else {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
     }
-    mem.type = HCCL_MEM_TYPE_DEVICE;
+    mem.type = COMM_MEM_TYPE_DEVICE;
     mem.size = max_size;
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] Server aclrtMalloc failed, ret = %d\n", acl_ret);
@@ -761,7 +761,7 @@ int32_t RunServerMultiBlock(const Args &args) {
   (void)printf("[INFO] ===== Test with %u memory blocks =====\n", mem_block_count);
 
   std::vector<MemHandle> mem_handles(mem_block_count);
-  std::vector<HcommMem> mems(mem_block_count);
+  std::vector<CommMem> mems(mem_block_count);
   std::vector<uint32_t *> server_transfer_data_list(mem_block_count, nullptr);
   //申请一个大的内存块，之后再按照2MB划分成多个内存块
   uint64_t transfer_buffer_size = mem_block_count* kMemBlockSize;
@@ -788,11 +788,11 @@ int32_t RunServerMultiBlock(const Args &args) {
   for (uint32_t i = 0; i < mem_block_count; ++i) {
     if (is_host) {
       mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
-      mems[i].type = HCCL_MEM_TYPE_HOST;
+      mems[i].type = COMM_MEM_TYPE_HOST;
       mems[i].size = kMemBlockSize;
     } else {
       mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
-      mems[i].type = HCCL_MEM_TYPE_DEVICE;
+      mems[i].type = COMM_MEM_TYPE_DEVICE;
       mems[i].size = kMemBlockSize;
     }
 
