@@ -20,11 +20,11 @@ using namespace hixl;
 namespace {
 constexpr int32_t kWaitRegTime = 5;
 constexpr int32_t kWaitTransTime = 20;
-constexpr int32_t kClientExpectedArgCnt = 4;
+constexpr int32_t kExpectedArgCnt = 5;
 constexpr uint32_t kArgIndexDeviceId = 1;
 constexpr uint32_t kArgIndexLocalEngine = 2;
 constexpr uint32_t kArgIndexRemoteEngine = 3;
-constexpr int32_t kServerExpectedArgCnt = 3;
+constexpr uint32_t kArgIndexLocalCommRes = 4;
 constexpr int32_t kSrcValue = 2;
 
 #define CHECK_ACL(x)                                                                  \
@@ -44,8 +44,11 @@ const char *GetRecentErrMsg() {
 }
 }  // namespace
 
-int Initialize(Hixl &hixl_engine, const char *local_engine) {
+int Initialize(Hixl &hixl_engine, const char *local_engine, const std::string &local_comm_res) {
   std::map<AscendString, AscendString> options;
+  if (!local_comm_res.empty()) {
+    options[OPTION_LOCAL_COMM_RES] = local_comm_res.c_str();
+  }
   auto ret = hixl_engine.Initialize(local_engine, options);
   if (ret != SUCCESS) {
     printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, GetRecentErrMsg());
@@ -138,11 +141,11 @@ void ServerFinalize(Hixl &hixl_engine, const std::vector<MemHandle> handles,
   hixl_engine.Finalize();
 }
 
-int32_t RunClient(const char *local_engine, const char *remote_engine) {
+int32_t RunClient(const char *local_engine, const char *remote_engine, const std::string &local_comm_res) {
   printf("[INFO] client start\n");
   // 1. 初始化
   Hixl hixl_engine;
-  if (Initialize(hixl_engine, local_engine) != 0) {
+  if (Initialize(hixl_engine, local_engine, local_comm_res) != 0) {
     printf("[ERROR] Initialize Hixl failed\n");
     return -1;
   }
@@ -185,11 +188,11 @@ int32_t RunClient(const char *local_engine, const char *remote_engine) {
   return 0;
 }
 
-int32_t RunServer(const char *local_engine) {
+int32_t RunServer(const char *local_engine, const std::string &local_comm_res) {
   printf("[INFO] server start\n");
   // 1. 初始化
   Hixl hixl_engine;
-  if (Initialize(hixl_engine, local_engine) != 0) {
+  if (Initialize(hixl_engine, local_engine, local_comm_res) != 0) {
     printf("[ERROR] Initialize Hixl failed\n");
     return -1;
   }
@@ -235,32 +238,32 @@ int main(int32_t argc, char **argv) {
   std::string device_id;
   std::string local_engine;
   std::string remote_engine;
-  if (argc == kClientExpectedArgCnt) {
-    is_client = true;
-    device_id = argv[kArgIndexDeviceId];
-    local_engine = argv[kArgIndexLocalEngine];
-    remote_engine = argv[kArgIndexRemoteEngine];
-    printf("[INFO] device_id = %s, local_engine = %s, remote_engine = %s\n", device_id.c_str(), local_engine.c_str(),
-           remote_engine.c_str());
-  } else if (argc == kServerExpectedArgCnt) {
-    device_id = argv[kArgIndexDeviceId];
-    local_engine = argv[kArgIndexLocalEngine];
-    printf("[INFO] device_id = %s, local_engine = %s\n", device_id.c_str(), local_engine.c_str());
-  } else {
-    printf(
-        "[ERROR] client expect 3 args(device_id, local_engine, remote_engine), "
-        "server expect 2 args(device_id, local_engine), but got %d\n",
-        argc - 1);
+  std::string local_comm_res;
+  
+  if (argc < kExpectedArgCnt - 1 || argc > kExpectedArgCnt) {
+    printf("[ERROR] expect at least 3 args(device_id, local_engine, remote_engine, [local_comm_res]), but got %d\n",
+           argc - 1);
     return -1;
+  }
+  device_id = argv[kArgIndexDeviceId];
+  local_engine = argv[kArgIndexLocalEngine];
+  remote_engine = argv[kArgIndexRemoteEngine];
+  is_client = (remote_engine.find(':') != std::string::npos);
+  printf("[INFO] device_id = %s, local_engine = %s, remote_engine = %s\n", device_id.c_str(), local_engine.c_str(),
+         remote_engine.c_str());
+
+  if (argc == kExpectedArgCnt) {
+    local_comm_res = argv[kArgIndexLocalCommRes];
+    printf("[INFO] local_comm_res = %s\n", local_comm_res.c_str());
   }
   int32_t device = std::stoi(device_id);
   CHECK_ACL(aclrtSetDevice(device));
 
   int32_t ret = 0;
   if (is_client) {
-    ret = RunClient(local_engine.c_str(), remote_engine.c_str());
+    ret = RunClient(local_engine.c_str(), remote_engine.c_str(), local_comm_res);
   } else {
-    ret = RunServer(local_engine.c_str());
+    ret = RunServer(local_engine.c_str(), local_comm_res);
   }
   CHECK_ACL(aclrtResetDevice(device));
   return ret;
