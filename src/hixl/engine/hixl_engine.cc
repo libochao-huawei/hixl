@@ -55,14 +55,24 @@ Status NeedAutoGenerateLocalCommRes(const std::string &local_comm_res, bool &nee
     return SUCCESS;
   }
 
+  if (!IsVersionOnlyLocalCommRes(j)) {
+    return SUCCESS;
+  }
+
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  HIXL_CHK_BOOL_RET_STATUS(has_device, PARAM_INVALID,
+                           "LocalCommRes must be configured explicitly when no local device is available");
+
   SocType soc_type = SocType::kOther;
   HIXL_CHK_STATUS_RET(GetSocType(soc_type), "GetSocType failed");
 
-  if ((soc_type == SocType::kA2 || soc_type == SocType::kA3) && IsVersionOnlyLocalCommRes(j)) {
+  if (soc_type == SocType::kA2 || soc_type == SocType::kA3) {
     need_auto_generate = true;
+    return SUCCESS;
   }
-
-  return SUCCESS;
+  HIXL_LOGE(PARAM_INVALID, "Auto-generated LocalCommRes only supports A2/A3 device scenarios");
+  return PARAM_INVALID;
 }
 
 Status GetVersionFromLocalCommRes(const std::string &local_comm_res, std::string &version) {
@@ -93,12 +103,23 @@ static void ConvertLocCommResInfoToEndpointList(const loc_comm_res::LocCommResIn
   }
 }
 
-Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::vector<EndpointConfig> &endpoint_list) {
+Status CheckDeviceInfoFillPreconditions(const std::string &version, const std::vector<EndpointConfig> &endpoint_list) {
   if (version != kConfigVersion) {
     return SUCCESS;
   }
 
-  SocType soc_type = SocType::kOther;
+  if (!HasDeviceEndpoint(endpoint_list)) {
+    return SUCCESS;
+  }
+
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  HIXL_CHK_BOOL_RET_STATUS(has_device, FAILED,
+                           "Device endpoint requires local ACL runtime device resources, but none are available");
+  return SUCCESS;
+}
+
+Status GetLocalDeviceInfo(SocType &soc_type, int32_t &phy_device_id, int64_t &super_device_id, int64_t &super_pod_id) {
   HIXL_CHK_STATUS_RET(GetSocType(soc_type), "GetSocType failed");
   if (soc_type == SocType::kOther) {
     return SUCCESS;
@@ -107,15 +128,15 @@ Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::
   int32_t device_id = 0;
   HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
 
-  int32_t phy_device_id = -1;
+  phy_device_id = -1;
   aclError acl_ret = aclrtGetPhyDevIdByLogicDevId(device_id, &phy_device_id);
   if (acl_ret != ACL_SUCCESS) {
     HIXL_LOGE(FAILED, "aclrtGetPhyDevIdByLogicDevId failed, device_id=%d, acl_ret=%d", device_id, acl_ret);
     return FAILED;
   }
 
-  int64_t super_device_id = -1;
-  int64_t super_pod_id = -1;
+  super_device_id = -1;
+  super_pod_id = -1;
 
   if (soc_type == SocType::kA3) {
     acl_ret = aclrtGetDeviceInfo(static_cast<uint32_t>(device_id), ACL_DEV_ATTR_SUPER_POD_ID, &super_pod_id);
@@ -130,7 +151,11 @@ Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::
       return FAILED;
     }
   }
+  return SUCCESS;
+}
 
+void FillDeviceInfoForEndpointList(SocType soc_type, int32_t phy_device_id, int64_t super_device_id,
+                                   int64_t super_pod_id, std::vector<EndpointConfig> &endpoint_list) {
   for (auto &ep : endpoint_list) {
     if (ep.placement != kPlacementDevice) {
       continue;
@@ -146,7 +171,25 @@ Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::
       ep.device_info.super_pod_id = -1;
     }
   }
+}
 
+Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::vector<EndpointConfig> &endpoint_list) {
+  HIXL_CHK_STATUS_RET(CheckDeviceInfoFillPreconditions(version, endpoint_list),
+                      "CheckDeviceInfoFillPreconditions failed");
+  if (version != kConfigVersion || !HasDeviceEndpoint(endpoint_list)) {
+    return SUCCESS;
+  }
+
+  SocType soc_type = SocType::kOther;
+  int32_t phy_device_id = -1;
+  int64_t super_device_id = -1;
+  int64_t super_pod_id = -1;
+  HIXL_CHK_STATUS_RET(GetLocalDeviceInfo(soc_type, phy_device_id, super_device_id, super_pod_id),
+                      "GetLocalDeviceInfo failed");
+  if (soc_type == SocType::kOther) {
+    return SUCCESS;
+  }
+  FillDeviceInfoForEndpointList(soc_type, phy_device_id, super_device_id, super_pod_id, endpoint_list);
   return SUCCESS;
 }
 
@@ -183,6 +226,17 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(CheckOptions(options), "[HixlEngine] Failed to check options");
   std::string local_comm_res;
+  HIXL_CHK_STATUS_RET(InitEndpointList(options, local_comm_res),
+                      "[HixlEngine] Failed to initialize endpoint list");
+  HIXL_CHK_STATUS_RET(ParseTrafficClass(options), "[HixlEngine] Failed to parse traffic class");
+  HIXL_CHK_STATUS_RET(ParseServiceLevel(options), "[HixlEngine] Failed to parse service level");
+  HIXL_CHK_STATUS_RET(InitServer(local_comm_res), "[HixlEngine] Failed to initialize server");
+  is_initialized_ = true;
+  HIXL_LOGI("[HixlEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
+  return SUCCESS;
+}
+
+Status HixlEngine::InitEndpointList(const std::map<AscendString, AscendString> &options, std::string &local_comm_res) {
   auto hixl_it = options.find(hixl::OPTION_LOCAL_COMM_RES);
   auto adxl_it = options.find(adxl::OPTION_LOCAL_COMM_RES);
   auto it = hixl_it == options.cend() ? adxl_it : hixl_it;
@@ -193,9 +247,11 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
                            PARAM_INVALID,
                            "[HixlEngine] local_comm_res is empty");
   local_comm_res = local_comm_res_cstr;
+
   bool need_auto_generate = false;
   HIXL_CHK_STATUS_RET(NeedAutoGenerateLocalCommRes(local_comm_res, need_auto_generate),
                       "[HixlEngine] NeedAutoGenerateLocalCommRes failed");
+
   endpoint_list_.clear();
   if (need_auto_generate) {
     int32_t device_id = 0;
@@ -206,29 +262,30 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
     ConvertLocCommResInfoToEndpointList(loc_comm_res_info, endpoint_list_);
     HIXL_CHK_STATUS_RET(FillEndpointDeviceInfoIfNeededByVersion(loc_comm_res_info.version, endpoint_list_),
                         "[HixlEngine] FillEndpointDeviceInfoIfNeededByVersion failed");
-  } else {
-    HIXL_CHK_STATUS_RET(ParseEndPoint(local_comm_res, endpoint_list_),
-                        "[HixlEngine] Failed to parse endpoint from local_comm_res, local_comm_res:%s",
-                        local_comm_res.c_str());
-    HIXL_CHK_STATUS_RET(FillEndpointDeviceInfoIfNeeded(local_comm_res, endpoint_list_),
-                        "[HixlEngine] FillEndpointDeviceInfoIfNeeded failed, local_comm_res:%s",
-                        local_comm_res.c_str());
+    return SUCCESS;
   }
-  HIXL_CHK_STATUS_RET(ParseTrafficClass(options), "[HixlEngine] Failed to parse traffic class");
-  HIXL_CHK_STATUS_RET(ParseServiceLevel(options), "[HixlEngine] Failed to parse service level");
+
+  HIXL_CHK_STATUS_RET(ParseEndPoint(local_comm_res, endpoint_list_),
+                      "[HixlEngine] Failed to parse endpoint from local_comm_res, local_comm_res:%s",
+                      local_comm_res.c_str());
+  HIXL_CHK_STATUS_RET(FillEndpointDeviceInfoIfNeeded(local_comm_res, endpoint_list_),
+                      "[HixlEngine] FillEndpointDeviceInfoIfNeeded failed, local_comm_res:%s",
+                      local_comm_res.c_str());
+  return SUCCESS;
+}
+
+Status HixlEngine::InitServer(const std::string &local_comm_res) {
   std::string ip;
   int32_t port = 0;
-  HIXL_CHK_STATUS_RET(ParseListenInfo(local_engine_, ip, port), 
+  HIXL_CHK_STATUS_RET(ParseListenInfo(local_engine_, ip, port),
                       "[HixlEngine] Failed to parse ip and port, local_engine should be in form as below: "
                       "ipv4 should be 'host_ip:host_port' or 'host_ip' "
                       "ipv6 should be '[host_ip]:host_port' or '[host_ip]' "
                       "current local_engine:%s",
                       local_engine_.c_str());
-  HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_), 
-                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s, local_comm_res:%s", 
+  HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_),
+                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s, local_comm_res:%s",
                       local_engine_.c_str(), local_comm_res.c_str());
-  is_initialized_ = true;
-  HIXL_LOGI("[HixlEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
   return SUCCESS;
 }
 
