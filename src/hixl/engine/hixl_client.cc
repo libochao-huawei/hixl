@@ -341,10 +341,17 @@ CommType HixlClient::ParseCommType(const std::string &local_placement, const std
 // 创建cs_client
 Status HixlClient::CreateCsClients(const EndpointConfig &local_endpoint_config,
                                    const EndpointConfig &remote_endpoint_config, CommType type) {
-  int32_t dev_logic_id = 0;
+  const bool needs_acl = IsDeviceEndpoint(local_endpoint_config);
   int32_t dev_phy_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
-  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
+  if (needs_acl) {
+    bool has_device = false;
+    HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+    HIXL_CHK_BOOL_RET_STATUS(has_device, FAILED,
+                             "Device endpoint requires local ACL runtime device resources, but none are available");
+    int32_t dev_logic_id = 0;
+    HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
+    HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
+  }
   EndpointDesc local_endpoint{};
   EndpointDesc remote_endpoint{};
   HIXL_CHK_STATUS_RET(ConvertToEndpointDesc(local_endpoint_config, local_endpoint, static_cast<uint32_t>(dev_phy_id)),
@@ -369,6 +376,7 @@ Status HixlClient::CreateCsClients(const EndpointConfig &local_endpoint_config,
   HIXL_LOGI("HixlCSClientCreate success for type %s, handle:%p", CommTypeToString(type), handle);
   std::lock_guard<std::mutex> lock(client_handles_mutex_);
   client_handles_[type] = handle;
+  client_requires_acl_[type] = needs_acl;
   return SUCCESS;
 }
 
@@ -467,14 +475,22 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
   ThreadPool thread_pool("hixl_client_connect", client_handles_.size());
   std::vector<std::future<Status>> connect_futures;
   aclrtContext context = nullptr;
-  HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&context));
-  HIXL_LOGI("HixlClient aclrtGetCurrentContext, context: %p", context);
+  const bool needs_acl_context = std::any_of(client_requires_acl_.begin(), client_requires_acl_.end(),
+                                             [](const std::pair<const CommType, bool> &item) { return item.second; });
+  if (needs_acl_context) {
+    HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&context));
+    HIXL_LOGI("HixlClient aclrtGetCurrentContext, context: %p", context);
+  }
   for (const auto &pair : client_handles_) {
     auto type = pair.first;
     auto handle = pair.second;
-    auto future = thread_pool.commit([handle, timeout_ms, type, context]() -> Status {
-      HIXL_CHK_ACL_RET(aclrtSetCurrentContext(context));
-      HIXL_LOGI("HixlClient aclrtSetCurrentContext, context: %p", context);
+    const bool needs_acl =
+        (client_requires_acl_.find(type) != client_requires_acl_.end()) && client_requires_acl_[type];
+    auto future = thread_pool.commit([handle, timeout_ms, type, context, needs_acl]() -> Status {
+      if (needs_acl) {
+        HIXL_CHK_ACL_RET(aclrtSetCurrentContext(context));
+        HIXL_LOGI("HixlClient aclrtSetCurrentContext, context: %p", context);
+      }
       try {
         HIXL_CHK_STATUS_RET(HixlCSClientConnect(handle, timeout_ms),
                             "HixlClient Connect failed for type:%s, client_handle: %p, timeout:%u ms",
@@ -572,6 +588,7 @@ Status HixlClient::Finalize() {
       }
     }
     client_handles_.clear();
+    client_requires_acl_.clear();
   }
 
   // 清理其他共享资源
