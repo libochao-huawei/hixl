@@ -390,7 +390,7 @@ int32_t RunClientLargeData(const Args &args) {
   uint32_t *kClientTransferData =nullptr;
   std::vector<uint64_t> test_sizes = {k2GB, k4GB, k8GB, k16GB};
   uint64_t max_size = k16GB;
-  uint64_t block_size = k128MB;
+  uint64_t block_size = k2GB;
   aclrtMemcpyKind copy_kind;
   MemHandle mem_handle = nullptr;
   CommMem mem{};
