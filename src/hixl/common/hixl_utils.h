@@ -77,6 +77,12 @@ Status CheckAddrOverlap(const AddrInfo &cur_info, const std::map<MemHandle, Addr
 
 Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str);
 
+bool IsDeviceEndpoint(const EndpointConfig &endpoint);
+
+bool HasDeviceEndpoint(const std::vector<EndpointConfig> &endpoint_list);
+
+Status HasAvailableDevice(bool &has_device);
+
 Status GetSocName(std::string &soc_name);
 
 SocType GetSocTypeByName(const std::string &soc_name);
