@@ -11,74 +11,98 @@
 #define HIXL_ADXL_STATISTIC_MANAGER_H_
 
 #include <atomic>
+#include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 namespace adxl {
-struct BufferTransferStatisticInfo {
-  std::atomic<uint64_t> transfer_times = 0UL;
-  std::atomic<uint64_t> transfer_max_cost = 0UL;
-  std::atomic<uint64_t> transfer_total_cost = 0UL;
-  std::atomic<uint64_t> client_copy_max_cost = 0UL;
-  std::atomic<uint64_t> client_copy_total_cost = 0UL;
-  std::atomic<uint64_t> client_copy_times = 0UL;
-  std::atomic<uint64_t> server_d2d_max_cost = 0UL;
-  std::atomic<uint64_t> server_d2d_total_cost = 0UL;
-  std::atomic<uint64_t> server_d2d_times = 0UL;
-  std::atomic<uint64_t> server_copy_max_cost = 0UL;
-  std::atomic<uint64_t> server_copy_total_cost = 0UL;
-  std::atomic<uint64_t> server_copy_times = 0UL;
+struct CostStatisticInfo {
+  std::atomic<uint64_t> times = 0UL;
+  std::atomic<uint64_t> max_cost = 0UL;
+  std::atomic<uint64_t> total_cost = 0UL;
 
   void Reset() {
-    transfer_times.store(0UL);
-    transfer_max_cost.store(0UL);
-    transfer_total_cost.store(0UL);
-    client_copy_max_cost.store(0UL);
-    client_copy_total_cost.store(0UL);
-    client_copy_times.store(0UL);
-    server_d2d_max_cost.store(0UL);
-    server_d2d_total_cost.store(0UL);
-    server_d2d_times.store(0UL);
-    server_copy_max_cost.store(0UL);
-    server_copy_total_cost.store(0UL);
-    server_copy_times.store(0UL);
+    times.store(0UL);
+    max_cost.store(0UL);
+    total_cost.store(0UL);
+  }
+};
+
+struct ConnectStatisticInfo {
+  CostStatisticInfo connect_total;
+  CostStatisticInfo tcp_connect;
+  CostStatisticInfo hccl_total;
+  CostStatisticInfo hccl_comm_init;
+  CostStatisticInfo hccl_comm_bind_mem;
+  CostStatisticInfo hccl_comm_prepare;
+
+  void Reset() {
+    connect_total.Reset();
+    tcp_connect.Reset();
+    hccl_total.Reset();
+    hccl_comm_init.Reset();
+    hccl_comm_bind_mem.Reset();
+    hccl_comm_prepare.Reset();
+  }
+};
+
+struct BufferTransferStatisticInfo {
+  CostStatisticInfo transfer;
+  CostStatisticInfo client_copy;
+  CostStatisticInfo server_d2d;
+  CostStatisticInfo server_copy;
+
+  void Reset() {
+    transfer.Reset();
+    client_copy.Reset();
+    server_d2d.Reset();
+    server_copy.Reset();
   }
 };
 
 struct FabricMemTransferStatisticInfo {
-  std::atomic<uint64_t> transfer_times = 0UL;
-  std::atomic<uint64_t> transfer_max_cost = 0UL;
-  std::atomic<uint64_t> transfer_total_cost = 0UL;
-  std::atomic<uint64_t> real_copy_max_cost = 0UL;
-  std::atomic<uint64_t> real_copy_total_cost = 0UL;
-  std::atomic<uint64_t> real_copy_times = 0UL;
+  CostStatisticInfo transfer;
+  CostStatisticInfo real_copy;
 
   void Reset() {
-    transfer_times.store(0UL);
-    transfer_max_cost.store(0UL);
-    transfer_total_cost.store(0UL);
-    real_copy_max_cost.store(0UL);
-    real_copy_total_cost.store(0UL);
-    real_copy_times.store(0UL);
+    transfer.Reset();
+    real_copy.Reset();
   }
 };
 
 struct DirectTransferStatisticInfo {
-  std::atomic<uint64_t> transfer_times = 0UL;
-  std::atomic<uint64_t> transfer_max_cost = 0UL;
-  std::atomic<uint64_t> transfer_total_cost = 0UL;
+  CostStatisticInfo transfer;
 
   void Reset() {
-    transfer_times.store(0UL);
-    transfer_max_cost.store(0UL);
-    transfer_total_cost.store(0UL);
+    transfer.Reset();
   }
 };
 
 struct StatisticInfo {
+  ConnectStatisticInfo connect_statistic_info;
   BufferTransferStatisticInfo buffer_transfer_statistic_info;
   FabricMemTransferStatisticInfo fabric_mem_transfer_statistic_info;
   DirectTransferStatisticInfo direct_transfer_statistic_info;
+};
+
+struct CostStatisticSnapshot {
+  uint64_t times = 0UL;
+  uint64_t max_cost = 0UL;
+  uint64_t total_cost = 0UL;
+};
+
+struct ConnectStatisticSnapshot {
+  CostStatisticSnapshot connect_total;
+  CostStatisticSnapshot tcp_connect;
+  CostStatisticSnapshot hccl_total;
+  CostStatisticSnapshot hccl_comm_init;
+  CostStatisticSnapshot hccl_comm_bind_mem;
+  CostStatisticSnapshot hccl_comm_prepare;
+};
+
+struct StatisticInfoSnapshot {
+  ConnectStatisticSnapshot connect_statistic_info;
 };
 
 class StatisticManager {
@@ -91,33 +115,45 @@ class StatisticManager {
   StatisticManager &operator=(const StatisticManager &&) = delete;
 
   void Dump();
-  void Reset();
+  void RegisterChannel(const std::string &channel_id);
   void UpdateBufferTransferCost(const std::string &channel_id, uint64_t cost);
   void UpdateClientCopyCost(const std::string &channel_id, uint64_t cost);
   void UpdateServerD2DCost(const std::string &channel_id, uint64_t cost);
   void UpdateServerCopyCost(const std::string &channel_id, uint64_t cost);
-
+  void UpdateConnectTotalCost(const std::string &channel_id, uint64_t cost);
+  void UpdateTcpConnectCost(const std::string &channel_id, uint64_t cost);
+  void UpdateHcclTotalCost(const std::string &channel_id, uint64_t cost);
+  void UpdateHcclCommInitCost(const std::string &channel_id, uint64_t cost);
+  void UpdateHcclCommBindMemCost(const std::string &channel_id, uint64_t cost);
+  void UpdateHcclCommPrepareCost(const std::string &channel_id, uint64_t cost);
   void UpdateFabricMemTransferCost(const std::string &channel_id, uint64_t cost);
   void UpdateFabricMemRealCopyCost(const std::string &channel_id, uint64_t cost);
   void UpdateDirectTransferCost(const std::string &channel_id, uint64_t cost);
 
-  void SetEnableUseFabricMem(bool enable_use_frabric_mem);
+  void SetEnableUseFabricMem(bool enable_use_fabric_mem);
   void RemoveChannel(const std::string &channel_id);
   void StartPeriodicDumpIfNeeded();
+  StatisticInfoSnapshot GetStatisticInfoSnapshot(const std::string &channel_id) const;
 
  private:
   StatisticManager() = default;
   static void UpdateCost(uint64_t cost, std::atomic<uint64_t> &total_times, std::atomic<uint64_t> &max_cost,
                          std::atomic<uint64_t> &total_cost);
+  static uint64_t GetAvgCost(const CostStatisticInfo &cost_info);
+  static uint64_t GetOtherTotalCost(const ConnectStatisticInfo &cost_info);
+  static CostStatisticSnapshot ToSnapshot(const CostStatisticInfo &cost_info);
   void DumpBufferTransferStatisticInfo();
+  void DumpConnectStatisticInfo();
   void DumpFabricMemTransferStatisticInfo();
   void DumpDirectTransferStatisticInfo();
+  std::shared_ptr<StatisticInfo> GetOrCreateStatisticInfo(const std::string &channel_id);
+  std::shared_ptr<StatisticInfo> GetStatisticInfo(const std::string &channel_id) const;
 
-  bool enable_use_frabric_mem_ = false;
+  bool enable_use_fabric_mem_ = false;
   std::mutex dump_mutex_;
   void *dump_timer_handle_{nullptr};
-  std::mutex map_mutex_;
-  std::unordered_map<std::string, StatisticInfo> transfer_statistic_info_;
+  mutable std::shared_mutex map_mutex_;
+  std::unordered_map<std::string, std::shared_ptr<StatisticInfo>> transfer_statistic_info_;
 };
 }  // namespace adxl
 #endif
