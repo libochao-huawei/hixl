@@ -54,14 +54,24 @@ Status NeedAutoGenerateLocalCommRes(const std::string &local_comm_res, bool &nee
     return SUCCESS;
   }
 
+  if (!IsVersionOnlyLocalCommRes(j)) {
+    return SUCCESS;
+  }
+
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  HIXL_CHK_BOOL_RET_STATUS(has_device, PARAM_INVALID,
+                           "LocalCommRes must be configured explicitly when no local device is available");
+
   SocType soc_type = SocType::kOther;
   HIXL_CHK_STATUS_RET(GetSocType(soc_type), "GetSocType failed");
 
-  if ((soc_type == SocType::kA2 || soc_type == SocType::kA3) && IsVersionOnlyLocalCommRes(j)) {
+  if (soc_type == SocType::kA2 || soc_type == SocType::kA3) {
     need_auto_generate = true;
+    return SUCCESS;
   }
-
-  return SUCCESS;
+  HIXL_LOGE(PARAM_INVALID, "Auto-generated LocalCommRes only supports A2/A3 device scenarios");
+  return PARAM_INVALID;
 }
 
 Status GetVersionFromLocalCommRes(const std::string &local_comm_res, std::string &version) {
@@ -92,12 +102,23 @@ static void ConvertLocCommResInfoToEndpointList(const loc_comm_res::LocCommResIn
   }
 }
 
-Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::vector<EndpointConfig> &endpoint_list) {
+Status CheckDeviceInfoFillPreconditions(const std::string &version, const std::vector<EndpointConfig> &endpoint_list) {
   if (version != kConfigVersion) {
     return SUCCESS;
   }
 
-  SocType soc_type = SocType::kOther;
+  if (!HasDeviceEndpoint(endpoint_list)) {
+    return SUCCESS;
+  }
+
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  HIXL_CHK_BOOL_RET_STATUS(has_device, FAILED,
+                           "Device endpoint requires local ACL runtime device resources, but none are available");
+  return SUCCESS;
+}
+
+Status GetLocalDeviceInfo(SocType &soc_type, int32_t &phy_device_id, int64_t &super_device_id, int64_t &super_pod_id) {
   HIXL_CHK_STATUS_RET(GetSocType(soc_type), "GetSocType failed");
   if (soc_type == SocType::kOther) {
     return SUCCESS;
@@ -106,15 +127,15 @@ Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::
   int32_t device_id = 0;
   HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
 
-  int32_t phy_device_id = -1;
+  phy_device_id = -1;
   aclError acl_ret = aclrtGetPhyDevIdByLogicDevId(device_id, &phy_device_id);
   if (acl_ret != ACL_SUCCESS) {
     HIXL_LOGE(FAILED, "aclrtGetPhyDevIdByLogicDevId failed, device_id=%d, acl_ret=%d", device_id, acl_ret);
     return FAILED;
   }
 
-  int64_t super_device_id = -1;
-  int64_t super_pod_id = -1;
+  super_device_id = -1;
+  super_pod_id = -1;
 
   if (soc_type == SocType::kA3) {
     acl_ret = aclrtGetDeviceInfo(static_cast<uint32_t>(device_id), ACL_DEV_ATTR_SUPER_POD_ID, &super_pod_id);
@@ -129,7 +150,11 @@ Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::
       return FAILED;
     }
   }
+  return SUCCESS;
+}
 
+void FillDeviceInfoForEndpointList(SocType soc_type, int32_t phy_device_id, int64_t super_device_id,
+                                   int64_t super_pod_id, std::vector<EndpointConfig> &endpoint_list) {
   for (auto &ep : endpoint_list) {
     if (ep.placement != kPlacementDevice) {
       continue;
@@ -145,7 +170,25 @@ Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::
       ep.device_info.super_pod_id = -1;
     }
   }
+}
 
+Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::vector<EndpointConfig> &endpoint_list) {
+  HIXL_CHK_STATUS_RET(CheckDeviceInfoFillPreconditions(version, endpoint_list),
+                      "CheckDeviceInfoFillPreconditions failed");
+  if (version != kConfigVersion || !HasDeviceEndpoint(endpoint_list)) {
+    return SUCCESS;
+  }
+
+  SocType soc_type = SocType::kOther;
+  int32_t phy_device_id = -1;
+  int64_t super_device_id = -1;
+  int64_t super_pod_id = -1;
+  HIXL_CHK_STATUS_RET(GetLocalDeviceInfo(soc_type, phy_device_id, super_device_id, super_pod_id),
+                      "GetLocalDeviceInfo failed");
+  if (soc_type == SocType::kOther) {
+    return SUCCESS;
+  }
+  FillDeviceInfoForEndpointList(soc_type, phy_device_id, super_device_id, super_pod_id, endpoint_list);
   return SUCCESS;
 }
 
