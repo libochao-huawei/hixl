@@ -30,6 +30,53 @@ std::mutex g_mutex_;
 constexpr uint32_t kMaxOpDescNum = 256U;
 constexpr int64_t kHeartbeatTimeoutInMillis = 120000;
 constexpr int32_t kMillisToMicros = 1000;
+
+uint64_t GetDurationUs(const std::chrono::steady_clock::time_point &start,
+                       const std::chrono::steady_clock::time_point &end) {
+  return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+}
+
+Status InitializeHcclComm(ChannelInfo &channel_info) {
+  LLMLOGI("HcclCommInitClusterInfoMemConfig begin, comm_name=%s, local rank_id=%u, rank_table=%s",
+          channel_info.comm_config.hcclCommName, channel_info.local_rank_id, channel_info.rank_table.c_str());
+  std::lock_guard<std::mutex> lock(g_mutex_);
+  const auto start = std::chrono::steady_clock::now();
+  ADXL_CHK_HCCL_RET(llm::HcclAdapter::GetInstance().HcclCommInitClusterInfoMemConfig(
+      channel_info.rank_table.c_str(), channel_info.local_rank_id, &channel_info.comm_config, &channel_info.comm));
+  const auto end = std::chrono::steady_clock::now();
+  const auto cost = GetDurationUs(start, end);
+  StatisticManager::GetInstance().UpdateHcclCommInitCost(channel_info.channel_id, cost);
+  LLMEVENT("HcclCommInitClusterInfoMemConfig success, channel_id:%s, time cost:%lu us.", channel_info.channel_id.c_str(),
+           cost);
+  return SUCCESS;
+}
+
+Status BindRegisteredMemory(ChannelInfo &channel_info, std::vector<void *> &bind_handles) {
+  const auto start = std::chrono::steady_clock::now();
+  for (const auto &reg_handle_it : channel_info.registered_mems) {
+    auto reg_handle = reg_handle_it.first;
+    ADXL_CHK_HCCL_RET(llm::HcclAdapter::GetInstance().HcclCommBindMem(channel_info.comm, reg_handle));
+    bind_handles.emplace_back(reg_handle);
+  }
+  const auto end = std::chrono::steady_clock::now();
+  const auto cost = GetDurationUs(start, end);
+  StatisticManager::GetInstance().UpdateHcclCommBindMemCost(channel_info.channel_id, cost);
+  LLMEVENT("HcclCommBindMem success, channel_id:%s, time cost:%lu us.", channel_info.channel_id.c_str(), cost);
+  return SUCCESS;
+}
+
+Status PrepareHcclComm(ChannelInfo &channel_info, const std::chrono::steady_clock::time_point &hccl_start) {
+  const auto start = std::chrono::steady_clock::now();
+  HcclPrepareConfig prepareConfig{};
+  ADXL_CHK_HCCL_RET(llm::HcclAdapter::GetInstance().HcclCommPrepare(channel_info.comm, &prepareConfig,
+                                                                    channel_info.timeout_sec));
+  const auto end = std::chrono::steady_clock::now();
+  const auto prepare_cost = GetDurationUs(start, end);
+  StatisticManager::GetInstance().UpdateHcclCommPrepareCost(channel_info.channel_id, prepare_cost);
+  StatisticManager::GetInstance().UpdateHcclTotalCost(channel_info.channel_id, GetDurationUs(hccl_start, end));
+  LLMEVENT("HcclCommPrepare success, channel_id:%s, time cost:%lu us.", channel_info.channel_id.c_str(), prepare_cost);
+  return SUCCESS;
+}
 }
 
 int64_t Channel::timeout_in_millis_ = kHeartbeatTimeoutInMillis;
@@ -40,21 +87,8 @@ Status Channel::Initialize(bool enable_use_fabric_mem) {
     enable_use_fabric_mem_ = enable_use_fabric_mem;
     return SUCCESS;
   }
-  LLMLOGI("HcclCommInitClusterInfoMemConfig begin, comm_name=%s, local rank_id=%u, rank_table=%s",
-         channel_info_.comm_config.hcclCommName, channel_info_.local_rank_id, channel_info_.rank_table.c_str());
-  {
-    std::lock_guard<std::mutex> lock(g_mutex_);
-    const auto start = std::chrono::steady_clock::now();
-    ADXL_CHK_HCCL_RET(llm::HcclAdapter::GetInstance().HcclCommInitClusterInfoMemConfig(
-        channel_info_.rank_table.c_str(),
-        channel_info_.local_rank_id,
-        &channel_info_.comm_config,
-        &channel_info_.comm));
-    const auto end = std::chrono::steady_clock::now();
-    const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    LLMEVENT("HcclCommInitClusterInfoMemConfig success, channel_id:%s, time cost:%lu us.",
-             channel_info_.channel_id.c_str(), cost);
-  }
+  const auto hccl_start = std::chrono::steady_clock::now();
+  ADXL_CHK_STATUS_RET(InitializeHcclComm(channel_info_), "Failed to initialize hccl comm");
 
   std::vector<void *> bind_handles;
   LLM_DISMISSABLE_GUARD(fail_guard, ([this, &bind_handles]() {
@@ -63,24 +97,8 @@ Status Channel::Initialize(bool enable_use_fabric_mem) {
     }
     (void) llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
   }));
-
-  auto start = std::chrono::steady_clock::now();
-  for (const auto &reg_handle_it : channel_info_.registered_mems) {
-    auto reg_handle = reg_handle_it.first;
-    ADXL_CHK_HCCL_RET(llm::HcclAdapter::GetInstance().HcclCommBindMem(channel_info_.comm, reg_handle));
-    bind_handles.emplace_back(reg_handle);
-  }
-  auto end = std::chrono::steady_clock::now();
-  auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-  LLMEVENT("HcclCommBindMem success, channel_id:%s, time cost:%lu us.", channel_info_.channel_id.c_str(), cost);
-
-  start = std::chrono::steady_clock::now();
-  HcclPrepareConfig prepareConfig{};
-  ADXL_CHK_HCCL_RET(llm::HcclAdapter::GetInstance().HcclCommPrepare(channel_info_.comm, &prepareConfig,
-                                                                    channel_info_.timeout_sec));
-  end = std::chrono::steady_clock::now();
-  cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-  LLMEVENT("HcclCommPrepare success, channel_id:%s, time cost:%lu us.", channel_info_.channel_id.c_str(), cost);
+  ADXL_CHK_STATUS_RET(BindRegisteredMemory(channel_info_, bind_handles), "Failed to bind registered memory");
+  ADXL_CHK_STATUS_RET(PrepareHcclComm(channel_info_, hccl_start), "Failed to prepare hccl comm");
   LLM_DISMISS_GUARD(fail_guard);
   return SUCCESS;
 }
