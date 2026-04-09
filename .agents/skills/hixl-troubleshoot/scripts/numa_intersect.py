@@ -21,9 +21,9 @@ KPF_BUDDY = 10
 # Base physical addresses for target ranges (PFNs built in main).
 RANGES = [
     0x29580000000,
-    0xa9580000000,
+    0xA9580000000,
     0x129580000000,
-    0x1a9580000000,
+    0x1A9580000000,
 ]
 
 RANGE_SIZE = 682 * 1024 * 1024 * 1024  # 682GB
@@ -31,11 +31,9 @@ RANGE_SIZE = 682 * 1024 * 1024 * 1024  # 682GB
 
 def get_all_nodes():
     base = "/sys/devices/system/node/"
-    return sorted([
-        int(d.replace("node", ""))
-        for d in os.listdir(base)
-        if d.startswith("node")
-    ])
+    return sorted(
+        [int(d.replace("node", "")) for d in os.listdir(base) if d.startswith("node")]
+    )
 
 
 def get_memory_block_size():
@@ -121,12 +119,14 @@ def scan_node_free_segments(node):
     with open("/proc/kpageflags", "rb") as kpf:
         for start_pfn, end_pfn in blocks:
             merged_start, prev_state = _reset_run_if_block_gap(
-                prev_end, start_pfn, merged_start, prev_state)
+                prev_end, start_pfn, merged_start, prev_state
+            )
 
             kpf.seek(start_pfn * 8)
             for pfn, free in _iter_block_pfns(kpf, start_pfn, end_pfn):
                 merged_start, prev_state, done = _apply_pfn_buddy_state(
-                    pfn, free, merged_start, prev_state)
+                    pfn, free, merged_start, prev_state
+                )
                 yield from done
 
             prev_end = end_pfn
@@ -171,7 +171,10 @@ def run_for_node(node, min_mb, target_ranges):
 
 def main():
     import argparse
-    parser = argparse.ArgumentParser(description="NUMA free memory intersect tool (all nodes supported)")
+
+    parser = argparse.ArgumentParser(
+        description="NUMA free memory intersect tool (all nodes supported)"
+    )
     parser.add_argument("-n", "--node", type=int, help="NUMA node ID (default: all)")
     parser.add_argument("-m", "--min-mb", type=float, default=2048)
     parser.add_argument(
