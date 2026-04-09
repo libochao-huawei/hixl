@@ -13,6 +13,7 @@
 
 #include <map>
 #include <string>
+#include <vector>
 #include "hccl/hccl_types.h"
 #include "acl/acl.h"
 #include "adxl/adxl_types.h"
@@ -25,6 +26,7 @@ Status LoadJsonConfig(const std::string& json_string, std::map<ge::AscendString,
 Status HcclError2AdxlStatus(HcclResult ret);
 Status AclError2AdxlStatus(aclError ret);
 Status LLMError2AdxlStatus(ge::Status ret);
+uint64_t GetTransferBytes(const std::vector<TransferOpDesc> &op_descs);
 
 constexpr const char* OPTION_MAX_CHANNEL = "channel_pool.max_channel";
 constexpr const char* OPTION_HIGH_WATERLINE = "channel_pool.high_waterline";

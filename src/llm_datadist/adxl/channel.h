@@ -45,6 +45,7 @@ enum class ChannelType {
 struct ChannelInfo {
   ChannelType channel_type;
   std::string channel_id;
+  std::string statistic_channel_id;
   uint32_t peer_rank_id;
   uint32_t local_rank_id;
   HcclCommConfig comm_config;
@@ -57,7 +58,9 @@ struct ChannelInfo {
 using AsyncResource = std::pair<aclrtStream, aclrtEvent>;
 struct AsyncRecord {
   std::vector<AsyncResource> async_resources;
-  std::chrono::steady_clock::time_point real_start;
+  std::chrono::steady_clock::time_point transfer_start;
+  std::chrono::steady_clock::time_point real_copy_start;
+  uint64_t transfer_bytes = 0UL;
 };
 
 class BufferedTransfer {
@@ -136,8 +139,12 @@ class Channel {
   }
   Status TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                                   aclrtStream stream, uint64_t timeout);
+  std::string GetStatisticChannelId() const;
 
  private:
+  Status InitializeHcclComm();
+  Status BindRegisteredMemory(std::vector<void *> &bind_handles);
+  Status PrepareHcclComm(const std::chrono::steady_clock::time_point &hccl_start);
   Status ClearResources();
   void ClearNotifyMessages();
   void ClearImportedMem();
