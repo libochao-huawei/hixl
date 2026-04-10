@@ -430,46 +430,49 @@ Status HixlCSClient::ValidateAddress(bool is_get, const CommunicateMem &communic
   return SUCCESS;
 }
 
-Status HixlCSClient::BatchTransferTask(bool is_get, const CommunicateMem &communicate_mem_param) {
-  int32_t hccl_ret = 0;  // hccl_ret值为0时表示hccl接口执行成功
-  if (is_get) {
-    // 批量提交读任务
-    for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
+Status HixlCSClient::DoSingleTransferTask(bool is_get, uint32_t index, const CommunicateMem &communicate_mem_param)
+{
+  static constexpr int32_t kHcclSuccess = 0;
+  static constexpr int32_t kHcclRetryRequired = 20;
+  int32_t hccl_ret = 0;
+
+  while (true) {
+    if (is_get) {
       hccl_ret = HcommProxy::ReadNbiOnThread(
-          static_cast<ThreadHandle>(0), client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-          const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i]);
-      if (hccl_ret != 0) {
-        HIXL_LOGE(FAILED,
-            "[HixlClient] HcommReadNbiOnThread failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
-            "mem_len is %lu, hccl_ret is %d.",
-            client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-            const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i], hccl_ret);
-        return FAILED;
-      }
-    }
-  } else {
-    // 批量提交写任务
-    for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
+          static_cast<ThreadHandle>(0), client_channel_handle_, communicate_mem_param.dst_buf_list[index],
+          const_cast<void *>(communicate_mem_param.src_buf_list[index]), communicate_mem_param.len_list[index]);
+    } else {
       hccl_ret = HcommProxy::WriteNbiOnThread(
-          static_cast<ThreadHandle>(0), client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-          const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i]);
-      if (hccl_ret != 0) {  // ret值为0时表示执行成功
-        HIXL_LOGE(FAILED,
-                  "[HixlClient] HcommWriteNbi failed, client_channel_handle_ is %lu, dst_addr is %p, src_addr is %p, "
-                  "mem_len is %lu, hccl_ret is %d.",
-                  client_channel_handle_, communicate_mem_param.dst_buf_list[i],
-                  const_cast<void *>(communicate_mem_param.src_buf_list[i]), communicate_mem_param.len_list[i],
-                  hccl_ret);
-        return FAILED;
-      }
+          static_cast<ThreadHandle>(0), client_channel_handle_, communicate_mem_param.dst_buf_list[index],
+          const_cast<void *>(communicate_mem_param.src_buf_list[index]), communicate_mem_param.len_list[index]);
+    }
+
+    if (hccl_ret == kHcclSuccess) {
+      return SUCCESS;
+    }
+
+    if (hccl_ret != kHcclRetryRequired) {
+      HIXL_LOGE(FAILED,
+                "[HixlClient] HcommNbiOnThread failed, client_channel_handle_ is %lu, is_get is %d, "
+                "addr is %p, mem_len is %lu, hccl_ret is %d.",
+                client_channel_handle_, is_get, communicate_mem_param.dst_buf_list[index],
+                communicate_mem_param.len_list[index], hccl_ret);
+      return FAILED;
+    }
+
+    hccl_ret = HcommProxy::ChannelFenceOnThread(static_cast<ThreadHandle>(0), client_channel_handle_);
+    if (hccl_ret != 0) {
+      HIXL_LOGE(FAILED,
+                "[HixlClient] HcommChannelFenceOnThread failed, client_channel_handle_ is %lu, hccl_ret is %d.",
+                client_channel_handle_, hccl_ret);
+      return FAILED;
     }
   }
-  // 创建内存隔断，等到通道上所有的读任务执行结束后才会接着执行之后创建的读写任务
-  hccl_ret = HcommProxy::ChannelFenceOnThread(static_cast<ThreadHandle>(0), client_channel_handle_);
-  if (hccl_ret != 0) {  // ret值为0时表示执行成功
-    HIXL_LOGE(FAILED, "[HixlClient] HcommChannelFenceOnThread failed，client_channel_handle_ is %lu, hccl_ret is %d.",
-              client_channel_handle_, hccl_ret);
-    return FAILED;
+}
+
+Status HixlCSClient::BatchTransferTask(bool is_get, const CommunicateMem &communicate_mem_param) {
+  for (uint32_t i = 0; i < communicate_mem_param.list_num; i++) {
+    HIXL_CHK_STATUS_RET(DoSingleTransferTask(is_get, i, communicate_mem_param));
   }
   return SUCCESS;
 }
