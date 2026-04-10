@@ -314,4 +314,41 @@ TEST_F(HixlCSClientFixture, MultipleBatchTransferAndCheckStatus) {
   // 验证至少有一次传输成功
   EXPECT_GE(query_handles.size(), 1U);
 }
+
+// 测试传输重试逻辑：15个任务时，前10次正常返回，第11次触发重试
+// 重试后 HcommChannelFenceOnThread 会重置计数器，所以重试后的传输会成功
+TEST_F(HixlCSClientFixture, BatchTransferWithRetryLogic) {
+  const char *client_ip = "127.0.0.1";
+  uint32_t port = 22340;
+  PrepareConnectionAndImport(cli, client_ip, port);
+
+  // 注册本地内存
+  CommMem local{};
+  local.type = COMM_MEM_TYPE_HOST;
+  local.addr = &kClientBufAddr;
+  local.size = kClientBufSizeBytes;
+  MemHandle local_handle = nullptr;
+  ASSERT_EQ(cli.RegMem("client_buf", &local, &local_handle), SUCCESS);
+
+  // 创建15个传输任务
+  // 前10次：正常返回成功
+  // 第11次开始：返回 HCCL_RETRY_REQUIRED (20)，触发重试逻辑
+  // 重试时：Fence 会重置计数器，传输再次成功
+  void *remote_list[] = {&kServerDataAddr, &kServerDataAddr, &kServerDataAddr, &kServerDataAddr,
+                         &kServerDataAddr, &kServerDataAddr, &kServerDataAddr, &kServerDataAddr,
+                         &kServerDataAddr, &kServerDataAddr, &kServerDataAddr, &kServerDataAddr,
+                         &kServerDataAddr, &kServerDataAddr, &kServerDataAddr};
+  const void *local_list[] = {&kClientBufAddr, &kClientBufAddr, &kClientBufAddr, &kClientBufAddr,
+                              &kClientBufAddr, &kClientBufAddr, &kClientBufAddr, &kClientBufAddr,
+                              &kClientBufAddr, &kClientBufAddr, &kClientBufAddr, &kClientBufAddr,
+                              &kClientBufAddr, &kClientBufAddr, &kClientBufAddr};
+  uint64_t len_list[] = {4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4};
+  void *query_handle = nullptr;
+  // 注意： CommunicateMem 的定义是 {dst_buf_list, src_buf_list, len_list}
+  // BatchTransfer(false) 表示 Put，即从 local (src) 写入 remote (dst)
+  CommunicateMem com_mem{15, remote_list, local_list, len_list};
+  // 批量传输应该成功，因为重试逻辑会处理第11次开始的 HCCL_RETRY_REQUIRED
+  EXPECT_EQ(cli.BatchTransfer(false, com_mem, &query_handle), SUCCESS);
+  EXPECT_NE(query_handle, nullptr);
+}
 }  // namespace hixl
