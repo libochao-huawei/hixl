@@ -18,6 +18,15 @@
 extern "C" {
 #endif
 
+// 用于测试重试逻辑的全局计数器
+// 当计数器 >= 10 时，传输任务返回 HCCL_RETRY_REQUIRED (20)，触发重试
+// 当执行 HcommChannelFenceOnThread 时，计数器重置为 0
+static uint32_t g_transfer_retry_counter = 0;
+
+// 用于测试的错误注入：设置为非INT32_MAX值时，后续传输将返回该错误码而不是正常的重试逻辑
+// 设置为 INT32_MAX 表示禁用错误注入模式
+static int32_t g_transfer_error_inject = INT32_MAX;
+
 HcommResult HcommMemReg(EndpointHandle endPointHandle, const char *memTag, const CommMem *mem,
                         HcommMemHandle *memHandle) {
   static int32_t mem_num_stub = 1;
@@ -102,29 +111,48 @@ HcommResult HcommChannelGetStatus(const ChannelHandle *channelList, uint32_t lis
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
+// 辅助函数：执行 NBI 传输并处理重试逻辑
+static int32_t DoNbiTransferWithRetry(void *dst, const void *src, uint64_t len) {
+  if (dst == nullptr || src == nullptr || len == 0) {
+    return HCCL_E_PARA;
+  }
+  // 模拟传输操作耗时 1ms
+  std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  memcpy_s(dst, len, src, len);
+
+  // 错误注入：如果已设置错误码，则注入错误而不是正常逻辑
+  if (g_transfer_error_inject != INT32_MAX) {
+    int32_t err = g_transfer_error_inject;
+    // 如果注入的是 HCCL_RETRY_REQUIRED (20)，仍然走重试逻辑
+    if (err == 20) {
+      g_transfer_retry_counter++;
+      if (g_transfer_retry_counter >= 10) {
+        return 20;  // HCCL_RETRY_REQUIRED
+      }
+      return HCCL_SUCCESS;
+    }
+    // 其他错误码直接返回
+    return err;
+  }
+
+  // 重试测试：前10次正常返回成功，第11次开始返回需要重试的错误码
+  g_transfer_retry_counter++;
+  if (g_transfer_retry_counter >= 10) {
+    return 20;  // HCCL_RETRY_REQUIRED
+  }
+  return HCCL_SUCCESS;
+}
 
 int32_t HcommWriteNbiOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, void *src, uint64_t len) {
   (void)thread;
   (void)channel;
-  if (dst == nullptr || src == nullptr || len == 0) {
-    return HCCL_E_PARA;
-  }
-  // 模拟写操作耗时 1ms
-  std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  memcpy_s(dst, len, src, len);
-  return HCCL_SUCCESS;
+  return DoNbiTransferWithRetry(dst, src, len);
 }
 
 int32_t HcommReadNbiOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, void *src, uint64_t len) {
   (void)thread;
   (void)channel;
-  if (dst == nullptr || src == nullptr || len == 0) {
-    return HCCL_E_PARA;
-  }
-  // 模拟读操作耗时 1ms
-  std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  memcpy_s(dst, len, src, len);
-  return HCCL_SUCCESS;
+  return DoNbiTransferWithRetry(dst, src, len);
 }
 
 HcommResult HcommThreadAlloc(CommEngine engine, uint32_t threadNum, const uint32_t *notifyNumPerThread,
@@ -183,7 +211,21 @@ int32_t HcommWriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst
 int32_t HcommChannelFenceOnThread(ThreadHandle thread, ChannelHandle channel) {
   (void)thread;
   (void)channel;
+  // 重置传输计数器，允许传输任务重新开始计数
+  g_transfer_retry_counter = 0;
   return HCCL_SUCCESS;
+}
+
+// 测试辅助函数：重置传输计数器并清除错误注入
+void ResetTransferCounterAndClearErrorForTest() {
+  g_transfer_retry_counter = 0;
+  g_transfer_error_inject = INT32_MAX;
+}
+
+// 测试辅助函数：设置错误注入
+// inject_error: 设置要注入的错误码（非20的值），设为-1清除错误注入
+void SetTransferErrorInjectForTest(int32_t inject_error) {
+  g_transfer_error_inject = inject_error;
 }
 #ifdef __cplusplus
 }
