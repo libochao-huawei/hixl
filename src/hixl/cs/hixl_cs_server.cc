@@ -15,6 +15,7 @@
 #include "common/ctrl_msg.h"
 #include "common/scope_guard.h"
 #include "common/ctrl_msg_plugin.h"
+#include "transfer_pool.h"
 
 static inline void to_json(nlohmann::json &j, const CommMem &m) {
   j = nlohmann::json{};
@@ -25,6 +26,7 @@ static inline void to_json(nlohmann::json &j, const CommMem &m) {
 
 namespace hixl {
 namespace {
+constexpr uint32_t kDeviceTransferPoolSize = 128U;  // 与 HixlCSClient 侧设备池大小一致
 constexpr int32_t kMaxEventsNum = 128;  // epoll_wait并发处理事件数量，减少epoll系统调用
 constexpr int32_t kEpollWaitTimeInMillis = 100;  // epoll_wait等待超时时间
 constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";// client用于感知收发完成的标识
@@ -61,6 +63,11 @@ Status HixlCSServer::InitTransFinishedFlag() {
     host_trans_flag_handle_ = handle;
   }
   if (has_device_ep) {
+    int32_t dev_id = 0;
+    HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_id), "Failed to aclrtGetDevice for CS server TransferPool");
+    HIXL_CHK_STATUS_RET(TransferPool::GetInstance(dev_id).Initialize(kDeviceTransferPoolSize),
+                        "Failed to init TransferPool for CS server, dev_id:%d", dev_id);
+    HIXL_DISMISSABLE_GUARD(pool_rollback, ([dev_id]() { TransferPool::GetInstance(dev_id).Finalize(); }));
     void* dev_flag = nullptr;
     HIXL_CHK_ACL_RET(aclrtMalloc(&dev_flag, sizeof(int64_t),
         static_cast<aclrtMemMallocPolicy>(ACL_MEM_TYPE_HIGH_BAND_WIDTH | ACL_MEM_MALLOC_HUGE_ONLY)));
@@ -76,6 +83,8 @@ Status HixlCSServer::InitTransFinishedFlag() {
                         "Failed to reg DEVICE trans finished flag");
     dev_trans_flag_ = dev_flag;
     dev_trans_flag_handle_ = handle;
+    HIXL_DISMISS_GUARD(pool_rollback);
+    device_id_ = dev_id;
   }
   return SUCCESS;
 }
@@ -156,6 +165,10 @@ Status HixlCSServer::Finalize() {
       HIXL_LOGE(FAILED, "Failed to free DEVICE trans finished flag, ret:%d", rt_ret);
     }
     dev_trans_flag_ = nullptr;
+  }
+  if (device_id_ >= 0) {
+    TransferPool::GetInstance(device_id_).Finalize();
+    device_id_ = -1;
   }
 
   if (listen_fd_ != -1) {

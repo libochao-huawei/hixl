@@ -88,6 +88,8 @@ class HixlCSServer {
 
   void *dev_trans_flag_ = nullptr;         // Device 侧 Flag 内存指针
   MemHandle dev_trans_flag_handle_ = nullptr;  // Device 侧 Flag 注册句柄
+
+  int32_t device_id_{-1};  // has_device_ep 时初始化 TransferPool，Finalize 时释放
 };
 }  // namespace hixl
 
