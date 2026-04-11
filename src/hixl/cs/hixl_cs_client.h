@@ -11,6 +11,7 @@
 #ifndef CANN_HIXL_SRC_HIXL_CS_HIXL_CS_CLIENT_H_
 #define CANN_HIXL_SRC_HIXL_CS_HIXL_CS_CLIENT_H_
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -181,6 +182,7 @@ class HixlCSClient {
   std::mutex indices_mutex_;
   std::array<CompleteHandle *, kFlagQueueSize> live_handles_{};  // 用来记录读写生成的queryhandle
   int32_t socket_ = -1;
+  std::atomic<uint32_t> next_channel_index_{0U};
   std::map<std::string, CommMem> tag_mem_descs_;
   std::vector<CommMem> remote_mems_out_;
   std::vector<std::vector<char>> remote_tag_storage_;

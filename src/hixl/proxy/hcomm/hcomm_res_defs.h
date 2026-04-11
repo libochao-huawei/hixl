@@ -212,6 +212,10 @@ typedef struct {
         struct {
             uint32_t qos;            ///< HCCS QoS
         } hccsAttr;
+        struct {
+            uint8_t reserved[124];   ///< 保留；与扩展域前124字节重叠，勿使协议字段超出此范围
+            uint32_t index;          ///< 通用索引，固定为本128字节union末4字节
+        } common;
     };
 } HcommChannelDesc;
 
