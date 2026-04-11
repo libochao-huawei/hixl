@@ -9,6 +9,7 @@
 # ----------------------------------------------------------------------------
 
 set(HIXL_TEST_FILES
+        proxy/hccp_proxy_ut.cc
         cs/endpoint_store_ut.cc
         cs/test_hixl_cs_server.cc
         cs/hixl_cs_client_ut.cc
@@ -20,6 +21,7 @@ set(HIXL_TEST_FILES
         engine/hixl_client_unittest.cc
         engine/hixl_utils_unittest.cc
         engine/hixl_engine_unittest.cc
+        engine/loc_comm_res_gen_ut.cc
         engine/hixl_profiling_unittest.cc
         ../ops/hixl_kernel/hixl_kernel_basic_unittest.cc
 )

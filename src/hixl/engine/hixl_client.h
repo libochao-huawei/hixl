@@ -173,6 +173,9 @@ class HixlClient {
   Status TryMatchRoceEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
                                const std::vector<EndpointConfig> &remote_endpoint_list);
 
+  Status TryMatchHccsEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
+                               const std::vector<EndpointConfig> &remote_endpoint_list);
+
   Status TryMatchUbEndpoints(const EndpointConfig &local_endpoint,
                              const std::map<MatchKey, EndpointConfig> &peer_match_endpoints,
                              std::map<CommType, bool> &expected_pairs, uint32_t &count);
@@ -210,6 +213,7 @@ class HixlClient {
   bool is_connected_{false};  // true为已建链；false未建链
   bool is_finalized_{false};
   std::map<CommType, HixlClientHandle> client_handles_;  // ub链路时会创建4个 cs_client，roce链路会创建1个 cs_client
+  std::map<CommType, bool> client_requires_acl_;
   std::map<TransferReq, std::vector<TransferCompleteInfo>> complete_handles_;  // 保存异步传输的完成句柄
   std::map<CommType, std::vector<MemHandle>> client_mem_handles_;              // 每种类型 cs client 注册的内存句柄
   std::vector<SegmentPtr> local_segments_;  // 内存段数组，包含 MEM_DEVICE and MEM_HOST 两种 std::shared_ptr<Segment>
