@@ -20,20 +20,63 @@
 #include "common/hixl_utils.h"
 
 namespace hixl {
-Status HixlServer::Initialize(const std::string &ip, int32_t port,
-                              const std::vector<EndpointConfig> &data_endpoint_config_list) {
-  data_endpoint_config_list_ = data_endpoint_config_list;
-  std::vector<EndpointDesc> data_end_point_list;
+namespace {
+Status GetServerPhyDeviceIdIfNeeded(const std::vector<EndpointConfig> &data_endpoint_config_list, int32_t &dev_phy_id) {
+  dev_phy_id = 0;
+  if (!HasDeviceEndpoint(data_endpoint_config_list)) {
+    return SUCCESS;
+  }
+
+  bool has_device = false;
+  HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+  HIXL_CHK_BOOL_RET_STATUS(has_device, FAILED,
+                           "Device endpoint requires local ACL runtime device resources, but none are available");
   int32_t dev_logic_id = 0;
-  int32_t dev_phy_id = 0;
   HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
   HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
+  return SUCCESS;
+}
+
+Status ConvertEndpointConfigList(const std::vector<EndpointConfig> &data_endpoint_config_list,
+                                 std::vector<EndpointDesc> &data_end_point_list) {
+  int32_t dev_phy_id = 0;
+  HIXL_CHK_STATUS_RET(GetServerPhyDeviceIdIfNeeded(data_endpoint_config_list, dev_phy_id),
+                      "GetServerPhyDeviceIdIfNeeded failed");
   for (const auto &it : data_endpoint_config_list) {
     EndpointDesc end_point_info{};
     HIXL_CHK_STATUS_RET(ConvertToEndpointDesc(it, end_point_info, static_cast<uint32_t>(dev_phy_id)),
                         "Failed to convert endpoint config to endpoint info.");
     data_end_point_list.emplace_back(end_point_info);
   }
+  return SUCCESS;
+}
+
+Status RegisterListenProcessor(void *server_handle, const std::vector<EndpointConfig> &data_endpoint_config_list) {
+  MsgProcessor send_endpoint_cb = [&data_endpoint_config_list](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
+    (void)msg;
+    (void)msg_len;
+    std::string msg_str;
+    HIXL_CHK_STATUS_RET(SerializeEndpointConfigList(data_endpoint_config_list, msg_str),
+                        "Failed to serialize endpoint config.");
+    CtrlMsgHeader header{};
+    header.magic = kMagicNumber;
+    header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + msg_str.size());
+    CtrlMsgType msg_type = CtrlMsgType::kGetEndpointInfoResp;
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &header, static_cast<uint64_t>(sizeof(header))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, msg_str.c_str(), static_cast<uint64_t>(msg_str.size())));
+    return SUCCESS;
+  };
+  return HixlCSServerRegProc(server_handle, CtrlMsgType::kGetEndpointInfoReq, send_endpoint_cb);
+}
+}  // namespace
+
+Status HixlServer::Initialize(const std::string &ip, int32_t port,
+                              const std::vector<EndpointConfig> &data_endpoint_config_list) {
+  data_endpoint_config_list_ = data_endpoint_config_list;
+  std::vector<EndpointDesc> data_end_point_list;
+  HIXL_CHK_STATUS_RET(ConvertEndpointConfigList(data_endpoint_config_list, data_end_point_list),
+                      "ConvertEndpointConfigList failed");
   const EndpointDesc *endpoints = data_end_point_list.data();
   if (port < 0) {
     port = 0;
@@ -48,23 +91,7 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
                       "Failed to create hixl server, ip:%s, port:%d.", ip.c_str(), port);
   // port > 0 初始化hixl server，否则作为hixl client注册内存用
   if (port > 0) {
-    // 注册回调函数且监听端口
-    MsgProcessor send_endpoint_cb = [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
-      (void)msg;
-      (void)msg_len;
-      std::string msg_str;
-      HIXL_CHK_STATUS_RET(SerializeEndpointConfigList(data_endpoint_config_list_, msg_str),
-                          "Failed to serialize endpoint config.");
-      CtrlMsgHeader header{};
-      header.magic = kMagicNumber;
-      header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + msg_str.size());
-      CtrlMsgType msg_type = CtrlMsgType::kGetEndpointInfoResp;
-      HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &header, static_cast<uint64_t>(sizeof(header))));
-      HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))));
-      HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, msg_str.c_str(), static_cast<uint64_t>(msg_str.size())));
-      return SUCCESS;
-    };
-    HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetEndpointInfoReq, send_endpoint_cb),
+    HIXL_CHK_STATUS_RET(RegisterListenProcessor(server_handle_, data_endpoint_config_list_),
                         "Failed to register send endpoint info processor.");
     HIXL_CHK_STATUS_RET(HixlCSServerListen(server_handle_, static_cast<uint32_t>(port)),
                         "HixlServer listen failed, port:%d.", port);

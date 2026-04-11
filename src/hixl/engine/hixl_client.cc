@@ -160,6 +160,7 @@ Status HixlClient::Deserialize(const std::string &json_str, std::vector<Endpoint
     return PARAM_INVALID;
   }
 
+  endpoint_list.clear();
   for (const auto &item : j) {
     EndpointConfig endpoint{};
     // 解析字段
@@ -170,6 +171,19 @@ Status HixlClient::Deserialize(const std::string &json_str, std::vector<Endpoint
     HIXL_CHK_STATUS_RET(ParseJsonField(item, "placement", endpoint.placement), "Failed to parse placement");
     HIXL_CHK_STATUS_RET(ParseJsonField(item, "plane", endpoint.plane), "Failed to parse plane");
     HIXL_CHK_STATUS_RET(ParseJsonField(item, "dst_eid", endpoint.dst_eid), "Failed to parse dst_eid");
+
+    if (item.contains("device_info") && item["device_info"].is_object()) {
+      const auto &device_info = item["device_info"];
+      if (device_info.contains("phy_device_id") && device_info["phy_device_id"].is_number_integer()) {
+        endpoint.device_info.phy_device_id = device_info["phy_device_id"].get<int32_t>();
+      }
+      if (device_info.contains("super_device_id") && device_info["super_device_id"].is_number_integer()) {
+        endpoint.device_info.super_device_id = device_info["super_device_id"].get<int64_t>();
+      }
+      if (device_info.contains("super_pod_id") && device_info["super_pod_id"].is_number_integer()) {
+        endpoint.device_info.super_pod_id = device_info["super_pod_id"].get<int64_t>();
+      }
+    }
 
     endpoint_list.emplace_back(std::move(endpoint));
   }
@@ -219,7 +233,14 @@ Status HixlClient::FindMatchedEndpoints(const std::vector<EndpointConfig> &local
     HIXL_LOGW("Found only %u/%u expected UB endpoint pairs", count, kMaxUbCsClientNum);
     return SUCCESS;
   }
-  HIXL_LOGE(FAILED, "Failed to find matched UB endpoints");
+
+  // A5继续按原UB逻辑；A2/A3由于没有UB，会在这里继续尝试HCCS匹配
+  HIXL_LOGI("No matched UB endpoints found, try HCCS matching");
+  if (TryMatchHccsEndpoints(local_endpoint_list, remote_endpoint_list) == SUCCESS) {
+    return SUCCESS;
+  }
+
+  HIXL_LOGE(FAILED, "Failed to find matched UB/HCCS endpoints");
   return FAILED;
 }
 
@@ -252,6 +273,21 @@ Status HixlClient::TryMatchRoceEndpoints(const std::vector<EndpointConfig> &loca
     HIXL_LOGE(FAILED, "Failed to find matched ROCE endpoints");
     return FAILED;
   }
+}
+
+Status HixlClient::TryMatchHccsEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
+                                         const std::vector<EndpointConfig> &remote_endpoint_list) {
+  auto local_it = std::find_if(local_endpoint_list.begin(), local_endpoint_list.end(),
+                               [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolHccs; });
+  auto remote_it = std::find_if(remote_endpoint_list.begin(), remote_endpoint_list.end(),
+                                [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolHccs; });
+
+  if (local_it != local_endpoint_list.end() && remote_it != remote_endpoint_list.end()) {
+    return CreateCsClients(*local_it, *remote_it, CommType::COMM_TYPE_HCCS);
+  }
+
+  HIXL_LOGE(FAILED, "Failed to find matched HCCS endpoints");
+  return FAILED;
 }
 
 void HixlClient::BuildEndpointsMatchMap(const std::vector<EndpointConfig> &endpoint_list,
@@ -305,10 +341,17 @@ CommType HixlClient::ParseCommType(const std::string &local_placement, const std
 // 创建cs_client
 Status HixlClient::CreateCsClients(const EndpointConfig &local_endpoint_config,
                                    const EndpointConfig &remote_endpoint_config, CommType type) {
-  int32_t dev_logic_id = 0;
+  const bool needs_acl = IsDeviceEndpoint(local_endpoint_config);
   int32_t dev_phy_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
-  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
+  if (needs_acl) {
+    bool has_device = false;
+    HIXL_CHK_STATUS_RET(HasAvailableDevice(has_device), "HasAvailableDevice failed");
+    HIXL_CHK_BOOL_RET_STATUS(has_device, FAILED,
+                             "Device endpoint requires local ACL runtime device resources, but none are available");
+    int32_t dev_logic_id = 0;
+    HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
+    HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
+  }
   EndpointDesc local_endpoint{};
   EndpointDesc remote_endpoint{};
   HIXL_CHK_STATUS_RET(ConvertToEndpointDesc(local_endpoint_config, local_endpoint, static_cast<uint32_t>(dev_phy_id)),
@@ -333,6 +376,7 @@ Status HixlClient::CreateCsClients(const EndpointConfig &local_endpoint_config,
   HIXL_LOGI("HixlCSClientCreate success for type %s, handle:%p", CommTypeToString(type), handle);
   std::lock_guard<std::mutex> lock(client_handles_mutex_);
   client_handles_[type] = handle;
+  client_requires_acl_[type] = needs_acl;
   return SUCCESS;
 }
 
@@ -395,6 +439,7 @@ Status HixlClient::RegisterMemToCsClient(const MemDesc &mem, const MemType type)
     comm_types_to_register.push_back(CommType::COMM_TYPE_UB_H2H);
   }
   comm_types_to_register.push_back(CommType::COMM_TYPE_ROCE);
+  comm_types_to_register.push_back(CommType::COMM_TYPE_HCCS);
 
   // 注册内存到对应的cs client
   std::lock_guard<std::mutex> lock(client_handles_mutex_);
@@ -430,14 +475,22 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
   ThreadPool thread_pool("hixl_client_connect", client_handles_.size());
   std::vector<std::future<Status>> connect_futures;
   aclrtContext context = nullptr;
-  HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&context));
-  HIXL_LOGI("HixlClient aclrtGetCurrentContext, context: %p", context);
+  const bool needs_acl_context = std::any_of(client_requires_acl_.begin(), client_requires_acl_.end(),
+                                             [](const std::pair<const CommType, bool> &item) { return item.second; });
+  if (needs_acl_context) {
+    HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&context));
+    HIXL_LOGI("HixlClient aclrtGetCurrentContext, context: %p", context);
+  }
   for (const auto &pair : client_handles_) {
     auto type = pair.first;
     auto handle = pair.second;
-    auto future = thread_pool.commit([handle, timeout_ms, type, context]() -> Status {
-      HIXL_CHK_ACL_RET(aclrtSetCurrentContext(context));
-      HIXL_LOGI("HixlClient aclrtSetCurrentContext, context: %p", context);
+    const bool needs_acl =
+        (client_requires_acl_.find(type) != client_requires_acl_.end()) && client_requires_acl_[type];
+    auto future = thread_pool.commit([handle, timeout_ms, type, context, needs_acl]() -> Status {
+      if (needs_acl) {
+        HIXL_CHK_ACL_RET(aclrtSetCurrentContext(context));
+        HIXL_LOGI("HixlClient aclrtSetCurrentContext, context: %p", context);
+      }
       try {
         HIXL_CHK_STATUS_RET(HixlCSClientConnect(handle, timeout_ms),
                             "HixlClient Connect failed for type:%s, client_handle: %p, timeout:%u ms",
@@ -535,6 +588,7 @@ Status HixlClient::Finalize() {
       }
     }
     client_handles_.clear();
+    client_requires_acl_.clear();
   }
 
   // 清理其他共享资源
@@ -616,12 +670,18 @@ Status HixlClient::ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs
       }
     }
 
-    // 如果是roce，直接将op_desc保存在op_descs_table中
     {
       std::lock_guard<std::mutex> lock(client_handles_mutex_);
+      // 如果是roce，直接将op_desc保存在op_descs_table中
       if (client_handles_.find(CommType::COMM_TYPE_ROCE) != client_handles_.end()) {
         op_descs_table[CommType::COMM_TYPE_ROCE].push_back(op_desc);
         HIXL_LOGI("Current communication type: %s.", CommTypeToString(CommType::COMM_TYPE_ROCE));
+        continue;
+      }
+      // 如果是hccs，直接将op_desc保存在op_descs_table中
+      if (client_handles_.find(CommType::COMM_TYPE_HCCS) != client_handles_.end()) {
+        op_descs_table[CommType::COMM_TYPE_HCCS].push_back(op_desc);
+        HIXL_LOGI("Current communication type: %s.", CommTypeToString(CommType::COMM_TYPE_HCCS));
         continue;
       }
     }

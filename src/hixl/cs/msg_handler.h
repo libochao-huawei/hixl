@@ -22,7 +22,7 @@
 namespace hixl {
 class MsgHandler {
  public:
-  Status Initialize();
+  Status Initialize(bool use_acl_context);
   void Finalize();
   void SubmitMsg(int32_t fd, const CtrlMsgPtr &msg);
   Status RegisterMsgProcessor(CtrlMsgType msg_type, MsgProcessor msg_processor);
@@ -39,6 +39,7 @@ class MsgHandler {
   std::unique_ptr<ThreadPool> thread_pool_ = nullptr;
   std::atomic<bool> running_{false};
   std::thread listener_;
+  bool use_acl_context_{false};
   aclrtContext ctx_ = nullptr;
 };
 }  // namespace hixl
