@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <list>
 #include <mutex>
 #include "hixl/hixl.h"
 #include "common/hixl_checker.h"
@@ -30,7 +31,52 @@ Status CheckTransferOpDescs(const std::vector<TransferOpDesc> &op_descs) {
   }
   return SUCCESS;
 }
+
+struct ConnectPoolExecutorTask {
+  bool is_connect;
+  AscendString remote_engine;
+  std::function<void()> task;
+};
 }
+
+class ConnectPoolExecutor {
+ public:
+  ConnectPoolExecutor();
+  ~ConnectPoolExecutor();
+
+  Status Initialize(const std::map<AscendString, AscendString> &options);
+
+  void Shutdown();
+
+  Status Submit(const std::function<void()>& task, const AscendString &remote_engine, const bool is_connect);
+
+  void SetStatus(const AscendString &remote_engine, const AsyncConnectStatus status);
+
+  Status GetStatus(const AscendString &remote_engine, AsyncConnectStatus& status);
+
+  Status GetStatus(std::map<AscendString, AsyncConnectStatus>& status_map);
+
+ private:
+  bool IsInitialized() const;
+
+  void ParseGlobalResourceConfig(const std::map<AscendString, AscendString> &options);
+
+  void WorkerHandler(const int i);
+
+  int thread_num_{0};
+  int task_queue_capacity_{0};
+  std::atomic<bool> is_initialized_{false};
+  std::atomic<bool> is_shutdown_{false};
+  std::vector<std::thread> workers_;
+
+  std::mutex task_queue_mutex_;
+  std::condition_variable task_queue_cv_;
+  std::list<ConnectPoolExecutorTask> task_list_;
+  std::unordered_map<AscendString, std::list<ConnectPoolExecutorTask>::iterator> task_map_;
+
+  std::mutex task_result_mutex_;
+  std::map<AscendString, AsyncConnectStatus> task_result_;
+};
 
 class Hixl::HixlImpl {
  public:
