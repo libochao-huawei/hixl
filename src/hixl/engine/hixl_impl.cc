@@ -49,6 +49,14 @@ class Hixl::HixlImpl {
 
   Status Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis = 1000);
 
+  Status ConnectAsync(const AscendString &remote_engine, int32_t timeout_in_millis = 1000);
+
+  Status DisconnectAsync(const AscendString &remote_engine, int32_t timeout_in_millis = 1000);
+
+  Status GetAsyncConnectStatus(const AscendString &remote_engine, AsyncConnectStatus& status);
+
+  Status GetAsyncConnectStatus(std::map<AscendString, AsyncConnectStatus>& status_list);
+
   Status TransferSync(const AscendString &remote_engine,
                       TransferOp operation,
                       const std::vector<TransferOpDesc> &op_descs,
