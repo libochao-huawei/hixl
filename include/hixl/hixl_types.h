@@ -46,6 +46,7 @@ constexpr Status FAILED = 503900U;
 constexpr Status RESOURCE_EXHAUSTED = 203900U;
 
 using MemHandle = void *;
+using UserData = void *;
 
 enum MemType {
   MEM_DEVICE,
@@ -82,6 +83,17 @@ struct TransferArgs{
 struct NotifyDesc {
   AscendString name;
   AscendString notify_msg;
+};
+
+struct GetTransferStatusOptions {
+  size_t max_num = std::numeric_limits<size_t>::max();
+  bool skip_waiting = false;
+};
+
+struct TransferStatusResult {
+  TransferReq req;
+  TransferStatus status;
+  UserData user_ctx;
 };
 }  // namespace hixl
 
