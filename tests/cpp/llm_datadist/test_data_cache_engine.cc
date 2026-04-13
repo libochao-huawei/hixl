@@ -25,6 +25,7 @@
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
 #include "common/llm_mem_pool.h"
+#include "common/llm_scope_guard.h"
 #include "acl/acl.h"
 
 #include "data_transfer/d2d_data_transfer_job.h"
@@ -306,13 +307,17 @@ TEST_F(DataCacheEngineSTest, TestMemPool) {
       mem_pool.Free(addr);
     }
   });
+  LLM_MAKE_GUARD(free_thread_join, [&free_th]() {
+    if (free_th.joinable()) {
+      free_th.join();
+    }
+  });
   for (int i = 0; i < 10; ++i) {
     LLMLOGI("TEST--- allocate index = %d, start", i);
     auto addr = mem_pool.Alloc(32 * 1024, 3000);
     LLMLOGI("TEST--- allocate index = %d, ret = %p", i, addr);
     ASSERT_TRUE(addr != nullptr);
   }
-  free_th.join();
 }
 
 TEST_F(DataCacheEngineSTest, TestMemPool_Shared) {
