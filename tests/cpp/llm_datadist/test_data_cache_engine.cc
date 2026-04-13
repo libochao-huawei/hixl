@@ -25,6 +25,7 @@
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
 #include "common/llm_mem_pool.h"
+#include "common/llm_scope_guard.h"
 #include "acl/acl.h"
 
 #include "data_transfer/d2d_data_transfer_job.h"
@@ -284,53 +285,79 @@ TEST_F(DataCacheEngineSTest, UnlinkWhenPrepareNotFinished) {
   llm_datadist.LLMDataDistFinalize();
 }
 
-TEST_F(DataCacheEngineSTest, TestMemPool) {
+static std::unique_ptr<llm::LlmMemPool> CreateMemPool() {
   int64_t addr = 0;
   void *base_address_ = &addr;
   size_t pool_size = 10UL * 64 * 1024;
   llm::ScalableConfig config{};
   config.page_idem_num = 16;
   config.page_mem_size_total_threshold = pool_size;
-  llm::LlmMemPool mem_pool(config);
-  ASSERT_EQ(mem_pool.Initialize(base_address_, pool_size), ge::SUCCESS);
-  std::vector<void *> addrs;
+  auto mem_pool = std::make_unique<llm::LlmMemPool>(config);
+  EXPECT_EQ(mem_pool->Initialize(base_address_, pool_size), ge::SUCCESS);
+  return mem_pool;
+}
+
+static void FillMemPool(llm::LlmMemPool &mem_pool, std::vector<void *> &addrs) {
   for (int i = 0; i < 10; ++i) {
     auto addr = mem_pool.Alloc(32 * 1024);
     EXPECT_TRUE(addr != nullptr);
     addrs.emplace_back(addr);
   }
-  EXPECT_TRUE(mem_pool.Alloc(32 * 1024, 1000) == nullptr);
+}
+
+TEST_F(DataCacheEngineSTest, TestMemPool) {
+  auto mem_pool = CreateMemPool();
+  std::vector<void *> addrs;
+  FillMemPool(*mem_pool, addrs);
+  EXPECT_TRUE(mem_pool->Alloc(32 * 1024, 1000) == nullptr);
   std::thread free_th([&mem_pool, &addrs]() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     for (auto addr : addrs) {
-      mem_pool.Free(addr);
+      mem_pool->Free(addr);
+    }
+  });
+  LLM_MAKE_GUARD(free_thread_join, [&free_th]() {
+    if (free_th.joinable()) {
+      free_th.join();
     }
   });
   for (int i = 0; i < 10; ++i) {
     LLMLOGI("TEST--- allocate index = %d, start", i);
-    auto addr = mem_pool.Alloc(32 * 1024, 3000);
+    auto addr = mem_pool->Alloc(32 * 1024, 3000);
     LLMLOGI("TEST--- allocate index = %d, ret = %p", i, addr);
     ASSERT_TRUE(addr != nullptr);
   }
-  free_th.join();
 }
 
 TEST_F(DataCacheEngineSTest, TestMemPool_Shared) {
-  int64_t addr = 0;
-  void *base_address_ = &addr;
-  size_t pool_size = 10UL * 64 * 1024;
-  llm::ScalableConfig config{};
-  config.page_idem_num = 16;
-  config.page_mem_size_total_threshold = pool_size;
-  llm::LlmMemPool mem_pool(config);
-  ASSERT_EQ(mem_pool.Initialize(base_address_, pool_size), ge::SUCCESS);
+  auto mem_pool = CreateMemPool();
   std::vector<std::shared_ptr<void>> addrs;
   for (int i = 0; i < 10; ++i) {
-    auto addr = mem_pool.AllocShared(32 * 1024);
+    auto addr = mem_pool->AllocShared(32 * 1024);
     EXPECT_TRUE(addr != nullptr);
     addrs.emplace_back(addr);
   }
   addrs.clear();
+}
+
+TEST_F(DataCacheEngineSTest, TestMemPool_Timeout) {
+  auto mem_pool = CreateMemPool();
+  std::vector<void *> addrs;
+  FillMemPool(*mem_pool, addrs);
+
+  // 不释放内存，验证超时后返回 nullptr
+  const int32_t timeout_ms = 200;
+  auto start = std::chrono::steady_clock::now();
+  void *result = mem_pool->Alloc(32 * 1024, timeout_ms);
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+
+  EXPECT_EQ(result, nullptr);
+  EXPECT_GE(elapsed, timeout_ms - 20);
+  EXPECT_LE(elapsed, timeout_ms + 100);
+
+  for (auto addr : addrs) {
+    mem_pool->Free(addr);
+  }
 }
 
 TEST_F(DataCacheEngineSTest, PullDataCache_D2H_C2C) {
