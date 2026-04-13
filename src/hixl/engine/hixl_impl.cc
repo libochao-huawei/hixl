@@ -296,6 +296,7 @@ class Hixl::HixlImpl {
   std::mutex mutex_;
   std::string local_engine_;
   std::unique_ptr<Engine> engine_ = nullptr;
+  ConnectPoolExecutor connect_pool_executor_;
 };
 
 Status Hixl::HixlImpl::Initialize(const std::map<AscendString, AscendString> &options) {
@@ -307,6 +308,7 @@ Status Hixl::HixlImpl::Initialize(const std::map<AscendString, AscendString> &op
   HIXL_CHECK_NOTNULL(engine_, "[HixlEngine] Created engine is null, please check your parameters! local_engine:%s", 
                      local_engine_.c_str());
   HIXL_CHK_STATUS_RET(engine_->Initialize(options), "Failed to initialize Hixl.");
+  HIXL_CHK_STATUS_RET(connect_pool_executor_.Initialize(options), "Failed to initialize ConnectPoolExecutor.");
   return SUCCESS;
 }
 
@@ -315,6 +317,7 @@ void Hixl::HixlImpl::Finalize() {
     HIXL_LOGE(FAILED, "engine is nullptr, check engine init");
     return;
   }
+  connect_pool_executor_.Shutdown();
   engine_->Finalize();
   engine_.reset();
 }
@@ -357,9 +360,15 @@ Status Hixl::HixlImpl::ConnectAsync(const AscendString &remote_engine, int32_t t
   auto task = [this, remote_engine, timeout_in_millis] () {
     HIXL_LOGI("connect async to %s %d start", remote_engine.GetString(), timeout_in_millis);
     Status ret = engine_->Connect(remote_engine, timeout_in_millis);
-    const auto status = (ret == SUCCESS || ret == ALREADY_CONNECTED) ? AsyncConnectStatus::CONNECTED : AsyncConnectStatus::CONNECT_FAILED;
+    const auto status = (ret == SUCCESS || ret == ALREADY_CONNECTED) ? AsyncConnectStatus::CONNECTED
+                                                                     : AsyncConnectStatus::CONNECT_FAILED;
+    connect_pool_executor_.SetStatus(remote_engine, status);
     HIXL_LOGI("connect async to %s %d ret %d status %d", remote_engine.GetString(), timeout_in_millis, ret, status);
   };
+  const auto ret = connect_pool_executor_.Submit(task, remote_engine, true);
+  HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
+                           "Failed to submit connect async task, remote engine:%s, timeout:%d ms",
+                           remote_engine.GetString(), timeout_in_millis);
   return SUCCESS;
 }
 
@@ -369,19 +378,24 @@ Status Hixl::HixlImpl::DisconnectAsync(const AscendString &remote_engine, int32_
   auto task = [this, remote_engine, timeout_in_millis] () {
     HIXL_LOGI("disconnect async to %s %d start", remote_engine.GetString(), timeout_in_millis);
     Status ret = engine_->Disconnect(remote_engine, timeout_in_millis);
+    connect_pool_executor_.SetStatus(remote_engine, AsyncConnectStatus::NOT_CONNECT);
     HIXL_LOGI("disconnect async to %s %d ret %d", remote_engine.GetString(), timeout_in_millis, ret);
   };
+  const auto ret = connect_pool_executor_.Submit(task, remote_engine, false);
+  HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
+                           "Failed to submit disconnect async task, remote engine:%s, timeout:%d ms",
+                           remote_engine.GetString(), timeout_in_millis);
   return SUCCESS;
 }
 
 Status Hixl::HixlImpl::GetAsyncConnectStatus(const AscendString &remote_engine, AsyncConnectStatus& status) {
-  (void)remote_engine;
-  (void)status;
+  HIXL_CHK_STATUS_RET(connect_pool_executor_.GetStatus(remote_engine, status),
+                      "Failed to get async connect status, remote_engine:%s", remote_engine.GetString());
   return SUCCESS;
 }
 
 Status Hixl::HixlImpl::GetAsyncConnectStatus(std::map<AscendString, AsyncConnectStatus>& status_map) {
-  (void)status_map;
+  HIXL_CHK_STATUS_RET(connect_pool_executor_.GetStatus(status_map), "Failed to get async connect status");
   return SUCCESS;
 }
 
@@ -518,8 +532,7 @@ Status Hixl::ConnectAsync(const AscendString &remote_engine, int32_t timeout_in_
   HIXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check Hixl init");
   HIXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, PARAM_INVALID, "timeout_in_millis:%d must > 0", timeout_in_millis);
   const auto ret = impl_->ConnectAsync(remote_engine, timeout_in_millis);
-  HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
-                           "Failed to connect async, remote engine:%s, timeout:%d ms",
+  HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to connect async, remote engine:%s, timeout:%d ms",
                            remote_engine.GetString(), timeout_in_millis);
   HIXL_LOGI("ConnectAsync success, remote engine:%s, timeout:%d ms", remote_engine.GetString(), timeout_in_millis);
   return SUCCESS;
@@ -530,24 +543,23 @@ Status Hixl::DisconnectAsync(const AscendString &remote_engine, int32_t timeout_
   HIXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check Hixl init");
   HIXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, PARAM_INVALID, "timeout_in_millis:%d must > 0", timeout_in_millis);
   const auto ret = impl_->DisconnectAsync(remote_engine, timeout_in_millis);
-  HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
-                           "Failed to disconnect async, remote engine:%s, timeout:%d ms",
+  HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to disconnect async, remote engine:%s, timeout:%d ms",
                            remote_engine.GetString(), timeout_in_millis);
   HIXL_LOGI("DisconnectAsync success, remote engine:%s, timeout:%d ms", remote_engine.GetString(), timeout_in_millis);
   return SUCCESS;
 }
 
-Status Hixl::GetAsyncConnectStatus(const AscendString &remote_engine, AsyncConnectStatus& status) {
+Status Hixl::GetAsyncConnectStatus(const AscendString &remote_engine, AsyncConnectStatus &status) {
   HIXL_LOGI("GetConnectAsyncStatus start, remote engine:%s", remote_engine.GetString());
   HIXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check Hixl init");
   const auto ret = impl_->GetAsyncConnectStatus(remote_engine, status);
-  HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
-                           "Failed to get async connect status, remote engine:%s", remote_engine.GetString());
+  HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to get async connect status, remote engine:%s",
+                           remote_engine.GetString());
   HIXL_LOGI("GetConnectAsyncStatus success, remote engine:%s status:%d", remote_engine.GetString(), status);
   return SUCCESS;
 }
 
-Status Hixl::GetAsyncConnectStatus(std::map<AscendString, AsyncConnectStatus>& status_map) {
+Status Hixl::GetAsyncConnectStatus(std::map<AscendString, AsyncConnectStatus> &status_map) {
   HIXL_LOGI("GetConnectAsyncStatus start");
   HIXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check Hixl init");
   const auto ret = impl_->GetAsyncConnectStatus(status_map);
