@@ -430,9 +430,9 @@ Status HixlCSClient::ValidateAddress(bool is_get, const CommunicateMem &communic
   return SUCCESS;
 }
 Status HixlCSClient::TransferWithRetry(bool is_get, uint64_t channel_handle, void *dst_buf, const void *src_buf, uint64_t len) {
-  static constexpr int32_t kHcclSuccess = 0;
-  static constexpr int32_t kHcclRetryRequired = 20;
-  static constexpr int64_t kRetryTimeoutMs = 20 * 60 * 1000;  // 20 minutes in milliseconds
+  constexpr int32_t kHcclSuccess = 0;
+  constexpr int32_t kHcclRetryRequired = 20;
+  constexpr int64_t kRetryTimeoutMs = 20 * 60 * 1000;  // 20 minutes in milliseconds
 
   auto start_time = std::chrono::steady_clock::now();
   int32_t hccl_ret = 0;
@@ -467,10 +467,10 @@ Status HixlCSClient::TransferWithRetry(bool is_get, uint64_t channel_handle, voi
       return FAILED;
     }
 
-    HIXL_LOGI("[HixlClient] Transfer ret=%d, retrying. elapsed_ms=%ld, dst_addr=%p, src_addr=%p, len=%lu, is_get=%d.",
+    HIXL_LOGW("[HixlClient] Transfer ret=%d, retrying. elapsed_ms=%ld, dst_addr=%p, src_addr=%p, len=%lu, is_get=%d.",
               hccl_ret, elapsed_ms, dst_buf, src_buf, len, is_get);
 
-    // 执行 Fence 后重试
+    // 执行 Fence 后重试，执行Fence后通常极少会出现再次重试的问题
     hccl_ret = HcommProxy::ChannelFenceOnThread(static_cast<ThreadHandle>(0), channel_handle);
     if (hccl_ret != kHcclSuccess) {
       HIXL_LOGE(FAILED, "[HixlClient] HcommChannelFenceOnThread failed, channel_handle=%lu, hccl_ret=%d.",
