@@ -33,6 +33,8 @@ constexpr const char OPTION_BUFFER_POOL[] = "BufferPool";
 constexpr const char OPTION_GLOBAL_RESOURCE_CONFIG[] = "GlobalResourceConfig";
 constexpr const char OPTION_AUTO_CONNECT[] = "AutoConnect";
 constexpr const char OPTION_LOCAL_COMM_RES[] = "LocalCommRes";
+constexpr const int OPTION_CONNECT_POOL_THREAD_NUM = 2;
+constexpr const int OPTION_CONNECT_POOL_TASK_QUEUE_CAPACITY = 128;
  
 // status codes
 constexpr Status SUCCESS = 0U;
@@ -82,6 +84,16 @@ struct TransferArgs{
 struct NotifyDesc {
   AscendString name;
   AscendString notify_msg;
+};
+
+enum class AsyncConnectStatus {
+  NOT_CONNECT,
+  CONNECT_PENDING,
+  CONNECTING,
+  CONNECTED,
+  CONNECT_FAILED,
+  DISCONNECT_PENDING,
+  DISCONNECTING
 };
 }  // namespace hixl
 
