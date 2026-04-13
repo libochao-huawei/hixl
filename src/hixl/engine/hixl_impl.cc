@@ -76,7 +76,183 @@ class ConnectPoolExecutor {
 
   std::mutex task_result_mutex_;
   std::map<AscendString, AsyncConnectStatus> task_result_;
+
+  aclrtContext ctx_ = nullptr;
 };
+
+ConnectPoolExecutor::ConnectPoolExecutor() {}
+
+ConnectPoolExecutor::~ConnectPoolExecutor() {
+  if (is_shutdown_.load(std::memory_order::memory_order_relaxed) == false) {
+    Shutdown();
+  }
+}
+
+Status ConnectPoolExecutor::Initialize(const std::map<AscendString, AscendString> &options) {
+  HIXL_LOGI("ConnectPoolExecutor initialize start");
+  HIXL_CHK_BOOL_RET_STATUS(!IsInitialized(), SUCCESS, "ConnectPoolExecutor is already initialized");
+  ParseGlobalResourceConfig(options);
+  HIXL_CHK_BOOL_RET_STATUS(thread_num_ >= 1 && thread_num_ <= 64, PARAM_INVALID, "thread_num:%d must in [1, 64]",
+                           thread_num_);
+  HIXL_CHK_BOOL_RET_STATUS(task_queue_capacity_ >= 1 && task_queue_capacity_ <= 65535, PARAM_INVALID,
+                           "task_queue_capacity:%d must in [1, 65535]", thread_num_);
+
+  (void)aclrtGetCurrentContext(&ctx_);
+  for (int i = 0; i < thread_num_; ++i) {
+    workers_.emplace_back([this, i]() { WorkerHandler(i); });
+  }
+  is_initialized_.store(true, std::memory_order::memory_order_relaxed);
+  is_shutdown_.store(false, std::memory_order::memory_order_relaxed);
+  HIXL_LOGI("ConnectPoolExecutor initialize success");
+  return SUCCESS;
+}
+
+void ConnectPoolExecutor::Shutdown() {
+  HIXL_LOGI("ConnectPoolExecutor shutdown start");
+  if (is_shutdown_.load(std::memory_order::memory_order_relaxed) == true) {
+    HIXL_LOGW("ConnectPoolExecutor is already shutdown");
+    return;
+  }
+
+  is_shutdown_.store(true, std::memory_order::memory_order_relaxed);
+  task_queue_cv_.notify_all();
+  for (auto &worker : workers_) {
+    worker.join();
+  }
+  workers_.clear();
+  is_initialized_.store(false, std::memory_order::memory_order_relaxed);
+  HIXL_LOGI("ConnectPoolExecutor shutdown success");
+}
+
+Status ConnectPoolExecutor::Submit(const std::function<void()> &task, const AscendString &remote_engine,
+                                   const bool is_connect) {
+  std::unique_lock<std::mutex> lock(task_queue_mutex_);
+  HIXL_CHK_BOOL_RET_STATUS(task_list_.size() < static_cast<std::size_t>(task_queue_capacity_), RESOURCE_EXHAUSTED,
+                           "task_queue is full, task_queue_capacity:%d", task_queue_capacity_);
+  auto it = task_map_.find(remote_engine);
+  if (it != task_map_.end()) {
+    if (it->second->is_connect == is_connect) {
+      // 任务队列中已有相同任务，则忽略新任务
+      HIXL_LOGI("ignore task %s to %s", is_connect ? "connect" : "disconnect", remote_engine.GetString());
+      return SUCCESS;
+    }
+
+    // 任务队列中已有不同任务，则删除已有任务
+    HIXL_LOGI("remove task %s to %s", it->second->is_connect ? "connect" : "disconnect", remote_engine.GetString());
+    task_list_.erase(it->second);
+    task_map_.erase(remote_engine);
+  }
+
+  // 新任务插入队尾
+  task_list_.emplace_back(ConnectPoolExecutorTask{is_connect, remote_engine, task});
+  task_map_[remote_engine] = std::prev(task_list_.end());
+  HIXL_LOGI("submit task %s to %s", is_connect ? "connect" : "disconnect", remote_engine.GetString());
+
+  task_queue_cv_.notify_one();
+  return SUCCESS;
+}
+
+void ConnectPoolExecutor::SetStatus(const AscendString &remote_engine, const AsyncConnectStatus status) {
+  std::unique_lock<std::mutex> lock(task_result_mutex_);
+  if (status == AsyncConnectStatus::NOT_CONNECT) {
+    task_result_.erase(remote_engine);
+  } else {
+    task_result_[remote_engine] = status;
+  }
+}
+
+Status ConnectPoolExecutor::GetStatus(const AscendString &remote_engine, AsyncConnectStatus &status) {
+  std::unique_lock<std::mutex> lock(task_result_mutex_);
+  const auto &it = task_result_.find(remote_engine);
+  status = (it == task_result_.end()) ? AsyncConnectStatus::NOT_CONNECT : it->second;
+  return SUCCESS;
+}
+
+Status ConnectPoolExecutor::GetStatus(std::map<AscendString, AsyncConnectStatus> &status_map) {
+  status_map.clear();
+  std::unique_lock<std::mutex> lock(task_result_mutex_);
+  std::copy(task_result_.begin(), task_result_.end(), std::inserter(status_map, status_map.begin()));
+  return SUCCESS;
+}
+
+bool ConnectPoolExecutor::IsInitialized() const {
+  return is_initialized_.load(std::memory_order::memory_order_relaxed);
+}
+
+void ConnectPoolExecutor::ParseGlobalResourceConfig(const std::map<AscendString, AscendString> &options) {
+  HIXL_LOGI("ParseGlobalResourceConfig start");
+  thread_num_ = hixl::OPTION_CONNECT_POOL_THREAD_NUM;
+  task_queue_capacity_ = hixl::OPTION_CONNECT_POOL_TASK_QUEUE_CAPACITY;
+
+  const auto &it = options.find(hixl::OPTION_GLOBAL_RESOURCE_CONFIG);
+  if (it == options.end()) {
+    HIXL_LOGW("Failed to find %s, use default", hixl::OPTION_GLOBAL_RESOURCE_CONFIG);
+    return;
+  }
+
+  std::string config_str = it->second.GetString();
+  if (config_str.empty()) {
+    HIXL_LOGW("Failed to parse empty %s, use default", hixl::OPTION_GLOBAL_RESOURCE_CONFIG);
+    return;
+  }
+
+  try {
+    auto config = nlohmann::json::parse(config_str);
+    std::string thread_num = config["connect_pool.thread_num"];
+    std::string task_queue_capacity = config["connect_pool.task_queue_capacity"];
+    thread_num_ = std::stoi(thread_num);
+    task_queue_capacity_ = std::stoi(task_queue_capacity);
+  } catch (const std::exception &e) {
+    HIXL_LOGW("Failed to parse %s error %s, use default", hixl::OPTION_GLOBAL_RESOURCE_CONFIG, e.what());
+    return;
+  }
+  HIXL_LOGI("ParseGlobalResourceConfig success, thread_num:%d task_queue_capacity:%d", thread_num_,
+            task_queue_capacity_);
+}
+
+void ConnectPoolExecutor::WorkerHandler(const int i) {
+  HIXL_LOGI("ConnectPoolExecutor worker %d start", i);
+  HIXL_CHK_ACL(aclrtSetCurrentContext(ctx_));
+  while (true) {
+    ConnectPoolExecutorTask executor_task{false, "", nullptr};
+    {
+      std::unique_lock<std::mutex> lock(task_queue_mutex_);
+      task_queue_cv_.wait(
+          lock, [this]() { return is_shutdown_.load(std::memory_order::memory_order_relaxed) || !task_list_.empty(); });
+
+      if (is_shutdown_.load(std::memory_order::memory_order_relaxed)) {
+        HIXL_LOGW("ConnectPoolExecutor is shutdown, %llu task remain", task_list_.size());
+        break;
+      }
+
+      if (task_list_.empty()) {
+        continue;
+      }
+
+      for (auto it = task_list_.begin(); it != task_list_.end(); ++it) {
+        AsyncConnectStatus status;
+        GetStatus(it->remote_engine, status);
+        if (status != AsyncConnectStatus::CONNECTING && status != AsyncConnectStatus::DISCONNECTING) {
+          SetStatus(it->remote_engine,
+                    it->is_connect ? AsyncConnectStatus::CONNECTING : AsyncConnectStatus::DISCONNECTING);
+          executor_task = std::move(*it);
+          task_map_.erase(executor_task.remote_engine);
+          task_list_.erase(it);
+          break;
+        }
+      }
+    }
+
+    if (executor_task.task != nullptr) {
+      HIXL_LOGI("worker %d exec task %s to %s start", i, executor_task.is_connect ? "connect" : "disconnect",
+                executor_task.remote_engine.GetString());
+      executor_task.task();
+      HIXL_LOGI("worker %d exec task %s to %s success", i, executor_task.is_connect ? "connect" : "disconnect",
+                executor_task.remote_engine.GetString());
+    }
+  }
+  HIXL_LOGI("ConnectPoolExecutor worker %d exit", i);
+}
 
 class Hixl::HixlImpl {
  public:
