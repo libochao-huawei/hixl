@@ -62,6 +62,8 @@ class Hixl::HixlImpl {
 
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
 
+  Status GetTransferStatus(std::map<TransferReq, TransferStatus>& status_map);
+
   Status SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, uint32_t timeout_in_millis);
 
   Status GetNotifies(std::vector<NotifyDesc> &notifies);
@@ -162,6 +164,13 @@ Status Hixl::HixlImpl::GetTransferStatus(const TransferReq &req, TransferStatus 
     return ret;
   }          
   status = transfer_status;
+  return SUCCESS;
+}
+
+Status Hixl::HixlImpl::GetTransferStatus(std::map<TransferReq, TransferStatus>& status_map) {
+  HIXL_CHK_BOOL_RET_STATUS(engine_ != nullptr, FAILED, "engine is nullptr, check engine init");
+  auto ret = engine_->GetTransferStatus(status_map);
+  HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to get transfer status");
   return SUCCESS;
 }
 
@@ -293,6 +302,13 @@ Status Hixl::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
   HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
                            "Failed to get transfer status, req:%llu.", 
                            static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(req)));
+  return SUCCESS;
+}
+
+Status Hixl::GetTransferStatus(std::map<TransferReq, TransferStatus>& status_map) {
+  HIXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "Impl is nullptr, check Hixl init.");
+  const auto ret = impl_->GetTransferStatus(status_map);
+  HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to get transfer status");
   return SUCCESS;
 }
 

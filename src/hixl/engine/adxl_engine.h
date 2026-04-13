@@ -48,6 +48,8 @@ class AdxlEngine : public Engine {
 
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status) override;
 
+  Status GetTransferStatus(std::map<TransferReq, TransferStatus>& status_map) override;
+
   Status SendNotify(const AscendString &remote_engine, const NotifyDesc &notify,
                     int32_t timeout_in_millis = 1000) override;
 
