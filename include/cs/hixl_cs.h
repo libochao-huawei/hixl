@@ -183,6 +183,28 @@ HixlStatus HixlCSClientBatchGetAsync(HixlClientHandle client_handle, uint32_t li
                                      const HixlOneSideOpDesc *desc_list, CompleteHandle *complete_handle);
 
 /**
+ * @brief 批量向server侧写入内存内容（同步阻塞至完成或超时）
+ * @param [in] client_handle 客户端句柄
+ * @param [in] list_num 本次传输任务的数目
+ * @param [in] desc_list 记录了本次传输任务中每组传输任务的的server侧内存地址、client侧内存地址、内存偏移量大小
+ * @param [in] timeout_ms 本次传输等待超时时间（ms）
+ * @return 成功:SUCCESS, 超时:HIXL_TIMEOUT, 失败:其它.
+ */
+HixlStatus HixlCSClientBatchPutSync(HixlClientHandle client_handle, uint32_t list_num,
+                                     const HixlOneSideOpDesc *desc_list, uint32_t timeout_ms);
+
+/**
+ * @brief 批量读取server侧的内存内容（同步阻塞至完成或超时）
+ * @param [in] client_handle 客户端句柄
+ * @param [in] list_num 本次传输任务的数目
+ * @param [in] desc_list 记录了本次传输任务中每组传输任务的的server侧内存地址、client侧内存地址、内存偏移量大小
+ * @param [in] timeout_ms 本次传输等待超时时间（ms）
+ * @return 成功:SUCCESS, 超时:HIXL_TIMEOUT, 失败:其它.
+ */
+HixlStatus HixlCSClientBatchGetSync(HixlClientHandle client_handle, uint32_t list_num,
+                                     const HixlOneSideOpDesc *desc_list, uint32_t timeout_ms);
+
+/**
  * @brief 检查创建的批量读写任务的状态
  * @param [in] client_handle 客户端句柄
  * @param [in] complete_handle 先前传输任务生成的句柄

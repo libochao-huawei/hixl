@@ -29,7 +29,8 @@
 #include "hixl_mem_store.h"
 
 namespace hixl {
-struct CompleteHandle {
+// Host/Roce 异步完成句柄（实现侧）；对外 C API 仍使用 hixl_cs.h 中的 CompleteHandle（void *）
+struct CompleteHandleInfo {
   uint32_t magic;
   int32_t flag_index;
   uint64_t *flag_address;
@@ -115,6 +116,9 @@ class HixlCSClient {
   // 通过已经建立好的channel，从用户提供的地址列表等信息，进行数据传输
   Status BatchTransfer(bool is_get, const CommunicateMem &communicate_mem_param, void **query_handle);
 
+  // 同步批量传输：Host 侧轮询 flag；Device 侧 notify 后 stream 同步等待（无 flag D2H memcpy）
+  Status BatchTransferSync(bool is_get, const CommunicateMem &communicate_mem_param, uint32_t timeout_ms);
+
   // 通过已经建立好的channel，检查批量读写的状态。
   Status CheckStatus(void *query_handle, HixlCompleteStatus *status);
 
@@ -134,12 +138,14 @@ class HixlCSClient {
   Status GetRemoteMemLocked(uint32_t timeout_ms, CommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
   Status InitFlagQueue() noexcept;
   int32_t AcquireFlagIndex();
-  Status ReleaseCompleteHandle(CompleteHandle *queryhandle);
+  Status ReleaseCompleteHandle(CompleteHandleInfo *queryhandle);
   Status ReleaseCompleteHandle(DeviceCompleteHandle *handle);
-  Status CheckStatusHost(CompleteHandle &queryhandle, HixlCompleteStatus &status);
+  Status CheckStatusHost(CompleteHandleInfo &queryhandle, HixlCompleteStatus &status);
   Status CheckStatusDevice(DeviceCompleteHandle &queryhandle, HixlCompleteStatus &status);
   Status BatchTransferHost(bool is_get, const CommunicateMem &p, void **queryhandle);
+  Status BatchTransferHostSync(bool is_get, const CommunicateMem &p, uint32_t timeout_ms);
   Status BatchTransferDevice(bool is_get, const CommunicateMem &p, void **queryhandle);
+  Status BatchTransferDeviceSync(bool is_get, const CommunicateMem &p, uint32_t timeout_ms);
   Status EnsureDeviceRemoteFlagInitedLocked();
   Status EnsureDeviceKernelLoadedLocked();
   void *GetDeviceKernelFunc(bool is_get);
@@ -156,7 +162,8 @@ class HixlCSClient {
   Status RegisterNotifyMemForAllSlots(const std::vector<TransferPool::SlotHandle> &slots);
   Status FillDeviceArgs(const CommunicateMem &mem_param, MemDev &mem_dev, const TransferPool::SlotHandle &slot,
                         void *remote_flag, DeviceArgs &args);
-  Status LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handle, const void *remote_flag);
+  Status LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handle, const void *remote_flag, bool sync_after_notify,
+                            uint32_t sync_stream_timeout_ms);
   void ReleaseLegacyHandlesLocked();
   void AbortAllPendingDeviceHandlesLocked();
   Status ReleaseDeviceResourcesLocked();
@@ -179,7 +186,7 @@ class HixlCSClient {
   std::array<uint32_t, kFlagQueueSize> available_indices_{};
   size_t top_index_ = 0;  // 栈顶指针
   std::mutex indices_mutex_;
-  std::array<CompleteHandle *, kFlagQueueSize> live_handles_{};  // 用来记录读写生成的queryhandle
+  std::array<CompleteHandleInfo *, kFlagQueueSize> live_handles_{};  // 用来记录读写生成的 query_handle
   int32_t socket_ = -1;
   std::map<std::string, CommMem> tag_mem_descs_;
   std::vector<CommMem> remote_mems_out_;
