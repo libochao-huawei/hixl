@@ -430,9 +430,9 @@ Status HixlCSClient::ValidateAddress(bool is_get, const CommunicateMem &communic
   return SUCCESS;
 }
 Status HixlCSClient::TransferWithRetry(bool is_get, uint64_t channel_handle, void *dst_buf, const void *src_buf, uint64_t len) {
-  static constexpr int32_t kHcclSuccess = 0;
-  static constexpr int32_t kHcclRetryRequired = 20;
-  static constexpr int64_t kRetryTimeoutMs = 20 * 60 * 1000;  // 20 minutes in milliseconds
+  constexpr int32_t kHcclSuccess = 0;
+  constexpr int32_t kHcclRetryRequired = 20;
+  constexpr int64_t kRetryTimeoutMs = 20 * 60 * 1000;  // 20 minutes in milliseconds
 
   auto start_time = std::chrono::steady_clock::now();
   int32_t hccl_ret = 0;
