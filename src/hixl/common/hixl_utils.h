@@ -24,6 +24,17 @@
 
 namespace hixl {
 enum class SocType { kA2, kA3, kOther };
+enum class RuntimeMode { kHostOnly, kDevice };
+
+struct LocalDeviceInfo {
+  bool has_device = false;
+  SocType soc_type = SocType::kOther;
+  int32_t logic_device_id = -1;
+  int32_t phy_device_id = -1;
+  int64_t super_device_id = -1;
+  int64_t super_pod_id = -1;
+};
+
 template <typename _Tp, typename... _Args>
 static inline std::shared_ptr<_Tp> MakeShared(_Args &&... __args) {
   using _Tp_nc = typename std::remove_const<_Tp>::type;
@@ -94,11 +105,24 @@ Status CheckAddrOverlap(const AddrInfo &cur_info, const std::map<MemHandle, Addr
 
 Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str);
 
+bool IsDeviceEndpoint(const EndpointConfig &endpoint);
+
+bool HasDeviceEndpoint(const std::vector<EndpointConfig> &endpoint_list);
+
+Status HasAvailableDevice(bool &has_device);
+
+Status GetCurrentLogicDeviceId(int32_t &logic_device_id);
+
+Status GetPhyDeviceIdByLogicDeviceId(int32_t logic_device_id, int32_t &phy_device_id);
+
+Status QueryLocalDeviceInfo(LocalDeviceInfo &device_info);
+
 Status GetSocName(std::string &soc_name);
 
 SocType GetSocTypeByName(const std::string &soc_name);
 
 Status GetSocType(SocType &soc_type);
+Status TryGetCurrentAclContext(aclrtContext &context);
 Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip);
 
 std::string MemTypeToString(MemType type);

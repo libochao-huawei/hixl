@@ -16,6 +16,7 @@
 #include <map>
 #include "hixl/hixl_types.h"
 #include "common/hixl_inner_types.h"
+#include "common/hixl_utils.h"
 #include "engine.h"
 
 namespace hixl {
@@ -31,7 +32,8 @@ class HixlServer {
    * @param [in] data_endpoint_config_list 服务端支持的传输协议
    * @return 成功:SUCCESS, 失败:其它.
    */
-  Status Initialize(const std::string &ip, int32_t port, const std::vector<EndpointConfig> &data_endpoint_config_list);
+  Status Initialize(const std::string &ip, int32_t port, const std::vector<EndpointConfig> &data_endpoint_config_list,
+                    RuntimeMode runtime_mode, const LocalDeviceInfo &local_device_info = {});
 
   /**
    * @brief 注册内存
@@ -57,6 +59,12 @@ class HixlServer {
   Status RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor) const;
 
  private:
+  Status InitializeHostOnly(const std::string &ip, int32_t port,
+                            const std::vector<EndpointConfig> &data_endpoint_config_list);
+  Status InitializeDevice(const std::string &ip, int32_t port,
+                          const std::vector<EndpointConfig> &data_endpoint_config_list,
+                          const LocalDeviceInfo &local_device_info);
+  Status CreateAndListenServer(const std::string &ip, int32_t port, std::vector<EndpointDesc> &data_end_point_list);
   void *server_handle_ = nullptr;
   std::vector<EndpointConfig> data_endpoint_config_list_;
   std::mutex mtx_;

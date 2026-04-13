@@ -27,6 +27,16 @@ namespace hixl {
 namespace {
 constexpr const char kConfigVersion[] = "1.3";
 
+Status DetectRuntimeContext(RuntimeMode &runtime_mode, LocalDeviceInfo &local_device_info) {
+  HIXL_CHK_STATUS_RET(QueryLocalDeviceInfo(local_device_info), "QueryLocalDeviceInfo failed");
+  if (!local_device_info.has_device) {
+    runtime_mode = RuntimeMode::kHostOnly;
+    return SUCCESS;
+  }
+  runtime_mode = RuntimeMode::kDevice;
+  return SUCCESS;
+}
+
 bool IsVersionOnlyLocalCommRes(const nlohmann::json &j) {
   const bool has_version = j.contains("version") && j["version"].is_string();
   const bool has_net_instance_id = j.contains("net_instance_id");
@@ -35,7 +45,28 @@ bool IsVersionOnlyLocalCommRes(const nlohmann::json &j) {
   return has_version && j.size() == 1 && !has_net_instance_id && !has_endpoint_list;
 }
 
-Status NeedAutoGenerateLocalCommRes(const std::string &local_comm_res, bool &need_auto_generate) {
+Status NeedAutoGenerateLocalCommResForHostOnly(const std::string &local_comm_res, bool &need_auto_generate) {
+  need_auto_generate = false;
+  nlohmann::json j;
+  try {
+    j = nlohmann::json::parse(local_comm_res);
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "Parse local_comm_res failed, exception:%s", e.what());
+    return PARAM_INVALID;
+  }
+
+  HIXL_CHK_BOOL_RET_STATUS(j.contains("version") && j["version"].is_string(), PARAM_INVALID,
+                           "local_comm_res missing version");
+  const std::string version = j["version"].get<std::string>();
+  if (version == kConfigVersion && IsVersionOnlyLocalCommRes(j)) {
+    HIXL_LOGE(PARAM_INVALID, "LocalCommRes must be configured explicitly when no local device is available");
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
+
+Status NeedAutoGenerateLocalCommResForDevice(const std::string &local_comm_res, SocType soc_type,
+                                             bool &need_auto_generate) {
   need_auto_generate = false;
   nlohmann::json j;
   try {
@@ -55,14 +86,16 @@ Status NeedAutoGenerateLocalCommRes(const std::string &local_comm_res, bool &nee
     return SUCCESS;
   }
 
-  SocType soc_type = SocType::kOther;
-  HIXL_CHK_STATUS_RET(GetSocType(soc_type), "GetSocType failed");
-
-  if ((soc_type == SocType::kA2 || soc_type == SocType::kA3) && IsVersionOnlyLocalCommRes(j)) {
-    need_auto_generate = true;
+  if (!IsVersionOnlyLocalCommRes(j)) {
+    return SUCCESS;
   }
 
-  return SUCCESS;
+  if (soc_type == SocType::kA2 || soc_type == SocType::kA3) {
+    need_auto_generate = true;
+    return SUCCESS;
+  }
+  HIXL_LOGE(PARAM_INVALID, "Auto-generated LocalCommRes only supports A2/A3 device scenarios");
+  return PARAM_INVALID;
 }
 
 Status GetVersionFromLocalCommRes(const std::string &local_comm_res, std::string &version) {
@@ -93,44 +126,22 @@ static void ConvertLocCommResInfoToEndpointList(const loc_comm_res::LocCommResIn
   }
 }
 
-Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::vector<EndpointConfig> &endpoint_list) {
-  if (version != kConfigVersion) {
-    return SUCCESS;
-  }
-
-  SocType soc_type = SocType::kOther;
-  HIXL_CHK_STATUS_RET(GetSocType(soc_type), "GetSocType failed");
+Status GetLocalDeviceInfo(const LocalDeviceInfo &device_info, SocType &soc_type, int32_t &phy_device_id,
+                          int64_t &super_device_id, int64_t &super_pod_id) {
+  HIXL_CHK_BOOL_RET_STATUS(device_info.has_device, FAILED,
+                           "Local device info requires local ACL runtime device resources, but none are available");
+  soc_type = device_info.soc_type;
   if (soc_type == SocType::kOther) {
     return SUCCESS;
   }
+  phy_device_id = device_info.phy_device_id;
+  super_device_id = device_info.super_device_id;
+  super_pod_id = device_info.super_pod_id;
+  return SUCCESS;
+}
 
-  int32_t device_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
-
-  int32_t phy_device_id = -1;
-  aclError acl_ret = aclrtGetPhyDevIdByLogicDevId(device_id, &phy_device_id);
-  if (acl_ret != ACL_SUCCESS) {
-    HIXL_LOGE(FAILED, "aclrtGetPhyDevIdByLogicDevId failed, device_id=%d, acl_ret=%d", device_id, acl_ret);
-    return FAILED;
-  }
-
-  int64_t super_device_id = -1;
-  int64_t super_pod_id = -1;
-
-  if (soc_type == SocType::kA3) {
-    acl_ret = aclrtGetDeviceInfo(static_cast<uint32_t>(device_id), ACL_DEV_ATTR_SUPER_POD_ID, &super_pod_id);
-    if (acl_ret != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtGetDeviceInfo SUPER_POD_ID failed, device_id=%d, acl_ret=%d", device_id, acl_ret);
-      return FAILED;
-    }
-
-    acl_ret = aclrtGetDeviceInfo(static_cast<uint32_t>(device_id), ACL_DEV_ATTR_SUPER_POD_DEVIDE_ID, &super_device_id);
-    if (acl_ret != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtGetDeviceInfo SUPER_DEVICE_ID failed, device_id=%d, acl_ret=%d", device_id, acl_ret);
-      return FAILED;
-    }
-  }
-
+void FillDeviceInfoForEndpointList(SocType soc_type, int32_t phy_device_id, int64_t super_device_id,
+                                   int64_t super_pod_id, std::vector<EndpointConfig> &endpoint_list) {
   for (auto &ep : endpoint_list) {
     if (ep.placement != kPlacementDevice) {
       continue;
@@ -146,15 +157,33 @@ Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, std::
       ep.device_info.super_pod_id = -1;
     }
   }
+}
 
+Status FillEndpointDeviceInfoIfNeededByVersion(const std::string &version, const LocalDeviceInfo &local_device_info,
+                                              std::vector<EndpointConfig> &endpoint_list) {
+  if (version != kConfigVersion || !HasDeviceEndpoint(endpoint_list)) {
+    return SUCCESS;
+  }
+
+  SocType soc_type = SocType::kOther;
+  int32_t phy_device_id = -1;
+  int64_t super_device_id = -1;
+  int64_t super_pod_id = -1;
+  HIXL_CHK_STATUS_RET(GetLocalDeviceInfo(local_device_info, soc_type, phy_device_id, super_device_id, super_pod_id),
+                      "GetLocalDeviceInfo failed");
+  if (soc_type == SocType::kOther) {
+    return SUCCESS;
+  }
+  FillDeviceInfoForEndpointList(soc_type, phy_device_id, super_device_id, super_pod_id, endpoint_list);
   return SUCCESS;
 }
 
-Status FillEndpointDeviceInfoIfNeeded(const std::string &local_comm_res, std::vector<EndpointConfig> &endpoint_list) {
+Status FillEndpointDeviceInfoIfNeeded(const std::string &local_comm_res, const LocalDeviceInfo &local_device_info,
+                                      std::vector<EndpointConfig> &endpoint_list) {
   std::string version;
   HIXL_CHK_STATUS_RET(GetVersionFromLocalCommRes(local_comm_res, version), "GetVersionFromLocalCommRes failed");
 
-  return FillEndpointDeviceInfoIfNeededByVersion(version, endpoint_list);
+  return FillEndpointDeviceInfoIfNeededByVersion(version, local_device_info, endpoint_list);
 }
 
 }  // namespace
@@ -181,8 +210,52 @@ bool HixlEngine::IsInitialized() const {
 Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   HIXL_LOGI("[HixlEngine] Initialization started, local_engine:%s", local_engine_.c_str());
   std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_CHK_STATUS_RET(CheckOptions(options), "[HixlEngine] Failed to check options");
+  HIXL_CHK_STATUS_RET(DetectRuntimeContext(runtime_mode_, local_device_info_),
+                      "[HixlEngine] Failed to detect runtime mode");
+  if (runtime_mode_ == RuntimeMode::kHostOnly) {
+    return InitializeHostOnly(options);
+  }
+  return InitializeDevice(options);
+}
+
+Status HixlEngine::InitializeHostOnly(const std::map<AscendString, AscendString> &options) {
   std::string local_comm_res;
+  HIXL_CHK_STATUS_RET(PrepareInitialize(options, local_comm_res), "[HixlEngine] Failed to prepare initialization");
+  HIXL_CHK_STATUS_RET(InitEndpointListForHostOnly(local_comm_res),
+                      "[HixlEngine] Failed to initialize host-only endpoint list");
+  HIXL_CHK_STATUS_RET(PrepareNetworkOptions(options), "[HixlEngine] Failed to prepare network options");
+  HIXL_CHK_STATUS_RET(InitServerHostOnly(local_comm_res), "[HixlEngine] Failed to initialize host-only server");
+  is_initialized_ = true;
+  HIXL_LOGI("[HixlEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
+  return SUCCESS;
+}
+
+Status HixlEngine::InitializeDevice(const std::map<AscendString, AscendString> &options) {
+  std::string local_comm_res;
+  HIXL_CHK_STATUS_RET(PrepareInitialize(options, local_comm_res), "[HixlEngine] Failed to prepare initialization");
+  HIXL_CHK_STATUS_RET(InitEndpointListForDevice(local_comm_res),
+                      "[HixlEngine] Failed to initialize device endpoint list");
+  HIXL_CHK_STATUS_RET(PrepareNetworkOptions(options), "[HixlEngine] Failed to prepare network options");
+  HIXL_CHK_STATUS_RET(InitServerDevice(local_comm_res), "[HixlEngine] Failed to initialize device server");
+  is_initialized_ = true;
+  HIXL_LOGI("[HixlEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
+  return SUCCESS;
+}
+
+Status HixlEngine::PrepareInitialize(const std::map<AscendString, AscendString> &options, std::string &local_comm_res) {
+  HIXL_CHK_STATUS_RET(CheckOptions(options), "[HixlEngine] Failed to check options");
+  HIXL_CHK_STATUS_RET(GetRequiredLocalCommRes(options, local_comm_res), "[HixlEngine] local_comm_res is empty");
+  return SUCCESS;
+}
+
+Status HixlEngine::PrepareNetworkOptions(const std::map<AscendString, AscendString> &options) {
+  HIXL_CHK_STATUS_RET(ParseTrafficClass(options), "[HixlEngine] Failed to parse traffic class");
+  HIXL_CHK_STATUS_RET(ParseServiceLevel(options), "[HixlEngine] Failed to parse service level");
+  return SUCCESS;
+}
+
+Status HixlEngine::GetRequiredLocalCommRes(const std::map<AscendString, AscendString> &options,
+                                           std::string &local_comm_res) const {
   auto hixl_it = options.find(hixl::OPTION_LOCAL_COMM_RES);
   auto adxl_it = options.find(adxl::OPTION_LOCAL_COMM_RES);
   auto it = hixl_it == options.cend() ? adxl_it : hixl_it;
@@ -193,42 +266,74 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
                            PARAM_INVALID,
                            "[HixlEngine] local_comm_res is empty");
   local_comm_res = local_comm_res_cstr;
+  return SUCCESS;
+}
+
+Status HixlEngine::InitEndpointListForHostOnly(const std::string &local_comm_res) {
   bool need_auto_generate = false;
-  HIXL_CHK_STATUS_RET(NeedAutoGenerateLocalCommRes(local_comm_res, need_auto_generate),
+  HIXL_CHK_STATUS_RET(NeedAutoGenerateLocalCommResForHostOnly(local_comm_res, need_auto_generate),
                       "[HixlEngine] NeedAutoGenerateLocalCommRes failed");
+  (void)need_auto_generate;
+  HIXL_CHK_STATUS_RET(ParseEndPoint(local_comm_res, endpoint_list_),
+                      "[HixlEngine] Failed to parse endpoint from local_comm_res, local_comm_res:%s",
+                      local_comm_res.c_str());
+  return SUCCESS;
+}
+
+Status HixlEngine::InitEndpointListForDevice(const std::string &local_comm_res) {
+  bool need_auto_generate = false;
+  HIXL_CHK_STATUS_RET(NeedAutoGenerateLocalCommResForDevice(local_comm_res, local_device_info_.soc_type,
+                                                            need_auto_generate),
+                      "[HixlEngine] NeedAutoGenerateLocalCommRes failed");
+
   endpoint_list_.clear();
   if (need_auto_generate) {
-    int32_t device_id = 0;
-    HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
     loc_comm_res::LocCommResInfo loc_comm_res_info{};
-    HIXL_CHK_STATUS_RET(LocCommResGenerator::GenerateInfo(device_id, local_engine_, loc_comm_res_info),
+    HIXL_CHK_STATUS_RET(LocCommResGenerator::GenerateInfo(local_device_info_.logic_device_id, local_engine_,
+                                                          loc_comm_res_info),
                         "[HixlEngine] GenerateInfo failed");
     ConvertLocCommResInfoToEndpointList(loc_comm_res_info, endpoint_list_);
-    HIXL_CHK_STATUS_RET(FillEndpointDeviceInfoIfNeededByVersion(loc_comm_res_info.version, endpoint_list_),
+    HIXL_CHK_STATUS_RET(FillEndpointDeviceInfoIfNeededByVersion(loc_comm_res_info.version, local_device_info_,
+                                                                endpoint_list_),
                         "[HixlEngine] FillEndpointDeviceInfoIfNeededByVersion failed");
-  } else {
-    HIXL_CHK_STATUS_RET(ParseEndPoint(local_comm_res, endpoint_list_),
-                        "[HixlEngine] Failed to parse endpoint from local_comm_res, local_comm_res:%s",
-                        local_comm_res.c_str());
-    HIXL_CHK_STATUS_RET(FillEndpointDeviceInfoIfNeeded(local_comm_res, endpoint_list_),
-                        "[HixlEngine] FillEndpointDeviceInfoIfNeeded failed, local_comm_res:%s",
-                        local_comm_res.c_str());
+    return SUCCESS;
   }
-  HIXL_CHK_STATUS_RET(ParseTrafficClass(options), "[HixlEngine] Failed to parse traffic class");
-  HIXL_CHK_STATUS_RET(ParseServiceLevel(options), "[HixlEngine] Failed to parse service level");
+
+  HIXL_CHK_STATUS_RET(ParseEndPoint(local_comm_res, endpoint_list_),
+                      "[HixlEngine] Failed to parse endpoint from local_comm_res, local_comm_res:%s",
+                      local_comm_res.c_str());
+  HIXL_CHK_STATUS_RET(FillEndpointDeviceInfoIfNeeded(local_comm_res, local_device_info_, endpoint_list_),
+                      "[HixlEngine] FillEndpointDeviceInfoIfNeeded failed, local_comm_res:%s", local_comm_res.c_str());
+  return SUCCESS;
+}
+
+Status HixlEngine::InitServerHostOnly(const std::string &local_comm_res) {
   std::string ip;
   int32_t port = 0;
-  HIXL_CHK_STATUS_RET(ParseListenInfo(local_engine_, ip, port), 
+  HIXL_CHK_STATUS_RET(ParseServerListenInfo(ip, port), "[HixlEngine] Failed to parse listen info");
+  HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_, RuntimeMode::kHostOnly),
+                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s, local_comm_res:%s",
+                      local_engine_.c_str(), local_comm_res.c_str());
+  return SUCCESS;
+}
+
+Status HixlEngine::InitServerDevice(const std::string &local_comm_res) {
+  std::string ip;
+  int32_t port = 0;
+  HIXL_CHK_STATUS_RET(ParseServerListenInfo(ip, port), "[HixlEngine] Failed to parse listen info");
+  HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_, RuntimeMode::kDevice, local_device_info_),
+                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s, local_comm_res:%s",
+                      local_engine_.c_str(), local_comm_res.c_str());
+  return SUCCESS;
+}
+
+Status HixlEngine::ParseServerListenInfo(std::string &ip, int32_t &port) const {
+  HIXL_CHK_STATUS_RET(ParseListenInfo(local_engine_, ip, port),
                       "[HixlEngine] Failed to parse ip and port, local_engine should be in form as below: "
                       "ipv4 should be 'host_ip:host_port' or 'host_ip' "
                       "ipv6 should be '[host_ip]:host_port' or '[host_ip]' "
                       "current local_engine:%s",
                       local_engine_.c_str());
-  HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_), 
-                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s, local_comm_res:%s", 
-                      local_engine_.c_str(), local_comm_res.c_str());
-  is_initialized_ = true;
-  HIXL_LOGI("[HixlEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
   return SUCCESS;
 }
 
@@ -282,32 +387,76 @@ Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in
               remote_engine.GetString(), local_engine_.c_str());
     return ALREADY_CONNECTED;
   }
+  if (runtime_mode_ == RuntimeMode::kHostOnly) {
+    return ConnectHostOnly(remote_engine, timeout_in_millis);
+  }
+  return ConnectDevice(remote_engine, timeout_in_millis);
+}
+
+Status HixlEngine::ConnectHostOnly(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  ClientPtr client_ptr = nullptr;
   ClientConfig config{};
+  std::vector<MemInfo> mem_info_list;
+  HIXL_CHK_STATUS_RET(PrepareConnect(remote_engine, client_ptr, config, mem_info_list),
+                      "[HixlEngine] Failed to prepare host-only connection, local_engine:%s, remote_engine:%s",
+                      local_engine_.c_str(), remote_engine.GetString());
+  HIXL_CHK_STATUS_RET(client_ptr->Initialize(config.endpoint_list),
+                      "[HixlEngine] Failed to initialize HixlClient, local_engine: %s, remote engine: %s",
+                      local_engine_.c_str(), remote_engine.GetString());
+  HIXL_DISMISSABLE_GUARD(rollback, ([this, &remote_engine]() { client_manager_.DestroyClient(remote_engine.GetString()); }));
+  HIXL_CHK_STATUS_RET(client_ptr->SetLocalMemInfo(mem_info_list),
+                      "[HixlEngine] Failed to set local memory info, local_engine:%s",
+                      local_engine_.c_str());
+  HIXL_CHK_STATUS_RET(client_ptr->Connect(timeout_in_millis),
+                      "[HixlEngine] Failed to connect, local_engine:%s, remote_engine:%s, timeout:%d ms",
+                      local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+  HIXL_DISMISS_GUARD(rollback);
+  HIXL_LOGI("[HixlEngine] Connection succeeded, local_engine:%s, remote_engine:%s",
+            local_engine_.c_str(), remote_engine.GetString());
+  return SUCCESS;
+}
+
+Status HixlEngine::ConnectDevice(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  ClientPtr client_ptr = nullptr;
+  ClientConfig config{};
+  std::vector<MemInfo> mem_info_list;
+  HIXL_CHK_STATUS_RET(PrepareConnect(remote_engine, client_ptr, config, mem_info_list),
+                      "[HixlEngine] Failed to prepare device connection, local_engine:%s, remote_engine:%s",
+                      local_engine_.c_str(), remote_engine.GetString());
+  HIXL_CHK_STATUS_RET(client_ptr->Initialize(config.endpoint_list),
+                      "[HixlEngine] Failed to initialize HixlClient, local_engine: %s, remote engine: %s",
+                      local_engine_.c_str(), remote_engine.GetString());
+  HIXL_DISMISSABLE_GUARD(rollback, ([this, &remote_engine]() { client_manager_.DestroyClient(remote_engine.GetString()); }));
+  HIXL_CHK_STATUS_RET(client_ptr->SetLocalMemInfo(mem_info_list),
+                      "[HixlEngine] Failed to set local memory info, local_engine:%s",
+                      local_engine_.c_str());
+  HIXL_CHK_STATUS_RET(client_ptr->Connect(timeout_in_millis),
+                      "[HixlEngine] Failed to connect, local_engine:%s, remote_engine:%s, timeout:%d ms",
+                      local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+  HIXL_DISMISS_GUARD(rollback);
+  HIXL_LOGI("[HixlEngine] Connection succeeded, local_engine:%s, remote_engine:%s",
+            local_engine_.c_str(), remote_engine.GetString());
+  return SUCCESS;
+}
+
+Status HixlEngine::PrepareConnect(const AscendString &remote_engine, ClientPtr &client_ptr, ClientConfig &config,
+                                  std::vector<MemInfo> &mem_info_list) {
   config.endpoint_list = endpoint_list_;
   config.remote_engine = remote_engine.GetString();
   config.rdma_tc = rdma_traffic_class_;
   config.rdma_sl = rdma_service_level_;
+  config.runtime_mode = runtime_mode_;
+  config.local_device_info = local_device_info_;
   HIXL_CHK_STATUS_RET(client_manager_.CreateClient(config, client_ptr),
                       "[HixlEngine] Failed to create HixlClient, local_engine: %s, remote engine: %s",
                       local_engine_.c_str(), remote_engine.GetString());
   HIXL_CHECK_NOTNULL(client_ptr, 
                      "[HixlEngine] Created client is null, please check your parameters! local_engine:%s, remote_engine:%s",
                      local_engine_.c_str(), remote_engine.GetString());
-  std::vector<MemInfo> mem_info_list;
   std::lock_guard<std::mutex> lock(mutex_);
   for (const auto &pair : mem_map_) {
     mem_info_list.push_back(pair.second);
   }
-  HIXL_DISMISSABLE_GUARD(rollback, ([this, &remote_engine]() { client_manager_.DestroyClient(remote_engine.GetString()); }));
-  HIXL_CHK_STATUS_RET(client_ptr->SetLocalMemInfo(mem_info_list), 
-                      "[HixlEngine] Failed to set local memory info, local_engine:%s",
-                      local_engine_.c_str());
-  HIXL_CHK_STATUS_RET(client_ptr->Connect(timeout_in_millis), 
-                      "[HixlEngine] Failed to connect, local_engine:%s, remote_engine:%s, timeout:%d ms",
-                      local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
-  HIXL_DISMISS_GUARD(rollback);
-  HIXL_LOGI("[HixlEngine] Connection succeeded, local_engine:%s, remote_engine:%s", 
-            local_engine_.c_str(), remote_engine.GetString());
   return SUCCESS;
 }
 

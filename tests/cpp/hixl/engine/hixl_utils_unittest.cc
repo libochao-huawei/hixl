@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <limits>
 #include "common/hixl_utils.h"
+#include "acl_runtime_test_helper.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 
 using namespace ::testing;
@@ -50,6 +51,64 @@ class DeviceIpMmpaStub : public llm::MmpaStubApiGe {
  private:
   std::string conf_path_;
   bool conf_exists_;
+};
+
+class QueryDeviceInfoAclRuntimeStub : public DeviceCountAclRuntimeStub {
+ public:
+  std::string soc_name_ = "Ascend910_9391";
+  int32_t logic_device_id_ = 2;
+  int32_t phy_device_id_ = 5;
+  int64_t super_pod_id_ = 11;
+  int64_t super_device_id_ = 13;
+  int get_device_calls_ = 0;
+  int get_phy_device_calls_ = 0;
+  int get_context_calls_ = 0;
+
+  const char *aclrtGetSocName() override {
+    return soc_name_.c_str();
+  }
+
+  aclError aclrtGetDevice(int32_t *deviceId) override {
+    ++get_device_calls_;
+    if (deviceId == nullptr) {
+      return ACL_ERROR_FAILURE;
+    }
+    *deviceId = logic_device_id_;
+    return ACL_SUCCESS;
+  }
+
+  aclError aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, int32_t *const phyDevId) override {
+    ++get_phy_device_calls_;
+    if (phyDevId == nullptr || logicDevId != logic_device_id_) {
+      return ACL_ERROR_FAILURE;
+    }
+    *phyDevId = phy_device_id_;
+    return ACL_SUCCESS;
+  }
+
+  aclError aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value) override {
+    if (value == nullptr || static_cast<int32_t>(deviceId) != logic_device_id_) {
+      return ACL_ERROR_FAILURE;
+    }
+    if (attr == ACL_DEV_ATTR_SUPER_POD_ID) {
+      *value = super_pod_id_;
+      return ACL_SUCCESS;
+    }
+    if (attr == ACL_DEV_ATTR_SUPER_POD_DEVIDE_ID) {
+      *value = super_device_id_;
+      return ACL_SUCCESS;
+    }
+    return ACL_ERROR_FAILURE;
+  }
+
+  aclError aclrtGetCurrentContext(aclrtContext *context) override {
+    ++get_context_calls_;
+    if (context == nullptr) {
+      return ACL_ERROR_FAILURE;
+    }
+    *context = reinterpret_cast<aclrtContext>(0x1234);
+    return ACL_SUCCESS;
+  }
 };
 }  // namespace
 
@@ -186,6 +245,47 @@ TEST_F(HixlUtilsUTest, ParseEidAddressEmptyStringTest) {
   std::string eid_str = "";
   Status st = ParseEidAddress(eid_str, addr);
   EXPECT_EQ(st, PARAM_INVALID);
+}
+
+TEST_F(HixlUtilsUTest, QueryLocalDeviceInfoHostOnlyDoesNotCallDeviceApis) {
+  auto acl_stub = std::make_shared<FailingGetDeviceAclRuntimeStub>();
+  acl_stub->device_count_ = 0;
+  llm::AclRuntimeStub::SetInstance(acl_stub);
+
+  LocalDeviceInfo device_info;
+  EXPECT_EQ(QueryLocalDeviceInfo(device_info), SUCCESS);
+  EXPECT_FALSE(device_info.has_device);
+  EXPECT_EQ(device_info.logic_device_id, -1);
+  EXPECT_EQ(device_info.phy_device_id, -1);
+  EXPECT_EQ(acl_stub->get_device_calls_, 0);
+}
+
+TEST_F(HixlUtilsUTest, QueryLocalDeviceInfoDevicePathSuccess) {
+  auto acl_stub = std::make_shared<QueryDeviceInfoAclRuntimeStub>();
+  acl_stub->device_count_ = 1;
+  llm::AclRuntimeStub::SetInstance(acl_stub);
+
+  LocalDeviceInfo device_info;
+  EXPECT_EQ(QueryLocalDeviceInfo(device_info), SUCCESS);
+  EXPECT_TRUE(device_info.has_device);
+  EXPECT_EQ(device_info.soc_type, SocType::kA3);
+  EXPECT_EQ(device_info.logic_device_id, 2);
+  EXPECT_EQ(device_info.phy_device_id, 5);
+  EXPECT_EQ(device_info.super_pod_id, 11);
+  EXPECT_EQ(device_info.super_device_id, 13);
+  EXPECT_EQ(acl_stub->get_device_calls_, 1);
+  EXPECT_EQ(acl_stub->get_phy_device_calls_, 1);
+}
+
+TEST_F(HixlUtilsUTest, TryGetCurrentAclContextHostOnlyReturnsNullContext) {
+  auto acl_stub = std::make_shared<QueryDeviceInfoAclRuntimeStub>();
+  acl_stub->device_count_ = 0;
+  llm::AclRuntimeStub::SetInstance(acl_stub);
+
+  aclrtContext context = reinterpret_cast<aclrtContext>(0x5678);
+  EXPECT_EQ(TryGetCurrentAclContext(context), SUCCESS);
+  EXPECT_EQ(context, nullptr);
+  EXPECT_EQ(acl_stub->get_context_calls_, 0);
 }
 TEST_F(HixlUtilsUTest, EndpointConfigToStringContainsDeviceInfoTest) {
   EndpointConfig ep;
