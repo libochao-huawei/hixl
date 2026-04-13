@@ -29,7 +29,7 @@ class TransferPool {
 
   struct SlotHandle {
     int32_t device_id;
-    uint32_t slot_index;
+    uint32_t slot_index = UINT32_MAX;
     aclrtContext ctx;
     aclrtStream stream;
     ThreadHandle thread;
