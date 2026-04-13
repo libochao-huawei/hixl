@@ -56,6 +56,20 @@ int32_t Initialize(Hixl &hixl_engine, const char *local_engine, bool use_buffer_
   if (!use_buffer_pool) {
     options["BufferPool"] = "0:0";
   }
+  const char *env_ret = std::getenv("HIXL_USE_UBOE");
+  if (env_ret != nullptr && *env_ret == '1') {
+    options[OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+      {
+        "comm_resource_config.protocol_desc": ["uboe:device"]
+      }
+    )";
+  }
+
+  env_ret = std::getenv("HIXL_LOCAL_COMMON_RES");
+  if (env_ret != nullptr) {
+    options[OPTION_LOCAL_COMM_RES] = env_ret;
+  }
+
   auto ret = hixl_engine.Initialize(local_engine, options);
   if (ret != SUCCESS) {
     printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, GetRecentErrMsg());
