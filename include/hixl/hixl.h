@@ -108,10 +108,10 @@ class ASCEND_FUNC_VISIBILITY Hixl {
 
   /**
    * @brief 获取与远端Hixl进行异步建链/断链的全部状态
-   * @param [out] status_list 建链状态表
+   * @param [out] status_map 建链状态表
    * @return 成功:SUCCESS, 失败:其它.
    */
-  Status GetAsyncConnectStatus(std::map<AscendString, AsyncConnectStatus>& status_list);
+  Status GetAsyncConnectStatus(std::map<AscendString, AsyncConnectStatus>& status_map);
 
   /**
    * @brief 与远端Hixl进行内存传输
