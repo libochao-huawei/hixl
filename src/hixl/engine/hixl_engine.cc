@@ -185,7 +185,6 @@ Status HixlEngine::TransferAsync(const AscendString &remote_engine, TransferOp o
                                  TransferReq &req) {
   HIXL_LOGI("[HixlEngine] Asynchronous transmission started, local_engine:%s, remote_engine:%s", local_engine_.c_str(),
             remote_engine.GetString());
-  (void)optional_args;
   ClientPtr client_ptr = client_manager_.GetClient(remote_engine.GetString());
   HIXL_CHK_BOOL_RET_STATUS(
       client_ptr != nullptr, NOT_CONNECTED,
@@ -197,8 +196,8 @@ Status HixlEngine::TransferAsync(const AscendString &remote_engine, TransferOp o
   auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
   uint64_t start_time = 0;
   start_time = HixlProfilingReporter::GetSysCycleTime();
-  TransferInfo transfer_info = {start_time, operation, remote_engine};
-  std::lock_guard<std::mutex> lock(mutex_);
+  TransferInfo transfer_info = {start_time, operation, remote_engine, optional_args.user_data};
+  std::lock_guard<std::mutex> lock(req_map_mutex_);
   req_map_.emplace(id, transfer_info);
   HIXL_LOGI("[HixlEngine] Asynchronous transmission succeeded, local_engine:%s, remote_engine:%s",
             local_engine_.c_str(), remote_engine.GetString());
@@ -206,7 +205,7 @@ Status HixlEngine::TransferAsync(const AscendString &remote_engine, TransferOp o
 }
 
 Status HixlEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(req_map_mutex_);
   auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
   auto it = req_map_.find(id);
   if (it == req_map_.cend()) {
@@ -215,6 +214,31 @@ Status HixlEngine::GetTransferStatus(const TransferReq &req, TransferStatus &sta
               req);
     return PARAM_INVALID;
   }
+  return GetTransferStatusInner(req, status, it);
+}
+
+Status HixlEngine::GetTransferStatus(const GetTransferStatusArgs &args, std::vector<TransferResult> &results) {
+  results.clear();
+
+  std::lock_guard<std::mutex> lock(req_map_mutex_);
+  results.reserve(std::min(req_map_.size(), args.max_query_count));
+  for (auto it = req_map_.begin(); it != req_map_.end(); ++it) {
+    TransferReq req = reinterpret_cast<TransferReq>(static_cast<uintptr_t>(it->first));
+    TransferStatus status;
+    Status ret = GetTransferStatusInner(req, status, it);
+    if (ret != SUCCESS) {
+      status = TransferStatus::FAILED;
+    }
+    if (args.skip_waiting && status == TransferStatus::WAITING) {
+      continue;
+    }
+    results.emplace_back(TransferResult{req, status, it->second.user_data});
+  }
+  return SUCCESS;
+}
+
+Status HixlEngine::GetTransferStatusInner(const TransferReq &req, TransferStatus &status,
+                                          std::map<uint64_t, TransferInfo>::iterator &it) {
   auto remote_engine = it->second.remote_engine;
   auto client = client_manager_.GetClient(remote_engine.GetString());
   HIXL_CHECK_NOTNULL(client,
@@ -239,6 +263,7 @@ void HixlEngine::Finalize() {
   server_.Finalize();
   client_manager_.Finalize();
   mem_map_.clear();
+  std::lock_guard<std::mutex> lock(req_map_mutex_);
   req_map_.clear();
   is_initialized_ = false;
   HIXL_LOGI("[HixlEngine] Finalization succeeded");
