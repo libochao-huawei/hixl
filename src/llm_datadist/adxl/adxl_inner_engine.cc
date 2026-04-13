@@ -626,7 +626,7 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   LLM_DISMISS_GUARD(transfer_count_guard);
   uint64_t start_time = 0;
   start_time = hixl::HixlProfilingReporter::GetSysCycleTime();
-  hixl::TransferInfo transfer_info = {start_time, static_cast<hixl::TransferOp>(operation), remote_engine};
+  hixl::TransferInfo transfer_info = {start_time, static_cast<hixl::TransferOp>(operation), remote_engine, nullptr};
   std::lock_guard<std::mutex> lock(req2channel_mutex_);
   req_map_.emplace(id, transfer_info);
   return SUCCESS;
