@@ -202,6 +202,37 @@ Status HixlEngine::TransferAsync(const AscendString &remote_engine, TransferOp o
   return SUCCESS;
 }
 
+Status HixlEngine::GetTransferStatus(std::vector<TransferStatusResult> &out_results,
+                                     const GetTransferStatusOptions &options) {
+  std::vector<TransferReq> reqs;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    reqs.reserve(req_map_.size());
+    for (const auto &it : req_map_) {
+      TransferReq req = reinterpret_cast<TransferReq>(static_cast<uintptr_t>(it.first));
+      reqs.emplace_back(req);
+    }
+  }
+
+  out_results.clear();
+  out_results.reserve(std::min(reqs.size(), options.max_num));
+  for (const auto &req : reqs) {
+    TransferStatus status;
+    Status ret = GetTransferStatus(req, status);
+    if (ret != SUCCESS) {
+      status = TransferStatus::FAILED;
+    }
+    if (options.skip_waiting && status == TransferStatus::WAITING) {
+      continue;
+    }
+    out_results.emplace_back(TransferStatusResult{req, status, nullptr});
+    if (out_results.size() == out_results.capacity()) {
+      break;
+    }
+  }
+  return SUCCESS;
+}
+
 Status HixlEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));

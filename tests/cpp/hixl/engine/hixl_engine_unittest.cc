@@ -391,8 +391,16 @@ TEST_F(HixlEngineTest, TestTransferAsync) {
   ASSERT_EQ(engine1.TransferAsync("127.0.0.1:16000", READ, {desc}, {}, req), SUCCESS);
 
   TransferStatus status = TransferStatus::WAITING;
+  std::vector<TransferStatusResult> out_results;
+  GetTransferStatusOptions options;
   for (int32_t i = 0; i < kMaxRetryCount && status == TransferStatus::WAITING; i++) {
-    engine1.GetTransferStatus(req, status);
+    engine1.GetTransferStatus(out_results, options);
+    for (const auto& it : out_results) {
+      if (it.req == req) {
+        status = it.status;
+        break;
+      }
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(kInterval));
   }
   EXPECT_EQ(status, TransferStatus::COMPLETED);
