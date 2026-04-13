@@ -119,6 +119,14 @@ class HixlEngine : public hixl::Engine {
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status) override;
 
   /**
+   * @brief 获取全部请求状态
+   * @param [out] statuses 传输状态
+   * @return 成功:SUCCESS, 失败:其它.
+   */
+  Status GetTransferStatus(std::vector<TransferStatusResult> &out_results,
+                           const GetTransferStatusOptions &options) override;
+
+  /**
    * @brief Client向Server发送Notify信息
    * @param [in] remote_engine 远端Hixl的唯一标识
    * @param [in] notify 要发送的Notify内容

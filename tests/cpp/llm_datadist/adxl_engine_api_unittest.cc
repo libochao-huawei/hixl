@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -1185,6 +1185,27 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineMallocMemAndFreeMem) {
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineMallocMemInvalidParam) {
   EXPECT_EQ(AdxlEngine::MallocMem(MEM_HOST, sizeof(int32_t), nullptr), PARAM_INVALID);
+}
+
+TEST_F(AdxlEngineUTest, TestCommEngineGetTransferStatusUnsupported) {
+  std::map<AscendString, AscendString> options;
+
+  auto engine = hixl::EngineFactory::CreateEngine("127.0.0.1", options);
+  ASSERT_NE(engine, nullptr);
+  std::vector<hixl::TransferStatusResult> out_results;
+  hixl::GetTransferStatusOptions statusOptions;
+  EXPECT_EQ(engine->GetTransferStatus(out_results, statusOptions), UNSUPPORTED);
+}
+
+TEST_F(AdxlEngineUTest, TestFabricMemEngineGetTransferStatusUnsupported) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = AscendString("1");
+
+  auto engine = hixl::EngineFactory::CreateEngine("127.0.0.1", options);
+  ASSERT_NE(engine, nullptr);
+  std::vector<hixl::TransferStatusResult> out_results;
+  hixl::GetTransferStatusOptions statusOptions;
+  EXPECT_EQ(engine->GetTransferStatus(out_results, statusOptions), UNSUPPORTED);
 }
 
 }  // namespace adxl
