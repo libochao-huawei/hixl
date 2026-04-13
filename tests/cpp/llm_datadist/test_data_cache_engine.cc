@@ -322,6 +322,11 @@ TEST_F(DataCacheEngineSTest, TestMemPool) {
       free_th.join();
     }
   });
+  LLM_MAKE_GUARD(free_thread_join, [&free_th]() {
+    if (free_th.joinable()) {
+      free_th.join();
+    }
+  });
   for (int i = 0; i < 10; ++i) {
     LLMLOGI("TEST--- allocate index = %d, start", i);
     auto addr = mem_pool->Alloc(32 * 1024, 3000);
