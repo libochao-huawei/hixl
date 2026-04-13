@@ -72,7 +72,7 @@ for i in {0..7}; do hccn_tool -i $i -tls -s enable 0; done
 
 - 说明：
     - 所有benchmark需要成对执行，client侧和server侧启动执行间隔时间不要过长，代码中默认设置kWaitTransTime为20s，用户可根据实际情况自行修改此变量的值以保证用例成功运行。
-    - 所有benchmark默认传输数据大小kTransferMemSize为128M，用户可根据需要自行修改。执行成功后会打印类似如下的日志，其中block size表示每次传输的内存块大小；transfer num表示传输次数；time cost表示总的传输耗时；throughput表示传输的吞吐（带宽）。
+    - 默认总传输缓冲 `--total_size=134217728`（字节，约 128MiB），可用 `--block_size`、`--block_steps`、`--loops` 调整块阶梯与重复次数。执行成功后会打印类似如下的日志，其中 block size 表示每次传输的内存块大小；transfer num 表示传输次数；time cost 表示总的传输耗时；throughput 表示传输的吞吐（带宽）。
       ```
       [INFO] Transfer success, block size: 8388608 Bytes, transfer num: 16, time cost: 1044 us, throughput: 119.732 GB/s
       ```
@@ -96,40 +96,46 @@ for i in {0..7}; do hccn_tool -i $i -tls -s enable 0; done
 
 - 在运行环境执行可执行文件。
 
-  - 执行benchmark，client-server模式，可通过参数传递来执行多种传输场景
+  - 执行 benchmark，client-server 模式，使用 **`参数名=值`** 形式传参（均为小写；支持长名 `--xxx` 与短名 `-x`，见下表）。**必选**：`--role=client` 或 `--role=server`（或 `-r=client` / `-r=server`）。未指定的项使用默认值（client 默认 `device_id=0`、`local_engine=127.0.0.1:16000`、`remote_engine=127.0.0.1:16001`；server 默认 `device_id=1`、`local_engine=127.0.0.1:16001`、`remote_engine=127.0.0.1` 作为 **TCP 对端 IP**；公共默认 `transfer_mode=d2d`、`transfer_op=read`、`use_buffer_pool=false`、`tcp_port=20000`；`total_size=134217728`、`block_size=262144`、`block_steps=6`、`loops=1`）。运行 `./benchmark --help` 可查看帮助。
+
     - 参数说明
-        | **参数名** | **可选/必选** | **描述** |
-        |:-----------:|:------------:|:------------:|
-        |     device_id      | <div style="width:4cm"> 必选 </div> |  <div style="width: 10cm"> 当前engine要使用的device_id </div>  |
-        |     local_engine      | 必选 | 当前engine的ip<br>其中，client侧格式为 ip；server侧格式为 ip:port |
-        |     remote_engine      | 必选 | 远端engine的ip<br>其中，client侧格式为 ip；server侧格式为 ip:port|
-        |     tcp_port      | 必选 | tcp通信端口 |
-        |     transfer_mode      | 必选 | 传输的模式<br>取值范围：d2d、h2d、d2h 和 h2h |
-        |     transfer_op      | 必选 | 传输的操作<br>取值范围：write 或 read |
-        |     use_buffer_pool      | 必选 | 是否开启中转内存池<br>取值范围：true 或 false |
+        | **参数名** | **短名** | **可选/必选** | **描述** |
+        |:-----------|:--------|:------------:|:------------|
+        | `--role` | `-r` | 必选 | `client` 或 `server` |
+        | `--device_id` | `-d` | 可选 | 当前进程使用的 device_id（有角色默认值，可被覆盖） |
+        | `--local_engine` | `-l` | 可选 | 本端 HIXL engine：client 一般为 `ip`；server 一般为 `ip:port` |
+        | `--remote_engine` | `-e` | 可选 | client：远端 HIXL，如 `ip:port`；server：**仅 TCP 建连用对端 IP**（不要带端口，端口由 `--tcp_port` 指定） |
+        | `--tcp_port` | `-p` | 可选 | TCP 协调端口（默认 20000） |
+        | `--transfer_mode` | `-m` | 可选 | `d2d`、`h2d`、`d2h`、`h2h` |
+        | `--transfer_op` | `-o` | 可选 | `read` 或 `write`（仅 client 侧传输使用该配置） |
+        | `--use_buffer_pool` | `-b` | 可选 | `true`/`false` 或 `1`/`0` |
+        | `--total_size` | `-t` | 可选 | 总缓冲大小，**十进制字节**（默认 134217728，即 128MiB） |
+        | `--block_size` | `-k` | 可选 | 第一档块大小，**十进制字节**（默认 262144，即 256KiB） |
+        | `--block_steps` | `-s` | 可选 | 块大小档位数：第 i 档为 `block_size * 2^i`（默认 6） |
+        | `--loops` | `-n` | 可选 | 整档阶梯重复次数（默认 1） |
 
     - 测试HIXL引擎通过HCCS链路进行传输的带宽, 以d2d场景，写操作，不开启中转内存池为例：
 
         - 执行client benchmark：
             ```
-            ./benchmark 0 10.10.10.0 10.10.10.0:16000 20000 d2d write false
+            ./benchmark --role=client --device_id=0 --local_engine=10.10.10.0 --remote_engine=10.10.10.0:16000 --tcp_port=20000 --transfer_mode=d2d --transfer_op=write --use_buffer_pool=false
             ```
 
         - 执行server benchmark：
             ```
-            ./benchmark 1 10.10.10.0:16000 10.10.10.0 20000 d2d write false
+            ./benchmark --role=server --device_id=1 --local_engine=10.10.10.0:16000 --remote_engine=10.10.10.0 --tcp_port=20000 --transfer_mode=d2d --transfer_op=write --use_buffer_pool=false
             ```
 
     - 测试HIXL引擎通过RDMA链路进行传输的带宽, 以d2d场景，写操作，不开启中转内存池为例：
 
         - 执行client benchmark：
             ```
-            HCCL_INTRA_ROCE_ENABLE=1 ./benchmark 0 10.10.10.0 10.10.10.0:16000 20000 d2d write false
+            HCCL_INTRA_ROCE_ENABLE=1 ./benchmark --role=client --device_id=0 --local_engine=10.10.10.0 --remote_engine=10.10.10.0:16000 --tcp_port=20000 --transfer_mode=d2d --transfer_op=write --use_buffer_pool=false
             ```
 
         - 执行server benchmark：
             ```
-            HCCL_INTRA_ROCE_ENABLE=1 ./benchmark 1 10.10.10.0:16000 10.10.10.0 20000 d2d write false
+            HCCL_INTRA_ROCE_ENABLE=1 ./benchmark --role=server --device_id=1 --local_engine=10.10.10.0:16000 --remote_engine=10.10.10.0 --tcp_port=20000 --transfer_mode=d2d --transfer_op=write --use_buffer_pool=false
             ```
   **注**：HCCL_INTRA_ROCE_ENABLE=1表示使用RDMA进行传输
 - 约束说明
