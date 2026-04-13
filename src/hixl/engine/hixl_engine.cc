@@ -185,7 +185,6 @@ Status HixlEngine::TransferAsync(const AscendString &remote_engine, TransferOp o
                                  TransferReq &req) {
   HIXL_LOGI("[HixlEngine] Asynchronous transmission started, local_engine:%s, remote_engine:%s", local_engine_.c_str(),
             remote_engine.GetString());
-  (void)optional_args;
   ClientPtr client_ptr = client_manager_.GetClient(remote_engine.GetString());
   HIXL_CHK_BOOL_RET_STATUS(
       client_ptr != nullptr, NOT_CONNECTED,
@@ -197,11 +196,39 @@ Status HixlEngine::TransferAsync(const AscendString &remote_engine, TransferOp o
   auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
   uint64_t start_time = 0;
   start_time = HixlProfilingReporter::GetSysCycleTime();
-  TransferInfo transfer_info = {start_time, operation, remote_engine};
+  TransferInfo transfer_info = {start_time, operation, remote_engine, optional_args.user_data};
   std::lock_guard<std::mutex> lock(mutex_);
   req_map_.emplace(id, transfer_info);
   HIXL_LOGI("[HixlEngine] Asynchronous transmission succeeded, local_engine:%s, remote_engine:%s",
             local_engine_.c_str(), remote_engine.GetString());
+  return SUCCESS;
+}
+
+Status HixlEngine::GetTransferStatus(std::vector<TransferStatusResult> &out_results,
+                                     const GetTransferStatusOptions &options) {
+  std::vector<std::pair<TransferReq, UserData>> reqs;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    reqs.reserve(req_map_.size());
+    for (const auto &it : req_map_) {
+      TransferReq req = reinterpret_cast<TransferReq>(static_cast<uintptr_t>(it.first));
+      reqs.emplace_back(req, it.second.user_ctx);
+    }
+  }
+
+  out_results.clear();
+  out_results.reserve(std::min(reqs.size(), options.max_num));
+  for (size_t i = 0; i < out_results.capacity(); ++i) {
+    TransferStatus status;
+    Status ret = GetTransferStatus(reqs[i].first, status);
+    if (ret != SUCCESS) {
+      status = TransferStatus::FAILED;
+    }
+    if (options.skip_waiting && status == TransferStatus::WAITING) {
+      continue;
+    }
+    out_results.emplace_back(TransferStatusResult{reqs[i].first, status, reqs[i].second});
+  }
   return SUCCESS;
 }
 

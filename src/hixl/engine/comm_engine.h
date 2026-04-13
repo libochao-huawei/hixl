@@ -48,6 +48,9 @@ class CommEngine : public Engine {
 
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status) override;
 
+  Status GetTransferStatus(std::vector<TransferStatusResult> &out_results,
+                           const GetTransferStatusOptions &options) override;
+
   Status SendNotify(const AscendString &remote_engine, const NotifyDesc &notify,
                     int32_t timeout_in_millis = 1000) override;
 
