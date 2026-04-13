@@ -775,4 +775,25 @@ TEST_F(HixlUTest, TestHixlEngineAutoConnectEnabled) {
   engine1.Finalize();
   engine2.Finalize();
 }
+
+TEST_F(HixlUTest, TestCommEngineGetTransferStatusUnsupported) {
+  std::map<AscendString, AscendString> options;
+
+  Hixl engine;
+  engine.Initialize("127.0.0.1:26000", options);
+  std::vector<hixl::TransferStatusResult> out_results;
+  hixl::GetTransferStatusOptions statusOptions;
+  EXPECT_EQ(engine.GetTransferStatus(out_results, statusOptions), UNSUPPORTED);
+}
+
+TEST_F(HixlUTest, TestFabricMemEngineGetTransferStatusUnsupported) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = AscendString("1");
+
+  Hixl engine;
+  engine.Initialize("127.0.0.1:26000", options);
+  std::vector<hixl::TransferStatusResult> out_results;
+  hixl::GetTransferStatusOptions statusOptions;
+  EXPECT_EQ(engine.GetTransferStatus(out_results, statusOptions), UNSUPPORTED);
+}
 }  // namespace llm_datadist
