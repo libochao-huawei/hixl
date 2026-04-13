@@ -1187,4 +1187,25 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineMallocMemInvalidParam) {
   EXPECT_EQ(AdxlEngine::MallocMem(MEM_HOST, sizeof(int32_t), nullptr), PARAM_INVALID);
 }
 
+TEST_F(AdxlEngineUTest, TestCommEngineGetTransferStatusUnsupported) {
+  std::map<AscendString, AscendString> options;
+
+  auto engine = hixl::EngineFactory::CreateEngine("127.0.0.1", options);
+  ASSERT_NE(engine, nullptr);
+  std::vector<hixl::TransferStatusResult> out_results;
+  hixl::GetTransferStatusOptions statusOptions;
+  EXPECT_EQ(engine->GetTransferStatus(out_results, statusOptions), UNSUPPORTED);
+}
+
+TEST_F(AdxlEngineUTest, TestFabricMemEngineGetTransferStatusUnsupported) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = AscendString("1");
+
+  auto engine = hixl::EngineFactory::CreateEngine("127.0.0.1", options);
+  ASSERT_NE(engine, nullptr);
+  std::vector<hixl::TransferStatusResult> out_results;
+  hixl::GetTransferStatusOptions statusOptions;
+  EXPECT_EQ(engine->GetTransferStatus(out_results, statusOptions), UNSUPPORTED);
+}
+
 }  // namespace adxl
