@@ -9,8 +9,10 @@
  */
 
 #include "hixl_client.h"
-#include <cstring>
+#include "cs/hixl_cs_client.h"
 #include <algorithm>
+#include <chrono>
+#include <cstring>
 #include <vector>
 #include <utility>
 #include <cstdlib>
@@ -28,7 +30,6 @@ namespace hixl {
 namespace {
 constexpr uint64_t kMaxRecvRespBodySize = static_cast<uint64_t>(4ULL * 1024ULL * 1024ULL);  // 4MB 示例上限
 constexpr uint32_t kCtrlMsgPluginTimeoutMs = 10000U;
-constexpr uint32_t kTransferSyncSleepTimeMs = 1U;
 constexpr uint32_t kMaxUbCsClientNum = 4U;
 constexpr const char *kMemTypeDevice = "DEVICE";
 constexpr const char *kMemTypetHost = "HOST";
@@ -506,6 +507,19 @@ Status HixlClient::Finalize() {
   Status ret = SUCCESS;
   {
     std::lock_guard<std::mutex> lock(status_mutex_);
+    if (is_finalized_) {
+      HIXL_LOGI("HixlClient Finalize skipped, already finalized");
+      return SUCCESS;
+    }
+    finalize_pending_ = true;
+  }
+
+  while (batch_cs_sync_inflight_.load(std::memory_order_acquire) != 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(status_mutex_);
     is_finalized_ = true;
   }
 
@@ -690,6 +704,76 @@ Status HixlClient::BatchTransfer(const std::vector<TransferOpDesc> &op_descs, Tr
   return SUCCESS;
 }
 
+Status HixlClient::BatchTransferSync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
+                                     const std::chrono::steady_clock::time_point &sync_start, uint32_t timeout_ms) {
+  {
+    std::lock_guard<std::mutex> lock(status_mutex_);
+    if (!is_connected_) {
+      HIXL_LOGE(NOT_CONNECTED, "HixlClient is not connected");
+      return NOT_CONNECTED;
+    }
+  }
+  std::map<CommType, std::vector<TransferOpDesc>> op_descs_table;
+  HIXL_CHK_STATUS_RET(ClassifyTransfers(op_descs, op_descs_table), "HixlClient failed to classify transfer op_descs");
+
+  for (const auto &type_with_op_descs : op_descs_table) {
+    const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - sync_start)
+                                .count();
+    if (elapsed_ms >= static_cast<int64_t>(timeout_ms)) {
+      HIXL_LOGE(TIMEOUT, "HixlClient BatchTransferSync no time left after %lld ms of %u ms budget",
+                static_cast<long long>(elapsed_ms), timeout_ms);
+      return TIMEOUT;
+    }
+    const uint32_t remaining_timeout_ms =
+        static_cast<uint32_t>(static_cast<int64_t>(timeout_ms) - std::max<int64_t>(0L, elapsed_ms));
+
+    auto type = type_with_op_descs.first;
+    const auto &op_descs_vec = type_with_op_descs.second;
+    HIXL_LOGI("HixlClient BatchTransferSync start, type:%s, op_descs size:%zu, remaining_timeout_ms:%u",
+              CommTypeToString(type), op_descs_vec.size(), remaining_timeout_ms);
+    HixlClientHandle handle = nullptr;
+    {
+      std::lock_guard<std::mutex> ch_lock(client_handles_mutex_);
+      auto it = client_handles_.find(type);
+      if (it == client_handles_.end()) {
+        HIXL_LOGE(FAILED, "HixlClient not found client handle for type:%s", CommTypeToString(type));
+        return FAILED;
+      }
+      handle = it->second;
+    }
+    const uint32_t list_num = static_cast<uint32_t>(op_descs_vec.size());
+    std::vector<void *> remote_bufs(list_num);
+    std::vector<void *> local_bufs(list_num);
+    std::vector<const void *> local_const_bufs(list_num);
+    std::vector<const void *> remote_const_bufs(list_num);
+    std::vector<uint64_t> lens(list_num);
+    for (size_t i = 0; i < list_num; i++) {
+      remote_bufs[i] = reinterpret_cast<void *>(op_descs_vec[i].remote_addr);
+      local_bufs[i] = reinterpret_cast<void *>(op_descs_vec[i].local_addr);
+      local_const_bufs[i] = reinterpret_cast<const void *>(op_descs_vec[i].local_addr);
+      remote_const_bufs[i] = reinterpret_cast<const void *>(op_descs_vec[i].remote_addr);
+      lens[i] = op_descs_vec[i].len;
+    }
+    CommunicateMem com_mem{};
+    com_mem.list_num = list_num;
+    com_mem.len_list = lens.data();
+    auto *cs_client = static_cast<HixlCSClient *>(handle);
+    if (operation == WRITE) {
+      com_mem.dst_buf_list = remote_bufs.data();
+      com_mem.src_buf_list = local_const_bufs.data();
+      HIXL_CHK_STATUS_RET(cs_client->BatchTransferSync(false, com_mem, remaining_timeout_ms),
+                          "HixlClient BatchPutSync failed, client_handle: %p", handle);
+    } else {
+      com_mem.dst_buf_list = local_bufs.data();
+      com_mem.src_buf_list = remote_const_bufs.data();
+      HIXL_CHK_STATUS_RET(cs_client->BatchTransferSync(true, com_mem, remaining_timeout_ms),
+                          "HixlClient BatchGetSync failed, client_handle: %p", handle);
+    }
+  }
+  return SUCCESS;
+}
+
 Status HixlClient::TransferAsync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation, TransferReq &req) {
   if (op_descs.empty()) {
     HIXL_LOGE(PARAM_INVALID, "HixlClient TransferAsync failed, op_descs is empty");
@@ -763,52 +847,19 @@ Status HixlClient::TransferSync(const std::vector<TransferOpDesc> &op_descs, Tra
     HIXL_LOGE(PARAM_INVALID, "HixlClient TransferSync failed, op_descs is empty");
     return PARAM_INVALID;
   }
-  const auto start = std::chrono::steady_clock::now();
-
-  // 启动传输
-  std::vector<TransferCompleteInfo> complete_handle_list;
-  HIXL_CHK_STATUS_RET(BatchTransfer(op_descs, operation, complete_handle_list), "HixlClient TransferSync failed");
-
-  // 在超时时间内等待传输完成
-  while (true) {
-    // 检查是否已被Finalize
-    {
-      std::lock_guard<std::mutex> lock(status_mutex_);
-      if (is_finalized_) {
-        HIXL_LOGE(FAILED, "HixlClient TransferSync terminated by Finalize()");
-        return FAILED;
-      }
+  {
+    std::lock_guard<std::mutex> lock(status_mutex_);
+    if (is_finalized_ || finalize_pending_) {
+      HIXL_LOGE(FAILED, "HixlClient TransferSync rejected, client is finalizing or finalized");
+      return FAILED;
     }
-    const auto end = std::chrono::steady_clock::now();
-    auto cost = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    HIXL_CHK_BOOL_RET_STATUS(cost < timeout_ms, TIMEOUT, "HixlClient TransferSync timeout: %u ms", timeout_ms);
-
-    // 保存未完成的handle，已完成的将被移除
-    std::vector<TransferCompleteInfo> remaining_handles;
-    bool all_complete = true;
-    for (const auto &type_with_complete_handle : complete_handle_list) {
-      auto type = type_with_complete_handle.type;
-      auto complete_handle = type_with_complete_handle.complete_handle;
-      HixlCompleteStatus query_status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
-      {
-        std::lock_guard<std::mutex> lock(client_handles_mutex_);
-        HIXL_CHK_STATUS_RET(HixlCSClientQueryCompleteStatus(client_handles_[type], complete_handle, &query_status),
-                            "HixlClient QueryCompleteStatus failed, client_handle: %p, complete_handle: %p",
-                            client_handles_[type], complete_handle);
-      }
-      if (query_status == HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING) {
-        // 传输未完成，保存到剩余列表
-        remaining_handles.push_back(type_with_complete_handle);
-        all_complete = false;
-      }
-    }
-    if (all_complete) {
-      return SUCCESS;
-    }
-    // 更新handle列表，只保留未完成的
-    complete_handle_list = std::move(remaining_handles);
-    std::this_thread::sleep_for(std::chrono::milliseconds(kTransferSyncSleepTimeMs));
+    batch_cs_sync_inflight_.fetch_add(1, std::memory_order_acq_rel);
   }
+  HIXL_DISMISSABLE_GUARD(sync_inflight_guard,
+                         ([this]() { batch_cs_sync_inflight_.fetch_sub(1, std::memory_order_acq_rel); }));
+  const auto start = std::chrono::steady_clock::now();
+  HIXL_CHK_STATUS_RET(BatchTransferSync(op_descs, operation, start, timeout_ms), "HixlClient TransferSync failed");
+  return SUCCESS;
 }
 
 }  // namespace hixl
