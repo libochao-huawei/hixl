@@ -77,20 +77,20 @@ enum class TransferStatus {
 
 struct TransferArgs {
   void *user_data = nullptr;
-  uint8_t reserved[128] = {};
+  uint8_t reserved[120] = {};
 };
 
 struct GetTransferStatusArgs {
-  bool skip_waiting = false;
   size_t max_query_count = UINT32_MAX;
-  uint8_t reserved[120] = {};
+  bool skip_waiting = false;
+  uint8_t reserved[119] = {};
 };
 
 struct TransferResult {
   TransferReq req;
-  TransferStatus status;
   void *user_data;
-  uint8_t reserved[104] = {};
+  TransferStatus status;
+  uint8_t reserved[108] = {};
 };
 
 struct NotifyDesc {
