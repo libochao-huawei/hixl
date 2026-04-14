@@ -14,11 +14,7 @@
 #include "gtest/gtest.h"
 #include "hixl_cs_client.h"
 #include "hccl/hccl_types.h"
-
-// 声明hccl_stub中的辅助函数
-extern "C" void SetNextNbiFailure(int32_t ret);
-extern "C" void SetNextFenceFailure(int32_t ret);
-extern "C" void ResetTransferCounter();
+#include "depends/hccl/src/hccl_stub.h"
 
 namespace hixl {
 
