@@ -129,6 +129,12 @@ Status Endpoint::CreateChannel(const ChannelDesc &channel_desc, ChannelHandle &c
     ch_desc.roceAttr.sl = static_cast<uint32_t>(channel_desc.sl);
     HIXL_LOGI("[channel] ROCE attributes set, tc=%u, sl=%u", ch_desc.roceAttr.tc, ch_desc.roceAttr.sl);
   }
+  
+  // 临时规避：基于默认值60001,基于device id偏移，确定端口号
+  int32_t dev_logic_id = 0;
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
+  ch_desc.port = static_cast<uint16_t>(60001 + dev_logic_id);
+
   ChannelPtr channel = MakeShared<Channel>();
   HIXL_CHECK_NOTNULL(channel);
   Status ret = channel->Create(handle_, ch_desc, engine);
