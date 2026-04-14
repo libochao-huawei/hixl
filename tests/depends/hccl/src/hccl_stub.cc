@@ -29,7 +29,8 @@ static int32_t g_next_nbi_failure_ret = 0;    // 下一次NBI传输的返回值
 static int32_t g_next_fence_failure_ret = 0;  // 下一次Fence的返回值
 
 // 辅助函数：执行 NBI 传输并处理重试逻辑
-static int32_t DoNbiTransferWithRetry(void *dst, const void *src, uint64_t len) {
+static int32_t DoNbiTransferWithRetry(void *dst, const void *src, uint64_t len)
+{
   if (dst == nullptr || src == nullptr || len == 0) {
     return HCCL_E_PARA;
   }
@@ -46,7 +47,8 @@ static int32_t DoNbiTransferWithRetry(void *dst, const void *src, uint64_t len) 
 }
 
 HcommResult HcommMemReg(EndpointHandle endPointHandle, const char *memTag, const CommMem *mem,
-                        HcommMemHandle *memHandle) {
+                        HcommMemHandle *memHandle)
+{
   static int32_t mem_num_stub = 1;
   (void)endPointHandle;
   (void)memTag;
@@ -55,14 +57,16 @@ HcommResult HcommMemReg(EndpointHandle endPointHandle, const char *memTag, const
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
-HcommResult HcommMemUnreg(EndpointHandle endPointHandle, HcommMemHandle memHandle) {
+HcommResult HcommMemUnreg(EndpointHandle endPointHandle, HcommMemHandle memHandle)
+{
   (void)endPointHandle;
   (void)memHandle;
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
 HcommResult HcommMemExport(EndpointHandle endPointHandle, HcommMemHandle memHandle, void **memDesc,
-                           uint32_t *memDescLen) {
+                           uint32_t *memDescLen)
+{
   (void)endPointHandle;
   (void)memHandle;
   static std::string desc = "test_desc2";
@@ -71,19 +75,22 @@ HcommResult HcommMemExport(EndpointHandle endPointHandle, HcommMemHandle memHand
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
-HcommResult HcommEndpointCreate(const EndpointDesc *endPoint, EndpointHandle *endPointHandle) {
+HcommResult HcommEndpointCreate(const EndpointDesc *endPoint, EndpointHandle *endPointHandle)
+{
   (void)endPoint;
   static int32_t ep_num_stub = 1;
   *endPointHandle = reinterpret_cast<void *>(ep_num_stub++);
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
-HcommResult HcommEndpointDestroy(EndpointHandle endPointHandle) {
+HcommResult HcommEndpointDestroy(EndpointHandle endPointHandle)
+{
   (void)endPointHandle;
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
-HcommResult HcommMemImport(EndpointHandle endpointHandle, const void *memDesc, uint32_t descLen, CommMem *outMem) {
+HcommResult HcommMemImport(EndpointHandle endpointHandle, const void *memDesc, uint32_t descLen, CommMem *outMem)
+{
   (void)endpointHandle;
   if (memDesc == nullptr || outMem == nullptr || descLen == 0) {
     return HCCL_E_INTERNAL;
@@ -98,7 +105,8 @@ HcommResult HcommMemImport(EndpointHandle endpointHandle, const void *memDesc, u
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
-HcommResult HcommMemUnimport(EndpointHandle endpointHandle, const void *memDesc, uint32_t descLen) {
+HcommResult HcommMemUnimport(EndpointHandle endpointHandle, const void *memDesc, uint32_t descLen)
+{
   (void)endpointHandle;
   (void)memDesc;
   (void)descLen;
@@ -106,7 +114,8 @@ HcommResult HcommMemUnimport(EndpointHandle endpointHandle, const void *memDesc,
 }
 
 HcommResult HcommChannelCreate(EndpointHandle endPointHandle, CommEngine engine, HcommChannelDesc *channelDescs,
-                               uint32_t channelNum, ChannelHandle *channels) {
+    uint32_t channelNum, ChannelHandle *channels)
+{
   (void)endPointHandle;
   (void)engine;
   (void)channelDescs;
@@ -116,13 +125,15 @@ HcommResult HcommChannelCreate(EndpointHandle endPointHandle, CommEngine engine,
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
-HcommResult HcommChannelDestroy(const ChannelHandle *channels, uint32_t channelNum) {
+HcommResult HcommChannelDestroy(const ChannelHandle *channels, uint32_t channelNum)
+{
   (void)channels;
   (void)channelNum;
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
-HcommResult HcommChannelGetStatus(const ChannelHandle *channelList, uint32_t listNum, int32_t *statusList) {
+HcommResult HcommChannelGetStatus(const ChannelHandle *channelList, uint32_t listNum, int32_t *statusList)
+{
   (void)channelList;
   (void)listNum;
   (void)statusList;
@@ -130,7 +141,8 @@ HcommResult HcommChannelGetStatus(const ChannelHandle *channelList, uint32_t lis
 }
 
 // NBI传输公共辅助函数（处理失败注入）
-static int32_t DoNbiTransferWithFailureInjection(void *dst, const void *src, uint64_t len) {
+static int32_t DoNbiTransferWithFailureInjection(void *dst, const void *src, uint64_t len)
+{
   if (g_next_nbi_failure_ret != 0) {
     int32_t ret = g_next_nbi_failure_ret;
     g_next_nbi_failure_ret = 0;
@@ -139,20 +151,23 @@ static int32_t DoNbiTransferWithFailureInjection(void *dst, const void *src, uin
   return DoNbiTransferWithRetry(dst, src, len);
 }
 
-int32_t HcommWriteNbiOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, void *src, uint64_t len) {
+int32_t HcommWriteNbiOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, void *src, uint64_t len)
+{
   (void)thread;
   (void)channel;
   return DoNbiTransferWithFailureInjection(dst, src, len);
 }
 
-int32_t HcommReadNbiOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, void *src, uint64_t len) {
+int32_t HcommReadNbiOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, void *src, uint64_t len)
+{
   (void)thread;
   (void)channel;
   return DoNbiTransferWithFailureInjection(dst, src, len);
 }
 
 HcommResult HcommThreadAlloc(CommEngine engine, uint32_t threadNum, const uint32_t *notifyNumPerThread,
-                             ThreadHandle *threads) {
+                             ThreadHandle *threads)
+{
   (void)engine;
   (void)notifyNumPerThread;
   if (threads == nullptr) {
@@ -164,24 +179,28 @@ HcommResult HcommThreadAlloc(CommEngine engine, uint32_t threadNum, const uint32
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
-HcommResult HcommThreadFree(const ThreadHandle *threads, uint32_t threadNum) {
+HcommResult HcommThreadFree(const ThreadHandle *threads, uint32_t threadNum)
+{
   (void)threads;
   (void)threadNum;
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
-int32_t HcommBatchModeStart(const char *batchTag) {
+int32_t HcommBatchModeStart(const char *batchTag)
+{
   (void)batchTag;
   return HCCL_SUCCESS;
 }
 
-int32_t HcommBatchModeEnd(const char *batchTag) {
+int32_t HcommBatchModeEnd(const char *batchTag)
+{
   (void)batchTag;
   return HCCL_SUCCESS;
 }
 
 // 基本传输公共辅助函数
-static int32_t DoBasicTransfer(void *dst, const void *src, uint64_t len) {
+static int32_t DoBasicTransfer(void *dst, const void *src, uint64_t len)
+{
   if (dst == nullptr || src == nullptr || len == 0) {
     return HCCL_E_PARA;
   }
@@ -190,19 +209,22 @@ static int32_t DoBasicTransfer(void *dst, const void *src, uint64_t len) {
   return HCCL_SUCCESS;
 }
 
-int32_t HcommReadOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len) {
+int32_t HcommReadOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len)
+{
   (void)thread;
   (void)channel;
   return DoBasicTransfer(dst, src, len);
 }
 
-int32_t HcommWriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len) {
+int32_t HcommWriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len)
+{
   (void)thread;
   (void)channel;
   return DoBasicTransfer(dst, src, len);
 }
 
-int32_t HcommChannelFenceOnThread(ThreadHandle thread, ChannelHandle channel) {
+int32_t HcommChannelFenceOnThread(ThreadHandle thread, ChannelHandle channel)
+{
   (void)thread;
   (void)channel;
   // 检查是否设置了Fence失败模式
@@ -217,17 +239,20 @@ int32_t HcommChannelFenceOnThread(ThreadHandle thread, ChannelHandle channel) {
 }
 
 // 设置下一次NBI传输返回指定错误码
-void SetNextNbiFailure(int32_t ret) {
+void SetNextNbiFailure(int32_t ret)
+{
   g_next_nbi_failure_ret = ret;
 }
 
 // 设置下一次Fence返回指定错误码
-void SetNextFenceFailure(int32_t ret) {
+void SetNextFenceFailure(int32_t ret)
+{
   g_next_fence_failure_ret = ret;
 }
 
 // 重置传输计数器
-void ResetTransferCounter() {
+void ResetTransferCounter()
+{
   g_transfer_retry_counter = 0;
 }
 
