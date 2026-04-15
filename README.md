@@ -1,5 +1,6 @@
 # HIXL
 
+
 ## 🔥Latest News
 
 - [2026/03] HIXL已支持超节点内FabricMem模式，详见 [FabricMem](docs/FabricMem.md)。
