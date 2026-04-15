@@ -813,8 +813,6 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
     HIXL_LOGE(PARAM_INVALID, "[HixlClient] Invalid endpoint location: %d", ep.loc.locType);
     return PARAM_INVALID;
   }
-  HIXL_LOGE(PARAM_INVALID, "[HixlClient] Unsupported protocol=%d location=%d", static_cast<int32_t>(ep.protocol),
-            static_cast<int32_t>(ep.loc.locType));
   return PARAM_INVALID;
 }
 
