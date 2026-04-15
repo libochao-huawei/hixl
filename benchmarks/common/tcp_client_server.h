@@ -11,6 +11,7 @@
 #ifndef HIXL_TCP_CLIENT_SERVER_H
 #define HIXL_TCP_CLIENT_SERVER_H
 
+#include <cstdint>
 #include <string>
 #include <netinet/in.h>
 
@@ -21,6 +22,8 @@ class TCPClient {
   bool ConnectToServer(const std::string &host, uint16_t port);
 
   bool SendUint64(uint64_t data) const;
+
+  bool ReceiveUint64(uint64_t *out) const;
 
   bool SendTaskStatus() const;
 
@@ -44,6 +47,8 @@ class TCPServer {
   bool AcceptConnection();
 
   uint64_t ReceiveUint64() const;
+
+  bool SendUint64(uint64_t data) const;
 
   bool SendTaskStatus() const;
 

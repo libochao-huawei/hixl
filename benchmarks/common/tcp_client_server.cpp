@@ -58,10 +58,33 @@ bool TCPClient::SendUint64(uint64_t data) const {
   // 将主机字节序转换为网络字节序
   uint64_t network_data = htobe64(data);
   if (send(sock_, &network_data, sizeof(uint64_t), 0) < 0) {
-    std::cerr << "[ERROR] Send data to tcp server failed" << std::endl;
+    std::cerr << "[ERROR] Send uint64 to tcp peer failed" << std::endl;
     return false;
   }
-  std::cout << "[INFO] Send data to tcp server success" << std::endl;
+  std::cout << "[INFO] Send uint64 to tcp peer success" << std::endl;
+  return true;
+}
+
+bool TCPClient::ReceiveUint64(uint64_t *out) const {
+  uint64_t received_data = 0;
+  ssize_t bytes_received = recv(sock_, &received_data, sizeof(uint64_t), 0);
+  if (bytes_received < 0) {
+    std::cerr << "[ERROR] Received uint64 data failed" << std::endl;
+    return false;
+  }
+  if (bytes_received == 0) {
+    std::cout << "[INFO] Tcp peer connection break" << std::endl;
+    return false;
+  }
+  if (bytes_received != static_cast<ssize_t>(sizeof(uint64_t))) {
+    std::cerr << "[ERROR] Invalid uint64 size, expect: " << sizeof(uint64_t) << " actual: " << bytes_received
+              << std::endl;
+    return false;
+  }
+  if (out != nullptr) {
+    *out = be64toh(received_data);
+  }
+  std::cout << "[INFO] Tcp client received uint64 data success" << std::endl;
   return true;
 }
 
@@ -190,6 +213,16 @@ uint64_t TCPServer::ReceiveUint64() const {
   received_data = be64toh(received_data);
   std::cout << "[INFO] Tcp server received uint64 data success" << std::endl;
   return received_data;
+}
+
+bool TCPServer::SendUint64(uint64_t data) const {
+  uint64_t network_data = htobe64(data);
+  if (send(client_socket_, &network_data, sizeof(uint64_t), 0) < 0) {
+    std::cerr << "[ERROR] Send uint64 to tcp peer failed" << std::endl;
+    return false;
+  }
+  std::cout << "[INFO] Send uint64 to tcp peer success" << std::endl;
+  return true;
 }
 
 bool TCPServer::SendTaskStatus() const {
