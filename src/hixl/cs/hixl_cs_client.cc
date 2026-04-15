@@ -813,8 +813,6 @@ Status HixlCSClient::BatchTransfer(bool is_get, const CommunicateMem &communicat
     HIXL_LOGE(PARAM_INVALID, "[HixlClient] Invalid endpoint location: %d", ep.loc.locType);
     return PARAM_INVALID;
   }
-  HIXL_LOGE(PARAM_INVALID, "[HixlClient] Unsupported protocol=%d location=%d", static_cast<int32_t>(ep.protocol),
-            static_cast<int32_t>(ep.loc.locType));
   return PARAM_INVALID;
 }
 
@@ -1178,11 +1176,12 @@ Status HixlCSClient::Destroy() {
   Status first_error = SUCCESS;
   ReleaseLegacyHandlesLocked();
   AbortAllPendingDeviceHandlesLocked();
-  Status ub_ret = ReleaseDeviceResourcesLocked();
-  if (ub_ret != SUCCESS) {
-    return ub_ret;
+  Status ret = ReleaseDeviceResourcesLocked();
+  if (ret != SUCCESS) {
+    HIXL_LOGW("[HixlClient] ReleaseDeviceResourcesLocked failed. fd=%d, ret=%u", socket_, static_cast<uint32_t>(ret));
+    first_error = (first_error == SUCCESS) ? ret : first_error;
   }
-  Status ret = ClearRemoteMemInfo();
+  ret = ClearRemoteMemInfo();
   if (ret != SUCCESS) {
     HIXL_LOGW("[HixlClient] ClearRemoteMemInfo failed. fd=%d, ret=%u", socket_, static_cast<uint32_t>(ret));
     first_error = (first_error == SUCCESS) ? ret : first_error;
