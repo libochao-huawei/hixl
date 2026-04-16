@@ -18,7 +18,7 @@ import torch_npu
 import torch.distributed as dist
 from mooncake.store import MooncakeDistributedStore
 
-from mooncake_sample_common import SEGMENT_SIZE, LOCAL_BUFFER, ALIGNMENT
+from mooncake_sample_common import SEGMENT_SIZE, LOCAL_BUFFER, HCCS_ALIGNMENT, FABRIC_ALIGNMENT
 from config import Config
 
 
@@ -29,6 +29,7 @@ class MooncakeSampleBase:
         self.store = None
         self.tensor = None
         self.target_tensor = None
+        self.register_buffer_size = 32 * 61 * 144 * 1024
         
     def init_process_group(self):
         if not self.config.distributed:
@@ -87,29 +88,32 @@ class MooncakeSampleBase:
                 import ctypes
                 tensor_size = 33 * 61 * 144 * 1024
                 # Allocate memory from store's memory pool
-                tensor_ptr = self.store.alloc_from_mem_pool(tensor_size)
+                alloc_size = (tensor_size + FABRIC_ALIGNMENT - 1) // FABRIC_ALIGNMENT * FABRIC_ALIGNMENT
+                tensor_ptr = self.store.alloc_from_mem_pool(FABRIC_ALIGNMENT)
+                self.register_buffer_size = alloc_size
                 # Create torch tensors from the allocated pointers
                 self.tensor = torch.frombuffer(
                     (ctypes.c_uint8 * tensor_size).from_address(tensor_ptr),
                     dtype=torch.int8
-                ).cpu().reshape(33, 61, 144 * 1024)
+                ).reshape(33, 61, 144 * 1024)
                 self.tensor.fill_(1)
             else:
-                self.tensor = torch.ones(33, 61, 144 * 1024, dtype=torch.int8).npu()
+                self.tensor = torch.ones(33, 61, 144 * 1024, dtype=torch.int8, pin_memory=True).npu()
 
             if self.args.schema.endswith("h"):
                 import ctypes
-                tensor_size = 33 * 61 * 144 * 1024
+                target_tensor_size = 33 * 61 * 144 * 1024
                 # Allocate memory from store's memory pool
-                tensor_ptr = self.store.alloc_from_mem_pool(tensor_size)
+                alloc_size = (target_tensor_size + FABRIC_ALIGNMENT - 1) // FABRIC_ALIGNMENT * FABRIC_ALIGNMENT
+                tensor_ptr = self.store.alloc_from_mem_pool(alloc_size)
                 # Create torch tensors from the allocated pointers
                 self.target_tensor = torch.frombuffer(
                     (ctypes.c_uint8 * tensor_size).from_address(tensor_ptr),
                     dtype=torch.int8
-                ).cpu().reshape(33, 61, 144 * 1024)
-                self.tensor.fill_(0)
+                ).reshape(33, 61, 144 * 1024)
+                self.target_tensor.fill_(0)
             else:
-                self.target_tensor = torch.zeros(33, 61, 144 * 1024, dtype=torch.int8).npu()
+                self.target_tensor = torch.zeros(33, 61, 144 * 1024, dtype=torch.int8, pin_memory=True).npu()
 
         else:
             # Embedded mode: use torch tensors
@@ -126,14 +130,21 @@ class MooncakeSampleBase:
 
     def register_buffers(self):
         data_ptr = self.tensor.data_ptr()
-        addr = (data_ptr + ALIGNMENT - 1) // ALIGNMENT * ALIGNMENT
+        use_dummy_mode = hasattr(self.args, 'use_dummy') and self.args.use_dummy
+        if use_dummy_mode:
+            addr = data_ptr
+        else:
+            addr = (data_ptr + HCCS_ALIGNMENT - 1) // HCCS_ALIGNMENT * HCCS_ALIGNMENT
         logging.info(f"dataptr:{data_ptr}, addr:{addr}")
-        self.store.register_buffer(addr, 61 * 32 * 144 * 1024)
+        self.store.register_buffer(addr, self.register_buffer_size)
 
         target_data_ptr = self.target_tensor.data_ptr()
-        remote_addr = (target_data_ptr + ALIGNMENT - 1) // ALIGNMENT * ALIGNMENT
+        if use_dummy_mode:
+            remote_addr = target_data_ptr
+        else:
+            remote_addr = (target_data_ptr + HCCS_ALIGNMENT - 1) // HCCS_ALIGNMENT * HCCS_ALIGNMENT
         logging.info(f"dataptr:{target_data_ptr}, addr:{remote_addr}")
-        self.store.register_buffer(remote_addr, 61 * 32 * 144 * 1024)
+        self.store.register_buffer(remote_addr, self.register_buffer_size)
         
         return addr, remote_addr
     

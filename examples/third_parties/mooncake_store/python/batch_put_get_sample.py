@@ -76,7 +76,7 @@ if __name__ == "__main__":
     args.schema = args.schema.lower()
     
     runner = BatchPutGet(args, config)
-    validate_schema(args.schema)
+    validate_schema(args)
     setup_environment(args)
     runner.init_process_group()
     runner.run()
