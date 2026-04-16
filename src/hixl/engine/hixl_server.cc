@@ -68,6 +68,7 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
                         "Failed to register send endpoint info processor.");
     HIXL_CHK_STATUS_RET(HixlCSServerListen(server_handle_, static_cast<uint32_t>(port)),
                         "HixlServer listen failed, port:%d.", port);
+    HIXL_CHK_STATUS_RET(RegisterNotifyHandlers(), "Failed to register notify handlers.");
   }
   return SUCCESS;
 }
@@ -143,6 +144,49 @@ Status HixlServer::RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor
   };
   HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, static_cast<CtrlMsgType>(msg_type), callback),
                       "Failed to register send endpoint info processor.");
+  return SUCCESS;
+}
+
+Status HixlServer::GetNotifies(std::vector<NotifyDesc> &notifies) {
+  std::lock_guard<std::mutex> lock(notify_mutex_);
+  notifies = notify_messages_;
+  notify_messages_.clear();
+  return SUCCESS;
+}
+
+Status HixlServer::RegisterNotifyHandlers() {
+  MsgProcessor notify_processor = [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
+    NotifyMsg notify_msg;
+    try {
+      nlohmann::json j = nlohmann::json::parse(std::string(msg, msg_len));
+      notify_msg = j.get<NotifyMsg>();
+    } catch (const nlohmann::json::exception &e) {
+      HIXL_LOGE(PARAM_INVALID, "Failed to parse NotifyMsg, exception:%s", e.what());
+      return PARAM_INVALID;
+    }
+    NotifyDesc notify_desc;
+    notify_desc.name = AscendString(notify_msg.name.c_str());
+    notify_desc.notify_msg = AscendString(notify_msg.notify_msg.c_str());
+    {
+      std::lock_guard<std::mutex> lock(notify_mutex_);
+      notify_messages_.push_back(notify_desc);
+    }
+    NotifyAck ack;
+    ack.req_id = notify_msg.req_id;
+    nlohmann::json ack_json = ack;
+    std::string ack_str = ack_json.dump();
+    CtrlMsgHeader header{};
+    header.magic = kMagicNumber;
+    header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + ack_str.size());
+    CtrlMsgType msg_type = CtrlMsgType::kNotifyAck;
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &header, static_cast<uint64_t>(sizeof(header))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, ack_str.c_str(), static_cast<uint64_t>(ack_str.size())));
+    HIXL_LOGI("Received NotifyMsg and sent NotifyAck, req_id:%lu, name:%s", notify_msg.req_id, notify_msg.name.c_str());
+    return SUCCESS;
+  };
+  HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, CtrlMsgType::kNotify, notify_processor),
+                      "Failed to register kNotify processor.");
   return SUCCESS;
 }
 }  // namespace hixl

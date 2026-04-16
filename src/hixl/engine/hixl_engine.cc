@@ -21,6 +21,9 @@
 #include "adxl/adxl_types.h"
 
 namespace hixl {
+namespace {
+constexpr int32_t kConnectWhenTransferTimeout = 3000;
+}
 
 void from_json(const nlohmann::json &j, hixl::EndpointConfig &ep) {
   j.at("protocol").get_to(ep.protocol);
@@ -65,9 +68,10 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
                       "ipv6 should be '[host_ip]:host_port' or '[host_ip]' "
                       "current local_engine:%s",
                       local_engine_.c_str());
-  HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_), 
-                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s, local_comm_res:%s", 
-                      local_engine_.c_str(), local_comm_res.c_str());
+HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_), 
+                       "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s, local_comm_res:%s", 
+                       local_engine_.c_str(), local_comm_res.c_str());
+  HIXL_CHK_STATUS_RET(ParseAutoConnectConfig(options), "[HixlEngine] Failed to parse auto connect config");
   is_initialized_ = true;
   HIXL_LOGI("[HixlEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
   return SUCCESS;
@@ -143,9 +147,9 @@ Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in
   HIXL_CHK_STATUS_RET(client_ptr->SetLocalMemInfo(mem_info_list), 
                       "[HixlEngine] Failed to set local memory info, local_engine:%s",
                       local_engine_.c_str());
-  HIXL_CHK_STATUS_RET(client_ptr->Connect(timeout_in_millis), 
-                      "[HixlEngine] Failed to connect, local_engine:%s, remote_engine:%s, timeout:%d ms",
-                      local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+HIXL_CHK_STATUS_RET(client_ptr->Connect(timeout_in_millis), 
+                       "[HixlEngine] Failed to connect, local_engine:%s, remote_engine:%s, timeout:%d ms",
+                       local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
   HIXL_DISMISS_GUARD(rollback);
   HIXL_LOGI("[HixlEngine] Connection succeeded, local_engine:%s, remote_engine:%s", 
             local_engine_.c_str(), remote_engine.GetString());
@@ -177,9 +181,14 @@ void HixlEngine::Disconnect() {
 }
 
 Status HixlEngine::TransferSync(const AscendString &remote_engine, TransferOp operation,
-                                const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis) {
+                                 const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis) {
   HIXL_LOGI("[HixlEngine] Synchronous transmission started, local_engine:%s, remote_engine:%s, timeout:%d ms",
             local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+  if (auto_connect_) {
+    HIXL_CHK_STATUS_RET(ConnectWhenTransfer(remote_engine, timeout_in_millis),
+                        "[HixlEngine] Failed to auto connect before TransferSync, local_engine:%s, remote_engine:%s",
+                        local_engine_.c_str(), remote_engine.GetString());
+  }
   ClientPtr client_ptr = client_manager_.GetClient(remote_engine.GetString());
   HIXL_CHK_BOOL_RET_STATUS(client_ptr != nullptr, 
                            NOT_CONNECTED, 
@@ -187,28 +196,43 @@ Status HixlEngine::TransferSync(const AscendString &remote_engine, TransferOp op
                            local_engine_.c_str(), remote_engine.GetString());
   HixlProfType type = (operation == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
   HIXL_API_PROFILING(type);
-  HIXL_CHK_STATUS_RET(client_ptr->TransferSync(op_descs, operation, timeout_in_millis),
-                      "[HixlEngine] Failed to TransferSync, local_engine:%s, remote_engine:%s, timeout:%d ms", 
-                      local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+  Status ret = client_ptr->TransferSync(op_descs, operation, timeout_in_millis);
+  if (ret != SUCCESS) {
+    HIXL_LOGE(ret, "[HixlEngine] Failed to TransferSync, local_engine:%s, remote_engine:%s, timeout:%d ms",
+              local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+    HIXL_CHK_STATUS_RET(DisconnectOnError(remote_engine.GetString(), timeout_in_millis),
+                        "[HixlEngine] Failed to disconnect on error.");
+    return ret;
+  }
   HIXL_LOGI("[HixlEngine] Synchronous transmission succeeded, local_engine:%s, remote_engine:%s, timeout:%d ms",
             local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
   return SUCCESS;
 }
 
 Status HixlEngine::TransferAsync(const AscendString &remote_engine, TransferOp operation,
-                                 const std::vector<TransferOpDesc> &op_descs, const TransferArgs &optional_args,
-                                 TransferReq &req) {
+                                  const std::vector<TransferOpDesc> &op_descs, const TransferArgs &optional_args,
+                                  TransferReq &req) {
   HIXL_LOGI("[HixlEngine] Asynchronous transmission started, local_engine:%s, remote_engine:%s",
             local_engine_.c_str(), remote_engine.GetString());
   (void)optional_args;
+  if (auto_connect_) {
+    HIXL_CHK_STATUS_RET(ConnectWhenTransfer(remote_engine, kConnectWhenTransferTimeout),
+                        "[HixlEngine] Failed to auto connect before TransferAsync, local_engine:%s, remote_engine:%s",
+                        local_engine_.c_str(), remote_engine.GetString());
+  }
   ClientPtr client_ptr = client_manager_.GetClient(remote_engine.GetString());
   HIXL_CHK_BOOL_RET_STATUS(client_ptr != nullptr, 
                            NOT_CONNECTED, 
                            "[HixlEngine] Failed to get client through remote engine, please check connection. remote_engine:%s",
                            remote_engine.GetString());
-  HIXL_CHK_STATUS_RET(client_ptr->TransferAsync(op_descs, operation, req), 
-                      "[HixlEngine] Failed to TransferAsync, local_engine:%s, remote_engine:%s",
-                      local_engine_.c_str(), remote_engine.GetString());
+  Status trans_status = client_ptr->TransferAsync(op_descs, operation, req);
+  if (trans_status != SUCCESS) {
+    HIXL_LOGE(trans_status, "[HixlEngine] Failed to TransferAsync, local_engine:%s, remote_engine:%s",
+              local_engine_.c_str(), remote_engine.GetString());
+    HIXL_CHK_STATUS_RET(DisconnectOnError(remote_engine.GetString(), kConnectWhenTransferTimeout),
+                        "[HixlEngine] Failed to disconnect on error.");
+    return trans_status;
+  }
   auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
   uint64_t start_time = 0;
   start_time = HixlProfilingReporter::GetSysCycleTime();
@@ -258,17 +282,32 @@ void HixlEngine::Finalize() {
 }
 
 Status HixlEngine::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis) {
-  (void)remote_engine;
-  (void)notify;
-  (void)timeout_in_millis;
-  HIXL_LOGE(UNSUPPORTED, "[HixlEngine] Method SendNotify is not supported by HixlEngine yet");
-  return UNSUPPORTED;
+  HIXL_LOGI("[HixlEngine] SendNotify started, local_engine:%s, remote_engine:%s, timeout:%d ms",
+            local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+  ClientPtr client_ptr = client_manager_.GetClient(remote_engine.GetString());
+  HIXL_CHK_BOOL_RET_STATUS(client_ptr != nullptr, 
+                           NOT_CONNECTED, 
+                           "[HixlEngine] Failed to get client, remote_engine:%s is not connected",
+                           remote_engine.GetString());
+  
+  uint64_t req_id = next_notify_id_.fetch_add(1);
+  HIXL_LOGI("[HixlEngine] SendNotify req_id:%lu", req_id);
+  HIXL_CHK_STATUS_RET(client_ptr->SendNotifyInternal(req_id, notify, timeout_in_millis),
+                      "[HixlEngine] Failed to SendNotify, local_engine:%s, remote_engine:%s, req_id:%lu",
+                      local_engine_.c_str(), remote_engine.GetString(), req_id);
+  HIXL_LOGI("[HixlEngine] SendNotify succeeded, local_engine:%s, remote_engine:%s, req_id:%lu",
+            local_engine_.c_str(), remote_engine.GetString(), req_id);
+  return SUCCESS;
 }
 
 Status HixlEngine::GetNotifies(std::vector<NotifyDesc> &notifies) {
-  (void)notifies;
-  HIXL_LOGE(UNSUPPORTED, "[HixlEngine] Method GetNotifies is not supported by HixlEngine yet");
-  return UNSUPPORTED;
+  HIXL_LOGI("[HixlEngine] GetNotifies started, local_engine:%s", local_engine_.c_str());
+  HIXL_CHK_STATUS_RET(server_.GetNotifies(notifies),
+                      "[HixlEngine] Failed to get notifies from server, local_engine:%s",
+                      local_engine_.c_str());
+  HIXL_LOGI("[HixlEngine] GetNotifies succeeded, local_engine:%s, count:%zu",
+            local_engine_.c_str(), notifies.size());
+  return SUCCESS;
 }
 
 Status HixlEngine::RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor) {
@@ -336,14 +375,11 @@ Status HixlEngine::ParseServiceLevel(const std::map<AscendString, AscendString> 
   if (it != options.cend()) {
     service_level_str = it->second.GetString();
   }
-  // 若options未设置 service_level 则检查环境变量 HCCL_RDMA_SL 是否设置
   if (service_level_str.empty()) {
-    std::string env_sl;
     const char *env_ret = std::getenv("HCCL_RDMA_SL");
     if (env_ret != nullptr) {
-      env_sl = env_ret;
+      service_level_str = env_ret;
     }
-    service_level_str = env_sl;
   }
   if (!service_level_str.empty()) {
     uint32_t service_level = 0U;
@@ -353,6 +389,52 @@ Status HixlEngine::ParseServiceLevel(const std::map<AscendString, AscendString> 
                              service_level);
     rdma_service_level_ = static_cast<uint8_t>(service_level);
     HIXL_LOGI("Set rdma service level to %u.", service_level);
+  }
+  return SUCCESS;
+}
+
+Status HixlEngine::ParseAutoConnectConfig(const std::map<AscendString, AscendString> &options) {
+  auto auto_connect_it = options.find(hixl::OPTION_AUTO_CONNECT);
+  if (auto_connect_it != options.end()) {
+    std::string auto_connect_str = auto_connect_it->second.GetString();
+    if (!auto_connect_str.empty()) {
+      uint32_t auto_connect = 0U;
+      HIXL_CHK_STATUS_RET(ToNumber(auto_connect_str, auto_connect),
+                          "%s is invalid, value = %s", hixl::OPTION_AUTO_CONNECT,
+                          auto_connect_str.c_str());
+      HIXL_CHK_BOOL_RET_STATUS(auto_connect == 1U || auto_connect == 0U, PARAM_INVALID,
+                               "%s is invalid, should be zero or one.", hixl::OPTION_AUTO_CONNECT);
+      HIXL_LOGI("set %s to %d.", hixl::OPTION_AUTO_CONNECT, auto_connect);
+      auto_connect_ = (auto_connect == 1U);
+    } else {
+      HIXL_LOGE(PARAM_INVALID, "%s value is empty, should be zero or one.", hixl::OPTION_AUTO_CONNECT);
+    }
+  }
+  return SUCCESS;
+}
+
+Status HixlEngine::ConnectWhenTransfer(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  ClientPtr client_ptr = client_manager_.GetClient(remote_engine.GetString());
+  if (client_ptr == nullptr) {
+    std::lock_guard<std::mutex> lock(connection_mutex_);
+    client_ptr = client_manager_.GetClient(remote_engine.GetString());
+    if (client_ptr == nullptr) {
+      HIXL_LOGI("[HixlEngine] Auto connect started, local_engine:%s, remote_engine:%s, timeout:%d ms.",
+                local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+      HIXL_CHK_STATUS_RET(Connect(remote_engine, timeout_in_millis),
+                          "[HixlEngine] Failed to auto connect, local_engine:%s, remote_engine:%s, timeout:%d ms",
+                          local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+    }
+  }
+  return SUCCESS;
+}
+
+Status HixlEngine::DisconnectOnError(const std::string &remote_engine, int32_t timeout_in_millis) {
+  if (auto_connect_) {
+    AscendString remote_engine_ascend(remote_engine.c_str());
+    HIXL_CHK_STATUS_RET(Disconnect(remote_engine_ascend, timeout_in_millis),
+                        "[HixlEngine] Failed to disconnect on error, remote_engine:%s, timeout:%d ms",
+                        remote_engine.c_str(), timeout_in_millis);
   }
   return SUCCESS;
 }

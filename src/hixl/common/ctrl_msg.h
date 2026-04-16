@@ -12,6 +12,7 @@
 
 #include "cs/hixl_cs.h"
 #include "hixl/hixl_types.h"
+#include "nlohmann/json.hpp"
 
 namespace hixl {
 const uint32_t kMagicNumber = 0xA4B3C2D1;
@@ -35,6 +36,8 @@ enum class CtrlMsgType : int32_t {
   kMatchEndpointReq = 9,
   kMatchEndpointResp = 10,
   kDestroyChannelReq = 11,
+  kNotify = 12,
+  kNotifyAck = 13,
   kEnd
 };
 
@@ -84,6 +87,34 @@ struct DestroyChannelReq {
   uint64_t endpoint_handle;
   uint64_t channel_handle;
 };
+
+struct NotifyMsg {
+  uint64_t req_id;
+  std::string name;
+  std::string notify_msg;
+};
+
+struct NotifyAck {
+  uint64_t req_id;
+};
+
+inline void to_json(nlohmann::json &j, const NotifyMsg &msg) {
+  j = nlohmann::json{{"req_id", msg.req_id}, {"name", msg.name}, {"notify_msg", msg.notify_msg}};
+}
+
+inline void from_json(const nlohmann::json &j, NotifyMsg &msg) {
+  j.at("req_id").get_to(msg.req_id);
+  j.at("name").get_to(msg.name);
+  j.at("notify_msg").get_to(msg.notify_msg);
+}
+
+inline void to_json(nlohmann::json &j, const NotifyAck &msg) {
+  j = nlohmann::json{{"req_id", msg.req_id}};
+}
+
+inline void from_json(const nlohmann::json &j, NotifyAck &msg) {
+  j.at("req_id").get_to(msg.req_id);
+}
 
 using CtrlMsgPtr = std::shared_ptr<CtrlMsg>;
 using MsgProcessor = std::function<Status(int32_t fd, const char *msg, uint64_t msg_len)>;

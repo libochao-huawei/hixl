@@ -153,7 +153,11 @@ class HixlClient {
    * @param [out] status         传输状态
    * @return 操作结果状态码
    */
-  Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
+Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
+
+  int32_t GetCtrlSocket() const { return ctrl_socket_; }
+
+  Status SendNotifyInternal(uint64_t req_id, const NotifyDesc &notify, int32_t timeout_ms);
 
  private:
   static Status Deserialize(const std::string &json_str, std::vector<EndpointConfig> &endpoint_list);
@@ -163,6 +167,8 @@ class HixlClient {
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
 
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const;
+
+  Status RecvNotifyAck(int32_t fd, uint64_t expected_req_id, int32_t timeout_ms);
 
   // 解析通信类型
   CommType ParseCommType(const std::string &local_placement, const std::string &remote_placement) const;
@@ -221,6 +227,8 @@ class HixlClient {
   std::mutex mem_handles_mutex_;       // 保护client_mem_handles_
   std::mutex local_segments_mutex_;    // 保护local_segments_
   std::mutex remote_segments_mutex_;   // 保护remote_segments_
+
+  int32_t ctrl_socket_ = -1;
 };
 
 }  // namespace hixl
