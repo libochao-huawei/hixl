@@ -24,7 +24,7 @@ set(CMAKE_LD             "${TOOLCHAIN_DIR}/bin/aarch64-target-linux-gnu-ld"     
 set(CMAKE_NM             "${TOOLCHAIN_DIR}/bin/aarch64-target-linux-gnu-nm"      CACHE PATH "NM")
 set(CMAKE_OBJCOPY        "${TOOLCHAIN_DIR}/bin/aarch64-target-linux-gnu-objcopy" CACHE PATH "OBJCOPY")
 
-set(CMAKE_C_COMPILE_OBJECT "<CMAKE_C_COMPILER> <DEFINES> -D__FILE__='\"$(notdir $(abspath <SOURCE>))\"' -Wno-builtin-macro-redefined <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
+set(CMAKE_C_COMPILE_OBJECT "<CMAKE_C_COMPILER> <DEFINES> -D__FILE__='\"$(notdir $(abspath <SOURCE>))\"' -Wno-builtin-macro-redefined <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>") 
 set(CMAKE_CXX_COMPILE_OBJECT "<CMAKE_CXX_COMPILER> <DEFINES> -D__FILE__='\"$(notdir $(abspath <SOURCE>))\"' -Wno-builtin-macro-redefined <INCLUDES> <FLAGS> -o <OBJECT> -c <SOURCE>")
 
 #删除静态库中的时间戳
