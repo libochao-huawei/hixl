@@ -35,7 +35,6 @@ class LocCommResGenerator {
  public:
   static Status GenerateInfo(int32_t device_id, const std::string &local_engine,
                              loc_comm_res::LocCommResInfo &loc_comm_res_info);
-  static Status Generate(int32_t device_id, const std::string &local_engine, std::string &loc_comm_res);
   static Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip);
 
  private:

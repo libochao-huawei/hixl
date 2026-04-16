@@ -19,7 +19,6 @@
 #include <unistd.h>
 #include <vector>
 
-#include "nlohmann/json.hpp"
 #include "ascendcl_stub.h"
 #include "test_mmpa_utils.h"
 #include "depends/mmpa/src/mmpa_stub.h"
@@ -142,11 +141,12 @@ TEST_F(LocCommResGeneratorUTest, BuildNetInstanceIdForV2Success) {
   EXPECT_EQ(net_instance_id, "192.168.1.8");
 }
 
-TEST_F(LocCommResGeneratorUTest, BuildNetInstanceIdForV2WildcardFailed) {
+TEST_F(LocCommResGeneratorUTest, BuildNetInstanceIdForV2WildcardSuccess) {
   acl_stub_->soc_name_ = "Ascend910B1";
 
   std::string net_instance_id;
-  EXPECT_EQ(LocCommResGenerator::BuildNetInstanceId(0, "0.0.0.0:26000", net_instance_id), PARAM_INVALID);
+  EXPECT_EQ(LocCommResGenerator::BuildNetInstanceId(0, "0.0.0.0:26000", net_instance_id), SUCCESS);
+  EXPECT_EQ(net_instance_id, "0.0.0.0");
 }
 
 TEST_F(LocCommResGeneratorUTest, BuildNetInstanceIdForOtherSocFailed) {
@@ -280,29 +280,6 @@ TEST_F(LocCommResGeneratorUTest, GenerateInfoSuccessForV3) {
   EXPECT_EQ(info.version, "1.3");
   EXPECT_EQ(info.net_instance_id, "88");
   ASSERT_EQ(info.endpoint_list.size(), 2U);
-
-  (void)remove(file_path.c_str());
-}
-
-TEST_F(LocCommResGeneratorUTest, GenerateSuccessForV3AndDumpJson) {
-  const std::string file_path =
-      test::CreateTempFileWithContent("/tmp/loc_comm_res_ut_XXXXXX", "address_3=10.10.10.3\n");
-
-  acl_stub_->soc_name_ = "Ascend910_9391";
-  acl_stub_->phy_device_id_ = 3;
-  acl_stub_->super_pod_id_ = 88;
-  mmpa_stub_->real_path_ok_ = true;
-  mmpa_stub_->access_ok_ = true;
-  mmpa_stub_->fake_real_path_ = file_path;
-
-  std::string loc_comm_res;
-  EXPECT_EQ(LocCommResGenerator::Generate(0, "127.0.0.1:26000", loc_comm_res), SUCCESS);
-  EXPECT_FALSE(loc_comm_res.empty());
-
-  nlohmann::json j = nlohmann::json::parse(loc_comm_res);
-  EXPECT_EQ(j["version"], "1.3");
-  EXPECT_EQ(j["net_instance_id"], "88");
-  ASSERT_EQ(j["endpoint_list"].size(), 2U);
 
   (void)remove(file_path.c_str());
 }
