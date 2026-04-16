@@ -75,10 +75,6 @@ target_link_libraries(llm_datadist PRIVATE
         -fPIC -Wextra -Wfloat-equal
         )
 
-install(TARGETS llm_datadist OPTIONAL
-        EXPORT llm_datadist-targets
-        LIBRARY DESTINATION ${INSTALL_LIBRARY_DIR}
-        RUNTIME DESTINATION ${INSTALL_LIBRARY_DIR})
 
 set(ADXL_INC_DIR
         "${HIXL_CODE_DIR}/include"
