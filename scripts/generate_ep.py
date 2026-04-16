@@ -337,13 +337,13 @@ if __name__ == "__main__":
     # Set default paths for local mode
     if use_local and not args.rootinfo_path:
         if mode == 'pod':
-            args.rootinfo_path = "D:/gitrep/newfeature/localcommres/pod06_cpu5/hccl_rootinfo.json"
-            args.topo_path = "D:/gitrep/newfeature/localcommres/pod06_cpu5/atlas_950_1.json"
-            args.route_path = "D:/gitrep/newfeature/localcommres/pod06_cpu5/route.conf"
+            args.rootinfo_path = "./pod/hccl_rootinfo.json"
+            args.topo_path = "./pod/atlas_950_1.json"
+            args.route_path = "./pod/route.conf"
         else:  # server mode
-            args.rootinfo_path = "D:/gitrep/newfeature/localcommres/server/hccl_rootinfo_08server.json"
-            args.topo_path = "D:/gitrep/newfeature/localcommres/server/atlas_850_1.json"
-            args.route_path = "D:/gitrep/newfeature/localcommres/server/route.conf"
+            args.rootinfo_path = "./server/hccl_rootinfo_08server.json"
+            args.topo_path = "./server/atlas_850_1.json"
+            args.route_path = "./server/route.conf"
 
     mode_str = f"local {mode}" if use_local else "production"
     print(f"Running in {mode_str} mode")
