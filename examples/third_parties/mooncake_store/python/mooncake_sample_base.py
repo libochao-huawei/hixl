@@ -89,7 +89,7 @@ class MooncakeSampleBase:
                 tensor_size = 33 * 61 * 144 * 1024
                 # Allocate memory from store's memory pool
                 alloc_size = (tensor_size + FABRIC_ALIGNMENT - 1) // FABRIC_ALIGNMENT * FABRIC_ALIGNMENT
-                tensor_ptr = self.store.alloc_from_mem_pool(FABRIC_ALIGNMENT)
+                tensor_ptr = self.store.alloc_from_mem_pool(alloc_size)
                 self.register_buffer_size = alloc_size
                 # Create torch tensors from the allocated pointers
                 self.tensor = torch.frombuffer(
