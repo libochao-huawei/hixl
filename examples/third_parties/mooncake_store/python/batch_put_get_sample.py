@@ -23,8 +23,14 @@ logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 class BatchPutGet(MooncakeSampleBase):
     def run(self):
         logging.info(f"Running batch put/get sample, schema: {self.args.schema}")
-        
-        self.store = self.init_mooncake_store()
+
+        if hasattr(self.args, 'use_dummy') and self.args.use_dummy:
+            self.store = self.init_mooncake_dummy_store()
+            logging.info("Using Dummy Client mode")
+        else:
+            self.store = self.init_mooncake_store()
+            logging.info("Using embedded mode")
+
         self.create_tensors()
         addr, remote_addr = self.register_buffers()
         

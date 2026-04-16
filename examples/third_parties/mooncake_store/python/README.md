@@ -117,6 +117,57 @@ bash run.sh **.py
 * world_size，选填，类型为int，分布式集群配置的设备数
 * distributed，选填，是否启用分布式集群
 
+## Dummy Client 模式（可选）
+
+除了默认的嵌入式模式外，样例还支持使用 Dummy Client 模式连接到独立运行的 Real Client 进程。
+
+### Dummy/Real Client 工作原理
+
+- **Real Client**：作为独立进程运行，完整实现所有 Mooncake Store 功能，处理 RPC 通信、内存管理和数据传输
+- **Dummy Client**：轻量级包装器，嵌入在应用进程中，通过 RPC 将所有操作转发给 Real Client
+- **通信机制**：Dummy Client 与 Real Client 通过 RPC 和共享内存通信，支持零拷贝数据传输
+
+### 使用 Dummy Client 模式
+
+1. **启动 Mooncake Master**（如果尚未启动）：
+```bash
+mooncake_master \
+  --enable_http_metadata_server=true \
+  --http_metadata_server_host=0.0.0.0 \
+  --http_metadata_server_port=8080
+```
+
+2. **启动 Real Client** 作为独立进程：
+```bash
+./build/mooncake-store/src/mooncake_client \
+    --global_segment_size="4GB" \
+    --master_server_address="localhost:50051" \
+    --metadata_server="http://localhost:8080/metadata"
+```
+
+Real Client 默认监听端口 50052，可通过 `--port` 参数修改。
+
+3. **运行样例，添加 --use_dummy 参数**：
+```bash
+bash run.sh batch_put_get_sample.py --device_id=0 --schema="d2d" --rank=0 --use_dummy
+```
+
+### Dummy Client 模式额外参数
+
+- `--use_dummy`：启用 Dummy Client 模式
+- `--real_client_address`：Real Client 地址（默认：127.0.0.1:50052）
+- `--mem_pool_size`：Dummy Client 内存池大小（字节，可选）
+- `--local_buffer_size`：Dummy Client 本地缓冲区大小（字节，可选）
+
+### 两种模式对比
+
+| 特性 | 嵌入式模式 | Dummy Client 模式 |
+|------|----------|------------------|
+| 部署方式 | 应用与 Client 在同一进程 | Real Client 独立进程，应用使用 Dummy Client |
+| 资源隔离 | 进程内内存共享 | Real Client 独立管理内存资源 |
+| 零拷贝 | 支持 | 支持（通过共享内存） |
+| 适用场景 | 简单部署，快速测试 | 生产环境，资源隔离需求，独立运维 |
+
 > 注意，某些参数也可以通过配置文件的方式配置，但是命令行传入优先级更高
 
 以单机环境单卡执行batch_put_get接口对应用例，进行d2d数据传输时，在启动完Mooncake master并完成配置或在代码中硬编码对应的参数之后；执行以下命令：

@@ -65,17 +65,65 @@ class MooncakeSampleBase:
         logging.info(f"Initialized mooncake store: {store_ip}")
         return store
     
-    def create_tensors(self):
-        if self.args.schema.startswith("h"):
-            self.tensor = torch.ones(33, 61, 144 * 1024, dtype=torch.int8, pin_memory=True).cpu()
-        else:
-            self.tensor = torch.ones(33, 61, 144 * 1024, dtype=torch.int8).npu()
-        
-        if self.args.schema.endswith("h"):
-            self.target_tensor = torch.zeros(33, 61, 144 * 1024, dtype=torch.int8, pin_memory=True).cpu()
-        else:
-            self.target_tensor = torch.zeros(33, 61, 144 * 1024, dtype=torch.int8).npu()
+    def init_mooncake_dummy_store(self) -> MooncakeDistributedStore:
+        store = MooncakeDistributedStore()
+        real_client_address = getattr(self.args, 'real_client_address', '127.0.0.1:50052')
+        mem_pool_size = getattr(self.args, 'mem_pool_size', SEGMENT_SIZE)
+        local_buffer_size = getattr(self.args, 'local_buffer_size', LOCAL_BUFFER)
+
+        logging.info(f"Initializing dummy client, connecting to {real_client_address}")
+        store.setup_dummy(
+            mem_pool_size,
+            local_buffer_size,
+            real_client_address
+        )
+        logging.info(f"Initialized mooncake dummy client, real client at: {real_client_address}")
+        return store
     
+    def create_tensors(self):
+        use_dummy_mode = hasattr(self.args, 'use_dummy') and self.args.use_dummy
+        if use_dummy_mode:
+            if self.args.schema.startswith("h"):
+                import ctypes
+                tensor_size = 33 * 61 * 144 * 1024
+                # Allocate memory from store's memory pool
+                tensor_ptr = self.store.alloc_from_mem_pool(tensor_size)
+                # Create torch tensors from the allocated pointers
+                self.tensor = torch.frombuffer(
+                    (ctypes.c_uint8 * tensor_size).from_address(tensor_ptr),
+                    dtype=torch.int8
+                ).cpu().reshape(33, 61, 144 * 1024)
+                self.tensor.fill_(1)
+            else:
+                self.tensor = torch.ones(33, 61, 144 * 1024, dtype=torch.int8).npu()
+
+            if self.args.schema.endswith("h"):
+                import ctypes
+                tensor_size = 33 * 61 * 144 * 1024
+                # Allocate memory from store's memory pool
+                tensor_ptr = self.store.alloc_from_mem_pool(tensor_size)
+                # Create torch tensors from the allocated pointers
+                self.target_tensor = torch.frombuffer(
+                    (ctypes.c_uint8 * tensor_size).from_address(tensor_ptr),
+                    dtype=torch.int8
+                ).cpu().reshape(33, 61, 144 * 1024)
+                self.tensor.fill_(0)
+            else:
+                self.target_tensor = torch.zeros(33, 61, 144 * 1024, dtype=torch.int8).npu()
+
+        else:
+            # Embedded mode: use torch tensors
+            if self.args.schema.startswith("h"):
+                self.tensor = torch.ones(33, 61, 144 * 1024, dtype=torch.int8, pin_memory=True).cpu()
+            else:
+                self.tensor = torch.ones(33, 61, 144 * 1024, dtype=torch.int8).npu()
+
+            if self.args.schema.endswith("h"):
+                self.target_tensor = torch.zeros(33, 61, 144 * 1024, dtype=torch.int8, pin_memory=True).cpu()
+            else:
+                self.target_tensor = torch.zeros(33, 61, 144 * 1024, dtype=torch.int8).npu()
+            logging.info("Embedded mode: created torch tensors")
+
     def register_buffers(self):
         data_ptr = self.tensor.data_ptr()
         addr = (data_ptr + ALIGNMENT - 1) // ALIGNMENT * ALIGNMENT

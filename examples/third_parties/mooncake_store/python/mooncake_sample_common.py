@@ -30,6 +30,15 @@ def create_parser(description):
     parser.add_argument('--rank', type=int, required=True, help='Rank ID (must be provided to sync process group)')
     parser.add_argument('--world_size', type=int, help='World size (optional, default: 1)')
     parser.add_argument('--distributed', action='store_true', help='Enable distributed mode')
+    # Dummy client mode options
+    parser.add_argument('--use_dummy', action='store_true',
+                        help='Use dummy client mode to connect to standalone Real Client')
+    parser.add_argument('--real_client_address', type=str, default='127.0.0.1:50052',
+                        help='Real Client address for dummy mode (default: 127.0.0.1:50052)')
+    parser.add_argument('--mem_pool_size', type=int, default=None,
+                        help='Memory pool size in bytes for dummy mode (optional)')
+    parser.add_argument('--local_buffer_size', type=int, default=None,
+                        help='Local buffer size in bytes for dummy mode (optional)')
     return parser
 
 
