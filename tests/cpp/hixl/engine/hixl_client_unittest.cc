@@ -22,6 +22,7 @@
 #define private public
 #include "engine/hixl_client.h"
 #undef private
+#include "common/endpoint_generator.h"
 #include "common/hixl_inner_types.h"
 #include "common/hixl_utils.h"
 #include "depends/mmpa/src/mmpa_stub.h"
@@ -961,10 +962,10 @@ TEST_F(HixlClientUTest, DeserializePreservesDeviceInfoAfterSerializeRoundTrip) {
   input_list.emplace_back(ep);
 
   std::string msg_str;
-  EXPECT_EQ(SerializeEndpointConfigList(input_list, msg_str), SUCCESS);
+  EXPECT_EQ(EndpointGenerator::SerializeEndpointConfigList(input_list, msg_str), SUCCESS);
 
   std::vector<EndpointConfig> output_list;
-  EXPECT_EQ(HixlClient::Deserialize(msg_str, output_list), SUCCESS);
+  EXPECT_EQ(EndpointGenerator::DeserializeEndpointConfigList(msg_str, output_list), SUCCESS);
   ASSERT_EQ(output_list.size(), 1U);
 
   const auto &out = output_list[0];
@@ -993,7 +994,7 @@ TEST_F(HixlClientUTest, DeserializeOldFormatWithoutDeviceInfoSuccess) {
   ])";
 
   std::vector<EndpointConfig> endpoint_list;
-  EXPECT_EQ(HixlClient::Deserialize(json_str, endpoint_list), SUCCESS);
+  EXPECT_EQ(EndpointGenerator::DeserializeEndpointConfigList(json_str, endpoint_list), SUCCESS);
   ASSERT_EQ(endpoint_list.size(), 1U);
 
   const auto &ep = endpoint_list[0];

@@ -20,6 +20,7 @@
 #include "securec.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
+#include "common/endpoint_generator.h"
 #include "common/hixl_utils.h"
 #include "common/ctrl_msg.h"
 #include "common/ctrl_msg_plugin.h"
@@ -192,69 +193,7 @@ Status HixlClient::RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> 
 
   const size_t json_len = static_cast<size_t>(body_size - sizeof(CtrlMsgType));
   std::string json_str(reinterpret_cast<const char *>(body.data() + sizeof(msg_type)), json_len);
-  HIXL_CHK_STATUS_RET(Deserialize(json_str, remote_endpoint_list), "Failed to deserialize json_str, json_str:%s",
-                      json_str.c_str());
-  return SUCCESS;
-}
-
-Status HixlClient::Deserialize(const std::string &json_str, std::vector<EndpointConfig> &endpoint_list) {
-  nlohmann::json j;
-  try {
-    j = nlohmann::json::parse(json_str);
-  } catch (const nlohmann::json::exception &e) {
-    HIXL_LOGE(PARAM_INVALID, "Failed to parse json, exception:%s", e.what());
-    return PARAM_INVALID;
-  }
-  // 检查是否为数组
-  if (!j.is_array()) {
-    HIXL_LOGE(PARAM_INVALID, "Invalid json format, expect array");
-    return PARAM_INVALID;
-  }
-
-  endpoint_list.clear();
-  for (const auto &item : j) {
-    EndpointConfig endpoint{};
-    // 解析字段
-    HIXL_CHK_STATUS_RET(ParseJsonField(item, "protocol", endpoint.protocol), "Failed to parse protocol");
-    HIXL_CHK_STATUS_RET(ParseJsonField(item, "comm_id", endpoint.comm_id), "Failed to parse comm_id");
-    HIXL_CHK_STATUS_RET(ParseJsonField(item, "net_instance_id", endpoint.net_instance_id),
-                        "Failed to parse net_instance_id");
-    HIXL_CHK_STATUS_RET(ParseJsonField(item, "placement", endpoint.placement), "Failed to parse placement");
-    HIXL_CHK_STATUS_RET(ParseJsonField(item, "plane", endpoint.plane), "Failed to parse plane");
-    HIXL_CHK_STATUS_RET(ParseJsonField(item, "dst_eid", endpoint.dst_eid), "Failed to parse dst_eid");
-
-    if (item.contains("device_info") && item["device_info"].is_object()) {
-      const auto &device_info = item["device_info"];
-      if (device_info.contains("phy_device_id") && device_info["phy_device_id"].is_number_integer()) {
-        endpoint.device_info.phy_device_id = device_info["phy_device_id"].get<int32_t>();
-      }
-      if (device_info.contains("super_device_id") && device_info["super_device_id"].is_number_integer()) {
-        endpoint.device_info.super_device_id = device_info["super_device_id"].get<int64_t>();
-      }
-      if (device_info.contains("super_pod_id") && device_info["super_pod_id"].is_number_integer()) {
-        endpoint.device_info.super_pod_id = device_info["super_pod_id"].get<int64_t>();
-      }
-    }
-
-    endpoint_list.emplace_back(std::move(endpoint));
-  }
-  return SUCCESS;
-}
-
-Status HixlClient::ParseJsonField(const nlohmann::json &json_obj, const std::string &field_name,
-                                  std::string &field_value) {
-  if (!json_obj.contains(field_name)) {
-    HIXL_LOGE(PARAM_INVALID, "Missing required field '%s' in EndpointConfig", field_name.c_str());
-    return PARAM_INVALID;
-  }
-
-  try {
-    field_value = json_obj[field_name].get<std::string>();
-    return SUCCESS;
-  } catch (const nlohmann::json::exception &e) {
-    HIXL_LOGE(PARAM_INVALID, "Failed to parse field '%s', exception: %s", field_name.c_str(), e.what());
-    return PARAM_INVALID;
-  }
+  return EndpointGenerator::DeserializeEndpointConfigList(json_str, remote_endpoint_list);
 }
 
 Status HixlClient::FindMatchedEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,

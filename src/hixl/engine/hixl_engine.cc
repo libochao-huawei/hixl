@@ -8,134 +8,19 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <set>
-#include <regex>
 #include <string>
-#include "nlohmann/json.hpp"
+
 #include "hixl_engine.h"
-#include "common/hixl_log.h"
+#include "adxl/adxl_types.h"
+#include "common/endpoint_generator.h"
 #include "common/hixl_checker.h"
+#include "common/hixl_log.h"
 #include "common/hixl_utils.h"
 #include "common/llm_utils.h"
 #include "common/scope_guard.h"
 #include "profiling/prof_api_reg.h"
-#include "adxl/adxl_types.h"
-#include "common/loc_comm_res_generator.h"
-#include "acl/acl.h"
 
 namespace hixl {
-namespace {
-constexpr const char kConfigVersion[] = "1.3";
-
-enum class LocalCommResMode {
-  kManualParse,
-  kAutoGenerate
-};
-
-struct LocalCommResContext {
-  SocType soc_type = SocType::kOther;
-  LocalCommResMode mode = LocalCommResMode::kManualParse;
-};
-
-bool IsVersionOnlyLocalCommRes(const nlohmann::json &j) {
-  const bool has_version = j.contains("version") && j["version"].is_string();
-  const bool has_net_instance_id = j.contains("net_instance_id");
-  const bool has_endpoint_list =
-      j.contains("endpoint_list") && j["endpoint_list"].is_array() && !j["endpoint_list"].empty();
-  return has_version && j.size() == 1 && !has_net_instance_id && !has_endpoint_list;
-}
-
-Status ResolveLocalCommResContext(const std::string &local_comm_res, LocalCommResContext &context) {
-  nlohmann::json j;
-  try {
-    j = nlohmann::json::parse(local_comm_res);
-  } catch (const nlohmann::json::exception &e) {
-    HIXL_LOGE(PARAM_INVALID, "Parse local_comm_res failed, exception:%s", e.what());
-    return PARAM_INVALID;
-  }
-
-  if (!j.contains("version") || !j["version"].is_string()) {
-    HIXL_LOGE(PARAM_INVALID, "local_comm_res missing version");
-    return PARAM_INVALID;
-  }
-
-  const auto version = j["version"].get<std::string>();
-  HIXL_CHK_BOOL_RET_STATUS(version == kConfigVersion, PARAM_INVALID,
-                           "HixlEngine only supports local_comm_res version %s, current version:%s",
-                           kConfigVersion, version.c_str());
-  HIXL_CHK_STATUS_RET(GetSocType(context.soc_type), "GetSocType failed");
-  if ((context.soc_type == SocType::kV2 || context.soc_type == SocType::kV3) && IsVersionOnlyLocalCommRes(j)) {
-    context.mode = LocalCommResMode::kAutoGenerate;
-  }
-  return SUCCESS;
-}
-
-static void ConvertLocCommResInfoToEndpointList(const loc_comm_res::LocCommResInfo &loc_comm_res_info,
-                                                std::vector<EndpointConfig> &endpoint_list) {
-  endpoint_list.clear();
-  for (const auto &ep_info : loc_comm_res_info.endpoint_list) {
-    EndpointConfig ep;
-    ep.protocol = ep_info.protocol;
-    ep.comm_id = ep_info.comm_id;
-    ep.placement = ep_info.placement;
-    ep.net_instance_id = loc_comm_res_info.net_instance_id;
-    endpoint_list.emplace_back(ep);
-  }
-}
-
-Status FillDeviceInfoIfNeeded(const LocalCommResContext &context, std::vector<EndpointConfig> &endpoint_list) {
-  if (context.soc_type == SocType::kOther) {
-    return SUCCESS;
-  }
-  int32_t device_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
-  int32_t phy_device_id = -1;
-  aclError acl_ret = aclrtGetPhyDevIdByLogicDevId(device_id, &phy_device_id);
-  if (acl_ret != ACL_SUCCESS) {
-    HIXL_LOGE(FAILED, "aclrtGetPhyDevIdByLogicDevId failed, device_id=%d, acl_ret=%d", device_id, acl_ret);
-    return FAILED;
-  }
-  int64_t super_device_id = -1;
-  int64_t super_pod_id = -1;
-  if (context.soc_type == SocType::kV3) {
-    acl_ret = aclrtGetDeviceInfo(static_cast<uint32_t>(device_id), ACL_DEV_ATTR_SUPER_POD_ID, &super_pod_id);
-    if (acl_ret != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtGetDeviceInfo SUPER_POD_ID failed, device_id=%d, acl_ret=%d", device_id, acl_ret);
-      return FAILED;
-    }
-    acl_ret = aclrtGetDeviceInfo(static_cast<uint32_t>(device_id), ACL_DEV_ATTR_SUPER_POD_DEVIDE_ID, &super_device_id);
-    if (acl_ret != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtGetDeviceInfo SUPER_DEVICE_ID failed, device_id=%d, acl_ret=%d", device_id, acl_ret);
-      return FAILED;
-    }
-  }
-  for (auto &ep : endpoint_list) {
-    if (ep.placement != kPlacementDevice) {
-      continue;
-    }
-    ep.device_info.phy_device_id = phy_device_id;
-    ep.device_info.super_device_id = super_device_id;
-    ep.device_info.super_pod_id = super_pod_id;
-  }
-  return SUCCESS;
-}
-
-}  // namespace
-
-void from_json(const nlohmann::json &j, hixl::EndpointConfig &ep) {
-  j.at("protocol").get_to(ep.protocol);
-  j.at("comm_id").get_to(ep.comm_id);
-  j.at("placement").get_to(ep.placement);
-  if (j.contains("plane")) {
-    j.at("plane").get_to(ep.plane);
-  }
-  if (j.contains("dst_eid")) {
-    j.at("dst_eid").get_to(ep.dst_eid);
-  }
-  if (j.contains("_net_instance_id")) {
-    j.at("_net_instance_id").get_to(ep.net_instance_id);
-  }
-}
 
 bool HixlEngine::IsInitialized() const {
   return is_initialized_.load(std::memory_order::memory_order_relaxed);
@@ -157,26 +42,7 @@ Status HixlEngine::GetLocalCommResFromOptions(const std::map<AscendString, Ascen
 }
 
 Status HixlEngine::InitEndpointList(const std::string &local_comm_res) {
-  LocalCommResContext context{};
-  HIXL_CHK_STATUS_RET(ResolveLocalCommResContext(local_comm_res, context),
-                      "[HixlEngine] ResolveLocalCommResContext failed");
-  endpoint_list_.clear();
-  if (context.mode == LocalCommResMode::kAutoGenerate) {
-    int32_t device_id = 0;
-    HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
-    loc_comm_res::LocCommResInfo loc_comm_res_info{};
-    HIXL_CHK_STATUS_RET(LocCommResGenerator::GenerateInfo(device_id, local_engine_, loc_comm_res_info),
-                        "[HixlEngine] GenerateInfo failed");
-    ConvertLocCommResInfoToEndpointList(loc_comm_res_info, endpoint_list_);
-  } else {
-    HIXL_CHK_STATUS_RET(ParseEndPoint(local_comm_res, endpoint_list_),
-                        "[HixlEngine] Failed to parse endpoint from local_comm_res, local_comm_res:%s",
-                        local_comm_res.c_str());
-  }
-  HIXL_CHK_STATUS_RET(FillDeviceInfoIfNeeded(context, endpoint_list_),
-                      "[HixlEngine] FillDeviceInfoIfNeeded failed, local_comm_res:%s",
-                      local_comm_res.c_str());
-  return SUCCESS;
+  return EndpointGenerator::BuildEndpointListFromLocalCommRes(local_comm_res, local_engine_, endpoint_list_);
 }
 
 Status HixlEngine::InitServer(const std::string &local_comm_res) {
@@ -414,26 +280,6 @@ Status HixlEngine::RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor
   HIXL_CHK_STATUS_RET(server_.RegisterCallbackProcessor(msg_type, processor),
                       "[HixlEngine] Failed to register msg callback, msg type:%d", 
                       msg_type);
-  return SUCCESS;
-}
-
-Status HixlEngine::ParseEndPoint(const std::string &local_comm_res, std::vector<EndpointConfig> &endpoint_list) {
-  try {
-    auto config = nlohmann::json::parse(local_comm_res);
-    std::string net_id = config["net_instance_id"];
-    for (auto &item : config["endpoint_list"]) {
-      item["_net_instance_id"] = net_id;
-    }
-    config["endpoint_list"].get_to(endpoint_list);
-    HIXL_CHK_BOOL_RET_STATUS(!endpoint_list.empty(), PARAM_INVALID, 
-                             "[HixlEngine] endpoint_list is empty, please check options, local_comm_res:%s", 
-                             local_comm_res.c_str());
-  } catch (const nlohmann::json::exception &e) {
-    HIXL_LOGE(PARAM_INVALID, 
-              "[HixlEngine] Failed to parse local_comm_res, exception:%s, local_comm_res:%s",
-              e.what(), local_comm_res.c_str());
-    return PARAM_INVALID;
-  }
   return SUCCESS;
 }
 

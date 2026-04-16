@@ -23,7 +23,6 @@
 #include "acl/acl_rt.h"
 
 namespace hixl {
-enum class SocType { kV2, kV3, kOther };
 template <typename _Tp, typename... _Args>
 static inline std::shared_ptr<_Tp> MakeShared(_Args &&... __args) {
   using _Tp_nc = typename std::remove_const<_Tp>::type;
@@ -91,14 +90,6 @@ Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc
 
 Status CheckAddrOverlap(const AddrInfo &cur_info, const std::map<MemHandle, AddrInfo> &addr_map, bool &is_duplicate,
                         MemHandle &existing_handle);
-
-Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str);
-
-Status GetSocName(std::string &soc_name);
-
-SocType GetSocTypeByName(const std::string &soc_name);
-
-Status GetSocType(SocType &soc_type);
 
 std::string MemTypeToString(MemType type);
 std::string TransferOpToString(TransferOp op);

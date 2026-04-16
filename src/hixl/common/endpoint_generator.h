@@ -8,15 +8,18 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CANN_HIXL_SRC_HIXL_COMMON_LOC_COMM_RES_GENERATOR_H_
-#define CANN_HIXL_SRC_HIXL_COMMON_LOC_COMM_RES_GENERATOR_H_
+#ifndef CANN_HIXL_SRC_HIXL_COMMON_ENDPOINT_GENERATOR_H_
+#define CANN_HIXL_SRC_HIXL_COMMON_ENDPOINT_GENERATOR_H_
 
 #include <string>
 #include <vector>
 
 #include "hixl/hixl_types.h"
+#include "hixl_inner_types.h"
 
 namespace hixl {
+enum class SocType { kV2, kV3, kOther };
+
 namespace loc_comm_res {
 struct EndpointInfo {
   std::string protocol;
@@ -31,16 +34,27 @@ struct LocCommResInfo {
 };
 }  // namespace loc_comm_res
 
-class LocCommResGenerator {
+class EndpointGenerator {
  public:
+  static Status BuildEndpointListFromLocalCommRes(const std::string &local_comm_res,
+                                                  const std::string &local_engine,
+                                                  std::vector<EndpointConfig> &endpoint_list);
+  static Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str);
+  static Status DeserializeEndpointConfigList(const std::string &json_str,
+                                              std::vector<EndpointConfig> &endpoint_list);
   static Status GenerateInfo(int32_t device_id, const std::string &local_engine,
                              loc_comm_res::LocCommResInfo &loc_comm_res_info);
   static Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip);
+  static Status GetSocName(std::string &soc_name);
+  static SocType GetSocTypeByName(const std::string &soc_name);
+  static Status GetSocType(SocType &soc_type);
 
  private:
   static Status BuildNetInstanceId(int32_t device_id,
                                    const std::string &local_engine,
                                    std::string &net_instance_id);
+  static Status ParseLocalCommRes(const std::string &local_comm_res, std::vector<EndpointConfig> &endpoint_list);
+  static Status FillDeviceInfoIfNeeded(SocType soc_type, std::vector<EndpointConfig> &endpoint_list);
   static Status BuildEndpointList(int32_t phy_device_id,
                                   std::vector<loc_comm_res::EndpointInfo> &endpoint_list);
   static Status BuildRoceEndpoint(int32_t phy_device_id, loc_comm_res::EndpointInfo &endpoint);
@@ -49,4 +63,4 @@ class LocCommResGenerator {
 };
 }  // namespace hixl
 
-#endif  // CANN_HIXL_SRC_HIXL_COMMON_LOC_COMM_RES_GENERATOR_H_
+#endif  // CANN_HIXL_SRC_HIXL_COMMON_ENDPOINT_GENERATOR_H_

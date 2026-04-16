@@ -16,10 +16,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <set>
 #include <unordered_set>
 #include "securec.h"
-#include "nlohmann/json.hpp"
 #include "acl/acl.h"
 #include "mmpa/mmpa_api.h"
 #include "hixl_log.h"
@@ -27,13 +25,9 @@
 
 namespace hixl {
 namespace {
-constexpr const char kSocV2[] = "Ascend910B1";
 constexpr uint32_t kBufferMaxSize = 128U;
 constexpr const char kHccnConfPath[] = "/etc/hccn.conf";
 constexpr const char kHccnToolPath[] = "/usr/local/Ascend/driver/tools/hccn_tool";
-
-const static std::set<std::string> kSocV3 = {"Ascend910_9391", "Ascend910_9381", "Ascend910_9392",
-                                                 "Ascend910_9382", "Ascend910_9372", "Ascend910_9362"};
 
 void ExtractIpAddress(const std::string &output_str, std::string &ip) {
   const std::string prefix = "ipaddr:";
@@ -269,33 +263,6 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
   return SUCCESS;
 }
 
-Status GetSocName(std::string &soc_name) {
-  const char *soc_name_cstr = aclrtGetSocName();
-  HIXL_CHK_BOOL_RET_STATUS(soc_name_cstr != nullptr, FAILED, "aclrtGetSocName returned nullptr");
-  soc_name = soc_name_cstr;
-  HIXL_CHK_BOOL_RET_STATUS(!soc_name.empty(), FAILED, "soc_name is empty");
-  return SUCCESS;
-}
-
-SocType GetSocTypeByName(const std::string &soc_name) {
-  if (soc_name == kSocV2) {
-    return SocType::kV2;
-  }
-
-  if (kSocV3.find(soc_name) != kSocV3.end()) {
-    return SocType::kV3;
-  }
-
-  return SocType::kOther;
-}
-
-Status GetSocType(SocType &soc_type) {
-  std::string soc_name;
-  HIXL_CHK_STATUS_RET(GetSocName(soc_name), "GetSocName failed");
-  soc_type = GetSocTypeByName(soc_name);
-  return SUCCESS;
-}
-
 namespace {
 Status FillDeviceLocInfo(const EndpointConfig &endpoint_config, EndpointDesc &endpoint, uint32_t dev_phy_id) {
   endpoint.loc.device.devPhyId = (endpoint_config.device_info.phy_device_id >= 0)
@@ -407,34 +374,6 @@ Status CheckAddrOverlap(const AddrInfo &cur_info, const std::map<MemHandle, Addr
                 cur_info.start_addr, cur_info.end_addr, info.start_addr, info.end_addr);
       return PARAM_INVALID;
     }
-  }
-  return SUCCESS;
-}
-
-Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str) {
-  nlohmann::json j = nlohmann::json::array();
-  try {
-    for (const auto &ep : list) {
-      nlohmann::json item;
-      item["protocol"] = ep.protocol;
-      item["comm_id"] = ep.comm_id;
-      item["placement"] = ep.placement;
-      item["plane"] = ep.plane;
-      item["dst_eid"] = ep.dst_eid;
-      item["net_instance_id"] = ep.net_instance_id;
-
-      nlohmann::json device_info;
-      device_info["phy_device_id"] = ep.device_info.phy_device_id;
-      device_info["super_device_id"] = ep.device_info.super_device_id;
-      device_info["super_pod_id"] = ep.device_info.super_pod_id;
-      item["device_info"] = device_info;
-
-      j.push_back(item);
-    }
-    msg_str = j.dump();
-  } catch (const nlohmann::json::exception &e) {
-    HIXL_LOGE(PARAM_INVALID, "Failed to dump endpoint list, exception:%s", e.what());
-    return PARAM_INVALID;
   }
   return SUCCESS;
 }
