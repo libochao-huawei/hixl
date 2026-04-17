@@ -11,7 +11,6 @@
 #include <string>
 
 #include "hixl_engine.h"
-#include "adxl/adxl_types.h"
 #include "common/endpoint_generator.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
@@ -26,26 +25,7 @@ bool HixlEngine::IsInitialized() const {
   return is_initialized_.load(std::memory_order::memory_order_relaxed);
 }
 
-Status HixlEngine::GetLocalCommResFromOptions(const std::map<AscendString, AscendString> &options,
-                                              std::string &local_comm_res) {
-  auto hixl_it = options.find(hixl::OPTION_LOCAL_COMM_RES);
-  auto adxl_it = options.find(adxl::OPTION_LOCAL_COMM_RES);
-  auto it = hixl_it == options.cend() ? adxl_it : hixl_it;
-  const char *local_comm_res_cstr = (it != options.cend()) ? it->second.GetString() : nullptr;
-  HIXL_CHK_BOOL_RET_STATUS(it != options.cend() &&
-                               local_comm_res_cstr != nullptr &&
-                               local_comm_res_cstr[0] != '\0',
-                           PARAM_INVALID,
-                           "[HixlEngine] local_comm_res is empty");
-  local_comm_res = local_comm_res_cstr;
-  return SUCCESS;
-}
-
-Status HixlEngine::InitEndpointList(const std::string &local_comm_res) {
-  return EndpointGenerator::BuildEndpointListFromLocalCommRes(local_comm_res, local_engine_, endpoint_list_);
-}
-
-Status HixlEngine::InitServer(const std::string &local_comm_res) {
+Status HixlEngine::InitServer() {
   std::string ip;
   int32_t port = 0;
   HIXL_CHK_STATUS_RET(ParseListenInfo(local_engine_, ip, port),
@@ -55,8 +35,8 @@ Status HixlEngine::InitServer(const std::string &local_comm_res) {
                       "current local_engine:%s",
                       local_engine_.c_str());
   HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_),
-                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s, local_comm_res:%s",
-                      local_engine_.c_str(), local_comm_res.c_str());
+                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s",
+                      local_engine_.c_str());
   return SUCCESS;
 }
 
@@ -65,13 +45,14 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(CheckOptions(options), "[HixlEngine] Failed to check options");
   std::string local_comm_res;
-  HIXL_CHK_STATUS_RET(GetLocalCommResFromOptions(options, local_comm_res),
-                      "[HixlEngine] Failed to get local_comm_res from options");
-  HIXL_CHK_STATUS_RET(InitEndpointList(local_comm_res),
-                      "[HixlEngine] Failed to initialize endpoint list");
+  HIXL_CHK_STATUS_RET(
+      EndpointGenerator::BuildEndpointListFromOptions(options, local_engine_, local_comm_res, endpoint_list_),
+      "[HixlEngine] Failed to initialize endpoint list");
   HIXL_CHK_STATUS_RET(ParseTrafficClass(options), "[HixlEngine] Failed to parse traffic class");
   HIXL_CHK_STATUS_RET(ParseServiceLevel(options), "[HixlEngine] Failed to parse service level");
-  HIXL_CHK_STATUS_RET(InitServer(local_comm_res), "[HixlEngine] Failed to initialize server");
+  HIXL_CHK_STATUS_RET(InitServer(),
+                      "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
+                      local_engine_.c_str(), local_comm_res.c_str());
   is_initialized_ = true;
   HIXL_LOGI("[HixlEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
   return SUCCESS;

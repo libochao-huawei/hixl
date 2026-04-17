@@ -143,9 +143,7 @@ class HixlEngine : public hixl::Engine {
   void Finalize() override;
 
  private:
-  Status GetLocalCommResFromOptions(const std::map<AscendString, AscendString> &options, std::string &local_comm_res);
-  Status InitEndpointList(const std::string &local_comm_res);
-  Status InitServer(const std::string &local_comm_res);
+  Status InitServer();
   Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
   Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
 

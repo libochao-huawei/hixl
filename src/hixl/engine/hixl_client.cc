@@ -336,11 +336,12 @@ Status HixlClient::CreateCsClients(const EndpointConfig &local_endpoint_config,
   HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
   EndpointDesc local_endpoint{};
   EndpointDesc remote_endpoint{};
-  HIXL_CHK_STATUS_RET(ConvertToEndpointDesc(local_endpoint_config, local_endpoint, static_cast<uint32_t>(dev_phy_id)),
+  HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(local_endpoint_config, local_endpoint,
+                                                               static_cast<uint32_t>(dev_phy_id)),
                       "HixlClient convert EndpointConfig to EndpointInfo failed, local_endpoint_config:%s",
                       local_endpoint_config.ToString().c_str());
   HIXL_LOGI("Local_endpoint dev_phy_id: %u", local_endpoint.loc.device.devPhyId);
-  HIXL_CHK_STATUS_RET(ConvertToEndpointDesc(remote_endpoint_config, remote_endpoint),
+  HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(remote_endpoint_config, remote_endpoint),
                       "HixlClient convert EndpointConfig to EndpointInfo failed, remote_endpoint_config:%s",
                       remote_endpoint_config.ToString().c_str());
   HIXL_LOGI("Remote_endpoint dev_phy_id: %u", remote_endpoint.loc.device.devPhyId);

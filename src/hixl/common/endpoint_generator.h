@@ -11,54 +11,62 @@
 #ifndef CANN_HIXL_SRC_HIXL_COMMON_ENDPOINT_GENERATOR_H_
 #define CANN_HIXL_SRC_HIXL_COMMON_ENDPOINT_GENERATOR_H_
 
+#include <map>
 #include <string>
 #include <vector>
 
+#include "cs/hixl_cs.h"
 #include "hixl/hixl_types.h"
 #include "hixl_inner_types.h"
 
 namespace hixl {
-enum class SocType { kV2, kV3, kOther };
-
-namespace loc_comm_res {
-struct EndpointInfo {
-  std::string protocol;
-  std::string comm_id;
-  std::string placement;
-};
-
-struct LocCommResInfo {
-  std::string version;
-  std::string net_instance_id;
-  std::vector<EndpointInfo> endpoint_list;
-};
-}  // namespace loc_comm_res
-
 class EndpointGenerator {
  public:
-  static Status BuildEndpointListFromLocalCommRes(const std::string &local_comm_res,
-                                                  const std::string &local_engine,
-                                                  std::vector<EndpointConfig> &endpoint_list);
+  static Status BuildEndpointListFromOptions(const std::map<AscendString, AscendString> &options,
+                                             const std::string &local_engine,
+                                             std::string &local_comm_res,
+                                             std::vector<EndpointConfig> &endpoint_list);
+  static Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config,
+                                      EndpointDesc &endpoint,
+                                      uint32_t dev_phy_id = 0);
   static Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str);
   static Status DeserializeEndpointConfigList(const std::string &json_str,
                                               std::vector<EndpointConfig> &endpoint_list);
-  static Status GenerateInfo(int32_t device_id, const std::string &local_engine,
-                             loc_comm_res::LocCommResInfo &loc_comm_res_info);
+
+ private:
+  enum class SocType { kV2, kV3, kOther };
+
+  struct EndpointInfo {
+    std::string protocol;
+    std::string comm_id;
+    std::string placement;
+  };
+
+  struct LocCommResInfo {
+    std::string version;
+    std::string net_instance_id;
+    std::vector<EndpointInfo> endpoint_list;
+  };
+
+  static Status GenerateInfo(int32_t device_id, const std::string &local_engine, LocCommResInfo &loc_comm_res_info);
   static Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip);
   static Status GetSocName(std::string &soc_name);
   static SocType GetSocTypeByName(const std::string &soc_name);
   static Status GetSocType(SocType &soc_type);
-
- private:
+  static Status ResolveLocalCommResContext(const std::string &local_comm_res, SocType &soc_type, bool &auto_generate);
+  static void ConvertLocCommResInfoToEndpointList(const LocCommResInfo &loc_comm_res_info,
+                                                  std::vector<EndpointConfig> &endpoint_list);
   static Status BuildNetInstanceId(int32_t device_id,
                                    const std::string &local_engine,
                                    std::string &net_instance_id);
+  static Status BuildEndpointListFromLocalCommRes(const std::string &local_comm_res,
+                                                  const std::string &local_engine,
+                                                  std::vector<EndpointConfig> &endpoint_list);
   static Status ParseLocalCommRes(const std::string &local_comm_res, std::vector<EndpointConfig> &endpoint_list);
   static Status FillDeviceInfoIfNeeded(SocType soc_type, std::vector<EndpointConfig> &endpoint_list);
-  static Status BuildEndpointList(int32_t phy_device_id,
-                                  std::vector<loc_comm_res::EndpointInfo> &endpoint_list);
-  static Status BuildRoceEndpoint(int32_t phy_device_id, loc_comm_res::EndpointInfo &endpoint);
-  static Status BuildHccsEndpoint(int32_t phy_device_id, loc_comm_res::EndpointInfo &endpoint);
+  static Status BuildEndpointList(int32_t phy_device_id, std::vector<EndpointInfo> &endpoint_list);
+  static Status BuildRoceEndpoint(int32_t phy_device_id, EndpointInfo &endpoint);
+  static Status BuildHccsEndpoint(int32_t phy_device_id, EndpointInfo &endpoint);
   static Status GetHostIpFromLocalEngine(const std::string &local_engine, std::string &host_ip);
 };
 }  // namespace hixl
