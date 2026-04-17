@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CANN_HIXL_SRC_HIXL_COMMON_ENDPOINT_GENERATOR_H_
-#define CANN_HIXL_SRC_HIXL_COMMON_ENDPOINT_GENERATOR_H_
+#ifndef CANN_HIXL_SRC_HIXL_ENGINE_ENDPOINT_GENERATOR_H_
+#define CANN_HIXL_SRC_HIXL_ENGINE_ENDPOINT_GENERATOR_H_
 
 #include <map>
 #include <string>
@@ -17,7 +17,7 @@
 
 #include "cs/hixl_cs.h"
 #include "hixl/hixl_types.h"
-#include "hixl_inner_types.h"
+#include "common/hixl_inner_types.h"
 
 namespace hixl {
 class EndpointGenerator {
@@ -71,4 +71,4 @@ class EndpointGenerator {
 };
 }  // namespace hixl
 
-#endif  // CANN_HIXL_SRC_HIXL_COMMON_ENDPOINT_GENERATOR_H_
+#endif  // CANN_HIXL_SRC_HIXL_ENGINE_ENDPOINT_GENERATOR_H_

@@ -20,7 +20,7 @@
 #include "securec.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
-#include "common/endpoint_generator.h"
+#include "engine/endpoint_generator.h"
 #include "common/hixl_utils.h"
 #include "common/ctrl_msg.h"
 #include "common/ctrl_msg_plugin.h"

@@ -23,7 +23,7 @@
 #define private public
 #include "engine/hixl_client.h"
 #undef private
-#include "common/endpoint_generator.h"
+#include "engine/endpoint_generator.h"
 #include "common/hixl_inner_types.h"
 #include "common/hixl_utils.h"
 #include "depends/mmpa/src/mmpa_stub.h"

@@ -11,7 +11,7 @@
 #include <string>
 
 #include "hixl_engine.h"
-#include "common/endpoint_generator.h"
+#include "engine/endpoint_generator.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"

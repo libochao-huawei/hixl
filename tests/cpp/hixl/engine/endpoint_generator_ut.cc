@@ -28,7 +28,7 @@
 #include "depends/mmpa/src/mmpa_stub.h"
 
 #define private public
-#include "common/endpoint_generator.h"
+#include "engine/endpoint_generator.h"
 #undef private
 
 namespace hixl {
