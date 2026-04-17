@@ -29,6 +29,7 @@
 #include "host_register_proxy.h"
 #include "load_kernel.h"
 #include "mem_msg_handler.h"
+#include "perf.h"
 #include "proxy/hcomm_proxy.h"
 #include "proxy/hccp_proxy.h"
 #include "runtime/runtime/rts/rts_device.h"
@@ -51,6 +52,15 @@ constexpr uint64_t kFlagResetValue = 0ULL;
 constexpr uint32_t kCustomTimeoutMs = 1800;
 // notifywait默认1836ms等待时长，通过异步接口提供给用户使用，由用户感知超时主动退出，不使用notify的超时时间
 constexpr uint16_t kNotifyDefaultWaitTimeMs = 27 * 68;
+
+std::string GetClientRole(const EndpointDesc &ep) {
+  return ep.loc.locType == ENDPOINT_LOC_TYPE_DEVICE ? "client_device" : "client_host";
+}
+
+std::string BuildClientStatisticPeer(const std::string &server_ip, uint32_t server_port) {
+  return server_ip + ":" + std::to_string(server_port);
+}
+
 void FreeExportDesc(std::vector<hixl::HixlMemDesc> &desc_list) {
   for (auto &d : desc_list) {
     if (d.export_desc != nullptr && d.export_len > 0U) {
@@ -386,13 +396,19 @@ Status HixlCSClient::Create(const HixlClientDesc *client_desc, const HixlClientC
       client_desc->local_endpoint->commAddr.id, client_desc->remote_endpoint->loc.locType,
       client_desc->remote_endpoint->protocol, client_desc->remote_endpoint->commAddr.type,
       client_desc->remote_endpoint->commAddr.id);
+  const auto perf_start = PerfClock::now();
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(InitBaseClient(client_desc),
                       "[HixlClient] InitBaseClient failed");
+  statistic_channel_id_ = HixlCSStatisticManager::GetClientChannelId(BuildClientStatisticPeer(server_ip_, server_port_));
+  HixlCSStatisticManager::GetInstance().RegisterChannel(statistic_channel_id_);
+  HixlCSStatisticManager::GetInstance().StartPeriodicDumpIfNeeded();
   EndpointHandle endpoint_handle = local_endpoint_->GetHandle();
   HIXL_EVENT("[HixlClient] Create success. server=%s:%u, src_ep_handle=%p", server_ip_.c_str(), server_port_,
              endpoint_handle);
   HIXL_CHK_STATUS_RET(InitDeviceResource(), "[HixlClient] InitDeviceResource failed");
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kClientCreate, "client_create",
+                  GetClientRole(local_endpoint_->GetEndpoint()), perf_start, SUCCESS, socket_, client_channel_handle_);
   return SUCCESS;
 }
 
@@ -545,6 +561,8 @@ Status HixlCSClient::BatchTransferTask(bool is_get, const CommunicateMem &commun
   return SUCCESS;
 }
 Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem &communicate_mem, void **query_handle) {
+  const auto transfer_start = PerfClock::now();
+  const uint64_t total_bytes = SumTransferBytes(communicate_mem.len_list, communicate_mem.list_num);
   HIXL_CHK_STATUS_RET(BatchTransferTask(is_get, communicate_mem), "[HixlClient] BatchTransferTask failed.");
   int32_t flag_index = AcquireFlagIndex();
   if (flag_index == -1) {
@@ -581,11 +599,18 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem &commun
   query_mem_handle->magic = kRoceCompleteMagic;
   query_mem_handle->flag_index = flag_index;
   query_mem_handle->flag_address = flag_addr;
+  query_mem_handle->start_time = transfer_start;
+  query_mem_handle->submit_cost_us = ElapsedUs(transfer_start);
+  query_mem_handle->total_bytes = total_bytes;
+  query_mem_handle->list_num = communicate_mem.list_num;
   // 需要先创建query_handle实体，之后再传给指针。
   *query_handle = query_mem_handle;
   live_handles_[flag_index] = query_mem_handle;
   // 成功后 dismiss guard，避免重复释放
   HIXL_DISMISS_GUARD(flag_guard);
+  LogPerfStage("transfer_submit_host", GetClientRole(local_endpoint_->GetEndpoint()), statistic_channel_id_,
+               query_mem_handle->submit_cost_us, SUCCESS, socket_, client_channel_handle_, communicate_mem.list_num,
+               total_bytes);
   return SUCCESS;
 }
 
@@ -777,7 +802,19 @@ Status HixlCSClient::LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handl
   return SUCCESS;
 }
 
+namespace {
+void RecordDeviceTransferStage(const std::string &channel_id, StatisticStage stage, const char *stage_name,
+                               const std::string &role, const PerfClock::time_point &stage_start, Status result,
+                               int32_t socket_fd, ChannelHandle channel_handle, uint32_t list_num,
+                               uint64_t total_bytes, uint32_t timeout_ms = 0U) {
+  RecordPerfStage(channel_id, stage, stage_name, role, stage_start, result, socket_fd, channel_handle, list_num,
+                  total_bytes, timeout_ms);
+}
+}  // namespace
+
 Status HixlCSClient::BatchTransferDevice(bool is_get, const CommunicateMem &communicate_mem, void **query_handle) {
+  const auto transfer_start = PerfClock::now();
+  const uint64_t total_bytes = SumTransferBytes(communicate_mem.len_list, communicate_mem.list_num);
   void *handle_ptr = nullptr;
   HIXL_CHK_STATUS_RET(ValidateDeviceInputs(is_get, communicate_mem, handle_ptr), "ValidateDeviceInputs failed");
   TransferPool::SlotHandle slot{};
@@ -800,28 +837,50 @@ Status HixlCSClient::BatchTransferDevice(bool is_get, const CommunicateMem &comm
   }));
   handle->magic = kDeviceCompleteMagic;
   handle->reserved = 0U;
+  handle->start_time = transfer_start;
+  handle->total_bytes = total_bytes;
+  handle->list_num = communicate_mem.list_num;
   handle->slot = std::make_unique<TransferPool::SlotHandle>(slot);
   HIXL_DISMISS_GUARD(slot_guard);
   hixl::TemporaryRtContext with_context(handle->slot->ctx);
   MemDev mem_dev{};
   HIXL_DISMISSABLE_GUARD(mem_guard, [&mem_dev]() { FreeMemDev(mem_dev); });
+  auto stage_start = PerfClock::now();
   HIXL_CHK_STATUS_RET(PrepareDeviceBatchMemBuffers(communicate_mem, mem_dev), "PrepareDeviceBatchMemBuffers failed");
+  RecordDeviceTransferStage(statistic_channel_id_, StatisticStage::kDevicePrepareBatchMem, "device_prepare_batch_mem",
+                            GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_,
+                            client_channel_handle_, communicate_mem.list_num, total_bytes);
   void *remote_flag = nullptr;
+  stage_start = PerfClock::now();
   HIXL_CHK_STATUS_RET(PrepareDeviceRemoteFlagAndKernel(remote_flag), "PrepareDeviceRemoteFlagAndKernel failed");
+  RecordDeviceTransferStage(statistic_channel_id_, StatisticStage::kDevicePrepareRemoteFlag, "device_prepare_remote_flag",
+                            GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_,
+                            client_channel_handle_, communicate_mem.list_num, total_bytes);
   handle->mem_dev = mem_dev;
   HIXL_DISMISS_GUARD(mem_guard);
+  stage_start = PerfClock::now();
   HIXL_CHK_STATUS_RET(FillDeviceArgs(communicate_mem, mem_dev, *handle->slot, remote_flag, handle->args),
                       "FillDeviceArgs failed");
+  RecordDeviceTransferStage(statistic_channel_id_, StatisticStage::kDeviceFillArgs, "device_fill_args",
+                            GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_,
+                            client_channel_handle_, communicate_mem.list_num, total_bytes);
   HIXL_LOGI("[HixlClient] BatchTransferUB. is_get=%d list_num=%u slot=%u magic=%u", static_cast<int32_t>(is_get),
             handle->args.list_num, handle->slot->slot_index, handle->magic);
+  stage_start = PerfClock::now();
   HIXL_CHK_STATUS_RET(LaunchDeviceKernel(is_get, *handle, remote_flag), "LaunchDeviceKernel failed");
+  RecordDeviceTransferStage(statistic_channel_id_, StatisticStage::kDeviceLaunchKernel, "device_launch_kernel",
+                            GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_,
+                            client_channel_handle_, communicate_mem.list_num, total_bytes);
   HIXL_CHK_ACL_RET(aclrtMemcpyAsync(handle->slot->host_flag, sizeof(uint64_t), dev_const_one_, sizeof(uint64_t),
                                     ACL_MEMCPY_DEVICE_TO_HOST, handle->slot->stream),
                    "[HixlClient] aclrtMemcpyAsync (Flag D2H) failed");
+  handle->submit_cost_us = ElapsedUs(transfer_start);
   *query_handle = static_cast<void *>(handle);
   HIXL_DISMISS_GUARD(handle_guard);
   HIXL_LOGI("[HixlClient] BatchTransfer submitted. is_get=%d list_num=%u slot=%u",
             static_cast<int32_t>(is_get), handle->args.list_num, handle->slot->slot_index);
+  LogPerfStage("transfer_submit_device", GetClientRole(local_endpoint_->GetEndpoint()), statistic_channel_id_,
+               handle->submit_cost_us, SUCCESS, socket_, client_channel_handle_, communicate_mem.list_num, total_bytes);
   {
     std::lock_guard<std::mutex> lock(mutex_);
     pending_device_handles_.insert(handle);
@@ -831,6 +890,8 @@ Status HixlCSClient::BatchTransferDevice(bool is_get, const CommunicateMem &comm
 
 Status HixlCSClient::BatchTransferDeviceSync(bool is_get, const CommunicateMem &communicate_mem,
                                              uint32_t timeout_ms) {
+  const auto transfer_start = PerfClock::now();
+  const uint64_t total_bytes = SumTransferBytes(communicate_mem.len_list, communicate_mem.list_num);
   void *handle_ptr = nullptr;
   HIXL_CHK_STATUS_RET(ValidateDeviceInputs(is_get, communicate_mem, handle_ptr), "ValidateDeviceInputs failed");
   TransferPool::SlotHandle slot{};
@@ -858,23 +919,52 @@ Status HixlCSClient::BatchTransferDeviceSync(bool is_get, const CommunicateMem &
   *(static_cast<uint64_t *>(handle->slot->host_flag)) = kDeviceFlagInitValue;
   MemDev mem_dev{};
   HIXL_DISMISSABLE_GUARD(mem_guard, [&mem_dev]() { FreeMemDev(mem_dev); });
+  auto stage_start = PerfClock::now();
   HIXL_CHK_STATUS_RET(PrepareDeviceBatchMemBuffers(communicate_mem, mem_dev), "PrepareDeviceBatchMemBuffers failed");
+  RecordDeviceTransferStage(statistic_channel_id_, StatisticStage::kDevicePrepareBatchMem, "device_prepare_batch_mem",
+                            GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_,
+                            client_channel_handle_, communicate_mem.list_num, total_bytes);
   void *remote_flag = nullptr;
+  stage_start = PerfClock::now();
   HIXL_CHK_STATUS_RET(PrepareDeviceRemoteFlagAndKernel(remote_flag), "PrepareDeviceRemoteFlagAndKernel failed");
+  RecordDeviceTransferStage(statistic_channel_id_, StatisticStage::kDevicePrepareRemoteFlag, "device_prepare_remote_flag",
+                            GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_,
+                            client_channel_handle_, communicate_mem.list_num, total_bytes);
   handle->mem_dev = mem_dev;
   HIXL_DISMISS_GUARD(mem_guard);
+  stage_start = PerfClock::now();
   HIXL_CHK_STATUS_RET(FillDeviceArgs(communicate_mem, mem_dev, *handle->slot, remote_flag, handle->args),
                       "FillDeviceArgs failed");
+  RecordDeviceTransferStage(statistic_channel_id_, StatisticStage::kDeviceFillArgs, "device_fill_args",
+                            GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_,
+                            client_channel_handle_, communicate_mem.list_num, total_bytes);
   HIXL_LOGI("[HixlClient] BatchTransferDeviceSync. is_get=%d list_num=%u slot=%u", static_cast<int32_t>(is_get),
             handle->args.list_num, handle->slot->slot_index);
+  stage_start = PerfClock::now();
   HIXL_CHK_STATUS_RET(LaunchDeviceKernel(is_get, *handle, remote_flag), "LaunchDeviceKernel failed");
+  RecordDeviceTransferStage(statistic_channel_id_, StatisticStage::kDeviceLaunchKernel, "device_launch_kernel",
+                            GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_,
+                            client_channel_handle_, communicate_mem.list_num, total_bytes);
 
+  const auto wait_start = PerfClock::now();
   const aclError sync_ret = aclrtSynchronizeStreamWithTimeout(handle->slot->stream, timeout_ms);
   if (sync_ret != ACL_SUCCESS && handle->slot != nullptr) {
     TransferPool::GetInstance(handle->slot->device_id).Abort(*handle->slot);
   }
   HIXL_CHK_ACL_RET(sync_ret, "[HixlClient] aclrtSynchronizeStreamWithTimeout failed, kernel=%s, ret=0x%X",
                    is_get ? kDeviceFuncGet : kDeviceFuncPut, static_cast<uint32_t>(sync_ret));
+  const uint64_t wait_cost_us = ElapsedUs(wait_start);
+  HixlCSStatisticManager::GetInstance().UpdateStageCost(statistic_channel_id_, StatisticStage::kDeviceSyncWait,
+                                                        wait_cost_us);
+  LogPerfStage("device_sync_wait", GetClientRole(local_endpoint_->GetEndpoint()), statistic_channel_id_, wait_cost_us,
+               SUCCESS, socket_, client_channel_handle_, communicate_mem.list_num, total_bytes, timeout_ms);
+  const uint64_t total_cost_us = ElapsedUs(transfer_start);
+  HixlCSStatisticManager::GetInstance().UpdateTransferCost(
+      statistic_channel_id_, total_cost_us, total_cost_us > wait_cost_us ? total_cost_us - wait_cost_us : 0UL,
+      wait_cost_us, total_bytes, communicate_mem.list_num, true);
+  LogPerfStage("transfer_sync_device", GetClientRole(local_endpoint_->GetEndpoint()), statistic_channel_id_,
+               total_cost_us, SUCCESS, socket_, client_channel_handle_, communicate_mem.list_num, total_bytes,
+               timeout_ms);
   HIXL_LOGI("[HixlClient] BatchTransferDeviceSync done. is_get=%d list_num=%u", static_cast<int32_t>(is_get),
             communicate_mem.list_num);
   return SUCCESS;
@@ -882,6 +972,8 @@ Status HixlCSClient::BatchTransferDeviceSync(bool is_get, const CommunicateMem &
 
 Status HixlCSClient::BatchTransferHostSync(bool is_get, const CommunicateMem &communicate_mem,
                                            uint32_t timeout_ms) {
+  const auto sync_start = PerfClock::now();
+  const uint64_t total_bytes = SumTransferBytes(communicate_mem.len_list, communicate_mem.list_num);
   void *raw_handle = nullptr;
   HIXL_CHK_STATUS_RET(BatchTransferHost(is_get, communicate_mem, &raw_handle), "[HixlClient] BatchTransferHost failed");
   HIXL_CHECK_NOTNULL(raw_handle);
@@ -899,6 +991,12 @@ Status HixlCSClient::BatchTransferHostSync(bool is_get, const CommunicateMem &co
       return cs;
     }
     if (st == HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED) {
+      const uint64_t total_cost_us = ElapsedUs(sync_start);
+      HixlCSStatisticManager::GetInstance().UpdateTransferCost(statistic_channel_id_, total_cost_us, 0UL, total_cost_us,
+                                                               total_bytes, communicate_mem.list_num, false);
+      LogPerfStage("transfer_sync_host", GetClientRole(local_endpoint_->GetEndpoint()), statistic_channel_id_,
+                   total_cost_us, SUCCESS, socket_, client_channel_handle_, communicate_mem.list_num, total_bytes,
+                   timeout_ms);
       return SUCCESS;
     }
     std::this_thread::sleep_for(std::chrono::microseconds(10));
@@ -975,6 +1073,7 @@ Status HixlCSClient::BatchTransfer(bool is_get, CommunicateMem &communicate_mem_
 }
 
 Status HixlCSClient::CheckStatusHost(CompleteHandleInfo &query_handle, HixlCompleteStatus &status) {
+  const auto check_start = PerfClock::now();
   // 检验query_handle中的序号是否合规
   if (query_handle.flag_index < 0 || query_handle.flag_index >= static_cast<int32_t>(kFlagQueueSize)) {
     HIXL_LOGE(PARAM_INVALID,
@@ -990,14 +1089,29 @@ Status HixlCSClient::CheckStatusHost(CompleteHandleInfo &query_handle, HixlCompl
   if (*atomic_flag == kFlagDoneValue) {
     status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED;
     HIXL_LOGI("The current transmission task has been completed.");
+    const uint64_t check_cost_us = ElapsedUs(check_start);
+    const uint64_t total_cost_us = ElapsedUs(query_handle.start_time);
+    const uint64_t wait_cost_us =
+        total_cost_us >= query_handle.submit_cost_us ? total_cost_us - query_handle.submit_cost_us : 0UL;
+    HixlCSStatisticManager::GetInstance().UpdateStageCost(statistic_channel_id_, StatisticStage::kCheckStatusHost,
+                                                          check_cost_us);
+    HixlCSStatisticManager::GetInstance().UpdateTransferCost(statistic_channel_id_, total_cost_us,
+                                                             query_handle.submit_cost_us, wait_cost_us,
+                                                             query_handle.total_bytes, query_handle.list_num, false);
+    LogPerfStage("check_status_host", GetClientRole(local_endpoint_->GetEndpoint()), statistic_channel_id_,
+                 check_cost_us, SUCCESS, socket_, client_channel_handle_, query_handle.list_num,
+                 query_handle.total_bytes);
     return ReleaseCompleteHandle(&query_handle);  // 释放内存并回收索引
   }
   status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
   HIXL_LOGI("The current transmission task has not been completed.");
+  HixlCSStatisticManager::GetInstance().UpdateStageCost(statistic_channel_id_, StatisticStage::kCheckStatusHost,
+                                                        ElapsedUs(check_start));
   return SUCCESS;
 }
 
 Status HixlCSClient::CheckStatusDevice(DeviceCompleteHandle &query_handle, HixlCompleteStatus &status) {
+  const auto check_start = PerfClock::now();
   if (query_handle.magic != kDeviceCompleteMagic) {
     HIXL_LOGE(PARAM_INVALID, "[HixlClient] CheckStatusUb bad magic=0x%X", query_handle.magic);
     return PARAM_INVALID;
@@ -1015,10 +1129,26 @@ Status HixlCSClient::CheckStatusDevice(DeviceCompleteHandle &query_handle, HixlC
     status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED;
 
     HIXL_LOGI("[HixlClient] Batch completed. slot=%u", query_handle.slot->slot_index);
+    const uint64_t check_cost_us = ElapsedUs(check_start);
+    const uint64_t total_cost_us = ElapsedUs(query_handle.start_time);
+    const uint64_t wait_cost_us =
+        total_cost_us >= query_handle.submit_cost_us ? total_cost_us - query_handle.submit_cost_us : 0UL;
+    HixlCSStatisticManager::GetInstance().UpdateStageCost(statistic_channel_id_, StatisticStage::kCheckStatusDevice,
+                                                          check_cost_us);
+    HixlCSStatisticManager::GetInstance().UpdateStageCost(statistic_channel_id_, StatisticStage::kDeviceSyncWait,
+                                                          wait_cost_us);
+    HixlCSStatisticManager::GetInstance().UpdateTransferCost(statistic_channel_id_, total_cost_us,
+                                                             query_handle.submit_cost_us, wait_cost_us,
+                                                             query_handle.total_bytes, query_handle.list_num, true);
+    LogPerfStage("check_status_device", GetClientRole(local_endpoint_->GetEndpoint()), statistic_channel_id_,
+                 check_cost_us, SUCCESS, socket_, client_channel_handle_, query_handle.list_num,
+                 query_handle.total_bytes);
     return ReleaseDevCompleteHandle(&query_handle);
   }
 
   status = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
+  HixlCSStatisticManager::GetInstance().UpdateStageCost(statistic_channel_id_, StatisticStage::kCheckStatusDevice,
+                                                        ElapsedUs(check_start));
   return SUCCESS;
 }
 
@@ -1072,16 +1202,24 @@ Status HixlCSClient::UnRegMem(MemHandle mem_handle) {
 
 Status HixlCSClient::Connect(uint32_t timeout_ms) {
   std::lock_guard<std::mutex> lock(mutex_);
+  const auto connect_start = PerfClock::now();
   HIXL_CHECK_NOTNULL(local_endpoint_);
   HIXL_CHK_BOOL_RET_STATUS(remote_endpoint_.protocol != COMM_PROTOCOL_RESERVED, PARAM_INVALID,
                            "[HixlClient] Connect called but remote_endpoint is not set in Create");
   HIXL_EVENT("[HixlClient] Connect start. Target=%s:%u, timeout=%u ms", server_ip_.c_str(), server_port_, timeout_ms);
+  const auto tcp_start = PerfClock::now();
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip_, server_port_, socket_, timeout_ms),
                       "[HixlClient] Connect socket to %s:%u failed", server_ip_.c_str(), server_port_);
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kTcpConnect, "tcp_connect",
+                  GetClientRole(local_endpoint_->GetEndpoint()), tcp_start, SUCCESS, socket_, client_channel_handle_, 0U,
+                  0UL, timeout_ms);
   HIXL_LOGI("[HixlClient] Socket connected (TCP ready). fd=%d", socket_);
   HIXL_CHK_STATUS_RET(ExchangeEndpointAndCreateChannelLocked(timeout_ms),
                       "[HixlClient] Exchange endpoint info failed. fd=%d, Target=%s:%u", socket_, server_ip_.c_str(),
                       server_port_);
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kConnectTotal, "connect_total",
+                  GetClientRole(local_endpoint_->GetEndpoint()), connect_start, SUCCESS, socket_, client_channel_handle_,
+                  0U, 0UL, timeout_ms);
   HIXL_EVENT("[HixlClient] Connect success. target=%s:%u, fd=%d, remote_ep_handle=%" PRIu64 ", ch=%p",
              server_ip_.c_str(), server_port_, socket_, remote_endpoint_handle_, client_channel_handle_);
   return SUCCESS;
@@ -1094,18 +1232,26 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
       "Src[protocol:%u, type:%u, id:%u], Dst[protocol:%u, type:%u, id:%u]",
       socket_, timeout_ms, src_ep.protocol, src_ep.commAddr.type, src_ep.commAddr.id, remote_endpoint_.protocol,
       remote_endpoint_.commAddr.type, remote_endpoint_.commAddr.id);
+  auto stage_start = PerfClock::now();
   Status ret = ConnMsgHandler::SendMatchEndpointRequest(socket_, remote_endpoint_);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendMatchEndpointRequest failed. fd=%d", socket_);
   ret = ConnMsgHandler::RecvMatchEndpointResponse(socket_, remote_endpoint_handle_, timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] RecvMatchEndpointResponse failed. fd=%d, timeout=%u ms", socket_, timeout_ms);
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kMatchEndpoint, "match_endpoint",
+                  GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_, client_channel_handle_,
+                  0U, 0UL, timeout_ms);
   CommMem *prefetch_mems = nullptr;
   char **prefetch_tags = nullptr;
   uint32_t prefetch_num = 0U;
   HIXL_LOGI("[HixlClient] Connect: prefetch remote mem before CreateChannel");
+  stage_start = PerfClock::now();
   ret = GetRemoteMemLocked(timeout_ms, &prefetch_mems, &prefetch_tags, &prefetch_num);
   HIXL_CHK_STATUS_RET(ret,
                       "[HixlClient] Connect prefetch GetRemoteMem/Import failed. fd=%d, timeout=%u ms", socket_,
                       timeout_ms);
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kGetRemoteMemTotal, "get_remote_mem_total",
+                  GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_, client_channel_handle_,
+                  prefetch_num, 0UL, timeout_ms);
   const uint32_t channel_index = g_next_channel_index.fetch_add(1U, std::memory_order_relaxed);
   CreateChannelReq create_body{};
   create_body.src = src_ep;
@@ -1113,8 +1259,12 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
   create_body.tc = tc_;
   create_body.sl = sl_;
   create_body.channel_index = channel_index;
+  stage_start = PerfClock::now();
   ret = ConnMsgHandler::SendCreateChannelRequest(socket_, create_body);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendCreateChannelRequest failed. fd=%d", socket_);
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kCreateChannelReq, "create_channel_req",
+                  GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_, client_channel_handle_,
+                  0U, 0UL, timeout_ms);
   ChannelHandle channel_handle = 0UL;
   ChannelDesc channel_desc{};
   channel_desc.remote_endpoint = remote_endpoint_;
@@ -1122,10 +1272,18 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
   channel_desc.sl = sl_;
   channel_desc.channel_type = ChannelType::kClient;
   channel_desc.channel_index = channel_index;
+  stage_start = PerfClock::now();
   ret = local_endpoint_->CreateChannel(channel_desc, channel_handle);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] Endpoint CreateChannel failed. Dst[id:0x%x]", remote_endpoint_.commAddr.id);
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kLocalCreateChannel, "local_create_channel",
+                  GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_, channel_handle, 0U, 0UL,
+                  timeout_ms);
+  stage_start = PerfClock::now();
   ret = ConnMsgHandler::RecvCreateChannelResponse(socket_, timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] RecvCreateChannelResponse failed. fd=%d, timeout=%u ms", socket_, timeout_ms);
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kWaitCreateChannelResp, "wait_create_channel_resp",
+                  GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_, channel_handle, 0U, 0UL,
+                  timeout_ms);
   HIXL_LOGI("[HixlClient] Connect: remote endpoint handle = %" PRIu64, remote_endpoint_handle_);
   client_channel_handle_ = channel_handle;
   HIXL_LOGI("[HixlClient] Channel Ready. client_channel_handle_=%p", client_channel_handle_);
@@ -1135,15 +1293,23 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
 Status HixlCSClient::GetRemoteMemLocked(uint32_t timeout_ms, CommMem **remote_mem_list, char ***mem_tag_list,
                                         uint32_t *list_num) {
   HIXL_CHECK_NOTNULL(local_endpoint_);
+  auto stage_start = PerfClock::now();
   Status ret = MemMsgHandler::SendGetRemoteMemRequest(socket_, remote_endpoint_handle_, timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendGetRemoteMemRequest failed. fd=%d, remote_ep_handle=%" PRIu64, socket_,
                       remote_endpoint_handle_);
   std::vector<HixlMemDesc> mem_descs;
   ret = MemMsgHandler::RecvGetRemoteMemResponse(socket_, mem_descs, timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] RecvGetRemoteMemResponse failed. fd=%d, timeout=%u ms", socket_, timeout_ms);
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kGetRemoteMemTotal, "get_remote_mem_rpc",
+                  GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_, client_channel_handle_,
+                  static_cast<uint32_t>(mem_descs.size()), 0UL, timeout_ms);
   HIXL_LOGD("[HixlClient] Recv remote mem descs success. Count=%zu", mem_descs.size());
+  stage_start = PerfClock::now();
   ret = ImportRemoteMem(mem_descs, remote_mem_list, mem_tag_list, list_num);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] ImportRemoteMem failed. desc_count=%zu", mem_descs.size());
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kImportRemoteMem, "import_remote_mem",
+                  GetClientRole(local_endpoint_->GetEndpoint()), stage_start, SUCCESS, socket_, client_channel_handle_,
+                  *list_num, 0UL, timeout_ms);
   return SUCCESS;
 }
 
@@ -1333,6 +1499,7 @@ void HixlCSClient::ReleaseDeviceResourcesLocked() {
 Status HixlCSClient::Destroy() {
   HIXL_EVENT("[HixlClient] Destroy start. fd=%d, imported_bufs=%zu, recorded_addrs=%zu", socket_,
              imported_remote_bufs_.size(), recorded_remote_addrs_.size());
+  const auto destroy_start = PerfClock::now();
   std::lock_guard<std::mutex> lock(mutex_);
   Status first_error = SUCCESS;
   ReleaseLegacyHandlesLocked();
@@ -1356,6 +1523,12 @@ Status HixlCSClient::Destroy() {
       first_error = (first_error == SUCCESS) ? ret : first_error;
     }
     local_endpoint_.reset();
+  }
+  HixlCSStatisticManager::GetInstance().Dump();
+  if (!statistic_channel_id_.empty()) {
+    LogPerfStage("client_destroy", "client", statistic_channel_id_, ElapsedUs(destroy_start), first_error, socket_,
+                 client_channel_handle_);
+    HixlCSStatisticManager::GetInstance().RemoveChannel(statistic_channel_id_);
   }
   HIXL_EVENT("[HixlClient] Destroy done. first_error=%u", static_cast<uint32_t>(first_error));
   return first_error;
