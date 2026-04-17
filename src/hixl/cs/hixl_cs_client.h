@@ -12,6 +12,7 @@
 #define CANN_HIXL_SRC_HIXL_CS_HIXL_CS_CLIENT_H_
 
 #include <cstdint>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -25,6 +26,7 @@
 #include "channel.h"
 #include "hixl_mem_store.h"
 #include "transfer_pool.h"
+#include "statistic_manager.h"
 #include "hcomm/hcomm_res_defs.h"
 #include "hixl_mem_store.h"
 
@@ -33,6 +35,10 @@ struct CompleteHandleInfo {
   uint32_t magic;
   int32_t flag_index;
   uint64_t *flag_address;
+  std::chrono::steady_clock::time_point start_time{};
+  uint64_t submit_cost_us{0UL};
+  uint64_t total_bytes{0UL};
+  uint32_t list_num{0U};
 };
 
 enum class DeviceOpType : uint32_t {
@@ -72,6 +78,10 @@ struct DeviceCompleteHandle {
   std::unique_ptr<TransferPool::SlotHandle> slot;
   DeviceArgs args;
   MemDev mem_dev;
+  std::chrono::steady_clock::time_point start_time{};
+  uint64_t submit_cost_us{0UL};
+  uint64_t total_bytes{0UL};
+  uint32_t list_num{0U};
 };
 
 struct CommunicateMem {
@@ -205,6 +215,7 @@ class HixlCSClient {
   void *dev_const_one_{nullptr};
   std::vector<MemHandle> notify_mem_handles_{};
   std::unordered_set<DeviceCompleteHandle *> pending_device_handles_{};
+  std::string statistic_channel_id_;
 };
 }  // namespace hixl
 
