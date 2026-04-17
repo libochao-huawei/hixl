@@ -15,6 +15,7 @@
 #include "common/ctrl_msg.h"
 #include "common/scope_guard.h"
 #include "common/ctrl_msg_plugin.h"
+#include "perf.h"
 #include "transfer_pool.h"
 
 static inline void to_json(nlohmann::json &j, const CommMem &m) {
@@ -31,6 +32,14 @@ constexpr int32_t kMaxEventsNum = 128;  // epoll_wait并发处理事件数量，
 constexpr int32_t kEpollWaitTimeInMillis = 100;  // epoll_wait等待超时时间
 constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";// client用于感知收发完成的标识
 constexpr const char *kTransFlagNameDevice = "_hixl_builtin_dev_trans_flag";// client用于感知收发完成的标识
+
+std::string BuildServerPeer(const std::string &ip, uint32_t port) {
+  return ip + ":" + std::to_string(port);
+}
+
+std::string BuildServerFdChannelId(int32_t fd) {
+  return HixlCSStatisticManager::GetServerChannelId("fd:" + std::to_string(fd));
+}
 }  // namespace
 
 Status HixlCSServer::InitTransFinishedFlag() {
@@ -96,6 +105,7 @@ Status HixlCSServer::RegisterDeviceTransFinishedFlag() {
 }
 
 Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config) {
+  const auto perf_start = PerfClock::now();
   HIXL_CHECK_NOTNULL(endpoint_list);
   HIXL_CHECK_NOTNULL(config);
   HIXL_CHK_BOOL_RET_STATUS(list_num > 0, PARAM_INVALID, "endpoint list num:%u is invalid, must > 0", list_num);
@@ -122,11 +132,17 @@ Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list
   CtrlMsgPlugin::Initialize();
   msg_handler_.Initialize();
   HIXL_CHK_STATUS_RET(InitTransFinishedFlag(), "Failed to init trans finished flag");
+  statistic_channel_id_ = HixlCSStatisticManager::GetServerChannelId(BuildServerPeer(ip_, port_));
+  HixlCSStatisticManager::GetInstance().RegisterChannel(statistic_channel_id_);
+  HixlCSStatisticManager::GetInstance().StartPeriodicDumpIfNeeded();
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kServerInitialize, "server_initialize", "server", perf_start,
+                  SUCCESS, listen_fd_);
   HIXL_EVENT("[HixlServer] init success, endpoint_list_num:%u", list_num);
   return SUCCESS;
 }
 
 Status HixlCSServer::DestroyChannel(int32_t fd, const char *msg, uint64_t msg_len) { 
+  const auto perf_start = PerfClock::now();
   (void)msg; 
   (void)msg_len; 
   std::lock_guard<std::mutex> lock(chn_mutex_); 
@@ -141,10 +157,13 @@ Status HixlCSServer::DestroyChannel(int32_t fd, const char *msg, uint64_t msg_le
     }
     channels_.erase(it); 
   } 
+  RecordPerfStage(BuildServerFdChannelId(fd), StatisticStage::kServerDestroyChannel, "server_destroy_channel", "server",
+                  perf_start, SUCCESS, fd);
   return SUCCESS; 
 }
 
 Status HixlCSServer::Finalize() {
+  const auto perf_start = PerfClock::now();
   if (listener_running_) {
     listener_running_ = false;
     if (listener_.joinable()) {
@@ -185,6 +204,12 @@ Status HixlCSServer::Finalize() {
   if (epoll_fd_ != -1) {
     (void)close(epoll_fd_);
     epoll_fd_ = -1;
+  }
+  if (!statistic_channel_id_.empty()) {
+    HixlCSStatisticManager::GetInstance().UpdateStageCost(statistic_channel_id_, StatisticStage::kServerFinalize,
+                                                          ElapsedUs(perf_start));
+    HixlCSStatisticManager::GetInstance().Dump();
+    HixlCSStatisticManager::GetInstance().RemoveChannel(statistic_channel_id_);
   }
   HIXL_EVENT("[HixlServer] finalize end, ret:%u", ret);
   return ret;
@@ -255,6 +280,7 @@ Status HixlCSServer::SendMatchEndpointResp(int32_t fd, const MatchEndpointResp &
 }
 
 Status HixlCSServer::MatchEndpointMsg(int32_t fd, const char *msg, uint64_t msg_len) {
+  const auto perf_start = PerfClock::now();
   HIXL_DISMISSABLE_GUARD(failed, ([fd, this]() {
     MatchEndpointResp resp{};
     resp.result = FAILED;
@@ -277,11 +303,15 @@ Status HixlCSServer::MatchEndpointMsg(int32_t fd, const char *msg, uint64_t msg_
   resp.dst_ep_handle = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(handle));
   HIXL_CHK_STATUS_RET(SendMatchEndpointResp(fd, resp), "Failed to send match endpoint resp");
   HIXL_DISMISS_GUARD(failed);
+  HixlCSStatisticManager::GetInstance().RegisterChannel(BuildServerFdChannelId(fd));
+  RecordPerfStage(BuildServerFdChannelId(fd), StatisticStage::kServerMatchEndpoint, "server_match_endpoint", "server",
+                  perf_start, SUCCESS, fd, 0UL, 0U, 0UL, 0U);
   HIXL_LOGI("SendMatchEndpointResp success");
   return SUCCESS;
 }
 
 Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len) {
+  const auto perf_start = PerfClock::now();
   HIXL_DISMISSABLE_GUARD(failed, ([fd, this]() {
     CreateChannelResp resp{};
     resp.result = FAILED;
@@ -312,6 +342,9 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   HIXL_DISMISS_GUARD(failed);
   resp.result = SUCCESS;
   HIXL_CHK_STATUS_RET(SendCreateChannelResp(fd, resp), "Failed to send create channel resp");
+  HixlCSStatisticManager::GetInstance().RegisterChannel(BuildServerFdChannelId(fd));
+  RecordPerfStage(BuildServerFdChannelId(fd), StatisticStage::kServerCreateChannel, "server_create_channel", "server",
+                  perf_start, SUCCESS, fd, channel_handle);
   HIXL_LOGI("SendCreateChannelResp success");
   return SUCCESS;
 }
@@ -364,6 +397,7 @@ Status HixlCSServer::SendRemoteMemResp(int32_t fd,
 }
 
 Status HixlCSServer::ExportMem(int32_t fd, const char *msg, uint64_t msg_len) {
+  const auto perf_start = PerfClock::now();
   HIXL_DISMISSABLE_GUARD(failed, ([fd, this]() {
     GetRemoteMemResp resp{};
     resp.result = FAILED;
@@ -382,10 +416,14 @@ Status HixlCSServer::ExportMem(int32_t fd, const char *msg, uint64_t msg_len) {
   resp.result = SUCCESS;
   HIXL_DISMISS_GUARD(failed);
   HIXL_CHK_STATUS_RET(SendRemoteMemResp(fd, resp), "Failed to send remote mem resp.");
+  HixlCSStatisticManager::GetInstance().RegisterChannel(BuildServerFdChannelId(fd));
+  RecordPerfStage(BuildServerFdChannelId(fd), StatisticStage::kServerExportMem, "server_export_mem", "server",
+                  perf_start, SUCCESS, fd, 0UL, static_cast<uint32_t>(resp.mem_descs.size()));
   return SUCCESS;
 }
 
 Status HixlCSServer::Listen(uint32_t backlog) {
+  const auto perf_start = PerfClock::now();
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Listen(ip_, port_, backlog, listen_fd_), "Failed to server listen");
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::AddFdToEpoll(epoll_fd_, listen_fd_), "Failed to add listen fd to epoll");
   HIXL_EVENT("[HixlServer] start to listen on %s:%u", ip_.c_str(), port_);
@@ -396,6 +434,8 @@ Status HixlCSServer::Listen(uint32_t backlog) {
     }
     return;
   });
+  RecordPerfStage(statistic_channel_id_, StatisticStage::kServerListen, "server_listen", "server", perf_start, SUCCESS,
+                  listen_fd_);
   return SUCCESS;
 }
 
@@ -414,6 +454,7 @@ void HixlCSServer::ProClientMsg(int32_t fd, std::shared_ptr<MsgReceiver> receive
 }
 
 void HixlCSServer::CleanupClient(int32_t fd) {
+  const auto perf_start = PerfClock::now();
   // 清理 channel
   std::lock_guard<std::mutex> lock(client_mutex_);
   auto it = clients_.find(fd);
@@ -435,6 +476,9 @@ void HixlCSServer::CleanupClient(int32_t fd) {
   clients_.erase(fd);
 
   HIXL_EVENT("[HixlServer] client disconnected, fd:%d cleaned up", fd);
+  RecordPerfStage(BuildServerFdChannelId(fd), StatisticStage::kServerCleanupClient, "server_cleanup_client", "server",
+                  perf_start, SUCCESS, fd);
+  HixlCSStatisticManager::GetInstance().RemoveChannel(BuildServerFdChannelId(fd));
 }
 
 Status HixlCSServer::DoWait() {

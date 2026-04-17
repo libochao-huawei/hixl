@@ -19,6 +19,7 @@
 #include "endpoint_store.h"
 #include "msg_handler.h"
 #include "msg_receiver.h"
+#include "statistic_manager.h"
 
 namespace hixl {
 struct EndpointMemInfo {
@@ -92,6 +93,7 @@ class HixlCSServer {
   MemHandle dev_trans_flag_handle_ = nullptr;  // Device 侧 Flag 注册句柄
 
   int32_t device_id_{-1};  // has_device_ep 时初始化 TransferPool，Finalize 时释放
+  std::string statistic_channel_id_;
 };
 }  // namespace hixl
 
