@@ -31,6 +31,7 @@ constexpr uint32_t kTransferMemSize = 134217728;  // 128M
 constexpr uint32_t kBaseBlockSize = 262144;       // 0.25M
 constexpr uint32_t kExecuteRepeatNum = 5;
 constexpr int32_t kPortMaxValue = 65535;
+constexpr int32_t kExpectValue = 'A';
 
 #define CHECK_ACL_RETURN(x)                                                                  \
   do {                                                                                \
@@ -56,6 +57,20 @@ int32_t Initialize(Hixl &hixl_engine, const char *local_engine, bool use_buffer_
   if (!use_buffer_pool) {
     options["BufferPool"] = "0:0";
   }
+  const char *env_ret = std::getenv("HIXL_USE_UBOE");
+  if (env_ret != nullptr && *env_ret == '1') {
+    options[OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+      {
+        "comm_resource_config.protocol_desc": ["uboe:device"]
+      }
+    )";
+  }
+
+  env_ret = std::getenv("HIXL_LOCAL_COMMON_RES");
+  if (env_ret != nullptr) {
+    options[OPTION_LOCAL_COMM_RES] = env_ret;
+  }
+
   auto ret = hixl_engine.Initialize(local_engine, options);
   if (ret != SUCCESS) {
     printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, GetRecentErrMsg());
@@ -112,6 +127,24 @@ int32_t Transfer(Hixl &hixl_engine, int32_t &src, const char *remote_engine, uin
     printf(
         "[INFO] Transfer success, block size: %u Bytes, transfer num: %u, time cost: %ld us, throughput: %.3lf GB/s\n",
         block_size, trans_num, time_cost, throughput);
+
+    if (transfer_op == READ) {
+      void *tmp_check = tmp;
+      if (is_host) {
+        CHECK_ACL_RETURN(aclrtMallocHost(&tmp_check, kTransferMemSize));
+        CHECK_ACL_RETURN(aclrtMemcpy(tmp_check, kTransferMemSize, tmp, kTransferMemSize, ACL_MEMCPY_DEVICE_TO_HOST));
+      }
+      uint8_t *src_check = reinterpret_cast<uint8_t *>(tmp_check);
+      for (uint32_t idx = 0; i < kTransferMemSize; i++) {
+        if (src_check[idx] != kExpectValue) {
+          printf("[INFO] client data[%u]=[%d] != expect[%d]\n", idx, src_check[idx], kExpectValue);
+        }
+      }
+
+      if (is_host) {
+        aclrtFreeHost(tmp_check);
+      }
+    }
   }
   return 0;
 }
@@ -177,6 +210,7 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
     CHECK_ACL_RETURN(aclrtMallocHost(&tmp, kTransferMemSize)); 
   } else {
     CHECK_ACL_RETURN(aclrtMalloc(&tmp, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY));
+    CHECK_ACL_RETURN(aclrtMemset(tmp, kTransferMemSize, '\0', kTransferMemSize));
   }
   src = static_cast<int32_t*>(tmp);
 
@@ -242,6 +276,7 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
     CHECK_ACL_RETURN(aclrtMallocHost(&buffer, kTransferMemSize));
   } else{
     CHECK_ACL_RETURN(aclrtMalloc(&buffer, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY));
+    CHECK_ACL_RETURN(aclrtMemset(buffer, kTransferMemSize, kExpectValue, kTransferMemSize));
   }
   auto addr = reinterpret_cast<uintptr_t>(buffer);
 
