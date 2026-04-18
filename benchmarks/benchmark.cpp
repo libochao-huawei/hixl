@@ -56,6 +56,20 @@ int32_t Initialize(Hixl &hixl_engine, const char *local_engine, bool use_buffer_
   if (!use_buffer_pool) {
     options["BufferPool"] = "0:0";
   }
+  const char *env_ret = std::getenv("HIXL_USE_UBOE");
+  if (env_ret != nullptr && *env_ret == '1') {
+    options[OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+      {
+        "comm_resource_config.protocol_desc": ["uboe:device"]
+      }
+    )";
+  }
+
+  env_ret = std::getenv("HIXL_LOCAL_COMMON_RES");
+  if (env_ret != nullptr) {
+    options[OPTION_LOCAL_COMM_RES] = env_ret;
+  }
+
   auto ret = hixl_engine.Initialize(local_engine, options);
   if (ret != SUCCESS) {
     printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, GetRecentErrMsg());
@@ -177,6 +191,7 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
     CHECK_ACL_RETURN(aclrtMallocHost(&tmp, kTransferMemSize)); 
   } else {
     CHECK_ACL_RETURN(aclrtMalloc(&tmp, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY));
+    CHECK_ACL_RETURN(aclrtMemset(tmp, kTransferMemSize, '\0', kTransferMemSize));
   }
   src = static_cast<int32_t*>(tmp);
 
@@ -212,6 +227,14 @@ int32_t RunClient(const char *local_engine, const char *remote_engine, uint16_t 
     Finalize(hixl_engine, need_register, is_host, {handle}, {src});
     return -1;
   }
+  if (transfer_op == READ) {
+    void *tmp_check = tmp;
+    if (is_host) {
+      CHECK_ACL_RETURN(aclrtMallocHost(&tmp_check, kTransferMemSize));
+    }
+    uint8_t *src_check = reinterpret_cast<uint8_t *>(tmp_check);
+    printf("[INFO] client data read data=[%#x] [%#x] [%#x] [%#x]\n", src_check[0], src_check[1], src_check[2], src_check[3]);
+  }
 
   // 断链
   Disconnect(hixl_engine, remote_engine, connected);
@@ -242,6 +265,7 @@ int32_t RunServer(const char *local_engine, const char *remote_engine, uint16_t 
     CHECK_ACL_RETURN(aclrtMallocHost(&buffer, kTransferMemSize));
   } else{
     CHECK_ACL_RETURN(aclrtMalloc(&buffer, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY));
+    CHECK_ACL_RETURN(aclrtMemset(buffer, kTransferMemSize, 'a', kTransferMemSize));
   }
   auto addr = reinterpret_cast<uintptr_t>(buffer);
 
