@@ -118,6 +118,10 @@ bool HixlMemStore::CheckMemoryForAccess(bool is_server, const void *check_addr, 
 
   uintptr_t s = reinterpret_cast<uintptr_t>(check_addr);
   uintptr_t e = s + check_size;  // [s, e)
+  // 检查溢出：当 e < s 时表示发生了溢出
+  if (e < s) {
+    return false;
+  }
 
   auto it = regions.lower_bound(check_addr);
   auto contains = [s, e](const MemoryRegion &r) {

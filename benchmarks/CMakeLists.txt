@@ -23,6 +23,7 @@ set(targets_list
     "hixl_cs_benchmark_large"
     "hixl_cs_benchmark_multi_pair"
     "hixl_cs_benchmark_multi_thread"
+    "hixl_cs_benchmark_mixed_role"
     "hixl_cs_benchmark_exception"
 )
 
