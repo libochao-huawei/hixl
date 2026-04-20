@@ -110,6 +110,13 @@ struct Args {
   std::string remote_comm_res;
 };
 
+struct TransferResult {
+  int32_t thread_id;
+  bool success;
+  int64_t time_us;
+  uint64_t transfer_size;
+};
+
 int32_t InitEndPointInfo(const std::string &comm_res, EndpointDesc &ep) {
   try {
     ep = json::parse(comm_res).get<EndpointDesc>();
