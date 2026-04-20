@@ -16,6 +16,8 @@
 #include <filesystem>
 #include <fstream>
 #include <sys/stat.h>
+#include "ascendcl_stub.h"
+#include "engine/endpoint_test_utils.h"
 #include "engine/hixl_engine.h"
 #include "hixl/hixl_types.h"
 #include "cs/hixl_cs_client.h"
@@ -29,6 +31,7 @@ namespace {
 constexpr const int32_t kTimeOut = 1000;
 constexpr const uint32_t kCaptureLogTimeoutMs = 1000U;
 constexpr const char kHccnToolPath[] = "/usr/local/Ascend/driver/tools/hccn_tool";
+using MockEngineAclRuntimeStub = endpoint_test::MockAclRuntimeStub;
 
 // Mock mmAccess to return error for kHccnToolPath, so hccn_tool will be searched in PATH
 class UboeMmpaStub : public llm::MmpaStubApiGe {
@@ -61,6 +64,8 @@ class HixlEngineUboeTest : public ::testing::Test {
   std::map<AscendString, AscendString> options_default;
 
   void SetUp() override {
+    acl_stub_ = endpoint_test::CreateAclRuntimeStub("Ascend910_9391", 0, 0, 9, 8);
+    llm::AclRuntimeStub::SetInstance(acl_stub_);
     temp_dir_ = std::filesystem::path("/tmp/hixl_engine_uboe_unittest");
     std::filesystem::remove_all(temp_dir_);
     std::filesystem::create_directories(temp_dir_);
@@ -112,6 +117,7 @@ class HixlEngineUboeTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    llm::AclRuntimeStub::Reset();
     if (old_path_.empty()) {
       unsetenv("PATH");
     } else {
@@ -141,6 +147,7 @@ class HixlEngineUboeTest : public ::testing::Test {
     )";
   }
  private:
+  std::shared_ptr<MockEngineAclRuntimeStub> acl_stub_;
   std::filesystem::path temp_dir_;
   std::string old_path_;
 };
