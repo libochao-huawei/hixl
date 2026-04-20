@@ -422,9 +422,16 @@ if __name__ == "__main__":
             endpoint_list.append(ub_host_endpoint_d)
             endpoint_list.append(ub_host_endpoint)
 
+        net_instance_id = next(
+            (item.get('net_instance_id')
+            for item in device_info.get('level_list', [])
+            if item.get('net_layer') == 1),
+            None  # default: return None
+        )
+
         output = {
             "version": "1.3",
-            "net_instance_id": device_info['level_list'][0]['net_instance_id'],
+            "net_instance_id": net_instance_id,
             "endpoint_list": endpoint_list
         }
 
