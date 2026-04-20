@@ -20,16 +20,6 @@
 #include "profiling/prof_api_reg.h"
 
 namespace hixl {
-namespace {
-Status GetUboeIp(std::string &ip) {
-  int32_t dev_logic_id = 0;
-  int32_t dev_phy_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
-  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
-  HIXL_LOGI("current dev_logic_id=%d, dev_phy_id=%d", dev_logic_id, dev_phy_id);
-  return GetBondIpAddress(dev_phy_id, ip);
-}
-}  // namespace
 
 bool HixlEngine::IsInitialized() const {
   return is_initialized_.load(std::memory_order::memory_order_relaxed);
@@ -55,19 +45,11 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(CheckOptions(options), "[HixlEngine] Failed to check options");
   std::string local_comm_res;
-  Status endpoint_status =
-      EndpointGenerator::BuildEndpointListFromOptions(options, local_engine_, local_comm_res, endpoint_list_);
-  if (endpoint_status != SUCCESS) {
-    endpoint_list_.clear();
-  }
+  HIXL_CHK_STATUS_RET(
+      EndpointGenerator::BuildEndpointListFromOptions(options, local_engine_, local_comm_res, endpoint_list_),
+      "[HixlEngine] Failed to build endpoint list from options");
   HIXL_CHK_STATUS_RET(ParseTrafficClass(options), "[HixlEngine] Failed to parse traffic class");
   HIXL_CHK_STATUS_RET(ParseServiceLevel(options), "[HixlEngine] Failed to parse service level");
-  if (endpoint_list_.empty()) {
-    HIXL_CHK_STATUS_RET(GenDefaultEndpointConfig(options, endpoint_list_), "Gen default endpoint config failed.");
-    HIXL_CHK_BOOL_RET_STATUS(!endpoint_list_.empty(), endpoint_status,
-                             "[HixlEngine] endpoint_list is empty, please check options, local_comm_res:%s",
-                             local_comm_res.c_str());
-  }
   HIXL_CHK_STATUS_RET(InitServer(),
                       "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
                       local_engine_.c_str(), local_comm_res.c_str());
@@ -335,33 +317,6 @@ Status HixlEngine::ParseServiceLevel(const std::map<AscendString, AscendString> 
     rdma_service_level_ = static_cast<uint8_t>(service_level);
     HIXL_LOGI("Set rdma service level to %u.", service_level);
   }
-  return SUCCESS;
-}
-Status HixlEngine::GenDefaultEndpointConfig(const std::map<AscendString, AscendString> &options,
-                                            std::vector<EndpointConfig> &endpoint_list) {
-  std::vector<std::string> protocol_desc;
-  HIXL_CHK_STATUS_RET(ParseConfigProtocolDesc(options, protocol_desc), "Parse config protocol_desc failed.");
-  if (protocol_desc.empty()) {
-    HIXL_LOGW("only support uboe endpoint config now.");
-    return SUCCESS;
-  }
-  if (protocol_desc.size() == 1 && protocol_desc[0] == "uboe:device") {
-    EndpointConfig endpoint_config{};
-    HIXL_CHK_STATUS_RET(GenDefaultUboeEndpointConfig(endpoint_config), "Gen default uboe endpoint config failed.");
-    endpoint_list.emplace_back(endpoint_config);
-    return SUCCESS;
-  }
-  HIXL_LOGE(PARAM_INVALID, "option[%s] only support [\"uboe:device\"] now.", OPTION_GLOBAL_RESOURCE_CONFIG);
-  return PARAM_INVALID;
-}
-
-Status HixlEngine::GenDefaultUboeEndpointConfig(EndpointConfig &endpoint_config) {
-  std::string uboe_ip;
-  HIXL_CHK_STATUS_RET(GetUboeIp(uboe_ip), "get uboe ip failed");
-  endpoint_config.protocol = kProtocolUboe;
-  endpoint_config.comm_id = uboe_ip;
-  endpoint_config.placement = kPlacementDevice;
-  endpoint_config.net_instance_id = "default_superpod1_1";
   return SUCCESS;
 }
 }  // namespace hixl

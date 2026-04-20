@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "nlohmann/json.hpp"
 #include "cs/hixl_cs.h"
 #include "hixl/hixl_types.h"
 #include "common/hixl_inner_types.h"
@@ -53,16 +54,16 @@ class EndpointGenerator {
   static Status GetSocName(std::string &soc_name);
   static SocType GetSocTypeByName(const std::string &soc_name);
   static Status GetSocType(SocType &soc_type);
-  static Status ResolveLocalCommResContext(const std::string &local_comm_res, SocType &soc_type, bool &auto_generate);
   static void ConvertLocCommResInfoToEndpointList(const LocCommResInfo &loc_comm_res_info,
                                                   std::vector<EndpointConfig> &endpoint_list);
   static Status BuildNetInstanceId(int32_t device_id,
                                    const std::string &local_engine,
                                    std::string &net_instance_id);
-  static Status BuildEndpointListFromLocalCommRes(const std::string &local_comm_res,
+  static Status BuildEndpointListFromLocalCommRes(const nlohmann::json &config,
+                                                  bool has_endpoint_list,
                                                   const std::string &local_engine,
                                                   std::vector<EndpointConfig> &endpoint_list);
-  static Status ParseLocalCommRes(const std::string &local_comm_res, std::vector<EndpointConfig> &endpoint_list);
+  static Status ParseLocalCommRes(const nlohmann::json &config, std::vector<EndpointConfig> &endpoint_list);
   static Status FillDeviceInfoIfNeeded(SocType soc_type, std::vector<EndpointConfig> &endpoint_list);
   static Status BuildEndpointList(int32_t phy_device_id, std::vector<EndpointInfo> &endpoint_list);
   static Status BuildRoceEndpoint(int32_t phy_device_id, EndpointInfo &endpoint);
