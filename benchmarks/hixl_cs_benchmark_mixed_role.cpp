@@ -71,17 +71,17 @@ void from_json(const json &j, EndpointDesc &info) {
 
 namespace {
 constexpr int32_t kClientConnectTimeoutMs = 5000;
-constexpr int32_t kExpectedArgCnt = 11;
+constexpr int32_t kExpectedArgCnt = 10;
 constexpr uint32_t kArgIndexDeviceId = 1;
-constexpr uint32_t kArgIndexLocalEngine = 2;
-constexpr uint32_t kArgIndexRemoteEngine = 3;
-constexpr uint32_t kArgIndexTcpPort = 4;
+constexpr uint32_t kArgIndexListenEngine = 2;      // 本节点server监听地址 IP:Port
+constexpr uint32_t kArgIndexConnectEngine = 3;      // 对端server监听地址 IP:Port (本节点client连接此地址)
+constexpr uint32_t kArgIndexTcpPort = 4;           // TCP控制通道端口
 constexpr uint32_t kArgIndexTransferMode = 5;
 constexpr uint32_t kArgIndexTransferOp = 6;
-constexpr uint32_t kArgIndexMyRole = 7;          // "client" or "server"
-constexpr uint32_t kArgIndexLocalCommRes = 8;
-constexpr uint32_t kArgIndexRemoteCommRes = 9;
-constexpr uint32_t kArgIndexRemote2Engine = 10;  // Remote engine for the opposite role
+constexpr uint32_t kArgIndexMyRole = 7;            // "client" or "server"
+constexpr uint32_t kArgIndexLocalEp = 8;           // 本节点endpoint JSON
+constexpr uint32_t kArgIndexRemoteEp = 9;          // 对端endpoint JSON
+
 constexpr uint32_t kTransferMemSize = 134217728;  // 128M
 constexpr int32_t kPortMaxValue = 65535;
 constexpr int32_t kBackLog = 1024;
@@ -99,15 +99,14 @@ constexpr const char *kClientMemTagName = "client_mem";
 
 struct Args {
   int32_t device_id;
-  std::string local_engine;      // This node's engine address for server role
-  std::string remote_engine;      // Remote engine address for client role
-  std::string remote2_engine;     // Remote engine address for server role (on opposite node)
+  std::string listen_engine;      // 本节点server监听地址 (IP:Port)
+  std::string connect_engine;     // 对端server监听地址 (IP:Port)
   uint16_t tcp_port;
   std::string transfer_mode;
   std::string transfer_op;
   std::string my_role;            // "client" or "server"
-  std::string local_comm_res;
-  std::string remote_comm_res;
+  std::string local_ep;           // 本节点endpoint JSON
+  std::string remote_ep;          // 对端endpoint JSON
 };
 
 struct TransferResult {
@@ -276,25 +275,53 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
   return transfer_data;
 }
 
+// 从地址字符串解析IP和端口
+bool ParseEngineAddr(const std::string &engine, std::string &ip, uint16_t &port) {
+  size_t colon_pos = engine.find(':');
+  if (colon_pos == std::string::npos) {
+    return false;
+  }
+  ip = engine.substr(0, colon_pos);
+  try {
+    port = static_cast<uint16_t>(std::stoi(engine.substr(colon_pos + 1)));
+  } catch (...) {
+    return false;
+  }
+  return true;
+}
+
 // Run as client thread
-int32_t RunClientThread(const Args &args, const char *thread_name) {
+// connect_engine: 对端server的监听地址 (IP:Port)
+// local_ep: 本节点的endpoint
+// remote_ep: 对端节点的endpoint
+int32_t RunClientThread(const std::string &connect_engine,
+                        const std::string &local_ep_str,
+                        const std::string &remote_ep_str,
+                        const std::string &transfer_mode,
+                        const std::string &transfer_op,
+                        const char *thread_name) {
   (void)printf("[INFO] %s: Client thread start\n", thread_name);
 
   // 1. Initialize endpoint info
   EndpointDesc local_ep;
   EndpointDesc remote_ep;
-  if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 ||
-      InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
+  if (InitEndPointInfo(local_ep_str, local_ep) != 0 ||
+      InitEndPointInfo(remote_ep_str, remote_ep) != 0) {
     (void)printf("[ERROR] %s: Initialize EndPoint list failed\n", thread_name);
     return -1;
   }
 
-  // 2. Create client
+  // 2. Create client - 连接对端server
   HixlClientHandle client_handle = nullptr;
-  std::string ip = args.remote_engine.substr(0U, args.remote_engine.find(':'));
-  int32_t port = std::stoi(args.remote_engine.substr(args.remote_engine.find(':') + 1U));
-  HixlClientDesc client_desc = {.server_ip = ip.c_str(),
-                                .server_port = static_cast<uint32_t>(port),
+  std::string server_ip;
+  uint16_t server_port;
+  if (!ParseEngineAddr(connect_engine, server_ip, server_port)) {
+    (void)printf("[ERROR] %s: Invalid connect_engine format: %s\n", thread_name, connect_engine.c_str());
+    return -1;
+  }
+
+  HixlClientDesc client_desc = {.server_ip = server_ip.c_str(),
+                                .server_port = static_cast<uint32_t>(server_port),
                                 .local_endpoint = &local_ep,
                                 .remote_endpoint = &remote_ep};
   HixlClientConfig client_config{};
@@ -309,7 +336,7 @@ int32_t RunClientThread(const Args &args, const char *thread_name) {
   MemHandle mem_handle = nullptr;
   CommMem mem{};
   aclrtMemcpyKind copy_kind;
-  bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
+  bool is_host = (transfer_mode == "h2d" || transfer_mode == "h2h");
 
   if (is_host) {
     void *tmp = malloc(kTransferMemSize);
@@ -324,7 +351,7 @@ int32_t RunClientThread(const Args &args, const char *thread_name) {
     }
   } else {
     aclError acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
-    if (args.transfer_op == "read") {
+    if (transfer_op == "read") {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
     } else {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
@@ -347,8 +374,8 @@ int32_t RunClientThread(const Args &args, const char *thread_name) {
   (void)printf("[INFO] %s: Client memory registered\n", thread_name);
 
   // Initialize memory data if write operation
-  if (args.transfer_op == "write") {
-    kClientTransferData = mem_alloc(args.transfer_op, true, copy_kind, mem.addr, kTransferMemSize);
+  if (transfer_op == "write") {
+    kClientTransferData = mem_alloc(transfer_op, true, copy_kind, mem.addr, kTransferMemSize);
   }
 
   // 4. Connect to server
@@ -371,14 +398,14 @@ int32_t RunClientThread(const Args &args, const char *thread_name) {
   // 5. Transfer
   TransferResult result;
   if (DoTransfer(client_handle, static_cast<uint8_t *>(mem.addr), remote_addr,
-                 args.transfer_op, thread_name, &result) != 0) {
+                 transfer_op, thread_name, &result) != 0) {
     ClientFinalize(client_handle, {mem_handle});
     return -1;
   }
 
   // If read operation, verify data
-  if (args.transfer_op == "read") {
-    kClientTransferData = mem_alloc(args.transfer_op, true, copy_kind, mem.addr, kTransferMemSize);
+  if (transfer_op == "read") {
+    kClientTransferData = mem_alloc(transfer_op, true, copy_kind, mem.addr, kTransferMemSize);
   }
 
   // 6. Cleanup
@@ -395,22 +422,38 @@ int32_t RunClientThread(const Args &args, const char *thread_name) {
 }
 
 // Run as server thread
-int32_t RunServerThread(const Args &args, const char *thread_name) {
+// listen_engine: 本节点server监听地址 (IP:Port)
+// local_ep_str: 本节点endpoint JSON
+// remote_ep_str: 对端endpoint JSON (用于TCP信号通道)
+// tcp_port: TCP控制通道端口
+int32_t RunServerThread(const std::string &listen_engine,
+                        const std::string &local_ep_str,
+                        const std::string &remote_ep_str,
+                        uint16_t tcp_port,
+                        const std::string &transfer_mode,
+                        const std::string &transfer_op,
+                        const char *thread_name) {
   (void)printf("[INFO] %s: Server thread start\n", thread_name);
 
   // 1. Initialize endpoint info
   EndpointDesc ep;
-  if (InitEndPointInfo(args.local_comm_res, ep) != 0) {
+  if (InitEndPointInfo(local_ep_str, ep) != 0) {
     (void)printf("[ERROR] %s: Initialize EndPoint list failed\n", thread_name);
     return -1;
   }
 
+  // 解析本节点监听地址
+  std::string listen_ip;
+  uint16_t listen_port;
+  if (!ParseEngineAddr(listen_engine, listen_ip, listen_port)) {
+    (void)printf("[ERROR] %s: Invalid listen_engine format: %s\n", thread_name, listen_engine.c_str());
+    return -1;
+  }
+
   HixlServerHandle server_handle = nullptr;
-  std::string ip = args.local_engine.substr(0, args.local_engine.find(':'));
-  int32_t port = std::stoi(args.local_engine.substr(args.local_engine.find(':') + 1));
   HixlServerConfig config{};
-  HixlServerDesc server_desc = {.server_ip = ip.c_str(),
-                                .server_port = static_cast<uint32_t>(port),
+  HixlServerDesc server_desc = {.server_ip = listen_ip.c_str(),
+                                .server_port = static_cast<uint32_t>(listen_port),
                                 .endpoint_list = &ep,
                                 .endpoint_list_num = 1U};
 
@@ -426,14 +469,14 @@ int32_t RunServerThread(const Args &args, const char *thread_name) {
     (void)printf("[ERROR] %s: HixlCSServerListen failed, ret = %u\n", thread_name, ret);
     return -1;
   }
-  (void)printf("[INFO] %s: Server listening on %s:%d\n", thread_name, ip.c_str(), port);
+  (void)printf("[INFO] %s: Server listening on %s:%d\n", thread_name, listen_ip.c_str(), listen_port);
 
   // 2. Register memory (128MB)
   uint32_t *kServerTransferData = nullptr;
   MemHandle mem_handle = nullptr;
   aclrtMemcpyKind copy_kind;
   CommMem mem{};
-  bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
+  bool is_host = (transfer_mode == "d2h" || transfer_mode == "h2h");
 
   if (is_host) {
     void *tmp = malloc(kTransferMemSize);
@@ -448,7 +491,7 @@ int32_t RunServerThread(const Args &args, const char *thread_name) {
     }
   } else {
     aclError acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
-    if (args.transfer_op == "read") {
+    if (transfer_op == "read") {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     } else {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
@@ -471,17 +514,37 @@ int32_t RunServerThread(const Args &args, const char *thread_name) {
   (void)printf("[INFO] %s: Server memory registered\n", thread_name);
 
   // Initialize memory if read operation
-  if (args.transfer_op == "read") {
-    kServerTransferData = mem_alloc(args.transfer_op, false, copy_kind, mem.addr, kTransferMemSize);
+  if (transfer_op == "read") {
+    kServerTransferData = mem_alloc(transfer_op, false, copy_kind, mem.addr, kTransferMemSize);
   }
 
   // 3. Wait for client to complete transfer (via TCP signal)
+  // TCP用于等待对端client发送传输完成信号
+  // remote_ep_str中包含对端地址信息，用于建立TCP连接
   TCPClient tcp_client;
-  std::string remote_ip = args.remote2_engine.substr(0U, args.remote2_engine.find(':'));
-  uint16_t remote_tcp_port = args.tcp_port;  // Use same TCP port
+  std::string remote_ip;
+  uint16_t remote_tcp_port;
+  if (!ParseEngineAddr(remote_ep_str, remote_ip, remote_tcp_port)) {
+    // remote_ep_str格式可能是JSON而不是IP:Port，尝试解析JSON中的addr
+    try {
+      json ep_json = json::parse(remote_ep_str);
+      remote_ip = ep_json.at("addr").get<std::string>();
+      remote_tcp_port = tcp_port;  // 使用传入的tcp_port
+    } catch (const std::exception &e) {
+      (void)printf("[ERROR] %s: Failed to parse remote endpoint: %s\n", thread_name, e.what());
+      ServerFinalize(server_handle, {mem_handle});
+      return -1;
+    }
+  }
+
+  // 如果remote_ip是本端地址，使用tcp_port作为监听端口
+  if (remote_ip == listen_ip) {
+    remote_tcp_port = tcp_port;
+  }
 
   if (!tcp_client.ConnectToServer(remote_ip, remote_tcp_port)) {
-    (void)printf("[ERROR] %s: Failed to connect to client via TCP\n", thread_name);
+    (void)printf("[ERROR] %s: Failed to connect to client via TCP at %s:%d\n",
+                 thread_name, remote_ip.c_str(), remote_tcp_port);
     ServerFinalize(server_handle, {mem_handle});
     return -1;
   }
@@ -492,8 +555,8 @@ int32_t RunServerThread(const Args &args, const char *thread_name) {
   tcp_client.Disconnect();
 
   // Copy data if write operation
-  if (args.transfer_op == "write") {
-    kServerTransferData = mem_alloc(args.transfer_op, false, copy_kind, mem.addr, kTransferMemSize);
+  if (transfer_op == "write") {
+    kServerTransferData = mem_alloc(transfer_op, false, copy_kind, mem.addr, kTransferMemSize);
   }
 
   // 4. Cleanup
@@ -512,24 +575,29 @@ int32_t RunServerThread(const Args &args, const char *thread_name) {
 }  // namespace
 
 void PrintUsage(const char *prog_name) {
-  (void)printf("Usage: %s <device_id> <local_engine> <remote_engine> <tcp_port> <transfer_mode> "
-               "<transfer_op> <my_role> <local_comm_res> <remote_comm_res> <remote2_engine>\n",
+  (void)printf("Usage: %s <device_id> <listen_engine> <connect_engine> <tcp_port> "
+               "<transfer_mode> <transfer_op> <my_role> <local_ep> <remote_ep>\n",
                prog_name);
   (void)printf("  device_id: Device ID (e.g., 0)\n");
-  (void)printf("  local_engine: This node's server engine address (e.g., 192.168.1.161:19999)\n");
-  (void)printf("  remote_engine: Remote server engine address for client role (e.g., 192.168.1.163:19999)\n");
-  (void)printf("  tcp_port: TCP port for control channel (used by server role to wait for client signal)\n");
+  (void)printf("  listen_engine: This node's server listen address (IP:Port)\n");
+  (void)printf("  connect_engine: Remote server address to connect (IP:Port)\n");
+  (void)printf("  tcp_port: TCP port for control channel\n");
   (void)printf("  transfer_mode: d2d, d2h, h2h, h2d\n");
   (void)printf("  transfer_op: write or read\n");
   (void)printf("  my_role: 'client' or 'server' - this node's primary role\n");
-  (void)printf("  local_comm_res: Local endpoint JSON\n");
-  (void)printf("  remote_comm_res: Remote endpoint JSON\n");
-  (void)printf("  remote2_engine: Remote server engine address for server role (e.g., 192.168.1.163:19998)\n");
-  (void)printf("\nExample:\n");
-  (void)printf("  On 161 (client role):\n");
-  (void)printf("    %s 0 192.168.1.161:19998 192.168.1.163:19999 19997 h2d write client h2d h2d 192.168.1.163:19998\n", prog_name);
-  (void)printf("  On 163 (server role):\n");
-  (void)printf("    %s 0 192.168.1.163:19999 192.168.1.161:19998 19998 h2d write server h2d h2d 192.168.1.161:19999\n", prog_name);
+  (void)printf("  local_ep: Local endpoint JSON ({\"location\":\"host\",\"protocol\":\"roce\",\"addr\":\"IP\"})\n");
+  (void)printf("  remote_ep: Remote endpoint JSON\n");
+  (void)printf("\nDual-Active Example (Two nodes, Node A and Node B):\n");
+  (void)printf("  Node A listens on 192.168.1.161:19998, connects to Node B at 192.168.1.163:19999\n");
+  (void)printf("  Node B listens on 192.168.1.163:19999, connects to Node A at 192.168.1.161:19998\n");
+  (void)printf("\nOn Node A (client role):\n");
+  (void)printf("  %s 0 192.168.1.161:19998 192.168.1.163:19999 19997 h2h write client "
+               "'{\"location\":\"host\",\"protocol\":\"roce\",\"addr\":\"192.168.1.161\"}' "
+               "'{\"location\":\"host\",\"protocol\":\"roce\",\"addr\":\"192.168.1.163\"}'\n", prog_name);
+  (void)printf("\nOn Node B (server role):\n");
+  (void)printf("  %s 0 192.168.1.163:19999 192.168.1.161:19998 19998 h2h write server "
+               "'{\"location\":\"host\",\"protocol\":\"roce\",\"addr\":\"192.168.1.163\"}' "
+               "'{\"location\":\"host\",\"protocol\":\"roce\",\"addr\":\"192.168.1.161\"}'\n", prog_name);
 }
 
 int32_t main(int32_t argc, char **argv) {
@@ -544,20 +612,18 @@ int32_t main(int32_t argc, char **argv) {
   }
 
   device_id_str = argv[kArgIndexDeviceId];
-  args.local_engine = argv[kArgIndexLocalEngine];
-  args.remote_engine = argv[kArgIndexRemoteEngine];
+  args.listen_engine = argv[kArgIndexListenEngine];
+  args.connect_engine = argv[kArgIndexConnectEngine];
   tcp_port_str = argv[kArgIndexTcpPort];
   args.transfer_mode = argv[kArgIndexTransferMode];
   args.transfer_op = argv[kArgIndexTransferOp];
   args.my_role = argv[kArgIndexMyRole];
-  args.local_comm_res = argv[kArgIndexLocalCommRes];
-  args.remote_comm_res = argv[kArgIndexRemoteCommRes];
-  args.remote2_engine = argv[kArgIndexRemote2Engine];
+  args.local_ep = argv[kArgIndexLocalEp];
+  args.remote_ep = argv[kArgIndexRemoteEp];
 
   (void)printf("[INFO] device_id = %s\n", device_id_str.c_str());
-  (void)printf("[INFO] local_engine = %s (for server role)\n", args.local_engine.c_str());
-  (void)printf("[INFO] remote_engine = %s (for client role)\n", args.remote_engine.c_str());
-  (void)printf("[INFO] remote2_engine = %s (for server role to wait client signal)\n", args.remote2_engine.c_str());
+  (void)printf("[INFO] listen_engine = %s (this node's server listen addr)\n", args.listen_engine.c_str());
+  (void)printf("[INFO] connect_engine = %s (remote server addr to connect)\n", args.connect_engine.c_str());
   (void)printf("[INFO] tcp_port = %s\n", tcp_port_str.c_str());
   (void)printf("[INFO] transfer_mode = %s\n", args.transfer_mode.c_str());
   (void)printf("[INFO] transfer_op = %s\n", args.transfer_op.c_str());
@@ -594,31 +660,37 @@ int32_t main(int32_t argc, char **argv) {
   if (args.my_role == "client") {
     // This node: Thread 0 = client, Thread 1 = server
     (void)printf("[INFO] Starting mixed role test:\n");
-    (void)printf("[INFO]   Thread 0: CLIENT connecting to %s\n", args.remote_engine.c_str());
-    (void)printf("[INFO]   Thread 1: SERVER listening on %s\n", args.local_engine.c_str());
+    (void)printf("[INFO]   Thread 0: CLIENT connecting to %s\n", args.connect_engine.c_str());
+    (void)printf("[INFO]   Thread 1: SERVER listening on %s\n", args.listen_engine.c_str());
 
     threads.emplace_back([&args, &results]() {
-      int32_t ret = RunClientThread(args, "Thread-Client");
+      int32_t ret = RunClientThread(args.connect_engine, args.local_ep, args.remote_ep,
+                                     args.transfer_mode, args.transfer_op, "Thread-Client");
       if (ret != 0) results.fetch_or(1);
     });
 
     threads.emplace_back([&args, &results]() {
-      int32_t ret = RunServerThread(args, "Thread-Server");
+      int32_t ret = RunServerThread(args.listen_engine, args.local_ep, args.remote_ep,
+                                     args.tcp_port, args.transfer_mode, args.transfer_op,
+                                     "Thread-Server");
       if (ret != 0) results.fetch_or(2);
     });
   } else if (args.my_role == "server") {
     // This node: Thread 0 = server, Thread 1 = client
     (void)printf("[INFO] Starting mixed role test:\n");
-    (void)printf("[INFO]   Thread 0: SERVER listening on %s\n", args.local_engine.c_str());
-    (void)printf("[INFO]   Thread 1: CLIENT connecting to %s\n", args.remote_engine.c_str());
+    (void)printf("[INFO]   Thread 0: SERVER listening on %s\n", args.listen_engine.c_str());
+    (void)printf("[INFO]   Thread 1: CLIENT connecting to %s\n", args.connect_engine.c_str());
 
     threads.emplace_back([&args, &results]() {
-      int32_t ret = RunServerThread(args, "Thread-Server");
+      int32_t ret = RunServerThread(args.listen_engine, args.local_ep, args.remote_ep,
+                                     args.tcp_port, args.transfer_mode, args.transfer_op,
+                                     "Thread-Server");
       if (ret != 0) results.fetch_or(1);
     });
 
     threads.emplace_back([&args, &results]() {
-      int32_t ret = RunClientThread(args, "Thread-Client");
+      int32_t ret = RunClientThread(args.connect_engine, args.local_ep, args.remote_ep,
+                                     args.transfer_mode, args.transfer_op, "Thread-Client");
       if (ret != 0) results.fetch_or(2);
     });
   } else {
