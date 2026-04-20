@@ -30,6 +30,8 @@
 namespace hixl {
 namespace {
 constexpr const char kConfigVersion[] = "1.3";
+constexpr const char kUboeProtocolDesc[] = "uboe:device";
+constexpr const char kDefaultUboeNetInstanceId[] = "default_superpod1_1";
 
 const std::set<std::string> kSocV2 = {"Ascend910B1", "Ascend910B2", "Ascend910B3",
                                       "Ascend910B4", "Ascend910B2C", "Ascend910B4-1"};
@@ -48,6 +50,30 @@ bool IsVersionOnlyLocalCommRes(const nlohmann::json &j) {
   const bool has_endpoint_list =
       j.contains("endpoint_list") && j["endpoint_list"].is_array() && !j["endpoint_list"].empty();
   return has_version && j.size() == 1 && !has_net_instance_id && !has_endpoint_list;
+}
+
+bool IsUboeProtocolDescEnabled(const std::vector<std::string> &protocol_desc) {
+  return !protocol_desc.empty() &&
+         std::find(protocol_desc.begin(), protocol_desc.end(), kUboeProtocolDesc) != protocol_desc.end();
+}
+
+Status GetUboeIp(std::string &ip) {
+  int32_t dev_logic_id = 0;
+  int32_t dev_phy_id = 0;
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
+  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
+  HIXL_LOGI("current dev_logic_id=%d, dev_phy_id=%d", dev_logic_id, dev_phy_id);
+  return GetBondIpAddress(dev_phy_id, ip);
+}
+
+Status GenDefaultUboeEndpointConfig(EndpointConfig &endpoint_config) {
+  std::string uboe_ip;
+  HIXL_CHK_STATUS_RET(GetUboeIp(uboe_ip), "get uboe ip failed");
+  endpoint_config.protocol = kProtocolUboe;
+  endpoint_config.comm_id = uboe_ip;
+  endpoint_config.placement = kPlacementDevice;
+  endpoint_config.net_instance_id = kDefaultUboeNetInstanceId;
+  return SUCCESS;
 }
 
 Status ParseRequiredJsonField(const nlohmann::json &json_obj, const std::string &field_name, std::string &field_value) {
@@ -209,18 +235,30 @@ Status EndpointGenerator::BuildEndpointListFromOptions(const std::map<AscendStri
                                                        const std::string &local_engine,
                                                        std::string &local_comm_res,
                                                        std::vector<EndpointConfig> &endpoint_list) {
+  endpoint_list.clear();
   auto hixl_it = options.find(hixl::OPTION_LOCAL_COMM_RES);
   auto adxl_it = options.find(adxl::OPTION_LOCAL_COMM_RES);
   auto it = hixl_it == options.cend() ? adxl_it : hixl_it;
   const char *local_comm_res_cstr = (it != options.cend()) ? it->second.GetString() : nullptr;
-  HIXL_CHK_BOOL_RET_STATUS(it != options.cend() &&
-                               local_comm_res_cstr != nullptr &&
-                               local_comm_res_cstr[0] != '\0',
-                           PARAM_INVALID,
-                           "[HixlEngine] local_comm_res is empty");
-  local_comm_res = local_comm_res_cstr;
-  HIXL_CHK_STATUS_RET(BuildEndpointListFromLocalCommRes(local_comm_res, local_engine, endpoint_list),
-                      "BuildEndpointListFromLocalCommRes failed");
+  if (local_comm_res_cstr != nullptr && local_comm_res_cstr[0] != '\0') {
+    local_comm_res = local_comm_res_cstr;
+    HIXL_CHK_STATUS_RET(BuildEndpointListFromLocalCommRes(local_comm_res, local_engine, endpoint_list),
+                        "BuildEndpointListFromLocalCommRes failed");
+  } else {
+    local_comm_res.clear();
+  }
+
+  std::vector<std::string> protocol_desc;
+  HIXL_CHK_STATUS_RET(ParseConfigProtocolDesc(options, protocol_desc), "Parse config protocol_desc failed.");
+  if (IsUboeProtocolDescEnabled(protocol_desc)) {
+    EndpointConfig endpoint_config{};
+    HIXL_CHK_STATUS_RET(GenDefaultUboeEndpointConfig(endpoint_config), "Gen default uboe endpoint config failed.");
+    endpoint_list.emplace_back(endpoint_config);
+  }
+
+  HIXL_CHK_BOOL_RET_STATUS(!endpoint_list.empty(), PARAM_INVALID,
+                           "[HixlEngine] endpoint_list is empty, please check options, local_comm_res:%s",
+                           local_comm_res.c_str());
   return SUCCESS;
 }
 
