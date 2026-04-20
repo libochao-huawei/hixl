@@ -72,7 +72,7 @@ class ConnectPoolExecutor {
   std::mutex task_queue_mutex_;
   std::condition_variable task_queue_cv_;
   std::list<ConnectPoolExecutorTask> task_list_;
-  std::unordered_map<AscendString, std::list<ConnectPoolExecutorTask>::iterator> task_map_;
+  std::map<AscendString, std::list<ConnectPoolExecutorTask>::iterator> task_map_;
 
   std::mutex task_result_mutex_;
   std::map<AscendString, AsyncConnectStatus> task_result_;
