@@ -667,7 +667,7 @@ TEST_F(HixlEngineTest, TestInitializeFillDeviceInfoForV3FullConfigured) {
   engine.Finalize();
 }
 
-TEST_F(HixlEngineTest, TestInitializeRejectWhenVersionIsNot13) {
+TEST_F(HixlEngineTest, TestInitializeParsesConfiguredEndpointListRegardlessOfVersion) {
   SetSocStub("Ascend910_9391", 1, 23, 45, 67);
 
   const std::string local_comm_res = BuildLocalCommRes(
@@ -679,8 +679,16 @@ TEST_F(HixlEngineTest, TestInitializeRejectWhenVersionIsNot13) {
 
   HixlEngine engine("127.0.0.1");
   auto options = BuildOptions(local_comm_res);
-  EXPECT_EQ(engine.Initialize(options), PARAM_INVALID);
-  EXPECT_TRUE(engine.endpoint_list_.empty());
+  EXPECT_EQ(engine.Initialize(options), SUCCESS);
+  ASSERT_EQ(engine.endpoint_list_.size(), 1U);
+  EXPECT_EQ(engine.endpoint_list_[0].protocol, kProtocolRoce);
+  EXPECT_EQ(engine.endpoint_list_[0].placement, kPlacementDevice);
+  EXPECT_EQ(engine.endpoint_list_[0].net_instance_id, "sp_old");
+  EXPECT_EQ(engine.endpoint_list_[0].device_info.phy_device_id, 23);
+  EXPECT_EQ(engine.endpoint_list_[0].device_info.super_device_id, 45);
+  EXPECT_EQ(engine.endpoint_list_[0].device_info.super_pod_id, 67);
+
+  engine.Finalize();
 }
 
 TEST_F(HixlEngineTest, TestInitializeFillDeviceInfoOnlyForDevicePlacement) {
