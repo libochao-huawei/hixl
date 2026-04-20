@@ -130,7 +130,7 @@ int32_t InitEndPointInfo(const std::string &comm_res, EndpointDesc &ep) {
 int32_t Scene5ClientTest(HixlClientHandle client_handle, uint8_t *local_addr, const std::string &transfer_op) {
   (void)printf("[SCENE5] Client: First transfer.\n");
 
-  HcommMem *remote_mem_list = nullptr;
+  CommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
   auto ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
@@ -139,7 +139,7 @@ int32_t Scene5ClientTest(HixlClientHandle client_handle, uint8_t *local_addr, co
     return -1;
   }
 
-  std::map<std::string, HcommMem> server_mems;
+  std::map<std::string, CommMem> server_mems;
   for (uint32_t i = 0; i < list_num; ++i) {
     server_mems[mem_tag_list[i]] = remote_mem_list[i];
   }
@@ -227,7 +227,7 @@ int32_t Scene6Test(HixlClientHandle client_handle, uint8_t *local_addr,
                    const std::string &transfer_op) {
   (void)printf("[SCENE6] Start: Transfer 5000 times on single connection.\n");
 
-  HcommMem *remote_mem_list = nullptr;
+  CommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
   auto ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
@@ -236,7 +236,7 @@ int32_t Scene6Test(HixlClientHandle client_handle, uint8_t *local_addr,
     return -1;
   }
 
-  std::map<std::string, HcommMem> server_mems;
+  std::map<std::string, CommMem> server_mems;
   for (uint32_t i = 0; i < list_num; ++i) {
     server_mems[mem_tag_list[i]] = remote_mem_list[i];
   }
@@ -317,7 +317,7 @@ int32_t Scene7Test(HixlClientHandle client_handle, uint8_t *local_addr,
 
   if (is_client) {
     // Client侧：发起传输，然后销毁client
-    HcommMem *remote_mem_list = nullptr;
+    CommMem *remote_mem_list = nullptr;
     char **mem_tag_list = nullptr;
     uint32_t list_num = 0U;
     auto ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
@@ -326,7 +326,7 @@ int32_t Scene7Test(HixlClientHandle client_handle, uint8_t *local_addr,
       return -1;
     }
 
-    std::map<std::string, HcommMem> server_mems;
+    std::map<std::string, CommMem> server_mems;
     for (uint32_t i = 0; i < list_num; ++i) {
       server_mems[mem_tag_list[i]] = remote_mem_list[i];
     }
@@ -419,7 +419,7 @@ int32_t Scene8Test(const Args &args, bool is_client) {
 
     // 注册内存
     MemHandle mem_handle = nullptr;
-    HcommMem mem{};
+    CommMem mem{};
     bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
     aclrtMemcpyKind copy_kind = ACL_MEMCPY_HOST_TO_HOST;
     aclError acl_ret = ACL_ERROR_NONE;
@@ -430,12 +430,12 @@ int32_t Scene8Test(const Args &args, bool is_client) {
       void *tmp = malloc(kTransferMemSize);
       mem.addr = tmp;
       copy_kind = ACL_MEMCPY_HOST_TO_HOST;
-      mem.type = HCCL_MEM_TYPE_HOST;
+      mem.type = COMM_MEM_TYPE_HOST;
       mem.size = kTransferMemSize;
     } else {
       acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
       copy_kind = (args.transfer_op == "read") ? ACL_MEMCPY_DEVICE_TO_HOST : ACL_MEMCPY_HOST_TO_DEVICE;
-      mem.type = HCCL_MEM_TYPE_DEVICE;
+      mem.type = COMM_MEM_TYPE_DEVICE;
       mem.size = kTransferMemSize;
     }
 
@@ -451,7 +451,7 @@ int32_t Scene8Test(const Args &args, bool is_client) {
     }
 
     // 获取server内存
-    HcommMem *remote_mem_list = nullptr;
+    CommMem *remote_mem_list = nullptr;
     char **mem_tag_list = nullptr;
     uint32_t list_num = 0U;
     ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
@@ -459,7 +459,7 @@ int32_t Scene8Test(const Args &args, bool is_client) {
       exit(-1);
     }
 
-    std::map<std::string, HcommMem> server_mems;
+    std::map<std::string, CommMem> server_mems;
     for (uint32_t i = 0; i < list_num; ++i) {
       server_mems[mem_tag_list[i]] = remote_mem_list[i];
     }
@@ -568,7 +568,7 @@ int32_t RunClient(const Args &args) {
 
   // 2. 注册内存地址
   MemHandle mem_handle = nullptr;
-  HcommMem mem{};
+  CommMem mem{};
   aclrtMemcpyKind copy_kind = ACL_MEMCPY_HOST_TO_HOST;
   aclError acl_ret = ACL_ERROR_NONE;
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
@@ -579,7 +579,7 @@ int32_t RunClient(const Args &args) {
     tmp = malloc(kTransferMemSize);
     mem.addr = tmp;
     copy_kind = ACL_MEMCPY_HOST_TO_HOST;
-    mem.type = HCCL_MEM_TYPE_HOST;
+    mem.type = COMM_MEM_TYPE_HOST;
     mem.size = kTransferMemSize;
     if (tmp == nullptr) {
       HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Client host addr malloc failed.");
@@ -592,7 +592,7 @@ int32_t RunClient(const Args &args) {
     } else {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     }
-    mem.type = HCCL_MEM_TYPE_DEVICE;
+    mem.type = COMM_MEM_TYPE_DEVICE;
     mem.size = kTransferMemSize;
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] aclrtMalloc failed, ret = %d\n", acl_ret);
@@ -707,13 +707,13 @@ int32_t RunServer(const Args &args) {
 
   // 2. 注册内存地址
   MemHandle mem_handle = nullptr;
-  HcommMem mem{};
+  CommMem mem{};
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
   aclError acl_ret = ACL_ERROR_NONE;
   if (is_host) {
     void *tmp = malloc(kTransferMemSize);
     mem.addr = tmp;
-    mem.type = HCCL_MEM_TYPE_HOST;
+    mem.type = COMM_MEM_TYPE_HOST;
     mem.size = kTransferMemSize;
     if (tmp == nullptr) {
       HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Server host addr malloc failed.");
@@ -721,7 +721,7 @@ int32_t RunServer(const Args &args) {
     }
   } else {
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
-    mem.type = HCCL_MEM_TYPE_DEVICE;
+    mem.type = COMM_MEM_TYPE_DEVICE;
     mem.size = kTransferMemSize;
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR]Server host addr aclrtMalloc failed, ret = %d\n", acl_ret);
