@@ -35,6 +35,18 @@ namespace hixl {
 namespace {
 using MockLocCommResMmpaStub = test::TestMmpaStub;
 using MockLocCommResAclRuntimeStub = endpoint_test::MockAclRuntimeStub;
+constexpr const char kHccnToolPath[] = "/usr/local/Ascend/driver/tools/hccn_tool";
+
+class UboeMmpaStub : public test::TestMmpaStub {
+ public:
+  INT32 Access(const CHAR *path_name) override {
+    std::string path_str(path_name);
+    if (path_str == kHccnToolPath) {
+      return EN_ERROR;
+    }
+    return test::TestMmpaStub::Access(path_name);
+  }
+};
 
 std::string CreateExecutableScript(const std::string &name, const std::string &content) {
   std::string path = "/tmp/" + name;
@@ -345,6 +357,41 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2) {
   (void)remove(file_path.c_str());
 }
 
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2AndAppendsUboe) {
+  acl_stub_->soc_name_ = "Ascend910B4-1";
+  acl_stub_->device_id_ = 0;
+  acl_stub_->phy_device_id_ = 3;
+  llm::MmpaStub::GetInstance().SetImpl(std::make_shared<UboeMmpaStub>());
+
+  const std::string script_path =
+      CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:192.168.100.200\"\n");
+  setenv("PATH", "/tmp", 1);
+
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(R"({"version":"1.3"})");
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["uboe:device"]
+    }
+  )";
+
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_EQ(EndpointGenerator::BuildEndpointListFromOptions(options, "192.168.1.8:26000", local_comm_res,
+                                                            endpoint_list),
+            SUCCESS);
+  EXPECT_EQ(local_comm_res, R"({"version":"1.3"})");
+  ASSERT_EQ(endpoint_list.size(), 3U);
+  EXPECT_EQ(endpoint_list[0].protocol, kProtocolRoce);
+  EXPECT_EQ(endpoint_list[1].protocol, kProtocolHccs);
+  EXPECT_EQ(endpoint_list[2].protocol, kProtocolUboe);
+  EXPECT_EQ(endpoint_list[2].comm_id, "192.168.100.200");
+  EXPECT_EQ(endpoint_list[2].placement, kPlacementDevice);
+  EXPECT_EQ(endpoint_list[2].net_instance_id, "default_superpod1_1");
+
+  (void)remove(script_path.c_str());
+}
+
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsPrefersHixlOptionOverAdxl) {
   const std::string hixl_local_comm_res =
       R"({"version":"1.3","net_instance_id":"hixl_sp","endpoint_list":[{"protocol":"roce","comm_id":"127.0.0.1","placement":"host"}]})";
@@ -375,6 +422,57 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsEmptyLocalComm
   EXPECT_EQ(EndpointGenerator::BuildEndpointListFromOptions(options, "127.0.0.1:26000", local_comm_res,
                                                             endpoint_list),
             PARAM_INVALID);
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesUboeEndpoint) {
+  llm::MmpaStub::GetInstance().SetImpl(std::make_shared<UboeMmpaStub>());
+  const std::string script_path = CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:192.168.100.200\"\n");
+  setenv("PATH", "/tmp", 1);
+
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["uboe:device"]
+    }
+  )";
+
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_EQ(EndpointGenerator::BuildEndpointListFromOptions(options, "127.0.0.1:26000", local_comm_res,
+                                                            endpoint_list),
+            SUCCESS);
+  EXPECT_TRUE(local_comm_res.empty());
+  ASSERT_EQ(endpoint_list.size(), 1U);
+  EXPECT_EQ(endpoint_list[0].protocol, kProtocolUboe);
+  EXPECT_EQ(endpoint_list[0].comm_id, "192.168.100.200");
+  EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
+  EXPECT_EQ(endpoint_list[0].net_instance_id, "default_superpod1_1");
+
+  (void)remove(script_path.c_str());
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolDescWhenUboeFirst) {
+  llm::MmpaStub::GetInstance().SetImpl(std::make_shared<UboeMmpaStub>());
+  const std::string script_path = CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:192.168.100.201\"\n");
+  setenv("PATH", "/tmp", 1);
+
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["uboe:device", "roce:device"]
+    }
+  )";
+
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_EQ(EndpointGenerator::BuildEndpointListFromOptions(options, "127.0.0.1:26000", local_comm_res,
+                                                            endpoint_list),
+            SUCCESS);
+  ASSERT_EQ(endpoint_list.size(), 1U);
+  EXPECT_EQ(endpoint_list[0].protocol, kProtocolUboe);
+  EXPECT_EQ(endpoint_list[0].comm_id, "192.168.100.201");
+
+  (void)remove(script_path.c_str());
 }
 
 TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceRoceUseDeviceInfoTest) {
