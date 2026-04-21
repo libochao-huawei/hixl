@@ -89,22 +89,21 @@ install(FILES ${PACKAGE_FILES}
 
 set(hixl_include ${CMAKE_SOURCE_DIR}/include)
 install(DIRECTORY ${hixl_include}/
-    DESTINATION hixl/include
+    DESTINATION ${ARCH_LINUX_PATH}/include
     FILE_PERMISSIONS
     OWNER_READ OWNER_WRITE
     GROUP_READ GROUP_EXECUTE
 )
-install(TARGETS llm_datadist
-        LIBRARY DESTINATION hixl/lib)
+# 库文件通过 variables.cmake 中的 INSTALL_LIBRARY_DIR 设置自动安装
 
 install(FILES
   ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_kernel/cann-hixl-compat.tar.gz
-  DESTINATION hixl/aicpu_kernel
+  DESTINATION opp/built-in/op_impl/aicpu/kernel
 )
 
 install(FILES
   ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_kernel/libcann_hixl_kernel.json
-  DESTINATION hixl/aicpu_kernel
+  DESTINATION opp/built-in/op_impl/aicpu/config
 )
 
 # ============= CPack =============
