@@ -794,6 +794,8 @@ Status HixlCSClient::FillDeviceArgs(const CommunicateMem &mem_param, MemDev &mem
   args.remote_flag = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(remote_flag));
   args.local_flag = notify_addr;
   args.flag_size = notify_len_;
+  args.notify_id = slot.notify_id;
+  args.protocol = ep.protocol;
   return SUCCESS;
 }
 
