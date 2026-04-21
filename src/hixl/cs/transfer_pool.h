@@ -36,6 +36,7 @@ class TransferPool {
     aclrtNotify notify;
     void *host_flag;
     void *dev_const_one;
+    uint32_t notify_id;
   };
 
   TransferPool(const TransferPool &) = delete;
@@ -60,13 +61,14 @@ class TransferPool {
     ThreadHandle thread;
     aclrtNotify notify;
     void *host_flag;
+    uint32_t notify_id;
   };
 
   void InitFreeListLocked();
   Status InitOneSlotLocked(Slot &slot, uint32_t slot_index);
   static Status EnsureNotifyLocked(Slot &slot);
   static void ResetNotifyResourcesLocked(Slot &slot);
-  static Status CreateNotifyLocked(Slot &slot, uint32_t &notify_id);
+  static Status CreateNotifyLocked(Slot &slot);
   Status InitAllSlotsLocked();
   void RollbackInitLocked(uint32_t failed_index);
   void DeinitAllSlotsLocked();
