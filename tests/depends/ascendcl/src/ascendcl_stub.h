@@ -126,6 +126,8 @@ public:
   virtual aclError aclrtLaunchKernelWithConfig(aclrtFuncHandle funcHandle, uint32_t blockDim, aclrtStream stream,
                                      aclrtLaunchKernelCfg *config, aclrtArgsHandle argsHandle, void *reserved);
   virtual aclError aclrtBinaryUnLoad(aclrtBinHandle binHandle);
+  virtual aclError aclrtDeviceGetBareTgid(int32_t *pid);
+  virtual aclError aclrtEnableP2p();
 
 private:
   static std::mutex mutex_;

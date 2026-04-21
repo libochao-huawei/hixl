@@ -619,6 +619,15 @@ aclError AclRuntimeStub::aclrtBinaryUnLoad(aclrtBinHandle binHandle) {
   (void)binHandle;
   return ACL_SUCCESS;
 }
+
+virtual aclError aclrtDeviceGetBareTgid(int32_t *pid) {
+  *pid = 1;
+  return ACL_SUCCESS;
+}
+
+virtual aclError aclrtEnableP2p() {
+  return ACL_SUCCESS;
+}
 }
 
 #ifdef __cplusplus
@@ -902,6 +911,14 @@ aclError aclrtLaunchKernelWithConfig(aclrtFuncHandle funcHandle, uint32_t blockD
 
 aclError aclrtBinaryUnLoad(aclrtBinHandle binHandle) {
   return llm::AclRuntimeStub::GetInstance()-> aclrtBinaryUnLoad(binHandle);
+}
+
+aclError aclrtDeviceGetBareTgid(int32_t *pid) {
+  return llm::AclRuntimeStub::GetInstance()-> aclrtDeviceGetBareTgid(pid);
+}
+
+aclError rtEnableP2p() {
+  return llm::AclRuntimeStub::GetInstance()-> aclrtEnableP2p();
 }
 #ifdef __cplusplus
 }
