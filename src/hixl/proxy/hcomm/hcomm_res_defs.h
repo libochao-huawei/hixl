@@ -54,6 +54,11 @@ typedef uint64_t ChannelHandle;
 typedef uint64_t ThreadHandle;
 #endif
 
+typedef struct {
+    uint32_t sdid;
+    int32_t pid;
+} HcommMemGranInfo;
+
 /**
  * @brief 通信引擎类型枚举
  */
