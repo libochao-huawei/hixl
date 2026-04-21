@@ -32,7 +32,7 @@ constexpr uint64_t kMaxRecvRespBodySize = static_cast<uint64_t>(4ULL * 1024ULL *
 constexpr uint32_t kCtrlMsgPluginTimeoutMs = 10000U;
 constexpr uint32_t kMaxUbCsClientNum = 4U;
 constexpr const char *kMemTypeDevice = "DEVICE";
-constexpr const char *kMemTypetHost = "HOST";
+constexpr const char *kMemTypeHost = "HOST";
 
 const char *CommTypeToString(CommType type) {
   switch (type) {
@@ -420,7 +420,7 @@ Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {
     auto &mem = mem_info.mem;
     auto type = mem_info.type;
     HIXL_LOGI("Add range to local_segments_ and register memory, addr: 0x%lx, size: %lu, type: %s", mem.addr, mem.len,
-              (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+              (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
     {
       std::lock_guard<std::mutex> lock(local_segments_mutex_);
       auto seg_it = std::find_if(local_segments_.begin(), local_segments_.end(),
@@ -428,14 +428,14 @@ Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {
       if (seg_it != local_segments_.end()) {
         HIXL_CHK_STATUS_RET((*seg_it)->AddRange(mem.addr, mem.len),
                             "Failed to add range to local_segments_, addr: 0x%lx, size: %lu, type: %s", mem.addr,
-                            mem.len, (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+                            mem.len, (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
       } else {
         auto new_segment = MakeShared<Segment>(type);
         HIXL_CHK_BOOL_RET_STATUS(new_segment != nullptr, FAILED, "Failed to create new segment for type:%s",
-                                 (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+                                 (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
         HIXL_CHK_STATUS_RET(new_segment->AddRange(mem.addr, mem.len),
                             "Failed to add range to local_segments_, addr: 0x%lx, size: %lu, type: %s", mem.addr,
-                            mem.len, (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+                            mem.len, (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
         local_segments_.push_back(new_segment);
       }
     }
@@ -443,7 +443,7 @@ Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {
     // 注册内存到对应的cs client
     HIXL_CHK_STATUS_RET(RegisterMemToCsClient(mem, type),
                         "Failed to register memory to cs client, addr: 0x%lx, size: %lu, type: %s", mem.addr, mem.len,
-                        (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+                        (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
   }
   HIXL_LOGI("SetLocalMemInfo end");
   return SUCCESS;
@@ -478,10 +478,10 @@ Status HixlClient::RegisterMemToCsClient(const MemDesc &mem, const MemType type)
     HIXL_CHK_STATUS_RET(HixlCSClientRegMem(handle_it->second, nullptr, &hccl_mem, &mem_handle),
                         "HixlClient register memory failed, client_handle: %p, addr: 0x%lx, size: %lu, type: %s",
                         handle_it->second, mem.addr, mem.len,
-                        (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+                        (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
     HIXL_LOGI("HixlClient register memory success, client_handle: %p, mem_handle: %p, addr: 0x%lx, size: %lu, type: %s",
               handle_it->second, mem_handle, mem.addr, mem.len,
-              (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+              (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
     {
       std::lock_guard<std::mutex> lock(mem_handles_mutex_);
       client_mem_handles_[comm_type].push_back(mem_handle);
@@ -554,16 +554,16 @@ Status HixlClient::ProcessRemoteMem(uint32_t timeout_ms) {
             (*it)->AddRange(reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size),
             "Failed to add range to remote_segments_, addr: 0x%lx, size: %lu, type: %s",
             reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size,
-            (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+            (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
       } else {
         auto new_segment = MakeShared<Segment>(type);
         HIXL_CHK_BOOL_RET_STATUS(new_segment != nullptr, FAILED, "Failed to create new segment for type:%s",
-                                 (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+                                 (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
         HIXL_CHK_STATUS_RET(
             new_segment->AddRange(reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size),
             "Failed to add range to remote_segments_, addr: 0x%lx, size: %lu, type: %s",
             reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size,
-            (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+            (type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
         remote_segments_.push_back(new_segment);
       }
     }
@@ -716,8 +716,8 @@ Status HixlClient::ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs
         has_found = true;
         op_descs_table[comm_type].push_back(op_desc);
         HIXL_LOGI("Current communication type: %s, local memory type: %s, remote memory type: %s.",
-                  CommTypeToString(comm_type), (local_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost,
-                  (remote_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+                  CommTypeToString(comm_type), (local_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost,
+                  (remote_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
       }
     }
 
@@ -734,8 +734,8 @@ Status HixlClient::ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs
     }
     op_descs_table[cur_type].push_back(op_desc);
     HIXL_LOGI("Current communication type: %s, local memory type: %s, remote memory type: %s.",
-              CommTypeToString(cur_type), (local_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost,
-              (remote_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+              CommTypeToString(cur_type), (local_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost,
+              (remote_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
   }
   return SUCCESS;
 }
