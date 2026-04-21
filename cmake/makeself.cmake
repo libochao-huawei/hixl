@@ -64,7 +64,7 @@ set(OPS_VERSION_OUT_PUT
 )
 configure_file(
     ${OPS_VERSION_OUT_PUT}
-    ${STAGING_DIR}/${CMKAE_SYSTEM_PROCESSOR}-linux/include/version/hixl_version.h
+    ${STAGING_DIR}/${CMAKE_SYSTEM_PROCESSOR}-linux/include/version/hixl_version.h
     COPYONLY
 )
 configure_file(

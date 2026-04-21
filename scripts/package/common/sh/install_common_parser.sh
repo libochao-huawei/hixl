@@ -1978,7 +1978,7 @@ while true; do
     --copy_all)
         COPY_ALL="y"
         shift
-        ,,
+        ;;
     --spc-install | -i)
         OPERATE_TYPE="spc_install"
         shift
