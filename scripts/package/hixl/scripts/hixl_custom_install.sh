@@ -359,6 +359,9 @@ custom_install() {
         fi
     fi
 
+    if [ -d "$common_parse_dir/hixl" ]; then
+ 	    rm -rf "$common_parse_dir/hixl"
+ 	fi
     return 0
 }
 
