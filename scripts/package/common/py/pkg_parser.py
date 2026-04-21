@@ -140,15 +140,15 @@ class FileInfoParsedResult(NamedTuple):
 
 
 class PkgMod(NamedTuple):
- 	"""包内文件权限。"""
- 	path: str
- 	mod: int
+    """包内文件权限。"""
+    path: str
+    mod: int
 
 
 class PkgSoftlink(NamedTuple):
- 	"""包内软链接。"""
- 	dst_path: str
- 	src_path: str
+    """包内软链接。"""
+    dst_path: str
+    src_path: str
 
 
 class BlockConfig(NamedTuple):
@@ -159,7 +159,7 @@ class BlockConfig(NamedTuple):
     expand_content_list: List[Dict]
     package_content_list: List[Dict]
     pkg_mods: List[PkgMod]
- 	pkg_softlinks: List[PkgSoftlink]
+    pkg_softlinks: List[PkgSoftlink]
     generate_infos: List[GenerateInfo]
 
 
@@ -201,12 +201,12 @@ class XmlConfig(NamedTuple):
         return self._collect_list('package_content_list')
 
     @property
- 	def pkg_mods(self) -> List[PkgMod]:
- 	    return self._collect_list('pkg_mods')
- 	 
- 	@property
- 	def pkg_softlinks(self) -> List[PkgSoftlink]:
- 	    return self._collect_list('pkg_softlinks')
+    def pkg_mods(self) -> List[PkgMod]:
+        return self._collect_list('pkg_mods')
+      
+    @property
+    def pkg_softlinks(self) -> List[PkgSoftlink]:
+        return self._collect_list('pkg_softlinks')
 
     @property
     def generate_infos(self) -> List[GenerateInfo]:
@@ -642,9 +642,9 @@ def evaluate_info(info: Dict[str, str],
     add_dst_path_func = partial(join_dst_path, loaded_block.dst_path)
 
     def split_pkg_softlink(key: str, value: str) -> Tuple[str, str]:
- 	    if key == 'pkg_softlink':
- 	        return key, value.split(';')
- 	    return key, value
+        if key == 'pkg_softlink':
+            return key, value.split(';')
+        return key, value
 
     def upper_value(key: str, value: str) -> Tuple[str, str]:
         if key == 'configurable':
@@ -715,14 +715,14 @@ def parse_dir_info_elements(loaded_block: LoadedBlockElement,
 
 
 def get_target_name(target_conf) -> str:
- 	"""获取目标名。"""
- 	rename = target_conf.get('rename')
- 	if rename:
- 	    return rename
+    """获取目标名。"""
+    rename = target_conf.get('rename')
+    if rename:
+        return rename
 
- 	value_list = target_conf.get('value').split('/')
- 	target_name = value_list[-1] if value_list[-1] else value_list[-2]
- 	return target_name
+    value_list = target_conf.get('value').split('/')
+    target_name = value_list[-1] if value_list[-1] else value_list[-2]
+    return target_name
 
 
 def expand_dir(file_info: FileInfo, get_dst_target_func: Callable[[FileInfo], str], env: ParseEnv):
@@ -867,16 +867,16 @@ def need_expand(file_info: FileInfo, get_dst_target_func: Callable[[FileInfo], s
 
 
 def deal_with_copy_all(file_info: FileInfo, package_attr: PackageAttr):
- 	"""处理copy_all选项。"""
- 	if not package_attr.get('copy_all'):
- 	    return
- 	if file_info.get('pkg_inner_softlink'):
- 	    raise PkgInnerSoftlinkNotAllowed(file_info)
- 	file_info['dst_path'] = file_info['install_path']
- 	if file_info.get('install_softlink'):
- 	    file_info['pkg_softlink'] = file_info['install_softlink'].split(';')
- 	if file_info.get('install_mod'):
- 	    file_info['pkg_mod'] = file_info['install_mod']
+    """处理copy_all选项。"""
+    if not package_attr.get('copy_all'):
+        return
+    if file_info.get('pkg_inner_softlink'):
+        raise PkgInnerSoftlinkNotAllowed(file_info)
+    file_info['dst_path'] = file_info['install_path']
+    if file_info.get('install_softlink'):
+        file_info['pkg_softlink'] = file_info['install_softlink'].split(';')
+    if file_info.get('install_mod'):
+        file_info['pkg_mod'] = file_info['install_mod']
 
 
 def expand_file_info(parsed_result: FileInfoParsedResult,
