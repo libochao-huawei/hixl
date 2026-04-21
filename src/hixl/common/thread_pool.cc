@@ -34,7 +34,7 @@ ThreadPool::~ThreadPool() {
 }
 
 void ThreadPool::Destroy() {
-  if (is_stoped_.load() == true) {
+  if (is_stopped_.load() == true) {
     return;
   }
   HIXL_LOGI("[ThreadPool] destroying, name:%s, total_threads:%u, pending_tasks:%zu",
@@ -107,7 +107,7 @@ void ThreadPool::ThreadFunc(ThreadPool *const thread_pool, uint32_t thread_idx, 
   HIXL_LOGD("[ThreadPool:%s] thread started, type:%s, idx:%u",
              thread_pool->thread_name_prefix_.c_str(), thread_type.c_str(), thread_idx);
 
-  while (!thread_pool->is_stoped_) {
+  while (!thread_pool->is_stopped_) {
     std::function<void()> task;
     if (!thread_pool->PopTask(task)) {
       if (is_temporary) {
