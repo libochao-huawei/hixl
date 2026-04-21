@@ -54,17 +54,23 @@ class ThreadPool {
       return fail_future;
     }
     std::future<retType> future = task->get_future();
+    size_t task_queue_size = 0U;
     {
       const std::lock_guard<std::mutex> lock{m_lock_};
       tasks_.emplace([task]() { (*task)(); });
+      task_queue_size = tasks_.size();
     }
 
-    if (idle_thrd_num_.load() == 0U && !tasks_.empty() && total_thrd_num_.load() < max_thrd_num_) {
+    uint32_t idle_num = idle_thrd_num_.load();
+    uint32_t total_num = total_thrd_num_.load();
+    if (idle_num == 0U && task_queue_size > 0U && total_num < max_thrd_num_) {
+      HIXL_LOGI("[ThreadPool] scaling up, name:%s, idle:%u, total:%u, max:%u, tasks:%zu",
+                thread_name_prefix_.c_str(), idle_num, total_num, max_thrd_num_, task_queue_size);
       AddTemporaryThread();
     }
 
     cond_var_.notify_one();
-    HIXL_LOGD("commit run task end");
+    HIXL_LOGD("commit run task end, idle:%u, total:%u, tasks:%zu", idle_num, total_num, task_queue_size);
     return future;
   }
 
