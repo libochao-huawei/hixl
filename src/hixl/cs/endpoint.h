@@ -40,6 +40,7 @@ class Endpoint {
   Status DestroyChannel(ChannelHandle channel_handle);
   Status GetMemDesc(MemHandle mem_handle, HixlMemDesc &desc);
   Status MemImport(const void *mem_desc, uint32_t desc_len, CommMem &out_buf);
+  Status GrantMem(const HcommMemGranInfo *remoteGrantInfo);
 
  private:
   std::mutex mutex_;
