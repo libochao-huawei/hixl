@@ -12,7 +12,9 @@
 #define HIXL_CLIENT_RUNNER_H
 
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -90,6 +92,11 @@ class ClientRunner {
 
   std::vector<std::unique_ptr<detail::LaneState>> lane_runtimes_;
   std::vector<std::thread> multi_lane_threads_;
+
+  std::mutex remote_mutex_map_mu_;
+  std::map<std::string, std::unique_ptr<std::mutex>> remote_mutexes_;
+
+  std::mutex *GetOrCreateRemoteMutex(const std::string &remote);
 
   void ReleaseLaneResources();
   void ReleaseAllLaneRuntimes();

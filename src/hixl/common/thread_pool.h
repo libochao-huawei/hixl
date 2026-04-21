@@ -39,32 +39,40 @@ class ThreadPool {
 
   template <class Func, class... Args>
   auto commit(Func &&func, Args &&... args) -> std::future<decltype(func(args...))> {
-    HIXL_LOGD("commit run task enter.");
+    HIXL_LOGD("[ThreadPool:%s] commit task enter", thread_name_prefix_.c_str());
     using retType = decltype(func(args...));
     std::future<retType> fail_future;
     if (is_stoped_.load()) {
-      HIXL_LOGE(ge::FAILED, "thread pool has been stopped.");
+      HIXL_LOGE(ge::FAILED, "[ThreadPool:%s] has been stopped", thread_name_prefix_.c_str());
       return fail_future;
     }
 
     const auto bindFunc = std::bind(std::forward<Func>(func), std::forward<Args>(args)...);
     const auto task = MakeShared<std::packaged_task<retType()>>(bindFunc);
     if (task == nullptr) {
-      HIXL_LOGE(ge::FAILED, "Make shared failed.");
+      HIXL_LOGE(ge::FAILED, "[ThreadPool:%s] make shared failed", thread_name_prefix_.c_str());
       return fail_future;
     }
     std::future<retType> future = task->get_future();
+    size_t task_queue_size = 0U;
     {
       const std::lock_guard<std::mutex> lock{m_lock_};
       tasks_.emplace([task]() { (*task)(); });
+      task_queue_size = tasks_.size();
     }
 
-    if (idle_thrd_num_.load() == 0U && !tasks_.empty() && total_thrd_num_.load() < max_thrd_num_) {
+    uint32_t idle_num = idle_thrd_num_.load();
+    uint32_t busy_num = busy_thrd_num_.load();
+    uint32_t total_num = total_thrd_num_.load();
+    if (idle_num == 0U && task_queue_size > 0U && total_num < max_thrd_num_) {
+      HIXL_LOGI("[ThreadPool:%s] scaling up, idle:%u, busy:%u, total:%u, max:%u, tasks:%zu",
+                thread_name_prefix_.c_str(), idle_num, busy_num, total_num, max_thrd_num_, task_queue_size);
       AddTemporaryThread();
     }
 
     cond_var_.notify_one();
-    HIXL_LOGD("commit run task end");
+    HIXL_LOGD("[ThreadPool:%s] commit task end, idle:%u, busy:%u, total:%u, tasks:%zu",
+              thread_name_prefix_.c_str(), idle_num, busy_num, total_num, task_queue_size);
     return future;
   }
 
@@ -80,6 +88,7 @@ class ThreadPool {
   std::condition_variable cond_var_;
   std::atomic<bool> is_stoped_;
   std::atomic<uint32_t> idle_thrd_num_;
+  std::atomic<uint32_t> busy_thrd_num_;
   std::atomic<uint32_t> total_thrd_num_;
   uint32_t min_thrd_num_;
   uint32_t max_thrd_num_;
