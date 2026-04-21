@@ -66,6 +66,9 @@ struct CreateChannelResp {
 
 struct GetRemoteMemReq {
   uint64_t dst_ep_handle = 0UL;
+  uint32_t protocol = 0;
+  uint32_t src_sdid = 0;
+  int32_t src_pid = 0;
 };
 
 struct HixlMemDesc {

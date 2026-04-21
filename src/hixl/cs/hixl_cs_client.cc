@@ -727,8 +727,12 @@ Status HixlCSClient::FillDeviceArgs(const CommunicateMem &mem_param, MemDev &mem
                                      const TransferPool::SlotHandle &slot, void *remote_flag, DeviceArgs &args) {
   uint64_t notify_addr = 0U;
   uint32_t notify_len = 0U;
-  HIXL_CHK_STATUS_RET(ResolveNotifyDeviceAddress(slot.notify, notify_addr, notify_len),
-                      "[HixlClient] FillDeviceArgs ResolveNotifyDeviceAddress failed");
+  const EndpointDesc &ep = local_endpoint_->GetEndpoint();
+  if (ep.protocol != COMM_PROTOCOL_HCCS) {
+    HIXL_CHK_STATUS_RET(ResolveNotifyDeviceAddress(slot.notify, notify_addr, notify_len),
+                        "[HixlClient] FillDeviceArgs ResolveNotifyDeviceAddress failed");
+  }
+
   args.thread = slot.thread;
   args.channel = static_cast<uint64_t>(client_channel_handle_);
   args.list_num = mem_param.list_num;
@@ -740,6 +744,8 @@ Status HixlCSClient::FillDeviceArgs(const CommunicateMem &mem_param, MemDev &mem
   args.remote_flag = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(remote_flag));
   args.local_flag = notify_addr;
   args.flag_size = notify_len;
+  args.notify_id = slot.notify_id;
+  args.protocol = ep.protocol;
   return SUCCESS;
 }
 
@@ -1135,7 +1141,8 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
 Status HixlCSClient::GetRemoteMemLocked(uint32_t timeout_ms, CommMem **remote_mem_list, char ***mem_tag_list,
                                         uint32_t *list_num) {
   HIXL_CHECK_NOTNULL(local_endpoint_);
-  Status ret = MemMsgHandler::SendGetRemoteMemRequest(socket_, remote_endpoint_handle_, timeout_ms);
+  const EndpointDesc &localEndPointDesc = local_endpoint_->GetEndpoint();
+  Status ret = MemMsgHandler::SendGetRemoteMemRequest(socket_, remote_endpoint_handle_, localEndPointDesc, timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendGetRemoteMemRequest failed. fd=%d, remote_ep_handle=%" PRIu64, socket_,
                       remote_endpoint_handle_);
   std::vector<HixlMemDesc> mem_descs;

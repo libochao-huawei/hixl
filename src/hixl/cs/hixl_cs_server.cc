@@ -380,6 +380,12 @@ Status HixlCSServer::ExportMem(int32_t fd, const char *msg, uint64_t msg_len) {
   HIXL_CHECK_NOTNULL(handle);
   auto ep = endpoint_store_.GetEndpoint(handle);
   HIXL_CHECK_NOTNULL(ep);
+  if (req->protocol == COMM_PROTOCOL_HCCS) {
+    HcommMemGranInfo remoteGrantInfo;
+    remoteGrantInfo.pid = req->src_pid;
+    remoteGrantInfo.sdid = req->src_sdid;
+    HIXL_CHK_STATUS_RET(ep->GrantMem(&remoteGrantInfo), "Failed to grand Mem");
+  }
   GetRemoteMemResp resp{};
   HIXL_CHK_STATUS_RET(ep->ExportMem(resp.mem_descs), "Failed to export mem");
   resp.result = SUCCESS;

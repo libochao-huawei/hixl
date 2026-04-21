@@ -200,6 +200,7 @@ void TransferPool::FillHandleFromSlot(int32_t device_id, uint32_t index, const S
   handle->thread = slot.thread;
   handle->notify = slot.notify;
   handle->host_flag = slot.host_flag;
+  handle->notify_id = slot.notify_id;
 }
 
 Status TransferPool::InitAllSlotsLocked() {
@@ -294,7 +295,7 @@ Status TransferPool::EnsureNotifyLocked(Slot &slot) {
   }
   ResetNotifyResourcesLocked(slot);
   uint32_t notify_id = 0U;
-  HIXL_CHK_STATUS_RET(CreateNotifyLocked(slot, notify_id), "[TransferPool] CreateNotifyLocked failed");
+  HIXL_CHK_STATUS_RET(CreateNotifyLocked(slot), "[TransferPool] CreateNotifyLocked failed");
   (void)notify_id;
   return SUCCESS;
 }
@@ -306,12 +307,11 @@ void TransferPool::ResetNotifyResourcesLocked(Slot &slot) {
   }
 }
 
-Status TransferPool::CreateNotifyLocked(Slot &slot, uint32_t &notify_id) {
-  notify_id = 0U;
+Status TransferPool::CreateNotifyLocked(Slot &slot) {
   HIXL_CHK_ACL_RET(aclrtCreateNotify(&slot.notify, ACL_NOTIFY_DEVICE_USE_ONLY),
                    "[TransferPool] aclrtCreateNotify failed");
-  HIXL_CHK_ACL_RET(aclrtGetNotifyId(slot.notify, &notify_id), "[TransferPool] aclrtGetNotifyId failed");
-  HIXL_LOGD("[TransferPool] Created notify. notify_id=%u", notify_id);
+  HIXL_CHK_ACL_RET(aclrtGetNotifyId(slot.notify, &slot.notify_id), "[TransferPool] aclrtGetNotifyId failed");
+  HIXL_LOGD("[TransferPool] Created notify. notify_id=%u", slot.notify_id);
   return SUCCESS;
 }
 
