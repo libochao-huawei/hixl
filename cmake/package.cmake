@@ -81,16 +81,10 @@ install(FILES ${CMAKE_BINARY_DIR}/version.hixl.info
 )
 
 install(FILES ${CONF_FILES}
-    DESTINATION hixl/conf
+    DESTINATION ${ARCH_LINUX_PATH}/conf
 )
 install(FILES ${PACKAGE_FILES}
     DESTINATION share/info/hixl/script
-)
-install(FILES ${LATEST_MANGER_FILES}
-    DESTINATION latest_manager
-)
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/scripts/package/latest_manager/scripts/
-    DESTINATION latest_manager
 )
 
 set(hixl_include ${CMAKE_SOURCE_DIR}/include)
