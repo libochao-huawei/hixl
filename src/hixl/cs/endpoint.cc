@@ -210,4 +210,10 @@ Status Endpoint::GetMemDesc(MemHandle mem_handle, HixlMemDesc &desc) {
   return PARAM_INVALID;
 }
 
+Status Endpoint::GrantMem(const HcommMemGranInfo *remoteGrantInfo) {
+  HIXL_CHECK_NOTNULL(remoteGrantInfo);
+  std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHK_HCCL_RET(HcommProxy::MemGrant(handle_, remoteGrantInfo));
+  return SUCCESS;
+}
 }  // namespace hixl

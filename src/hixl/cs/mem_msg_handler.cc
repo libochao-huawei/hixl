@@ -245,7 +245,8 @@ hixl::Status ParseGetRemoteMemJson(const char *json_ptr, size_t json_len, std::v
 
 namespace hixl {
 
-Status MemMsgHandler::SendGetRemoteMemRequest(int32_t socket, uint64_t endpoint_handle, uint32_t timeout_ms) {
+Status MemMsgHandler::SendGetRemoteMemRequest(int32_t socket, uint64_t endpoint_handle, const EndpointDesc &localEndpointDesc,
+  uint32_t timeout_ms) {
   HIXL_EVENT("[HixlClient] SendGetRemoteMemRequest start. socket: %d, endpoint_handle: %lu", socket, endpoint_handle);
   (void)timeout_ms;
   CtrlMsgHeader header{};
@@ -256,6 +257,14 @@ Status MemMsgHandler::SendGetRemoteMemRequest(int32_t socket, uint64_t endpoint_
 
   GetRemoteMemReq body{};
   body.dst_ep_handle = endpoint_handle;
+  body.protocol = static_cast<uint32_t>(localEndpointDesc.protocol);
+  if (localEndpointDesc.protocol == static_cast<uint32_t>(COMM_PROTOCOL_HCCS)) {
+    HIXL_CHK_STATUS_RET(aclrtDeviceGetBareTgid(&body.src_pid));
+    body.src_superDevId = localEndpointDesc.loc.device.superDevId;
+    body.src_devPhyId = localEndpointDesc.loc.device.devPhyId;
+    body.src_serverIdx = localEndpointDesc.loc.device.serverIdx;
+    body.src_superPodIdx = localEndpointDesc.loc.device.superPodIdx;
+  }
 
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(socket, &header, static_cast<uint64_t>(sizeof(header))));
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(socket, &msg_type, static_cast<uint64_t>(sizeof(msg_type))));
