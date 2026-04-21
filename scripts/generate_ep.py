@@ -74,7 +74,7 @@ def parse_route_conf(route_conf_path: Path) -> Dict[int, Dict[str, str]]:
                 current_device_id = int(parts[1])
                 current_pair = {'dev_id': current_device_id, 'local_eid': None, 'remote_eid': None}
                 pairs[current_device_id] = current_pair
-                print(f"current_device_id: {current_device_id}")
+                print(f"current_device_local_id: {current_device_id}")
             elif '_local_eid=' in line:
                 # Extract local EID: pairX_chan0_local_eid=0x...
                 eid = line.split('=')[1].strip().replace('0x', '')
@@ -105,8 +105,26 @@ def build_eid_to_device_map(hccl_rootinfo: Dict) -> Dict[str, int]:
     return eid_to_device
 
 
+def build_device_id_to_local_id_map(hccl_rootinfo: Dict) -> Dict[int, int]:
+    """
+    Build mapping from device_id to local_id using hccl_rootinfo.
+
+    Returns: {device_id: local_id}
+    """
+    return {rank['device_id']: rank['local_id'] for rank in hccl_rootinfo.get('rank_list', [])}
+
+
+def build_local_id_to_device_id_map(hccl_rootinfo: Dict) -> Dict[int, int]:
+    """
+    Build mapping from local_id to device_id using hccl_rootinfo.
+
+    Returns: {local_id: device_id}
+    """
+    return {rank['local_id']: rank['device_id'] for rank in hccl_rootinfo.get('rank_list', [])}
+
+
 def find_peer_eid_from_1dmesh(
-    device_id: int,
+    local_id: int,
     device_local_id: int,
     device_eid: str,
     device_eid_ports: List[str],
@@ -141,8 +159,8 @@ def find_peer_eid_from_1dmesh(
                 for port in ports:
                     eid_port_to_device[(eid, port)] = dev_id
 
-    # just use x ~ x+7, e.g. 32~39
-    topo_my_index = device_id
+    # Use local_id for topology edge matching (topo file uses local_id, not device_id)
+    topo_my_index = local_id
 
 
     # Find edges involving our device and identify the peer
@@ -171,11 +189,10 @@ def find_peer_eid_from_1dmesh(
                 # The peer port is the corresponding one on the other side
                 # For ring topology there's typically a 1:1 port mapping
                 for peer_port in peer_ports:
-                    # Look up device_id for this topology index
-                    # and find EID with this port
-                    peer_device_id = None
+                    # Look up EID for the peer device using local_id (peer_topo_index)
+                    # Topology uses local_id, so we need to find the rank where local_id matches
                     for rank in rootinfo.get('rank_list', []):
-                        if rank['device_id'] != peer_topo_index:
+                        if rank['local_id'] != peer_topo_index:
                             continue
                         for level in rank.get('level_list', []):
                             if level.get('net_layer') != 0:
@@ -253,13 +270,22 @@ def get_h2d_plane_id(device_id: int, rootinfo: Dict, mode: str) -> str:
 
 
 def generate_endpoint_list(
-    device_id: int,
+    local_id: int,
     device_info: Dict,
     topo_data: Dict,
     rootinfo: Dict
 ) -> List[Dict]:
     """
     Generate endpoint list for a single NPU device.
+
+    Args:
+        local_id: The logical device index (used for topology edge lookups)
+        device_info: The device info from hccl_rootinfo (contains device_id, local_id, level_list)
+        topo_data: Topology data from atlas_*.json
+        rootinfo: HCCL rootinfo data
+
+    Returns:
+        List of endpoint configurations
     """
     endpoint_list = []
     device_local_id = device_info['local_id']
@@ -298,7 +324,7 @@ def generate_endpoint_list(
             # Add dst_eid for 1DMESH (net_layer 0) direct connections
             if net_layer == 0:
                 peer_eid = find_peer_eid_from_1dmesh(
-                    device_id, device_local_id, eid, device_eid_ports, topo_data, rootinfo
+                    local_id, device_local_id, eid, device_eid_ports, topo_data, rootinfo
                 )
                 if peer_eid:
                     endpoint["dst_eid"] = peer_eid
@@ -359,7 +385,7 @@ if __name__ == "__main__":
     # Parse route.conf
     print(f"Loading: {args.route_path}")
     route_pairs = parse_route_conf(args.route_path)
-    print(f"Found {len(route_pairs)} device pairs (device_id: {sorted(route_pairs.keys())})")
+    print(f"Found {len(route_pairs)} device pairs (local_id: {sorted(route_pairs.keys())})")
 
     # Load hccl_rootinfo.json
     print(f"Loading: {args.rootinfo_path}")
@@ -374,10 +400,20 @@ if __name__ == "__main__":
     with open(args.topo_path) as f:
         topo_data = json.load(f)
 
+    # Build local_id to device_id mapping (route.conf uses local_id, hccl_rootinfo uses device_id)
+    local_id_to_device_id = build_local_id_to_device_id_map(hccl_rootinfo)
+    print(f"Built local_id to device_id mapping: {local_id_to_device_id}")
+
     # Generate endpoint files for each device
     print(f"Generating endpoints for {len(route_pairs)} NPUs...")
-    for device_id, route_pair_info in route_pairs.items():
-        # Find device info
+    for local_id, route_pair_info in route_pairs.items():
+        # route.conf uses local_id (named dev_id), convert to device_id for hccl_rootinfo lookup
+        device_id = local_id_to_device_id.get(local_id)
+        if device_id is None:
+            print(f"Warning: device_id not found for local_id {local_id}")
+            continue
+
+        # Find device info in hccl_rootinfo by device_id
         device_info = None
         for rank in hccl_rootinfo.get('rank_list', []):
             if rank['device_id'] == device_id:
@@ -388,9 +424,9 @@ if __name__ == "__main__":
             print(f"Warning: device_id {device_id} not found in hccl_rootinfo")
             continue
 
-        # Generate endpoint list
+        # Generate endpoint list using local_id for topology edge lookups
         endpoint_list = generate_endpoint_list(
-            device_id, device_info, topo_data, hccl_rootinfo
+            local_id, device_info, topo_data, hccl_rootinfo
         )
 
         # Add CPU host endpoint from route.conf
@@ -426,9 +462,8 @@ if __name__ == "__main__":
             (item.get('net_instance_id')
             for item in device_info.get('level_list', [])
             if item.get('net_layer') == 1),
-            None  # default: return None
+            None  # 默认值：没找到就返回 None
         )
-
         output = {
             "version": "1.3",
             "net_instance_id": net_instance_id,
