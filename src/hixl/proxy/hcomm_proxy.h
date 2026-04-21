@@ -27,6 +27,7 @@ class HcommProxy {
   static HcclResult EndpointDestroy(EndpointHandle endpoint_handle);
   static HcclResult MemImport(EndpointHandle endpoint_handle, const void *mem_desc, uint32_t desc_len, CommMem *out_mem);
   static HcclResult MemUnimport(EndpointHandle endpoint_handle, const void *mem_desc, uint32_t desc_len);
+  static HcclResult MemGrant(EndpointHandle endpoint_handle, const HcommMemGranInfo *remoteGrantInfo);
   static HcclResult ChannelCreate(EndpointHandle endpoint_handle, CommEngine engine, HcommChannelDesc *channel_descs,
                                   uint32_t channel_num, ChannelHandle *channels);
   static HcclResult ChannelDestroy(const ChannelHandle *channels, uint32_t channel_num);
@@ -42,6 +43,7 @@ class HcommProxy {
   static int32_t ReadOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len);
   static int32_t WriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len);
   static int32_t ChannelFenceOnThread(ThreadHandle thread, ChannelHandle channel);
+  static int32_t aclrtNotifyRecordOnThread(ThreadHandle thread, int32_t notify_id);
 };
 
 }  // namespace hixl
