@@ -66,6 +66,12 @@ struct CreateChannelResp {
 
 struct GetRemoteMemReq {
   uint64_t dst_ep_handle = 0UL;
+  uint32_t protocol = 0;
+  int32_t src_pid = 0;
+  uint32_t src_devPhyId = 0;      ///< 设备物理Id
+  uint32_t src_superDevId = 0;    ///< 超节点deviceId
+  uint32_t src_serverIdx = 0;     ///< Server的索引
+  uint32_t src_superPodIdx = 0;   ///< 超节点位置索引
 };
 
 struct HixlMemDesc {
