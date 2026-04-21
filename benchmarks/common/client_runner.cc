@@ -426,15 +426,22 @@ void LaneWorkerEntry(size_t idx, LaneState *p, const BenchmarkConfig &cfg, std::
   std::printf("[INFO] [lane %zu] start device=%d\n", idx, static_cast<int>(dev));
 
   if (!LaneWorkerSetDevice(idx, dev, first_fail, fail_mu)) {
+    (void)aclrtResetDevice(dev);
     return;
   }
   if (!LaneWorkerInitHixlEngine(p, cfg, local, first_fail, fail_mu)) {
+    FinalizeLaneState(p, remote);
+    (void)aclrtResetDevice(dev);
     return;
   }
   if (!LaneWorkerAllocAndRegisterMem(p, cfg, first_fail, fail_mu)) {
+    FinalizeLaneState(p, remote);
+    (void)aclrtResetDevice(dev);
     return;
   }
   if (!LaneWorkerRemoteTransferPhase(p, cfg, idx, remote, first_fail, fail_mu)) {
+    FinalizeLaneState(p, remote);
+    (void)aclrtResetDevice(dev);
     return;
   }
 
@@ -447,6 +454,8 @@ void LaneWorkerEntry(size_t idx, LaneState *p, const BenchmarkConfig &cfg, std::
   p->hixl_connected = false;
   (void)SendNotify(&p->tcp_client);
 
+  FinalizeLaneState(p, remote);
+  (void)aclrtResetDevice(dev);
   std::printf("[INFO] [lane %zu] end\n", idx);
 }
 
@@ -463,14 +472,6 @@ void ClientRunner::ReleaseAllLaneRuntimes() {
     }
   }
   multi_lane_threads_.clear();
-
-  const size_t n = lane_runtimes_.size();
-  for (size_t i = 0; i < n; ++i) {
-    if (lane_runtimes_[i]) {
-      detail::FinalizeLaneState(lane_runtimes_[i].get(), cfg_.expanded_remote_engines[i]);
-      (void)aclrtResetDevice(cfg_.expanded_device_ids[i]);
-    }
-  }
   lane_runtimes_.clear();
 }
 
@@ -684,13 +685,6 @@ int ClientRunner::RunClientLaneWorkers() {
   for (size_t i = 0; i < n; ++i) {
     if (lane_runtimes_[i]) {
       PrintBenchRecords(lane_runtimes_[i]->bench_records);
-    }
-  }
-
-  for (size_t i = 0; i < n; ++i) {
-    if (lane_runtimes_[i]) {
-      detail::FinalizeLaneState(lane_runtimes_[i].get(), cfg_.expanded_remote_engines[i]);
-      (void)aclrtResetDevice(cfg_.expanded_device_ids[i]);
     }
   }
   lane_runtimes_.clear();
