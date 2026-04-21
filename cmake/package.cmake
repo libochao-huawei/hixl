@@ -95,7 +95,10 @@ install(DIRECTORY ${hixl_include}/
     GROUP_READ GROUP_EXECUTE
 )
 install(TARGETS llm_datadist
-        LIBRARY DESTINATION hixl/lib)
+        LIBRARY DESTINATION ${ARCH_LINUX_PATH}/lib64)
+
+install(TARGETS cann_hixl
+        LIBRARY DESTINATION ${ARCH_LINUX_PATH}/lib64)
 
 install(FILES
   ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_kernel/cann-hixl-compat.tar.gz
