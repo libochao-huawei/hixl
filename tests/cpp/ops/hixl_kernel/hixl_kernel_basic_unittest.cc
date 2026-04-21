@@ -41,7 +41,7 @@ HixlOneSideOpParam CreateTestParamFixed(std::array<std::array<uint8_t, 8>, kN> &
   param.remote_flag_addr = remote_flag_addr;
   param.local_flag_addr = local_flag_addr;
   param.flag_size = sizeof(uint64_t);
-
+  param.protocol = COMM_PROTOCOL_RESERVED; // skip hccs
   return param;
 }
 }  // namespace
