@@ -57,6 +57,8 @@ __attribute__((weak)) int32_t HcommReadOnThread(ThreadHandle thread, ChannelHand
 __attribute__((weak)) int32_t HcommWriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src,
                                                  uint64_t len);
 __attribute__((weak)) int32_t HcommChannelFenceOnThread(ThreadHandle thread, ChannelHandle channel);
+
+__attribute__((weak)) int32_t HcommAclrtNotifyRecordOnThread(ThreadHandle thread, uint64_t dstNotifyId);
 }
 
 namespace hixl {
@@ -180,6 +182,12 @@ int32_t HcommProxy::ChannelFenceOnThread(ThreadHandle thread, ChannelHandle chan
   HIXL_CHK_BOOL_RET_STATUS(HcommChannelFenceOnThread != nullptr, HCCL_E_NOT_SUPPORT,
                            "function HcommChannelFenceOnThread is null, maybe unsupported.");
   return HcommChannelFenceOnThread(thread, channel);
+}
+
+int32_t HcommProxy::aclrtNotifyRecordOnThread(ThreadHandle thread, int32_t notify_id) {
+  HIXL_CHK_BOOL_RET_STATUS(HcommAclrtNotifyRecordOnThread != nullptr, HCCL_E_NOT_SUPPORT,
+                           "function HcommAclrtNotifyRecordOnThread is null, maybe unsupported.");
+  return HcommAclrtNotifyRecordOnThread(thread, notify_id);
 }
 
 }  // namespace hixl

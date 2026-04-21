@@ -42,6 +42,7 @@ class HcommProxy {
   static int32_t ReadOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len);
   static int32_t WriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len);
   static int32_t ChannelFenceOnThread(ThreadHandle thread, ChannelHandle channel);
+  static int32_t aclrtNotifyRecordOnThread(ThreadHandle thread, int32_t notify_id);
 };
 
 }  // namespace hixl
