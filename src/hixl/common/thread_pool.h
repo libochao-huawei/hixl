@@ -31,7 +31,9 @@ using ThreadTask = std::function<void()>;
 
 class ThreadPool {
  public:
-  explicit ThreadPool(std::string thread_name_prefix, const uint32_t size = 4U);
+  explicit ThreadPool(std::string thread_name_prefix,
+                      const uint32_t min_size = 4U,
+                      const uint32_t max_size = 4U);
   ~ThreadPool();
   void Destroy();
 
@@ -56,14 +58,21 @@ class ThreadPool {
       const std::lock_guard<std::mutex> lock{m_lock_};
       tasks_.emplace([task]() { (*task)(); });
     }
+
+    if (idle_thrd_num_.load() == 0U && !tasks_.empty() && total_thrd_num_.load() < max_thrd_num_) {
+      AddTemporaryThread();
+    }
+
     cond_var_.notify_one();
     HIXL_LOGD("commit run task end");
     return future;
   }
 
-  static void ThreadFunc(ThreadPool *const thread_pool, uint32_t thread_idx);
+  static void ThreadFunc(ThreadPool *const thread_pool, uint32_t thread_idx, bool is_temporary);
 
  private:
+  void AddTemporaryThread();
+
   std::string thread_name_prefix_;
   std::vector<std::thread> pool_;
   std::queue<ThreadTask> tasks_;
@@ -71,6 +80,9 @@ class ThreadPool {
   std::condition_variable cond_var_;
   std::atomic<bool> is_stoped_;
   std::atomic<uint32_t> idle_thrd_num_;
+  std::atomic<uint32_t> total_thrd_num_;
+  uint32_t min_thrd_num_;
+  uint32_t max_thrd_num_;
 };
 }  // namespace hixl
 

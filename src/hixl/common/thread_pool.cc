@@ -11,12 +11,18 @@
 #include "thread_pool.h"
 
 namespace hixl {
-ThreadPool::ThreadPool(std::string thread_name_prefix, const uint32_t size)
-    : thread_name_prefix_(std::move(thread_name_prefix)), is_stoped_(false) {
-  idle_thrd_num_ = size < 1U ? 1U : size;
+ThreadPool::ThreadPool(std::string thread_name_prefix,
+                       const uint32_t min_size,
+                       const uint32_t max_size)
+    : thread_name_prefix_(std::move(thread_name_prefix)),
+      is_stoped_(false),
+      min_thrd_num_(min_size < 1U ? 1U : min_size),
+      max_thrd_num_(max_size < min_thrd_num_ ? min_thrd_num_ : max_size) {
+  idle_thrd_num_ = min_thrd_num_;
+  total_thrd_num_ = min_thrd_num_;
 
-  for (uint32_t i = 0U; i < idle_thrd_num_; ++i) {
-    pool_.emplace_back(&ThreadFunc, this, i);
+  for (uint32_t i = 0U; i < min_thrd_num_; ++i) {
+    pool_.emplace_back(&ThreadFunc, this, i, false);
   }
 }
 
@@ -45,7 +51,18 @@ void ThreadPool::Destroy() {
   }
 }
 
-void ThreadPool::ThreadFunc(ThreadPool *const thread_pool, uint32_t thread_idx) {
+void ThreadPool::AddTemporaryThread() {
+  const std::lock_guard<std::mutex> lock{m_lock_};
+  if (total_thrd_num_.load() >= max_thrd_num_) {
+    return;
+  }
+  uint32_t thread_idx = total_thrd_num_.load();
+  ++total_thrd_num_;
+  std::thread temp_thread(&ThreadFunc, this, thread_idx, true);
+  temp_thread.detach();
+}
+
+void ThreadPool::ThreadFunc(ThreadPool *const thread_pool, uint32_t thread_idx, bool is_temporary) {
   if (thread_pool == nullptr) {
     return;
   }
@@ -64,6 +81,9 @@ void ThreadPool::ThreadFunc(ThreadPool *const thread_pool, uint32_t thread_idx) 
             return thread_pool->is_stoped_.load() || (!thread_pool->tasks_.empty());
           });
       if (thread_pool->is_stoped_ && thread_pool->tasks_.empty()) {
+        if (is_temporary) {
+          --thread_pool->total_thrd_num_;
+        }
         return;
       }
       task = std::move(thread_pool->tasks_.front());
@@ -71,6 +91,11 @@ void ThreadPool::ThreadFunc(ThreadPool *const thread_pool, uint32_t thread_idx) 
     }
     --thread_pool->idle_thrd_num_;
     task();
+
+    if (is_temporary && !thread_pool->is_stoped_) {
+      --thread_pool->total_thrd_num_;
+      return;
+    }
     ++thread_pool->idle_thrd_num_;
   }
 }
