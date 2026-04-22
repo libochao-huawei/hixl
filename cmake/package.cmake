@@ -127,16 +127,19 @@ install(FILES ${hixl_include}/llm_datadist/llm_engine_types.h
 )
 install(TARGETS llm_datadist
         LIBRARY DESTINATION ${ARCH_LINUX_PATH}/lib64
-        COMPONENT hixl)
+        COMPONENT hixl
+)
 
 install(TARGETS cann_hixl
         LIBRARY DESTINATION ${ARCH_LINUX_PATH}/lib64
-        COMPONENT hixl)
+        COMPONENT hixl
+)
 
 
 install(FILES
   ${CMAKE_SOURCE_DIR}/build/device_install/hixl/aicpu_kernel/cann-hixl-compat.tar.gz
   DESTINATION opp/built-in/op_impl/aicpu/kernel
+  COMPONENT hixl
 )
 
 install(FILES
