@@ -88,27 +88,13 @@ install(FILES ${PACKAGE_FILES}
 )
 
 set(hixl_include ${CMAKE_SOURCE_DIR}/include)
-install(DIRECTORY ${hixl_include}/cs
+install(DIRECTORY ${hixl_include}/
     DESTINATION ${ARCH_LINUX_PATH}/include
     FILE_PERMISSIONS
     OWNER_READ OWNER_WRITE
     GROUP_READ GROUP_EXECUTE
 )
-install(DIRECTORY ${hixl_include}/adxl
-    DESTINATION ${ARCH_LINUX_PATH}/include
-    FILE_PERMISSIONS
-    OWNER_READ OWNER_WRITE
-    GROUP_READ GROUP_EXECUTE
-)
-install(DIRECTORY ${hixl_include}/hixl
-    DESTINATION ${ARCH_LINUX_PATH}/include
-    FILE_PERMISSIONS
-    OWNER_READ OWNER_WRITE
-    GROUP_READ GROUP_EXECUTE
-)
-install(FILES ${hixl_include}/llm_datadist/llm_datadist.h
-    DESTINATION ${ARCH_LINUX_PATH}/include/llm_datadist
-)
+
 install(TARGETS llm_datadist
         LIBRARY DESTINATION ${ARCH_LINUX_PATH}/lib64)
 
