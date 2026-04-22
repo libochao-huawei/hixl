@@ -338,9 +338,7 @@ def validate_path_consistency(target_config, target_name):
         )
 
 
-def parse_install_info(infos: List,
-                       operate_type,
-                       filter_key) -> Iterator[FileItem]:
+def parse_install_info(infos: List, operate_type, filter_key) -> Iterator[FileItem]:
     """根据配置解析生成安装信息。"""
     for target_config in infos:
         target_name = get_target_name(target_config)
@@ -387,8 +385,7 @@ def parse_install_info(infos: List,
             get_owner_group(target_config),
             install_type,
             get_softlink(target_config),
-            get_feature(target_config),
-            'N',
+            get_feature(target_config),'N',
             get_configurable(target_config),
             get_hash_value(target_config),
             get_block(target_config),
