@@ -385,7 +385,7 @@ def parse_install_info(infos: List, operate_type, filter_key) -> Iterator[FileIt
             get_owner_group(target_config),
             install_type,
             get_softlink(target_config),
-            get_feature(target_config),'N',
+            get_feature(target_config), 'N',
             get_configurable(target_config),
             get_hash_value(target_config),
             get_block(target_config),
