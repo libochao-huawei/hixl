@@ -234,7 +234,8 @@ run() {
 
       if [[ "X$ENABLE_CPP_TEST" = "XON" ]]; then
           detect_lcov_flags
-          lcov -c ${LCOV_IGNORE_FLAGS} -d ${BUILD_PATH}/tests/cpp/llm_datadist/CMakeFiles/llm_datadist_test.dir \
+          lcov -c ${LCOV_IGNORE_FLAGS} -b ${BASEPATH} \
+                  -d ${BUILD_PATH}/tests/cpp/llm_datadist/CMakeFiles/llm_datadist_test.dir \
                   -d ${BUILD_PATH}/tests/cpp/hixl/CMakeFiles/hixl_test.dir \
                   -d ${BUILD_PATH}/tests/depends/python/CMakeFiles/llm_datadist_wrapper_stub.dir \
                   -d ${BUILD_PATH}/tests/depends/python/CMakeFiles/metadef_wrapper_stub.dir \
