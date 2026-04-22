@@ -1142,6 +1142,12 @@ Status HixlCSClient::GetRemoteMemLocked(uint32_t timeout_ms, CommMem **remote_me
                                         uint32_t *list_num) {
   HIXL_CHECK_NOTNULL(local_endpoint_);
   const EndpointDesc &localEndPointDesc = local_endpoint_->GetEndpoint();
+  if (localEndPointDesc.protocol == COMM_PROTOCOL_HCCS) {
+    if (localEndPointDesc.src_serverIdx == remote_endpoint_.loc.device.serverIdx) {
+      HIXL_LOGI("Need do rtEnableP2P for device[%u]", remote_endpoint_.loc.device.devPhyId);
+      HIXL_CHK_ACL_RET(rtEnableP2P(device_id_, remote_endpoint_.loc.device.devPhyId, 0));
+    }
+  }
   Status ret = MemMsgHandler::SendGetRemoteMemRequest(socket_, remote_endpoint_handle_, localEndPointDesc, timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendGetRemoteMemRequest failed. fd=%d, remote_ep_handle=%" PRIu64, socket_,
                       remote_endpoint_handle_);

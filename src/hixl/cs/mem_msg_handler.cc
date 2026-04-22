@@ -260,7 +260,10 @@ Status MemMsgHandler::SendGetRemoteMemRequest(int32_t socket, uint64_t endpoint_
   body.protocol = static_cast<uint32_t>(localEndpointDesc.protocol);
   if (localEndpointDesc.protocol == static_cast<uint32_t>(COMM_PROTOCOL_HCCS)) {
     HIXL_CHK_STATUS_RET(aclrtDeviceGetBareTgid(&body.src_pid));
-    body.src_sdid = localEndpointDesc.loc.device.superDevId;
+    body.src_superDevId = localEndpointDesc.loc.device.superDevId;
+    body.src_devPhyId = localEndpointDesc.loc.device.devPhyId;
+    body.src_serverIdx = localEndpointDesc.loc.device.serverIdx;
+    body.src_superPodIdx = localEndpointDesc.loc.device.superPodIdx;
   }
 
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(socket, &header, static_cast<uint64_t>(sizeof(header))));
