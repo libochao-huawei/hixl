@@ -471,9 +471,9 @@ if __name__ == "__main__":
         }
 
         if use_local:
-            output_path = Path(f"./hixlep/ub_endpoint_npu_{device_id}.json")
+            output_path = Path(f"./hixlep/ub_endpoint_npu_{local_id}.json")
         else:
-            output_path = Path(f"/etc/hixlep/ub_endpoint_npu_{device_id}.json")
+            output_path = Path(f"/etc/hixlep/ub_endpoint_npu_{local_id}.json")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
