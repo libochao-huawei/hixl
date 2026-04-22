@@ -333,6 +333,7 @@ int32_t CheckTransferStatus(Hixl &hixl_engine, const TransferReq &req, TransferS
     std::printf("[ERROR] Transfer failed at req %zu, status=%d\n", idx, static_cast<int>(status));
     return -1;
   }
+  std::printf("[DEBUG] req %zu transfer completed\n", idx);
   return 0;
 }
 
