@@ -694,8 +694,8 @@ Status HixlClient::ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs
         has_found = true;
         op_descs_table[comm_type].push_back(op_desc);
         HIXL_LOGI("Current communication type: %s, local memory type: %s, remote memory type: %s.",
-                  CommTypeToString(comm_type), (local_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost,
-                  (remote_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypetHost);
+                  CommTypeToString(comm_type), (local_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost,
+                  (remote_mem_type == MemType::MEM_DEVICE) ? kMemTypeDevice : kMemTypeHost);
         break;
       }
     }
