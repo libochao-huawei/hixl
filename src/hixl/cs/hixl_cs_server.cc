@@ -381,9 +381,14 @@ Status HixlCSServer::ExportMem(int32_t fd, const char *msg, uint64_t msg_len) {
   auto ep = endpoint_store_.GetEndpoint(handle);
   HIXL_CHECK_NOTNULL(ep);
   if (req->protocol == COMM_PROTOCOL_HCCS) {
+    EndpointDesc &localEndPointDesc = ep->GetEndpoint();
+    if (req->src_serverIdx == localEndPointDesc.loc.device.serverIdx) {
+      HIXL_LOGI("Need do rtEnableP2P for device[%u]", req->src_devPhyId);
+      HIXL_CHK_ACL_RET(rtEnableP2P(device_id_, req->src_devPhyId, 0));
+    }
     HcommMemGranInfo remoteGrantInfo;
     remoteGrantInfo.pid = req->src_pid;
-    remoteGrantInfo.sdid = req->src_sdid;
+    remoteGrantInfo.sdid = req->src_superDevId;
     HIXL_CHK_STATUS_RET(ep->GrantMem(&remoteGrantInfo), "Failed to grand Mem");
   }
   GetRemoteMemResp resp{};
