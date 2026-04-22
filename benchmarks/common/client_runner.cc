@@ -298,7 +298,8 @@ int32_t SubmitAsyncRequests(Hixl &hixl_engine, const TransferBlockStepCtx &ctx, 
     const uintptr_t req_remote_base = ctx.dst_addr + static_cast<uintptr_t>(batch_idx) * static_cast<uintptr_t>(per_req_size);
     std::printf("[DEBUG] batch %u: req_base=0x%" PRIxPTR ", req_remote_base=0x%" PRIxPTR "\n", batch_idx, req_base, req_remote_base);
     for (uint32_t j = 0; j < per_req_trans_num; ++j) {
-      descs.push_back({req_base + j * block_size, req_remote_base + j * block_size, block_size});
+      const auto offset = static_cast<uintptr_t>(j) * static_cast<uintptr_t>(block_size);
+      descs.push_back({req_base + offset, req_remote_base + offset, block_size});
     }
     if (per_req_trans_num > 0) {
     std::printf("[DEBUG] batch %u first desc: local=0x%" PRIu64 ", remote=0x%" PRIu64 ", len=%zu\n",
