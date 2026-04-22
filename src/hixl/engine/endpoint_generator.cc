@@ -181,7 +181,7 @@ Status FillDeviceLocInfo(const EndpointConfig &endpoint_config, EndpointDesc &en
   endpoint.loc.device.devPhyId = (endpoint_config.device_info.phy_device_id >= 0)
                                      ? static_cast<uint32_t>(endpoint_config.device_info.phy_device_id)
                                      : dev_phy_id;
-  endpoint.loc.device.superDevId = 0U;
+  endpoint.loc.device.superDevId = static_cast<uint32_t>(-1);
   endpoint.loc.device.superPodIdx = 0U;
   endpoint.loc.device.serverIdx = 0U;
   if (endpoint_config.device_info.super_device_id >= 0) {
