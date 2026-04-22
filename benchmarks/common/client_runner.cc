@@ -114,7 +114,8 @@ int32_t RegisterLocalMem(Hixl &hixl_engine, const BenchmarkConfig &cfg, void *sr
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(src);
   desc.len = register_len;
-  std::printf("[DEBUG] RegisterMem: addr=0x%" PRIxPTR ", len=%zu, is_host=%d\n", desc.addr, register_len, is_host);
+  std::printf("[DEBUG] RegisterMem: addr=0x%" PRIxPTR ", len=%zu, range=[0x%" PRIxPTR ", 0x%" PRIxPTR "), is_host=%d\n",
+              desc.addr, register_len, desc.addr, desc.addr + register_len, is_host);
   const auto ret = hixl_engine.RegisterMem(desc, is_host ? MemType::MEM_HOST : MemType::MEM_DEVICE, *handle);
   if (ret != SUCCESS) {
     std::printf("[ERROR] RegisterMem failed, ret = %u, errmsg: %s\n", ret, RecentErrMsg());
@@ -301,9 +302,9 @@ int32_t SubmitAsyncRequests(Hixl &hixl_engine, const TransferBlockStepCtx &ctx, 
       const auto offset = static_cast<uintptr_t>(j) * static_cast<uintptr_t>(block_size);
       descs.push_back({req_base + offset, req_remote_base + offset, block_size});
     }
-    if (per_req_trans_num > 0) {
-    std::printf("[DEBUG] batch %u first desc: local=0x%" PRIu64 ", remote=0x%" PRIu64 ", len=%zu\n",
-                batch_idx, descs[0].local_addr, descs[0].remote_addr, descs[0].len);
+    for (uint32_t j = 0; j < per_req_trans_num; ++j) {
+      std::printf("[DEBUG] batch %u desc[%u]: local=0x%" PRIxPTR ", remote=0x%" PRIxPTR ", len=%zu\n",
+                  batch_idx, j, descs[j].local_addr, descs[j].remote_addr, descs[j].len);
     }
     TransferReq req = nullptr;
     if (hixl_engine.TransferAsync(AscendString(ctx.remote_engine), ctx.transfer_op, descs, optional_args, req) !=
