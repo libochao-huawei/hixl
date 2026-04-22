@@ -35,7 +35,10 @@ class DataTransferClient {
   ge::Status SynchronizeStreamTask(const TimePoint &start_time) const;
   ge::Status GetResponseInfo() const;
   ge::Status ConstructTransferInfo(const PullCacheParam &pull_cache_param, const CacheEntry &cache_entry,
-                                   const CacheKey &cache_key, int32_t timeout, TransferCacheReq &request) const;
+                                   const CacheKey &cache_key, int32_t timeout, TransferCacheReq &request,
+                                   uint64_t max_request_buffer_size) const;
+  ge::Status GetDynamicRequestBufferSize(const PullCacheParam &pull_cache_param, const CacheEntry &cache_entry,
+                                         uint64_t &request_buffer_size) const;
 
   CommEntity *comm_entity_;
   aclrtStream req_stream_{};
