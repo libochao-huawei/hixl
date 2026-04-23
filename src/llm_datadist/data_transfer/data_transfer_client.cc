@@ -108,15 +108,15 @@ ge::Status SetBufferInfo(const PullCacheParam &pull_cache_param, const CacheEntr
 }  // namespace
 
 ge::Status DataTransferClient::GetDynamicRequestBufferSize(const PullCacheParam &pull_cache_param,
-                                                            const CacheEntry &cache_entry,
-                                                            uint64_t &request_buffer_size,
-                                                            BufferInfoContext &buffer_info_ctx) const {
+                                                             const CacheEntry &cache_entry,
+                                                             uint64_t &request_buffer_size,
+                                                             BufferInfoContext &buffer_info_ctx) const {
   LLM_CHK_STATUS_RET(SetBufferInfoCount(pull_cache_param, buffer_info_ctx.buffer_info_count,
                                          buffer_info_ctx.is_pull_block, buffer_info_ctx.contiguous_blocks_pair),
                      "set buffer_info_count failed");
   const uint64_t request_size =
       sizeof(TransferCacheReq) + sizeof(TransferInfo) * (static_cast<uint64_t>(buffer_info_ctx.buffer_info_count) * kSrcAndDstNum +
-                                                         cache_entry.cache_addrs.size());
+                          cache_entry.cache_addrs.size());
   LLM_CHK_BOOL_RET_STATUS(request_size <= (kMaxDynamicReqBufferSize - kFlagSize), ge::LLM_PARAM_INVALID,
                          "buffer info count[%u] is to large, request size[%lu] is out of range[0, %lu]",
                          buffer_info_ctx.buffer_info_count, request_size, (kMaxDynamicReqBufferSize - kFlagSize));
@@ -149,7 +149,7 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
 
   uint64_t request_size =
       sizeof(TransferCacheReq) + sizeof(TransferInfo) * (static_cast<uint64_t>(buffer_info_count) * kSrcAndDstNum +
-                                                         cache_entry.cache_addrs.size());
+                          cache_entry.cache_addrs.size());
   LLM_CHK_BOOL_RET_STATUS(request_size <= (max_request_buffer_size - kFlagSize), ge::LLM_PARAM_INVALID,
                          "buffer info count[%u] is to large, request size[%lu] is out of range[0, %lu]",
                          buffer_info_count, request_size, (max_request_buffer_size - kFlagSize));
@@ -264,11 +264,13 @@ ge::Status DataTransferClient::PullCacheByGet(const CacheEntry &cache_entry, con
 
   uint64_t current_req_buffer_size = comm_entity_->GetLocalReqBufferSize();
   if (request_buffer_size > current_req_buffer_size) {
-    LLMLOGI("PullCacheByGet use dynamic allocated buffer, request_buffer_size=%lu", request_buffer_size);
+    LLMLOGI("PullCacheByGet use dynamic allocated buffer, pre_allocated_buffer_size=%lu ,request_buffer_size=%lu", 
+            current_req_buffer_size, request_buffer_size);
     LLM_CHK_STATUS_RET(comm_entity_->ExpandLocalReqBuffer(request_buffer_size),
                         "Failed to expand local req buffer to size=%lu", request_buffer_size);
   } else {
-    LLMLOGI("PullCacheByGet use pre-allocated buffer, request_buffer_size=%lu", request_buffer_size);
+    LLMLOGI("PullCacheByGet use pre-allocated buffer, pre_allocated_buffer_size=%lu ,request_buffer_size=%lu", 
+            current_req_buffer_size, request_buffer_size);
   }
   TransferCacheReq *request = PtrToPtr<void, TransferCacheReq>(comm_entity_->GetEntityInfo().local_req_ptr);
 
