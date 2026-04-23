@@ -10,7 +10,6 @@
 
 #include "data_transfer/data_transfer_client.h"
 #include "data_transfer/d2d_data_transfer_job.h"
-#include <memory>
 #include "common/llm_utils.h"
 #include "common/llm_scope_guard.h"
 
@@ -263,18 +262,15 @@ ge::Status DataTransferClient::PullCacheByGet(const CacheEntry &cache_entry, con
   BufferInfoContext buffer_info_ctx;
   LLM_CHK_STATUS_RET(GetDynamicRequestBufferSize(pull_cache_param, cache_entry, request_buffer_size, buffer_info_ctx));
 
-  TransferCacheReq *request = nullptr;
-  std::unique_ptr<uint8_t[]> temp_request_buffer;
-  if (request_buffer_size <= kDefaultReqBufferSize) {
-    request = PtrToPtr<void, TransferCacheReq>(comm_entity_->GetEntityInfo().local_req_ptr);
-    LLMLOGI("PullCacheByGet use pre-allocated buffer, request_buffer_size=%lu", request_buffer_size);
-  } else {
-    temp_request_buffer.reset(new (std::nothrow) uint8_t[request_buffer_size]);
-    LLM_CHK_BOOL_RET_STATUS(temp_request_buffer != nullptr, ge::LLM_OUT_OF_MEMORY,
-                            "Failed to allocate dynamic request buffer, size=%lu", request_buffer_size);
-    request = reinterpret_cast<TransferCacheReq *>(temp_request_buffer.get());
+  uint64_t current_req_buffer_size = comm_entity_->GetLocalReqBufferSize();
+  if (request_buffer_size > current_req_buffer_size) {
     LLMLOGI("PullCacheByGet use dynamic allocated buffer, request_buffer_size=%lu", request_buffer_size);
+    LLM_CHK_STATUS_RET(comm_entity_->ExpandLocalReqBuffer(request_buffer_size),
+                        "Failed to expand local req buffer to size=%lu", request_buffer_size);
+  } else {
+    LLMLOGI("PullCacheByGet use pre-allocated buffer, request_buffer_size=%lu", request_buffer_size);
   }
+  TransferCacheReq *request = PtrToPtr<void, TransferCacheReq>(comm_entity_->GetEntityInfo().local_req_ptr);
 
   LLM_CHK_STATUS_RET(ConstructTransferInfo(pull_cache_param, cache_entry, cache_key, timeout_in_ms, *request,
                                            request_buffer_size, &buffer_info_ctx));
