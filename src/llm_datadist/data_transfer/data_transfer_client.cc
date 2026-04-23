@@ -124,6 +124,8 @@ ge::Status DataTransferClient::GetDynamicRequestBufferSize(const PullCacheParam 
                          buffer_info_count, request_size, (kMaxDynamicReqBufferSize - kFlagSize));
   request_buffer_size = ((request_size + kFlagSize + kReqBufferAlignSize - 1U) / kReqBufferAlignSize) *
                         kReqBufferAlignSize;
+  LLMLOGI("GetDynamicRequestBufferSize success, buffer_info_count=%u, request_size=%lu, request_buffer_size=%lu",
+         buffer_info_count, request_size, request_buffer_size);
   return ge::SUCCESS;
 }
 
@@ -249,12 +251,22 @@ ge::Status DataTransferClient::PullCacheByGet(const CacheEntry &cache_entry, con
                                               const PullCacheParam &pull_cache_param, int32_t timeout_in_ms) const {
   uint64_t request_buffer_size = 0U;
   LLM_CHK_STATUS_RET(GetDynamicRequestBufferSize(pull_cache_param, cache_entry, request_buffer_size));
-  auto temp_request_buffer = std::make_unique<uint8_t[]>(request_buffer_size);
-  auto &request = *reinterpret_cast<TransferCacheReq *>(temp_request_buffer.get());
-  LLM_CHK_STATUS_RET(ConstructTransferInfo(pull_cache_param, cache_entry, cache_key, timeout_in_ms, request,
+
+  TransferCacheReq *request = nullptr;
+  std::unique_ptr<uint8_t[]> temp_request_buffer;
+  if (request_buffer_size <= kDefaultReqBufferSize) {
+    request = PtrToPtr<void, TransferCacheReq>(comm_entity_->GetEntityInfo().local_req_ptr);
+    LLMLOGI("PullCacheByGet use pre-allocated buffer, request_buffer_size=%lu", request_buffer_size);
+  } else {
+    temp_request_buffer = std::make_unique<uint8_t[]>(request_buffer_size);
+    request = reinterpret_cast<TransferCacheReq *>(temp_request_buffer.get());
+    LLMLOGI("PullCacheByGet use dynamic allocated buffer, request_buffer_size=%lu", request_buffer_size);
+  }
+
+  LLM_CHK_STATUS_RET(ConstructTransferInfo(pull_cache_param, cache_entry, cache_key, timeout_in_ms, *request,
                                            request_buffer_size));
   CacheEntry remote_cache_entry;
-  LLM_CHK_STATUS_RET(comm_entity_->GetCacheAccessTable().FindCacheEntry(request, remote_cache_entry));
+  LLM_CHK_STATUS_RET(comm_entity_->GetCacheAccessTable().FindCacheEntry(*request, remote_cache_entry));
   LLM_CHK_BOOL_RET_STATUS(cache_entry.remote_accessible, ge::LLM_PARAM_INVALID,
                          "local cache is not remote accessible.");
   LLM_CHK_BOOL_RET_STATUS(remote_cache_entry.remote_accessible, ge::LLM_PARAM_INVALID,
@@ -265,7 +277,7 @@ ge::Status DataTransferClient::PullCacheByGet(const CacheEntry &cache_entry, con
     offset += cache_key.prompt_batch_index * cache_entry.stride;
   }
   LLMLOGI("pull_cache begin from the offset: %u.", offset);
-  LLM_CHK_STATUS_RET(job.Initialize(remote_cache_entry, *comm_entity_, offset, &request));
+  LLM_CHK_STATUS_RET(job.Initialize(remote_cache_entry, *comm_entity_, offset, request));
   LLM_CHK_STATUS_RET(job.PullCache(), "Failed to pull cache");
   return ge::SUCCESS;
 }
