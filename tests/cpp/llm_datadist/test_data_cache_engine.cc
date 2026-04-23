@@ -188,6 +188,24 @@ std::vector<uint64_t> BuildSparseBlocks(size_t block_count, uint64_t start_index
   return blocks;
 }
 
+llm::CacheDesc BuildBlockCacheDesc(size_t block_count) {
+  llm::CacheDesc desc{};
+  desc.num_tensors = 1;
+  desc.shape = {static_cast<int64_t>(block_count * 2U), 4};
+  desc.data_type = DT_INT32;
+  desc.placement = 1;
+  desc.cache_mem_type = llm::CacheMemType::BLOCKS;
+  return desc;
+}
+
+llm::PullCacheParam BuildSparsePullCacheParam(size_t block_count, uint64_t decoder_start_index = 1U) {
+  llm::PullCacheParam param{};
+  param.size = -1;
+  param.prompt_blocks = BuildSparseBlocks(block_count);
+  param.decoder_blocks = BuildSparseBlocks(block_count, decoder_start_index);
+  return param;
+}
+
 HcclResult HcclExchangeMemDesc1(HcclComm comm, uint32_t remoteRank, HcclMemDescs *local, int timeout,
                                 HcclMemDescs *remote, uint32_t *actualNum) {
   for (uint32_t i = 0U; i < local->arrayLength; ++i) {
@@ -696,19 +714,9 @@ TEST_F(DataCacheEngineSTest, PullCache_D2D_B2B_BatchGet) {
 TEST_F(DataCacheEngineSTest, PullCache_D2D_B2B_BatchGet_DynamicRequestBuffer) {
   constexpr size_t kBlockCount = 4096U;
 
-  llm::CacheDesc src_cache_desc{};
-  src_cache_desc.num_tensors = 1;
-  src_cache_desc.shape = {static_cast<int64_t>(kBlockCount * 2U), 4};
-  src_cache_desc.data_type = DT_INT32;
-  src_cache_desc.placement = 1;
-  src_cache_desc.cache_mem_type = llm::CacheMemType::BLOCKS;
-
+  llm::CacheDesc src_cache_desc = BuildBlockCacheDesc(kBlockCount);
   llm::CacheDesc dst_cache_desc = src_cache_desc;
-
-  llm::PullCacheParam pull_cache_param{};
-  pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = BuildSparseBlocks(kBlockCount);
-  pull_cache_param.decoder_blocks = BuildSparseBlocks(kBlockCount, 1U);
+  llm::PullCacheParam pull_cache_param = BuildSparsePullCacheParam(kBlockCount);
 
   std::vector<int32_t> pull_result(8);
   DataCacheEngineRunner data_cache_engine_runner;
@@ -723,19 +731,9 @@ TEST_F(DataCacheEngineSTest, PullCache_D2D_B2B_BatchGet_DynamicRequestBuffer) {
 TEST_F(DataCacheEngineSTest, PullCache_D2D_B2B_BatchGet_RequestTooLarge) {
   constexpr size_t kBlockCount = 70000U;
 
-  llm::CacheDesc src_cache_desc{};
-  src_cache_desc.num_tensors = 1;
-  src_cache_desc.shape = {static_cast<int64_t>(kBlockCount * 2U), 4};
-  src_cache_desc.data_type = DT_INT32;
-  src_cache_desc.placement = 1;
-  src_cache_desc.cache_mem_type = llm::CacheMemType::BLOCKS;
-
+  llm::CacheDesc src_cache_desc = BuildBlockCacheDesc(kBlockCount);
   llm::CacheDesc dst_cache_desc = src_cache_desc;
-
-  llm::PullCacheParam pull_cache_param{};
-  pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = BuildSparseBlocks(kBlockCount);
-  pull_cache_param.decoder_blocks = BuildSparseBlocks(kBlockCount, 1U);
+  llm::PullCacheParam pull_cache_param = BuildSparsePullCacheParam(kBlockCount);
 
   DataCacheEngineRunner data_cache_engine_runner;
   data_cache_engine_runner.LlmDatadistInitAndLink(src_cache_desc, dst_cache_desc, pull_cache_param, false, true);
