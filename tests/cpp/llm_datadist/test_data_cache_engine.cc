@@ -721,7 +721,7 @@ TEST_F(DataCacheEngineSTest, PullCache_D2D_B2B_BatchGet_DynamicRequestBuffer) {
 }
 
 TEST_F(DataCacheEngineSTest, PullCache_D2D_B2B_BatchGet_RequestTooLarge) {
-  constexpr size_t kBlockCount = 50000U;
+  constexpr size_t kBlockCount = 70000U;
 
   llm::CacheDesc src_cache_desc{};
   src_cache_desc.num_tensors = 1;
