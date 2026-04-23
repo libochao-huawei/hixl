@@ -269,7 +269,9 @@ ge::Status DataTransferClient::PullCacheByGet(const CacheEntry &cache_entry, con
     request = PtrToPtr<void, TransferCacheReq>(comm_entity_->GetEntityInfo().local_req_ptr);
     LLMLOGI("PullCacheByGet use pre-allocated buffer, request_buffer_size=%lu", request_buffer_size);
   } else {
-    temp_request_buffer = std::make_unique<uint8_t[]>(request_buffer_size);
+    temp_request_buffer.reset(new (std::nothrow) uint8_t[request_buffer_size]);
+    LLM_CHK_BOOL_RET_STATUS(temp_request_buffer != nullptr, ge::LLM_OUT_OF_MEMORY,
+                            "Failed to allocate dynamic request buffer, size=%lu", request_buffer_size);
     request = reinterpret_cast<TransferCacheReq *>(temp_request_buffer.get());
     LLMLOGI("PullCacheByGet use dynamic allocated buffer, request_buffer_size=%lu", request_buffer_size);
   }
