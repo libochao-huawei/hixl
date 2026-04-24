@@ -15,7 +15,7 @@ ThreadPool::ThreadPool(std::string thread_name_prefix,
                        const uint32_t min_size,
                        const uint32_t max_size)
     : thread_name_prefix_(std::move(thread_name_prefix)),
-      is_stoped_(false),
+      is_stopped_(false),
       min_thrd_num_(min_size < 1U ? 1U : min_size),
       max_thrd_num_(max_size < min_thrd_num_ ? min_thrd_num_ : max_size) {
   idle_thrd_num_ = min_thrd_num_;
@@ -39,7 +39,7 @@ void ThreadPool::Destroy() {
   }
   HIXL_LOGI("[ThreadPool] destroying, name:%s, total_threads:%u, pending_tasks:%zu",
             thread_name_prefix_.c_str(), total_thrd_num_.load(), tasks_.size());
-  is_stoped_.store(true);
+  is_stopped_.store(true);
   {
     const std::unique_lock<std::mutex> lock{m_lock_};
     cond_var_.notify_all();
@@ -89,8 +89,8 @@ void ThreadPool::LogTempThreadExit(const char *reason, uint32_t thread_idx) {
 
 bool ThreadPool::PopTask(std::function<void()> &task) {
   std::unique_lock<std::mutex> lock{m_lock_};
-  cond_var_.wait(lock, [this]() { return is_stoped_.load() || !tasks_.empty(); });
-  if (is_stoped_ && tasks_.empty()) {
+  cond_var_.wait(lock, [this]() { return is_stopped_.load() || !tasks_.empty(); });
+  if (is_stopped_ && tasks_.empty()) {
     return false;
   }
   task = std::move(tasks_.front());
@@ -123,7 +123,7 @@ void ThreadPool::ThreadFunc(ThreadPool *const thread_pool, uint32_t thread_idx, 
     task();
     --thread_pool->busy_thrd_num_;
 
-    if (is_temporary && !thread_pool->is_stoped_) {
+    if (is_temporary && !thread_pool->is_stopped_) {
       --thread_pool->total_thrd_num_;
       thread_pool->LogTempThreadExit("exit after task", thread_idx);
       return;
