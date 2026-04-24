@@ -77,7 +77,7 @@ ge::Status GetSendTask(const CacheEntry &cache_entry, const TransferCacheReq &re
 ge::Status D2DDataTransferJob::Initialize(const CacheEntry &cache_entry, CommEntity &comm_entity, uint64_t offset) {
   comm_entity_ = &comm_entity;
   LLM_CHK_STATUS_RET(GenerateSendTask(cache_entry, offset), "comm_entity:%s generate send task failed",
-                     comm_entity.GetDesc().c_str());
+                    comm_entity.GetDesc().c_str());
   timeout_point_ = std::chrono::steady_clock::now();
   return ge::SUCCESS;
 }
@@ -129,6 +129,7 @@ ge::Status D2DDataTransferJob::GenerateCacheTask(const CacheEntry &cache_entry, 
 }
 
 ge::Status D2DDataTransferJob::GenerateSendTask(const CacheEntry &cache_entry, const uint64_t offset) {
+  // 解析本地地址上发送过来的cache info
   const TransferCacheReq &request = comm_entity_->GetRequest();
   return GenerateCacheTask(cache_entry, request, offset);
 }

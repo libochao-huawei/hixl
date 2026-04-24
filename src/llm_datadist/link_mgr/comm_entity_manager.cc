@@ -117,16 +117,14 @@ void CommEntityManager::HandleAllEntities() {
       it++;
       continue;
     }
-    if (entity->GetProcessMutex().try_lock()) {
-      std::lock_guard<std::mutex> process_lock(entity->GetProcessMutex(), std::adopt_lock);
-      if (entity->GetCurState() == FsmState::FSM_DESTROYED_STATE) {
-        cluster_id_to_entity_id_.erase(entity->GetClusterId());
-        it = entity_map_.erase(it);
-        continue;
-      }
-      LLM_CHK_BOOL_EXEC(entity->ProcessState() == ge::SUCCESS, entity->MarkEntityError(),
-                       "Failed to process state");
+    std::lock_guard<std::mutex> process_lock(entity->GetProcessMutex());
+    if (entity->GetCurState() == FsmState::FSM_DESTROYED_STATE) {
+      cluster_id_to_entity_id_.erase(entity->GetClusterId());
+      it = entity_map_.erase(it);
+      continue;
     }
+    LLM_CHK_BOOL_EXEC(entity->ProcessState() == ge::SUCCESS, entity->MarkEntityError(),
+                     "Failed to process state");
     it++;
   }
 }
