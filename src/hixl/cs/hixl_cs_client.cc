@@ -559,7 +559,7 @@ Status HixlCSClient::BatchTransferHost(bool is_get, const CommunicateMem &commun
   uint64_t *flag_addr = &flag_queue_[flag_index];
   EndpointDesc endpoint = local_endpoint_->GetEndpoint();
   const char *kTransFlagName = nullptr;
-  if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_HOST) {
+  if (remote_endpoint_.loc.locType == ENDPOINT_LOC_TYPE_HOST) {
     kTransFlagName = kTransFlagNameHost;
   } else {
     kTransFlagName = kTransFlagNameDevice;
