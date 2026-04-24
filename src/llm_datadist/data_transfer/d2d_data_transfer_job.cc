@@ -74,18 +74,12 @@ ge::Status GetSendTask(const CacheEntry &cache_entry, const TransferCacheReq &re
 }
 }  // namespace
 
-ge::Status D2DDataTransferJob::Initialize(const CacheEntry &cache_entry, CommEntity &comm_entity, uint64_t offset,
-                                          const TransferCacheReq *request) {
+ge::Status D2DDataTransferJob::Initialize(const CacheEntry &cache_entry, CommEntity &comm_entity, uint64_t offset) {
   comm_entity_ = &comm_entity;
-  request_ = request;
   LLM_CHK_STATUS_RET(GenerateSendTask(cache_entry, offset), "comm_entity:%s generate send task failed",
-                    comm_entity.GetDesc().c_str());
+                     comm_entity.GetDesc().c_str());
   timeout_point_ = std::chrono::steady_clock::now();
   return ge::SUCCESS;
-}
-
-ge::Status D2DDataTransferJob::Initialize(const CacheEntry &cache_entry, CommEntity &comm_entity, uint64_t offset) {
-  return Initialize(cache_entry, comm_entity, offset, nullptr);
 }
 
 ge::Status D2DDataTransferJob::Process(bool &is_done) {
@@ -135,14 +129,12 @@ ge::Status D2DDataTransferJob::GenerateCacheTask(const CacheEntry &cache_entry, 
 }
 
 ge::Status D2DDataTransferJob::GenerateSendTask(const CacheEntry &cache_entry, const uint64_t offset) {
-  // 解析本地地址上发送过来的cache info
-  const TransferCacheReq &request = (request_ != nullptr) ? *request_ : comm_entity_->GetRequest();
+  const TransferCacheReq &request = comm_entity_->GetRequest();
   return GenerateCacheTask(cache_entry, request, offset);
 }
 
 ge::Status D2DDataTransferJob::PullCache() {
-  const auto &request = (request_ != nullptr) ? *request_ : comm_entity_->GetRequest();
-  LLM_CHK_STATUS_RET(comm_entity_->BatchTransfer(send_tasks_, false, true, request.timeout_in_ms),
+  LLM_CHK_STATUS_RET(comm_entity_->BatchTransfer(send_tasks_, false, true, comm_entity_->GetRequest().timeout_in_ms),
                      "Failed to batch get, task size:%zu.", send_tasks_.size());
   return ge::SUCCESS;
 }

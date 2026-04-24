@@ -288,7 +288,7 @@ ge::Status DataTransferClient::PullCacheByGet(const CacheEntry &cache_entry, con
     offset += cache_key.prompt_batch_index * cache_entry.stride;
   }
   LLMLOGI("pull_cache begin from the offset: %lu.", offset);
-  LLM_CHK_STATUS_RET(job.Initialize(remote_cache_entry, *comm_entity_, offset, request));
+  LLM_CHK_STATUS_RET(job.Initialize(remote_cache_entry, *comm_entity_, offset));
   LLM_CHK_STATUS_RET(job.PullCache(), "Failed to pull cache");
   return ge::SUCCESS;
 }
