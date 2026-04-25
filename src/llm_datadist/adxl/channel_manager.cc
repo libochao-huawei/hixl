@@ -305,7 +305,7 @@ Status ChannelManager::HandleNotifyMessage(const ChannelPtr &channel, const std:
     std::lock_guard<std::mutex> lock(channel->notify_message_mutex_);
     if (channel->notify_messages_.size() >= kMaxNotifyStorageSize) {
       LLMLOGE(FAILED, "Notify storage limit exceeded for channel:%s. Current count: %zu, limit: %zu. "
-              "Please call get notify on client side to consume pending notify messages.",
+              "Please call get notify to consume pending notify messages.",
               channel->GetChannelId().c_str(), channel->notify_messages_.size(), kMaxNotifyStorageSize);
       return FAILED;
     }
