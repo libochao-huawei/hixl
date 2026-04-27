@@ -223,6 +223,7 @@ ge::Status LLMDataDistV2::DeallocateCache(int64_t cache_id) {
 ge::Status LLMDataDistV2::PullCache(int64_t cache_id, const CacheKey &cache_key,
                                     const PullCacheParam &pull_cache_param) {
   LLMLOGI("LLMDataDisttest PullCache start.");
+  LLMEVENT("LLMDataDisttest PullCache start2=%ld", cache_id);
   const auto start = std::chrono::steady_clock::now();
   LLM_CHK_BOOL_RET_STATUS(is_initialized_.load(std::memory_order::memory_order_relaxed), ge::FAILED,
                          "Llm datadist of cluster:%lu is not initialized.", cluster_id_);
