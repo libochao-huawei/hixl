@@ -222,6 +222,7 @@ ge::Status LLMDataDistV2::DeallocateCache(int64_t cache_id) {
 
 ge::Status LLMDataDistV2::PullCache(int64_t cache_id, const CacheKey &cache_key,
                                     const PullCacheParam &pull_cache_param) {
+  LLMLOGI("LLMDataDisttest PullCache start.");
   const auto start = std::chrono::steady_clock::now();
   LLM_CHK_BOOL_RET_STATUS(is_initialized_.load(std::memory_order::memory_order_relaxed), ge::FAILED,
                          "Llm datadist of cluster:%lu is not initialized.", cluster_id_);
@@ -230,6 +231,7 @@ ge::Status LLMDataDistV2::PullCache(int64_t cache_id, const CacheKey &cache_key,
                          ge::LLM_PARAM_INVALID, "tensor_num_per_layer is invalid, must > 0");
   LLM_CHK_BOOL_RET_STATUS(cluster_id_ != cache_key.prompt_cluster_id, ge::LLM_PARAM_INVALID,
                          "data can not be pulled from own cluster:%lu", cluster_id_);
+  LLMLOGI("LLMDataDisttest data_cache_engine_ PullCache enter.");
   LLM_CHK_STATUS_RET(data_cache_engine_->PullCache(cache_id, cache_key, pull_cache_param), "pull cache failed");
   const auto end = std::chrono::steady_clock::now();
   auto &func_statistic_info = StatisticManager::GetInstance().GetFuncStatisticInfo();
@@ -241,6 +243,7 @@ ge::Status LLMDataDistV2::PullCache(int64_t cache_id, const CacheKey &cache_key,
 
 ge::Status LLMDataDistV2::PullBlocks(int64_t cache_id, const CacheKey &cache_key,
                                      const PullCacheParam &pull_cache_param) {
+  LLMLOGI("LLMDataDisttest PullBlocks start.");                                    
   LLM_CHK_BOOL_RET_STATUS((!pull_cache_param.prompt_blocks.empty()),
                          ge::LLM_PARAM_INVALID,
                          "src_blocks is empty, pull from non-block cache is not supported yet");
@@ -252,6 +255,7 @@ ge::Status LLMDataDistV2::PullBlocks(int64_t cache_id, const CacheKey &cache_key
                          ge::LLM_PARAM_INVALID,
                          "invalid cache_key.prompt_batch_index (%lu), only 0 is supported in pull block",
                          cache_key.prompt_batch_index);
+  LLMLOGI("LLMDataDisttest PullCache enter.");
   return PullCache(cache_id, cache_key, pull_cache_param);
 }
 

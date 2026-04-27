@@ -112,6 +112,7 @@ ge::Status DataCacheEngine::Unregister(int64_t cache_id) {
 
 ge::Status DataCacheEngine::PullCache(int64_t cache_id, const CacheKey &cache_key,
                                       const PullCacheParam &pull_cache_param) {
+  LLMLOGI("LLMDataDisttest DataCacheEngine PullCache start.");
   const auto start = std::chrono::steady_clock::now();
   // cache_id is local, find local addr by cache_id
   CacheEntry cache_entry;
