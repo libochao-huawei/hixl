@@ -300,11 +300,14 @@ std::string TransferOpToString(TransferOp op) {
 }
 
 TemporaryRtContext::TemporaryRtContext(aclrtContext context) {
-  (void)aclrtGetCurrentContext(&prev_context_);
-  HIXL_LOGI("Get current aclrt ctx:%p", prev_context_);
-  if (context != nullptr && prev_context_ != context) {
+  aclrtContext prev_context = nullptr;
+  (void)aclrtGetCurrentContext(&prev_context);
+  HIXL_LOGI("Get current aclrt ctx:%p", prev_context);
+  if (context != nullptr && prev_context != context) {
     HIXL_CHK_ACL(aclrtSetCurrentContext(context));
-    HIXL_LOGI("Set current aclrt ctx:%p", prev_context_);
+    HIXL_LOGI("Set current aclrt ctx:%p， prev_context：%p", context, prev_context);
+    // 只有不一致的时候才保存，防止析构函数每次都调用恢复context
+    prev_context_ = prev_context;
   }
 }
 
