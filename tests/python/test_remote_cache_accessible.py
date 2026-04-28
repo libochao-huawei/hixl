@@ -184,3 +184,12 @@ class LlmCacheManagerSt(unittest.TestCase):
             has_err = True
             print(e)
         self.assertEqual(has_err, False)
+
+    def test_data_type(self):
+        try: 
+            print(len(dtype_to_np_dtype))
+            print(len(valid_np_dtypes))
+            print(len(np_dtype_to_dtype))
+        except AttributeError:
+            has_err = True
+        self.assertEqual(has_err, False)
