@@ -75,8 +75,22 @@ enum class TransferStatus {
   FAILED
 };
 
-struct TransferArgs{
-  uint8_t reserved[128] = {};
+struct TransferArgs {
+  void *user_data = nullptr;
+  uint8_t reserved[120] = {};
+};
+
+struct GetTransferStatusArgs {
+  size_t max_query_count = UINT32_MAX;
+  bool skip_waiting = false;
+  uint8_t reserved[119] = {};
+};
+
+struct TransferResult {
+  TransferReq req = nullptr;
+  void *user_data = nullptr;
+  TransferStatus status = TransferStatus::WAITING;
+  uint8_t reserved[108] = {};
 };
 
 struct NotifyDesc {
