@@ -9,6 +9,7 @@
  */
 #include "hixl_batch_transfer.h"
 #include <string>
+#include <vector>
 #include "common/hixl_log.h"
 #include "common/hixl_checker.h"
 #include "proxy/hcomm_proxy.h"
@@ -16,7 +17,20 @@
 
 namespace hixl {
 namespace {
-uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param) {
+int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param) {
+  std::vector<HcommBatchTransferDesc> descs(param->list_num);
+  for (uint32_t i = 0; i < param->list_num; i++) {
+    descs[i].len = param->len_list[i];
+    descs[i].dst = param->dst_buf_addr_list[i];
+    descs[i].src = param->src_buf_addr_list[i];
+    descs[i].transType = is_read ? HCOMM_TRANSFER_TYPE_READ : HCOMM_TRANSFER_TYPE_WRITE;
+    descs[i].reduceOp = HCOMM_REDUCE_RESERVED;
+    descs[i].dataType = HCOMM_DATA_TYPE_RESERVED;
+  }
+  return HcommProxy::BatchTransferOnThread(param->thread, param->channel, descs.data(), param->list_num);
+}
+
+uint32_t TransferWithSingle(bool is_read, HixlOneSideOpParam *param) {
   if (is_read) {
     // 批量提交读任务
     for (uint32_t i = 0; i < param->list_num; i++) {
@@ -54,6 +68,22 @@ uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param) {
       }
     }
   }
+  return SUCCESS;
+}
+
+uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param) {
+  // 先尝试批量接口
+  int32_t batch_ret = TransferWithBatch(is_read, param);
+  if (batch_ret == HCCL_E_NOT_SUPPORT) {
+    // fallback 到逐个调用
+    HIXL_LOGI("[HixlBatchTransfer] HcommBatchTransferOnThread not supported, fallback to single calls");
+    return TransferWithSingle(is_read, param);
+  }
+  if (batch_ret != 0) {
+    HIXL_LOGE(FAILED, "HcommBatchTransferOnThread failed, ret=%d", batch_ret);
+    return FAILED;
+  }
+  HIXL_LOGI("[HixlBatchTransfer] HcommBatchTransferOnThread success");
   return SUCCESS;
 }
 
