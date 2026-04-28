@@ -661,6 +661,23 @@ Status HixlClient::GetMemType(const std::vector<SegmentPtr> &segments, uintptr_t
   return PARAM_INVALID;
 }
 
+bool HixlClient::IsOnlyRoceUboeHccsClient(CommType &single_type) {
+  std::lock_guard<std::mutex> lock(client_handles_mutex_);
+  // 只有单一通信类型时才考虑跳过分类
+  if (client_handles_.size() != 1) {
+    return false;
+  }
+  const auto &type = client_handles_.begin()->first;
+  // 仅 ROCE/UBOE/HCCS 不需要内存类型分类
+  if (type == CommType::COMM_TYPE_ROCE ||
+      type == CommType::COMM_TYPE_UBOE ||
+      type == CommType::COMM_TYPE_HCCS) {
+    single_type = type;
+    return true;
+  }
+  return false;
+}
+
 Status HixlClient::ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs,
                                      std::map<CommType, std::vector<TransferOpDesc>> &op_descs_table) {
   for (const auto &op_desc : op_descs) {
@@ -730,7 +747,16 @@ Status HixlClient::BatchTransfer(const std::vector<TransferOpDesc> &op_descs, Tr
   }
   // 根据传输类型分类
   std::map<CommType, std::vector<TransferOpDesc>> op_descs_table;
-  HIXL_CHK_STATUS_RET(ClassifyTransfers(op_descs, op_descs_table), "HixlClient failed to classify transfer op_descs");
+  CommType single_type;
+  if (IsOnlyRoceUboeHccsClient(single_type)) {
+    // ROCE/UBOE/HCCS 单类型场景：直接放入，无需分类
+    op_descs_table[single_type] = op_descs;
+    HIXL_LOGI("HixlClient BatchTransfer skip ClassifyTransfers for type:%s, op_descs size:%zu",
+              CommTypeToString(single_type), op_descs.size());
+  } else {
+    HIXL_CHK_STATUS_RET(ClassifyTransfers(op_descs, op_descs_table),
+                        "HixlClient failed to classify transfer op_descs");
+  }
 
   // 执行批量传输操作
   std::lock_guard<std::mutex> lock(client_handles_mutex_);
@@ -778,7 +804,16 @@ Status HixlClient::BatchTransferSync(const std::vector<TransferOpDesc> &op_descs
     }
   }
   std::map<CommType, std::vector<TransferOpDesc>> op_descs_table;
-  HIXL_CHK_STATUS_RET(ClassifyTransfers(op_descs, op_descs_table), "HixlClient failed to classify transfer op_descs");
+  CommType single_type;
+  if (IsOnlyRoceUboeHccsClient(single_type)) {
+    // ROCE/UBOE/HCCS 单类型场景：直接放入，无需分类
+    op_descs_table[single_type] = op_descs;
+    HIXL_LOGI("HixlClient BatchTransferSync skip ClassifyTransfers for type:%s, op_descs size:%zu",
+              CommTypeToString(single_type), op_descs.size());
+  } else {
+    HIXL_CHK_STATUS_RET(ClassifyTransfers(op_descs, op_descs_table),
+                        "HixlClient failed to classify transfer op_descs");
+  }
 
   for (const auto &type_with_op_descs : op_descs_table) {
     uint32_t remaining_timeout_ms = 0;
