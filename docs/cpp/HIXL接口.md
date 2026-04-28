@@ -358,6 +358,145 @@ Status Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis =
 - 调用该接口之前，需要先调用Initialize接口完成初始化。
 - 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 
+## ConnectAsync
+
+**函数功能**
+
+与远端HIXL进行异步建链。
+
+**函数原型**
+
+```
+Status ConnectAsync(const AscendString &remote_engine, int32_t timeout_in_millis = 1000)
+```
+
+**参数说明**
+
+| 参数名 | 输入/输出 | 描述 |
+| --- | --- | --- |
+| remote_engine | 输入 | 远端HIXL的唯一标识。remote_engine对应的HIXL需要是同一个Server。 |
+| timeout_in_millis | 输入 | 建链的超时时间，单位：ms，默认值：1000。 |
+
+**调用示例**
+
+请参考[样例运行](../../examples/cpp/README.md)。
+
+**返回值**
+
+- SUCCESS：成功
+- RESOURCE\_EXHAUSTED：任务队列已满
+- 其他：失败
+
+**异常处理**
+
+无。
+
+**约束说明**
+
+- 继承Connect接口的所有约束。
+- 线程池线程数量和任务队列长度通过Hixl的Initialize接口进行配置。
+<br>- "GlobalResourceConfig": "{"connect_pool.thread_num":"2","connect_pool.task_queue_capacity":"256"}"
+- ConnectAsync/DisconnectAsync接口不与Connect/Disconnect接口混用。
+
+## DisconnectAsync
+
+**函数功能**
+
+与远端HIXL进行异步断链。
+
+**函数原型**
+
+```
+Status DisconnectAsync(const AscendString &remote_engine, int32_t timeout_in_millis = 1000)
+```
+
+**参数说明**
+
+| 参数名称 | 输入/输出 | 取值说明 |
+| --- | --- | --- |
+| remote_engine | 输入 | 远端HIXL的唯一标识。 |
+| timeout_in_millis | 输入 | 断链的超时时间，单位：ms，默认值：1000。 |
+
+**调用示例**
+
+请参考[样例运行](../../examples/cpp/README.md)。
+
+**返回值**
+
+- SUCCESS：成功
+- RESOURCE\_EXHAUSTED：任务队列已满
+- 其他：失败
+
+**约束说明**
+
+- 继承Disconnect接口的所有约束。
+- 线程池线程数量和任务队列长度通过Hixl的Initialize接口进行配置。
+<br>- "GlobalResourceConfig": "{"connect_pool.thread_num":"2","connect_pool.task_queue_capacity":"256"}"
+- ConnectAsync/DisconnectAsync接口不与Connect/Disconnect接口混用。
+
+## GetAsyncConnectStatus
+
+**函数功能**
+
+获取指定异步连接状态。
+
+**函数原型**
+
+```
+Status GetAsyncConnectStatus(const AscendString &remote_engine, AsyncConnectStatus& status)
+```
+
+**参数说明**
+
+| 参数名称 | 输入/输出 | 取值说明 |
+| --- | --- | --- |
+| remote_engine | 输入 | 远端HIXL的唯一标识。 |
+| status | 输出 | 异步连接状态，枚举值如下。<br><br>-  NOT_CONNECT<br>-  CONNECT_PENDING<br>-  CONNECTING<br>-  CONNECT_FAILED<br>-  DISCONNECT_PENDING<br>-  DISCONNECTING |
+
+**调用示例**
+
+请参考[样例运行](../../examples/cpp/README.md)。
+
+**返回值**
+
+- SUCCESS：成功
+- 其他：失败
+
+**约束说明**
+
+- 调用该接口之前，需要先调用Initialize接口完成初始化。
+
+## GetAsyncConnectStatus
+
+**函数功能**
+
+获取全部异步连接状态。
+
+**函数原型**
+
+```
+Status GetAsyncConnectStatus(std::map<AscendString, AsyncConnectStatus>& status_map)
+```
+
+**参数说明**
+
+| 参数名称 | 输入/输出 | 取值说明 |
+| --- | --- | --- |
+| status_map | 输出 | 存储所有异步建链断链任务的状态，枚举值如下。<br><br>-  NOT_CONNECT<br>-  CONNECT_PENDING<br>-  CONNECTING<br>-  CONNECT_FAILED<br>-  DISCONNECT_PENDING<br>-  DISCONNECTING |
+
+**调用示例**
+
+请参考[样例运行](../../examples/cpp/README.md)。
+
+**返回值**
+
+- SUCCESS：成功
+- 其他：失败
+
+**约束说明**
+
+- 调用该接口之前，需要先调用Initialize接口完成初始化。
+
 ## TransferSync
 
 **函数功能**
