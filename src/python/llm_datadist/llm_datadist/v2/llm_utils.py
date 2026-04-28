@@ -363,3 +363,13 @@ def parse_listen_ip_info(listen_ip_info: str) -> (str, int):
     ip = ip_and_port[0]
     port = int(ip_and_port[1])
     return ip, port
+
+try:
+    from llm_datadist_v1.llm_utils import (
+        clone_cache_desc, verify_cache_shape, to_data_type, is_invalid_id, is_valid_id, calc_tensor_size, \
+        CacheDescParser, pack_cache_desc, pack_cache_key, pack_cache_key_by_id, pack_block_cache_key, \
+        pack_mem_info, TransferCacheParameters, TransferCacheJob, TransferAsyncThread, transfer_cache_async, \
+        layer_range_to_tensor_indices, parse_listen_ip_info
+    )
+except (ImportError, AttributeError):
+    pass
