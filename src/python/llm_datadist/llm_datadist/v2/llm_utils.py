@@ -12,11 +12,11 @@
 from dataclasses import dataclass
 from threading import Thread
 from typing import Dict, List, Optional, Union, Tuple
-from llm_datadist.utils import log
-from llm_datadist.utils.utils import check_isinstance, check_list_uint64, check_uint64, check_uint32
-from llm_datadist.status import LLMException, LLMStatusCode, raise_if_false, code_2_status, raise_if_true
-from llm_datadist.data_type import DataType, python_dtype_2_dwrapper_dtype
-from llm_datadist.v2.llm_types import CacheDesc, KvCache, CacheKey, CacheKeyByIdAndIndex, BlocksCacheKey, Placement, \
+from .utils import log
+from .utils.utils import check_isinstance, check_list_uint64, check_uint64, check_uint32
+from .status import LLMException, LLMStatusCode, raise_if_false, code_2_status, raise_if_true
+from .data_type import DataType, python_dtype_2_dwrapper_dtype
+from .v2.llm_types import CacheDesc, KvCache, CacheKey, CacheKeyByIdAndIndex, BlocksCacheKey, Placement, \
     CacheTask, TransferConfig, LayerSynchronizer, Cache, TransferWithCacheKeyConfig, PushType, MemInfo
 from llm_datadist import llm_datadist_wrapper
 

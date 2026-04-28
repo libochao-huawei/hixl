@@ -56,8 +56,8 @@ def get_device_ip_from_hccn_tool(device_id: int) -> str:
 
 
 def get_physical_device_id() -> list[str]:
-    cmd = ["ls", "-l", "/dev", "|", "grep", "davinci"]
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
+    cmd = "ls -l /dev | grep davinci"
+    result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, text=True)
     outputlines = result.stdout.splitlines()
 
     numbers = []
