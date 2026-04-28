@@ -49,6 +49,13 @@ ge::Status GlobalMemManager::UnregisterMem(void *handle) {
   }
   LLM_CHK_STATUS_RET(transfer_engine_->UnregisterMem(handle), "Failed to unregister mem");
   handles_.erase(handle);
+const char* log_level_env = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
+  int cur_level = dlog_getlevel(GE, nullptr);
+  int log_enabled = CheckLogLevel(GE, DLOG_INFO);
+  LLMEVENT("Unregister ENV: ASCEND_GLOBAL_LOG_LEVEL=%s, cur_level=%d, CheckLogLevel=%d",
+           log_level_env ? log_level_env : "(null)",
+           cur_level,
+           log_enabled);
   LLMLOGI("Unregister global mem handle success, handle:%p", handle);
   return ge::SUCCESS;
  }
