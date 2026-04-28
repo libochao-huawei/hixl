@@ -12,8 +12,6 @@
 #include "common/def_types.h"
 #include "hccl/hccl_adapter.h"
 
-extern int ge_log_level;
-
 namespace llm {
 GlobalMemManager &GlobalMemManager::GetInstance() {
   static GlobalMemManager instance;
@@ -51,12 +49,13 @@ ge::Status GlobalMemManager::UnregisterMem(void *handle) {
   }
   LLM_CHK_STATUS_RET(transfer_engine_->UnregisterMem(handle), "Failed to unregister mem");
   handles_.erase(handle);
-  const char* log_level_env = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
+const char* log_level_env = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
   int cur_level = dlog_getlevel(GE, nullptr);
-  LLMEVENT("Unregister ENV: ASCEND_GLOBAL_LOG_LEVEL=%s, cur_level=%d, ge_log_level=%d",
+  int log_enabled = CheckLogLevel(GE, DLOG_INFO);
+  LLMEVENT("Unregister ENV: ASCEND_GLOBAL_LOG_LEVEL=%s, cur_level=%d, CheckLogLevel=%d",
            log_level_env ? log_level_env : "(null)",
            cur_level,
-           ge_log_level);
+           log_enabled);
   LLMLOGI("Unregister global mem handle success, handle:%p", handle);
   return ge::SUCCESS;
  }

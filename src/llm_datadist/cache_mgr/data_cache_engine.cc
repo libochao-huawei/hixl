@@ -26,8 +26,6 @@
 #include "common/llm_scope_guard.h"
 #include "llm_datadist/llm_engine_types.h"
 
-extern int ge_log_level;
-
 namespace llm {
 namespace {
 constexpr size_t kMaxDimNum = 32U;
@@ -114,12 +112,13 @@ ge::Status DataCacheEngine::Unregister(int64_t cache_id) {
 
 ge::Status DataCacheEngine::PullCache(int64_t cache_id, const CacheKey &cache_key,
                                        const PullCacheParam &pull_cache_param) {
-  const char* log_level_env = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
+const char* log_level_env = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
   int cur_level = dlog_getlevel(GE, nullptr);
-  LLMEVENT("ENV: ASCEND_GLOBAL_LOG_LEVEL=%s, cur_level=%d, ge_log_level=%d",
+  int log_enabled = CheckLogLevel(GE, DLOG_INFO);
+  LLMEVENT("ENV: ASCEND_GLOBAL_LOG_LEVEL=%s, cur_level=%d, CheckLogLevel=%d",
            log_level_env ? log_level_env : "(null)",
            cur_level,
-           ge_log_level);
+           log_enabled);
   LLMEVENT("LLMDataDisttest DataCacheEngine PullCache start1.");
   const auto start = std::chrono::steady_clock::now();
   // cache_id is local, find local addr by cache_id

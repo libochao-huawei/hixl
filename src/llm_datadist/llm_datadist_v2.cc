@@ -20,8 +20,6 @@
 
 #include <cstdlib>
 
-extern int ge_log_level;
-
 namespace llm {
 ge::Status LLMDataDistV2::DoInnerInitialize(int32_t device_id,
                                             bool remote_cache_accessible,
@@ -228,12 +226,13 @@ ge::Status LLMDataDistV2::PullCache(int64_t cache_id, const CacheKey &cache_key,
                                     const PullCacheParam &pull_cache_param) {
   LLMLOGI("LLMDataDisttest PullCache start.");
   LLMEVENT("LLMDataDisttest PullCache start2=%ld", cache_id);
-  const char* log_level = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
+const char* log_level = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
   int cur_level = dlog_getlevel(GE, nullptr);
-  LLMEVENT("ENV: ASCEND_GLOBAL_LOG_LEVEL=%s, cur_level=%d, ge_log_level=%d",
+  int log_enabled = CheckLogLevel(GE, DLOG_INFO);
+  LLMEVENT("ENV: ASCEND_GLOBAL_LOG_LEVEL=%s, cur_level=%d, CheckLogLevel=%d",
            log_level ? log_level : "(null)",
            cur_level,
-           ge_log_level);
+           log_enabled);
   const auto start = std::chrono::steady_clock::now();
   LLM_CHK_BOOL_RET_STATUS(is_initialized_.load(std::memory_order::memory_order_relaxed), ge::FAILED,
                          "Llm datadist of cluster:%lu is not initialized.", cluster_id_);
