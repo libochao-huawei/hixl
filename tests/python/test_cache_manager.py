@@ -15,7 +15,9 @@ import time
 import unittest
 import ctypes
 
-from llm_datadist import *
+from llm_datadist import v2_list
+for item in v2_list:
+    globals()[item] = getattr(llm_datadist, item)
 from llm_datadist.v2.llm_types import RegisterMemStatus, Cache, Memtype, MemInfo
 
 _INVALID_ID = 2 ** 64 - 1
