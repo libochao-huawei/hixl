@@ -4,6 +4,8 @@
  *
  * 本工具用于在 HIXL 初始化阶段自动生成本地通信资源信息。
  * 支持 Mesh 层和 CLOS 层 EID 和 Port 的获取。
+ *
+ * DCMI 接口通过 dlopen 方式动态加载 libdcmi.so，避免直接依赖 hal.h
  */
 
 #ifndef HIXL_LOCAL_COMM_RES_TOOL_H_
@@ -13,15 +15,6 @@
 #include <vector>
 #include <map>
 #include <tuple>
-
-// 引用 DCMI 接口
-#ifdef __cplusplus
-extern "C" {
-#endif
-#include "hal.h"
-#ifdef __cplusplus
-}
-#endif
 
 namespace hixl {
 
@@ -35,6 +28,51 @@ const int32_t ERROR_FILE_PARSE_FAILED = 1003;
 const int32_t ERROR_DCMI_INTERFACE_FAILED = 1004;
 const int32_t ERROR_NO_EID_FOUND = 1005;
 const int32_t ERROR_NO_CLOS_EID_FOUND = 1006;
+
+// ============ DCMI 相关数据结构（从 hal.h 复制，避免直接引用） ============
+
+const int32_t DCMI_URMA_EID_SIZE = 16;
+const int32_t MAX_EID_NUM = 32;
+const int32_t MAX_NPU_COUNT = 64;
+const int32_t MAX_EID_PER_UE = 32;
+const int32_t MAX_UE_PER_NPU = 8;
+
+/**
+ * @brief DCMI URMA EID 结构
+ */
+typedef union dcmi_urma_eid {
+    unsigned char raw[DCMI_URMA_EID_SIZE];
+    struct {
+        unsigned long subnet_prefix;
+        unsigned long interface_id;
+    } in6;
+} dcmi_urma_eid_t;
+
+/**
+ * @brief DCMI URMA EID 信息结构
+ */
+typedef struct dcmi_urma_eid_info {
+    dcmi_urma_eid_t eid;
+    unsigned int eid_index;
+} dcmi_urma_eid_info_t;
+
+/**
+ * @brief UB 实体结构
+ */
+typedef struct {
+    dcmi_urma_eid_info_t eidList[MAX_EID_PER_UE];
+    unsigned int eidNum;
+} UBEntity;
+
+/**
+ * @brief UE 列表结构
+ */
+typedef struct {
+    UBEntity ueList[MAX_UE_PER_NPU];
+    unsigned int ueNum;
+} UEList;
+
+// ============ 端点配置结构 ============
 
 /**
  * @brief 端点配置结构
@@ -56,6 +94,8 @@ struct LocalCommRes {
     std::vector<EndpointConfig> endpoint_list;  // 端点列表
 };
 
+// ============ Topology 数据结构 ============
+
 /**
  * @brief Topology 链路结构
  */
@@ -74,6 +114,8 @@ struct TopoLink {
 struct TopoData {
     std::vector<TopoLink> links;
 };
+
+// ============ Route 数据结构 ============
 
 /**
  * @brief Route 条目结构
