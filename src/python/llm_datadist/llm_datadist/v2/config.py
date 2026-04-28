@@ -13,11 +13,11 @@
 import json
 import os
 from typing import Dict
-from llm_datadist.configs import LLMRole
-from llm_datadist.utils import log
-from llm_datadist.utils.utils import check_isinstance
-from llm_datadist.status import raise_if_false
-from llm_datadist.configs import LlmConfig, trans_str_ip
+from .configs import LLMRole
+from .utils import log
+from .utils.utils import check_isinstance
+from .status import raise_if_false
+from .configs import LlmConfig, trans_str_ip
 
 
 class ClusterConfig:

@@ -23,14 +23,23 @@ __all__ = ["LLMClusterInfo", "LLMStatusCode", "LLMException",
            "LLMRole", "LlmConfig", "LLMConfig", "DataType", "Status",
            "CacheDesc", "CacheKey", "CacheKeyByIdAndIndex", "KvCache", "Cache",
            "BlocksCacheKey", "LLMDataDist", "Placement", "RegisterMemStatus", "LayerSynchronizer",
-           "TransferConfig", "CacheTask", "TransferWithCacheKeyConfig", "Memtype", "MemInfo"]
+           "TransferConfig", "CacheTask", "TransferWithCacheKeyConfig", "Memtype", "MemInfo", 
+           "TensorDesc", "Tensor", "KvCacheManager"]
 
-try:
-    from llm_datadist_v1.tensor import TensorDesc, Tensor  # pragma: no cover: optional-import
-    from llm_datadist_v1.kv_cache_manager import KvCacheManager  # pragma: no cover: optional-import
-    __all__ += ['TensorDesc', 'Tensor', 'KvCacheManager']  # pragma: no cover: optional-import
-except ModuleNotFoundError:
-    pass
+def __getattr__(name):
+    if name == "TensorDesc":
+        from llm_datadist_v1 import TensorDesc
+        return TensorDesc
+    
+    if name == "Tensor":
+        from llm_datadist_v1 import Tensor
+        return Tensor
+
+    if name == "KvCacheManager":
+        from llm_datadist_v1 import KvCacheManager
+        return KvCacheManager
+
+    raise AttributeError(f"Module 'llm_datadist' has not attribute '{name}'")
 
 _ENV_VAR_NAME_AUTO_USE_UC_MEMORY = 'AUTO_USE_UC_MEMORY'
 

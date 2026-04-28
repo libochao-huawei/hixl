@@ -12,13 +12,13 @@
 
 from typing import List, Optional, Tuple, Union, Dict
 
-from llm_datadist.status import handle_llm_status, raise_if_false, raise_if_true
-from llm_datadist.utils import log
-from llm_datadist.utils.utils import check_isinstance, check_dict, check_uint32, check_int64, check_uint64
-from llm_datadist.v2.llm_types import CacheDesc, Cache, CacheKey, CacheKeyByIdAndIndex, BlocksCacheKey, Placement, \
+from .status import handle_llm_status, raise_if_false, raise_if_true
+from .utils import log
+from .utils.utils import check_isinstance, check_dict, check_uint32, check_int64, check_uint64
+from .v2.llm_types import CacheDesc, Cache, CacheKey, CacheKeyByIdAndIndex, BlocksCacheKey, Placement, \
     TransferConfig, CacheTask, LayerSynchronizer, TransferWithCacheKeyConfig, PushType, check_layer_range, MemInfo, \
     Memtype
-from llm_datadist.v2.llm_utils import (
+from .v2.llm_utils import (
     pack_cache_desc, pack_cache_key, pack_block_cache_key, pack_mem_info, \
     pack_cache_key_by_id, transfer_cache_async, TransferCacheParameters, layer_range_to_tensor_indices, \
     is_invalid_id, is_valid_id
