@@ -18,6 +18,8 @@
 #include "llm_datadist/llm_engine_types.h"
 #include "common/hixl_utils.h"
 
+#include <cstdlib>
+
 namespace llm {
 ge::Status LLMDataDistV2::DoInnerInitialize(int32_t device_id,
                                             bool remote_cache_accessible,
@@ -224,6 +226,13 @@ ge::Status LLMDataDistV2::PullCache(int64_t cache_id, const CacheKey &cache_key,
                                     const PullCacheParam &pull_cache_param) {
   LLMLOGI("LLMDataDisttest PullCache start.");
   LLMEVENT("LLMDataDisttest PullCache start2=%ld", cache_id);
+  const char* log_level = std::getenv("ASCEND_GLOBAL_LOG_LEVEL");
+  const char* event_enable = std::getenv("ASCEND_GLOBAL_EVENT_ENABLE");
+  int cur_level = dlog_getlevel(GE, nullptr);
+  LLMEVENT("ENV: ASCEND_GLOBAL_LOG_LEVEL=%s, ASCEND_GLOBAL_EVENT_ENABLE=%s, cur_level=%d",
+          log_level ? log_level : "(null)",
+          event_enable ? event_enable : "(null)",
+          cur_level);
   const auto start = std::chrono::steady_clock::now();
   LLM_CHK_BOOL_RET_STATUS(is_initialized_.load(std::memory_order::memory_order_relaxed), ge::FAILED,
                          "Llm datadist of cluster:%lu is not initialized.", cluster_id_);
@@ -233,12 +242,14 @@ ge::Status LLMDataDistV2::PullCache(int64_t cache_id, const CacheKey &cache_key,
   LLM_CHK_BOOL_RET_STATUS(cluster_id_ != cache_key.prompt_cluster_id, ge::LLM_PARAM_INVALID,
                          "data can not be pulled from own cluster:%lu", cluster_id_);
   LLMLOGI("LLMDataDisttest data_cache_engine_ PullCache enter.");
+  LLMEVENT("LLMDataDisttest data_cache_engine_ PullCache enter.");
   LLM_CHK_STATUS_RET(data_cache_engine_->PullCache(cache_id, cache_key, pull_cache_param), "pull cache failed");
   const auto end = std::chrono::steady_clock::now();
   auto &func_statistic_info = StatisticManager::GetInstance().GetFuncStatisticInfo();
   const uint64_t cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   StatisticManager::UpdateCost(cost, func_statistic_info.pull_func_times, func_statistic_info.pull_func_min_cost,
                                func_statistic_info.pull_func_max_cost, func_statistic_info.pull_func_total_cost);
+  LLMEVENT("LLMDataDisttest data_cache_engine_ PullCache END.");
   return ge::SUCCESS;
 }
 

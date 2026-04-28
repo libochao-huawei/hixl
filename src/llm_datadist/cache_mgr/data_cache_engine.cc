@@ -113,6 +113,7 @@ ge::Status DataCacheEngine::Unregister(int64_t cache_id) {
 ge::Status DataCacheEngine::PullCache(int64_t cache_id, const CacheKey &cache_key,
                                       const PullCacheParam &pull_cache_param) {
   LLMLOGI("LLMDataDisttest DataCacheEngine PullCache start.");
+  LLMEVENT("LLMDataDisttest DataCacheEngine PullCache start1.");
   const auto start = std::chrono::steady_clock::now();
   // cache_id is local, find local addr by cache_id
   CacheEntry cache_entry;
@@ -120,6 +121,7 @@ ge::Status DataCacheEngine::PullCache(int64_t cache_id, const CacheKey &cache_ke
                          "cache id:%ld not found", cache_id);
   LLM_CHK_STATUS_RET(CheckParam(cache_entry, pull_cache_param), "[cache_id:%ld] check param failed", cache_id);
   LLMLOGI("pull cache with tensor num per layer:%lu.", pull_cache_param.tensor_num_per_layer);
+  LLMEVENT("pull cache with tensor num per layer:%lu.", pull_cache_param.tensor_num_per_layer);
   const auto entity = comm_entity_manager_->GetEntityByRemoteClusterId(cache_key.prompt_cluster_id);
   LLM_CHK_BOOL_RET_STATUS(entity != nullptr, ge::LLM_NOT_YET_LINK,
                          "current cluster is not linked with remote cluster:%lu", cache_key.prompt_cluster_id);
@@ -129,6 +131,8 @@ ge::Status DataCacheEngine::PullCache(int64_t cache_id, const CacheKey &cache_ke
                          "current cluster is not linked with remote cluster:%lu", cache_key.prompt_cluster_id);
   LLMLOGI("Get lock cost:%ld us.",
          std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
+  LLMEVENT("Get lock cost:%ld us.",
+         std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
   hixl::TemporaryRtContext with_context(aclrt_context_);
   LLM_CHK_BOOL_RET_STATUS(entity->CheckEntityInfo(), ge::LLM_NOT_YET_LINK,
                          "pull cache must wait until the query_register_mem_status return ok");
@@ -136,6 +140,10 @@ ge::Status DataCacheEngine::PullCache(int64_t cache_id, const CacheKey &cache_ke
     DataTransferClient client(*entity, nullptr);
     LLM_CHK_STATUS_RET(client.PullCacheByGet(cache_entry, cache_key, pull_cache_param, sync_cache_timeout_));
     LLMLOGI("[PullCache] success, cache_id = %ld, num_tensors = %zu, stride = %lu, "
+           "pull_size = %ld, local_block_cnt = %zu, remote_block_cnt = %zu",
+           cache_id, cache_entry.cache_addrs.size(), cache_entry.stride,
+           pull_cache_param.size, pull_cache_param.decoder_blocks.size(), pull_cache_param.prompt_blocks.size());
+    LLMEVENT("[PullCache] success, cache_id = %ld, num_tensors = %zu, stride = %lu, "
            "pull_size = %ld, local_block_cnt = %zu, remote_block_cnt = %zu",
            cache_id, cache_entry.cache_addrs.size(), cache_entry.stride,
            pull_cache_param.size, pull_cache_param.decoder_blocks.size(), pull_cache_param.prompt_blocks.size());
