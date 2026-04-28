@@ -71,3 +71,11 @@ def get_python_dtype_from_wrapper_dtype(wrapper_dtype):
     if not dtype:
         raise ValueError(f"The data type {wrapper_dtype} is not support.")
     return dtype
+
+try:
+    from llm_datadist_v1.data_type import (
+        DataType, python_dtype_2_dwrapper_dtype, get_python_dtype_from_wrapper_dtype, dtype_to_np_dtype, \
+        valid_np_dtypes, np_dtype_to_dtype
+    )
+except (ImportError, AttributeError):
+    pass

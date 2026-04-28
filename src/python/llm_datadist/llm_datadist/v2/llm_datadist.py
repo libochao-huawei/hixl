@@ -13,15 +13,15 @@ import copy
 from typing import Dict, List, Tuple, Optional, Union
 import atexit
 from llm_datadist import llm_datadist_wrapper
-from llm_datadist.utils.utils import check_isinstance, check_dict, check_uint64, check_int32, check_uint32
-from llm_datadist.utils import log
-from llm_datadist.status import (code_2_status, handle_llm_status, raise_if_false, raise_if_true, LLMStatusCode,
+from .utils.utils import check_isinstance, check_dict, check_uint64, check_int32, check_uint32
+from .utils import log
+from .status import (code_2_status, handle_llm_status, raise_if_false, raise_if_true, LLMStatusCode,
                                  LLMException)
-from llm_datadist.configs import LLMRole, LLMClusterInfo
-from llm_datadist.v2.config import EngineConfig
-from llm_datadist.v2.llm_types import RegisterMemStatus, int_to_mem_status_dict
-from llm_datadist.v2.cache_manager import CacheManager
-from llm_datadist.v2.llm_utils import parse_listen_ip_info
+from .configs import LLMRole, LLMClusterInfo
+from .v2.config import EngineConfig
+from .v2.llm_types import RegisterMemStatus, int_to_mem_status_dict
+from .v2.cache_manager import CacheManager
+from .v2.llm_utils import parse_listen_ip_info
 
 __all__ = ['LLMDataDist']
 _MAX_CLUSTER_NAME = 128

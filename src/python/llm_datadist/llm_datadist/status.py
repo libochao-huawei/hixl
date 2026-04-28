@@ -10,15 +10,13 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-from enum import Enum
-from llm_datadist.utils import log
+from enum import IntEnum
+from .utils import log
 
-try:
-    from llm_datadist import llm_datadist_wrapper as llm_wrapper
-except ImportError:
-    from llm_datadist_v1 import llm_wrapper
+from llm_datadist import llm_datadist_wrapper as llm_wrapper
 
-class LLMStatusCode(Enum):
+
+class LLMStatusCode(IntEnum):
     LLM_SUCCESS = llm_wrapper.kSuccess
     LLM_FAILED = llm_wrapper.kFailed
     LLM_PARAM_INVALID = llm_wrapper.kParamInvalid
@@ -141,3 +139,10 @@ def raise_if_true(pred, fmt, *args, status_code=LLMStatusCode.LLM_PARAM_INVALID,
         error_msg = fmt.format(*args, **kwargs)
         log.error(error_msg)
         raise LLMException(error_msg, status_code=status_code)
+
+try:
+    from llm_datadist_v1.status import (
+        LLMStatusCode, LLMException, Status, code_2_status, handle_llm_status, raise_if_false, raise_if_true
+    )
+except (ImportError, AttributeError):
+    pass
