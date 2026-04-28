@@ -12,7 +12,10 @@
 
 import unittest
 import time
-from llm_datadist import *
+try:
+    from llm_datadist import *
+except ModuleNotFoundError:
+    pass
 
 class LlmLocalCommResSt(unittest.TestCase):
 

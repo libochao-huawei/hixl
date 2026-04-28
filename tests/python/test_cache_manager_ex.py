@@ -15,7 +15,10 @@ import time
 import unittest
 import ctypes
 
-from llm_datadist import *
+try:
+    from llm_datadist import *
+except ModuleNotFoundError:
+    pass
 from llm_datadist.v2.llm_types import RegisterMemStatus, Cache, Memtype, MemInfo
 
 _INVALID_ID = 2 ** 64 - 1
