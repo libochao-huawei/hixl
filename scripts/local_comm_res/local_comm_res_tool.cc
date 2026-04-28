@@ -1,6 +1,8 @@
 /**
  * @file local_comm_res_tool.cc
  * @brief LocalCommRes 生成工具实现文件
+ *
+ * DCMI 接口通过 dlopen 方式动态加载 libdcmi.so
  */
 
 #include "local_comm_res_tool.h"
@@ -10,52 +12,221 @@
 #include <algorithm>
 #include <cstring>
 #include <iomanip>
+#include <dlfcn.h>
+#include <unistd.h>
 
 namespace hixl {
+
+// ============ DCMI 接口动态加载 ============
+
+namespace {
+
+// DCMI 接口函数指针类型
+typedef int (*dcmi_init_func)();
+typedef int (*dcmi_get_urma_device_cnt_func)(int npu_id, unsigned int* dev_cnt);
+typedef int (*dcmi_get_eid_list_func)(int npu_id, int urma_dev_index,
+                                       dcmi_urma_eid_info_t* eid_list, int* eid_cnt);
+typedef int (*dcmi_get_mainboard_id_func)(int npu_id, unsigned int* mainboard_id);
+typedef int (*dcmi_get_logicid_from_phyid_func)(unsigned int phy_id, unsigned int* logic_id);
+
+// DCMI 接口函数指针（全局）
+dcmi_init_func g_dcmi_init = nullptr;
+dcmi_get_urma_device_cnt_func g_dcmi_get_urma_device_cnt = nullptr;
+dcmi_get_eid_list_func g_dcmi_get_eid_list = nullptr;
+dcmi_get_mainboard_id_func g_dcmi_get_mainboard_id = nullptr;
+dcmi_get_logicid_from_phyid_func g_dcmi_get_logicid_from_phyid = nullptr;
+
+// DCMI 库句柄
+void* g_dcmi_handle = nullptr;
+
+// 加载状态
+volatile bool g_dcmi_loaded = false;
+volatile int g_dcmi_init_status = -1;
+
+/**
+ * @brief 动态加载 DCMI 接口
+ */
+int LoadDcmi() {
+    if (g_dcmi_loaded) {
+        return g_dcmi_init_status;
+    }
+
+    const int max_wait_time = 10;
+
+    // 打开 DCMI 库
+    g_dcmi_handle = dlopen("libdcmi.so", RTLD_LAZY);
+    if (g_dcmi_handle == nullptr) {
+        std::cerr << "[LoadDcmi] Failed to dlopen libdcmi.so: " << dlerror() << std::endl;
+        g_dcmi_init_status = -1;
+        g_dcmi_loaded = true;
+        return g_dcmi_init_status;
+    }
+
+    // 加载函数符号
+    g_dcmi_init = reinterpret_cast<dcmi_init_func>(dlsym(g_dcmi_handle, "dcmiv2_init"));
+    g_dcmi_get_urma_device_cnt = reinterpret_cast<dcmi_get_urma_device_cnt_func>(
+        dlsym(g_dcmi_handle, "dcmiv2_get_urma_device_cnt"));
+    g_dcmi_get_eid_list = reinterpret_cast<dcmi_get_eid_list_func>(
+        dlsym(g_dcmi_handle, "dcmiv2_get_eid_list_by_urma_dev_index"));
+    g_dcmi_get_mainboard_id = reinterpret_cast<dcmi_get_mainboard_id_func>(
+        dlsym(g_dcmi_handle, "dcmiv2_get_mainboard_id"));
+    g_dcmi_get_logicid_from_phyid = reinterpret_cast<dcmi_get_logicid_from_phyid_func>(
+        dlsym(g_dcmi_handle, "dcmiv2_get_dev_id_by_chip_phy_id"));
+
+    // 尝试备用符号名
+    if (g_dcmi_get_logicid_from_phyid == nullptr) {
+        g_dcmi_get_logicid_from_phyid = reinterpret_cast<dcmi_get_logicid_from_phyid_func>(
+            dlsym(g_dcmi_handle, "dcmiv2_get_dev_id_from_chip_phyid"));
+    }
+
+    // 检查必要函数
+    if (g_dcmi_init == nullptr ||
+        g_dcmi_get_urma_device_cnt == nullptr ||
+        g_dcmi_get_eid_list == nullptr ||
+        g_dcmi_get_mainboard_id == nullptr ||
+        g_dcmi_get_logicid_from_phyid == nullptr) {
+        std::cerr << "[LoadDcmi] Failed to load DCMI function symbols" << std::endl;
+        dlclose(g_dcmi_handle);
+        g_dcmi_handle = nullptr;
+        g_dcmi_init_status = -1;
+        g_dcmi_loaded = true;
+        return g_dcmi_init_status;
+    }
+
+    // 初始化 DCMI
+    for (int i = 0; i < max_wait_time; ++i) {
+        g_dcmi_init_status = g_dcmi_init();
+        if (g_dcmi_init_status == 0) {
+            break;
+        }
+        sleep(1);
+    }
+
+    if (g_dcmi_init_status != 0) {
+        std::cerr << "[LoadDcmi] DCMI init failed after " << max_wait_time << " retries" << std::endl;
+        dlclose(g_dcmi_handle);
+        g_dcmi_handle = nullptr;
+        g_dcmi_init_status = -1;
+        g_dcmi_loaded = true;
+        return g_dcmi_init_status;
+    }
+
+    g_dcmi_loaded = true;
+    std::cout << "[LoadDcmi] DCMI loaded successfully" << std::endl;
+    return g_dcmi_init_status;
+}
+
+/**
+ * @brief 获取 logic ID 从 phy ID
+ */
+int GetLogicIdFromPhyId(unsigned int phy_id, unsigned int* logic_id) {
+    if (LoadDcmi() != 0) {
+        return -1;
+    }
+    return g_dcmi_get_logicid_from_phyid(phy_id, logic_id);
+}
+
+}  // anonymous namespace
 
 // ============ DCMI 接口封装实现 ============
 
 int32_t GetEidListByPhyId(int32_t phy_dev_id, std::vector<std::string>& eid_list) {
-    dcmi_urma_eid_info_t eidList[MAX_EID_NUM];
-    size_t eidCnt = MAX_EID_NUM;
+    if (LoadDcmi() != 0) {
+        std::cerr << "[GetEidListByPhyId] DCMI not loaded" << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
 
-    int ret = hal_get_eid_list_by_phy_id(phy_dev_id, eidList, &eidCnt);
+    unsigned int logic_id = 0;
+    if (GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
+        std::cerr << "[GetEidListByPhyId] Failed to get logic id from phy id: " << phy_dev_id << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
+
+    unsigned int dev_cnt = 0;
+    int ret = g_dcmi_get_urma_device_cnt(logic_id, &dev_cnt);
     if (ret != 0) {
-        std::cerr << "[GetEidListByPhyId] Failed to get eid list, ret=" << ret << std::endl;
+        std::cerr << "[GetEidListByPhyId] Failed to get urma device count, ret=" << ret << std::endl;
         return ERROR_DCMI_INTERFACE_FAILED;
     }
 
     eid_list.clear();
-    for (size_t i = 0; i < eidCnt; ++i) {
-        eid_list.push_back(EidToString(eidList[i].eid));
+    dcmi_urma_eid_info_t eid_list_buf[MAX_EID_NUM];
+    size_t eid_current_cnt = 0;
+    size_t eid_space_left = MAX_EID_NUM;
+
+    for (size_t i = 0; i < dev_cnt && eid_space_left > 0; ++i) {
+        int left = static_cast<int>(eid_space_left);
+        ret = g_dcmi_get_eid_list(logic_id, i, &eid_list_buf[eid_current_cnt], &left);
+        if (ret != 0) {
+            continue;
+        }
+        eid_space_left -= left;
+        eid_current_cnt += left;
+    }
+
+    for (size_t i = 0; i < eid_current_cnt; ++i) {
+        eid_list.push_back(EidToString(eid_list_buf[i].eid));
     }
 
     return SUCCESS;
 }
 
 int32_t GetUBEntityList(int32_t phy_dev_id, UEList& ue_list) {
-    int ret = HalGetUBEntityList(phy_dev_id, &ue_list);
-    if (ret != 0) {
-        std::cerr << "[GetUBEntityList] Failed to get UB entity list, ret=" << ret << std::endl;
+    if (LoadDcmi() != 0) {
+        std::cerr << "[GetUBEntityList] DCMI not loaded" << std::endl;
         return ERROR_DCMI_INTERFACE_FAILED;
     }
+
+    memset(&ue_list, 0, sizeof(UEList));
+
+    unsigned int logic_id = 0;
+    if (GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
+        std::cerr << "[GetUBEntityList] Failed to get logic id from phy id: " << phy_dev_id << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
+
+    int ret = g_dcmi_get_urma_device_cnt(logic_id, &ue_list.ueNum);
+    if (ret != 0) {
+        std::cerr << "[GetUBEntityList] Failed to get urma device count, ret=" << ret << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
+
+    for (size_t i = 0; i < ue_list.ueNum && i < MAX_UE_PER_NPU; ++i) {
+        int num = MAX_EID_PER_UE;
+        ret = g_dcmi_get_eid_list(logic_id, i, ue_list.ueList[i].eidList, &num);
+        if (ret != 0) {
+            continue;
+        }
+        ue_list.ueList[i].eidNum = num;
+    }
+
     return SUCCESS;
 }
 
 int32_t GetMainboardId(int32_t phy_dev_id, unsigned int& mainboard_id) {
-    int ret = hal_get_mainboard_id(phy_dev_id, &mainboard_id);
+    if (LoadDcmi() != 0) {
+        std::cerr << "[GetMainboardId] DCMI not loaded" << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
+
+    unsigned int logic_id = 0;
+    if (GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
+        std::cerr << "[GetMainboardId] Failed to get logic id from phy id: " << phy_dev_id << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
+
+    int ret = g_dcmi_get_mainboard_id(logic_id, &mainboard_id);
     if (ret != 0) {
         std::cerr << "[GetMainboardId] Failed to get mainboard id, ret=" << ret << std::endl;
         return ERROR_DCMI_INTERFACE_FAILED;
     }
+
     return SUCCESS;
 }
 
 // ============ EID 解析实现 ============
 
 std::string EidToString(const dcmi_urma_eid_t& eid) {
-    // 使用 in6.interface_id 作为 EID 的关键部分
-    // 格式化为 16 位十六进制字符串
     std::ostringstream oss;
     oss << std::hex << std::setfill('0') << std::setw(16) << eid.in6.interface_id;
     return oss.str();
@@ -65,10 +236,9 @@ int GetPortFromEid(const std::string& eid) {
     if (eid.length() < 2) {
         return -1;
     }
-    // 取最后 2 位
     std::string last = eid.substr(eid.length() - 2);
     int h = std::stoi(last, nullptr, 16);
-    int p = ((~128) & h) >> 3;  // 清除最高位，右移 3 位
+    int p = ((~128) & h) >> 3;
     return p;
 }
 
@@ -76,10 +246,9 @@ int GetServerDieIdFromEid(const std::string& eid) {
     if (eid.length() < 2) {
         return -1;
     }
-    // 取倒数第 2 个字符
     char low = eid[eid.length() - 2];
     int h = std::stoi(std::string(1, low), nullptr, 16);
-    int die_id = (8 & h) >> 3;  // 提取 bit3
+    int die_id = (8 & h) >> 3;
     return die_id;
 }
 
@@ -87,10 +256,9 @@ int GetPodDieIdFromEid(const std::string& eid) {
     if (eid.length() < 3) {
         return -1;
     }
-    // 取倒数第 3 个字符
     char third = eid[eid.length() - 3];
     int h = std::stoi(std::string(1, third), nullptr, 16);
-    int die_id = (4 & h) >> 2;  // 提取 bit2
+    int die_id = (4 & h) >> 2;
     return die_id;
 }
 
@@ -109,7 +277,7 @@ bool IsClosLayerEid(const std::string& eid) {
 std::string GetPgEid(const std::vector<std::string>& eid_list) {
     for (const auto& eid : eid_list) {
         if (IsClosLayerEid(eid)) {
-            return eid;  // 第一个 port > 9 的 EID 即为 PG EID
+            return eid;
         }
     }
     return "";
@@ -118,23 +286,22 @@ std::string GetPgEid(const std::vector<std::string>& eid_list) {
 std::vector<std::tuple<int, int, std::vector<int>>> GetLevel1ConfigServer(unsigned int mainboard_id) {
     std::vector<std::tuple<int, int, std::vector<int>>> config;
 
-    // 根据 MAIN_BOARD_ID_* 常量判断服务器类型
+    const unsigned int MAIN_BOARD_ID_SERVER_TYPE1 = 0x23;
+    const unsigned int MAIN_BOARD_ID_SERVER_8PMESH = 0x25;
+    const unsigned int MAIN_BOARD_ID_SERVER_16PMESH = 0x44;
+
     switch (mainboard_id) {
-        case MAIN_BOARD_ID_SERVER_TYPE1:  // 0x23
-        case MAIN_BOARD_ID_SERVER_8PMESH:  // 0x25
-        case MAIN_BOARD_ID_SERVER_16PMESH: // 0x44
-        case MAIN_BOARD_ID_SERVER_UBX:     // 0x44
-            // 2+4 服务器 (mainboard_id = 35 在原方案中对应此配置)
-            if (mainboard_id == 0x23) {  // 假设 0x23 对应 2+4 服务器
+        case MAIN_BOARD_ID_SERVER_TYPE1:
+        case MAIN_BOARD_ID_SERVER_8PMESH:
+        case MAIN_BOARD_ID_SERVER_16PMESH:
+            if (mainboard_id == 0x23) {
                 config.push_back(std::make_tuple(0, 3, std::vector<int>{4, 5, 6, 7}));
                 config.push_back(std::make_tuple(1, 2, std::vector<int>{5, 6}));
             } else {
-                // 其他服务器配置
                 config.push_back(std::make_tuple(0, 3, std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8}));
             }
             break;
         default:
-            // 默认配置
             config.push_back(std::make_tuple(0, 3, std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8}));
             break;
     }
@@ -144,7 +311,9 @@ std::vector<std::tuple<int, int, std::vector<int>>> GetLevel1ConfigServer(unsign
 std::vector<std::tuple<int, int, std::vector<int>>> GetLevel1ConfigPod(unsigned int mainboard_id, int phy_id) {
     std::vector<std::tuple<int, int, std::vector<int>>> config;
 
-    if (mainboard_id == MAIN_BOARD_ID_POD_2D) {  // 0x03
+    const unsigned int MAIN_BOARD_ID_POD_2D = 0x03;
+
+    if (mainboard_id == MAIN_BOARD_ID_POD_2D) {
         if ((phy_id % 8) < 4) {
             config.push_back(std::make_tuple(0, 2, std::vector<int>{1, 2}));
             config.push_back(std::make_tuple(1, 2, std::vector<int>{0, 1, 2, 3, 5, 6}));
@@ -167,9 +336,6 @@ int32_t ParseTopoFile(const std::string& topo_path, TopoData& topo_data) {
     }
 
     // TODO: 实现 JSON 解析逻辑
-    // 解析 topology 文件，提取 link 信息
-    // 需要的字段: net_layer, link_type, topo_type, local_a, local_b, remote_a, remote_b
-    // 以及 local_a_ports, local_b_ports
 
     file.close();
     return SUCCESS;
@@ -184,7 +350,6 @@ int32_t ParseRouteFile(const std::string& route_path, RouteData& route_data) {
     }
 
     // TODO: 实现 route.conf 解析逻辑
-    // 格式: device_id local_eid remote_eid
 
     file.close();
     return SUCCESS;
@@ -198,21 +363,18 @@ int32_t GenerateD2DEdges(
     int32_t phy_id,
     std::vector<EndpointConfig>& edges) {
 
-    (void)eid_list;  // TODO: 实现时可能需要使用 eid_list 进行匹配
+    (void)eid_list;  // TODO: 实现时可能需要使用
     edges.clear();
 
-    // 筛选条件: net_layer = 0, link_type = PEER2PEER, topo_type = 1DMESH
     for (const auto& link : topo_data.links) {
         if (link.net_layer != 0) continue;
         if (link.link_type != "PEER2PEER") continue;
         if (link.topo_type != "1DMESH") continue;
         if (link.local_a != phy_id) continue;
 
-        // 查找 local_a_ports 对应的 EID
         std::string comm_id = link.local_a_ports;
         std::string dst_eid = link.local_b_ports;
 
-        // 如果 port 有效 (1-9)，则添加到边列表
         if (IsMeshLayerEid(comm_id) && IsMeshLayerEid(dst_eid)) {
             EndpointConfig edge;
             edge.protocol = "ub_ctp";
@@ -236,17 +398,15 @@ int32_t GenerateD2UEdges(
     edges.clear();
 
     if (clos_pg_eid.empty()) {
-        return SUCCESS;  // 没有 CLOS 层 EID
+        return SUCCESS;
     }
 
-    // 筛选条件: net_layer = 1, link_type = PEER2NET, topo_type = CLOS
     for (const auto& link : topo_data.links) {
         if (link.net_layer != 1) continue;
         if (link.link_type != "PEER2NET") continue;
         if (link.topo_type != "CLOS") continue;
         if (link.local_a != phy_id) continue;
 
-        // CLOS 层使用 pg_eid 作为串口组标识
         for (const auto& plane_id : clos_ports) {
             EndpointConfig edge;
             edge.protocol = "ub_ctp";
@@ -267,7 +427,6 @@ int32_t GenerateH2DEdges(
 
     edges.clear();
 
-    // 从 route.conf 获取当前 NPU 的 H2D 边
     for (const auto& entry : route_data.entries) {
         if (entry.device_id != phy_id) continue;
 
@@ -290,7 +449,6 @@ int32_t GenerateH2UEdges(
 
     edges.clear();
 
-    // 从 route.conf 获取 local_eid，结合 CLOS 层 plane_id 生成 H2U 边
     for (const auto& entry : route_data.entries) {
         if (entry.device_id != phy_id) continue;
 
@@ -314,7 +472,6 @@ int32_t GenerateLocalCommRes(
     const std::map<std::string, std::string>& options,
     LocalCommRes& local_comm_res) {
 
-    // 1. 解析 options
     std::string topo_path;
     std::string route_path;
 
@@ -328,7 +485,6 @@ int32_t GenerateLocalCommRes(
         route_path = it->second;
     }
 
-    // 2. 获取 EID 列表（通过 DCMI 接口）
     std::vector<std::string> eid_list;
     int32_t ret = GetEidListByPhyId(phy_dev_id, eid_list);
     if (ret != SUCCESS) {
@@ -341,31 +497,24 @@ int32_t GenerateLocalCommRes(
         return ERROR_NO_EID_FOUND;
     }
 
-    // 3. 获取主板 ID
     unsigned int mainboard_id = 0;
     ret = GetMainboardId(phy_dev_id, mainboard_id);
     if (ret != SUCCESS) {
         std::cerr << "[GenerateLocalCommRes] Failed to get mainboard id: " << ret << std::endl;
-        // 不作为致命错误，使用默认值继续
     }
 
-    // 4. 解析 topology 文件
     TopoData topo_data;
     ret = ParseTopoFile(topo_path, topo_data);
     if (ret != SUCCESS && ret != ERROR_FILE_NOT_FOUND) {
         std::cerr << "[GenerateLocalCommRes] Failed to parse topo file: " << ret << std::endl;
-        return ret;
     }
 
-    // 5. 解析 route.conf 文件
     RouteData route_data;
     ret = ParseRouteFile(route_path, route_data);
     if (ret != SUCCESS && ret != ERROR_FILE_NOT_FOUND) {
         std::cerr << "[GenerateLocalCommRes] Failed to parse route file: " << ret << std::endl;
-        return ret;
     }
 
-    // 6. 区分 Mesh 层和 CLOS 层 EID
     std::vector<std::string> mesh_eids;
     std::string clos_pg_eid;
     std::vector<std::string> clos_plane_ids;
@@ -374,50 +523,42 @@ int32_t GenerateLocalCommRes(
         if (IsMeshLayerEid(eid)) {
             mesh_eids.push_back(eid);
         } else if (IsClosLayerEid(eid)) {
-            // 获取第一个 CLOS 层 EID 作为 PG EID
             if (clos_pg_eid.empty()) {
                 clos_pg_eid = eid;
-                // 生成 plane_id 列表
                 clos_plane_ids.push_back("plane_pg_0");
                 clos_plane_ids.push_back("plane_pg_1");
             }
         }
     }
 
-    // 7. 生成各种边
     std::vector<EndpointConfig> all_edges;
 
-    // D2D 边
     std::vector<EndpointConfig> d2d_edges;
     if (!topo_data.links.empty()) {
         GenerateD2DEdges(topo_data, mesh_eids, phy_dev_id, d2d_edges);
         all_edges.insert(all_edges.end(), d2d_edges.begin(), d2d_edges.end());
     }
 
-    // D2U 边
     std::vector<EndpointConfig> d2u_edges;
     if (!clos_pg_eid.empty() && !topo_data.links.empty()) {
         GenerateD2UEdges(topo_data, clos_pg_eid, clos_plane_ids, phy_dev_id, d2u_edges);
         all_edges.insert(all_edges.end(), d2u_edges.begin(), d2u_edges.end());
     }
 
-    // H2D 边
     std::vector<EndpointConfig> h2d_edges;
     if (!route_data.entries.empty()) {
         GenerateH2DEdges(route_data, phy_dev_id, h2d_edges);
         all_edges.insert(all_edges.end(), h2d_edges.begin(), h2d_edges.end());
     }
 
-    // H2U 边
     std::vector<EndpointConfig> h2u_edges;
     if (!clos_plane_ids.empty() && !route_data.entries.empty()) {
         GenerateH2UEdges(route_data, clos_plane_ids, phy_dev_id, h2u_edges);
         all_edges.insert(all_edges.end(), h2u_edges.begin(), h2u_edges.end());
     }
 
-    // 8. 构建输出结构体
     local_comm_res.version = "1.3";
-    local_comm_res.net_instance_id = "";  // TODO: 需要确定如何获取
+    local_comm_res.net_instance_id = "";
     local_comm_res.endpoint_list = all_edges;
 
     return SUCCESS;
