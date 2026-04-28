@@ -11,7 +11,7 @@
 # ----------------------------------------------------------------------------
 
 from enum import Enum
-from . import metadef_wrapper
+from llm_datadist import metadef_wrapper
 
 
 class DataType(Enum):
