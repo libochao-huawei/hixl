@@ -18,6 +18,7 @@ from typing import Optional
 import traceback
 
 from llm_datadist import *
+from llm_datadist.data_type import dtype_to_np_dtype, valid_np_dtypes, np_dtype_to_dtype
 from llm_datadist.v2.llm_types import RegisterMemStatus, Cache, TransferWithCacheKeyConfig
 from llm_datadist.utils.utils import (check_uint64, check_int64, check_int32,
                                       check_uint32, check_list_int32, check_uint16)
@@ -183,4 +184,14 @@ class LlmCacheManagerSt(unittest.TestCase):
         except Exception as e:
             has_err = True
             print(e)
+        self.assertEqual(has_err, False)
+
+    def test_data_type(self):
+        try: 
+            has_err = False
+            print(len(dtype_to_np_dtype))
+            print(len(valid_np_dtypes))
+            print(len(np_dtype_to_dtype))
+        except AttributeError:
+            has_err = True
         self.assertEqual(has_err, False)
