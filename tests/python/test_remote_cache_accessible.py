@@ -16,6 +16,7 @@ import unittest
 import ctypes
 from typing import Optional
 import traceback
+import numpy as np
 
 from llm_datadist import *
 from llm_datadist.v2.llm_types import RegisterMemStatus, Cache, TransferWithCacheKeyConfig
@@ -184,3 +185,29 @@ class LlmCacheManagerSt(unittest.TestCase):
             has_err = True
             print(e)
         self.assertEqual(has_err, False)
+
+    def test_import_tensor_classs(self):
+        try: 
+            has_err = False
+            arr = np.random.rand(2, 3)
+            arr = np.array(arr, np.float32)
+            tensor = Tensor(arr)
+        except:
+            has_err = True
+        self.assertEqual(has_err, True)
+
+    def test_import_tensor_desc_classs(self):
+        try: 
+            has_err = False
+            tensor_desc = TensorDesc(DataType.DT_BF16, [1])
+        except:
+            has_err = True
+        self.assertEqual(has_err, True)
+
+    def test_import_kv_cache_manager_classs(self):
+        try: 
+            has_err = False
+            kv_cache_manager = KvCacheManager(self.llm_datadist, LLMRole.PROMPT)
+        except:
+            has_err = True
+        self.assertEqual(has_err, True)
