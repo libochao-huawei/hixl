@@ -419,6 +419,62 @@ TEST_F(HixlEngineTest, TestTransferAsync) {
   engine2.Finalize();
 }
 
+TEST_F(HixlEngineTest, TestTransferAsyncAll) {
+  SetSocStub("Ascend910B1", 0, 12, 99, 88);
+  std::string local_engine1 = "127.0.0.1";
+  HixlEngine engine1(AscendString(local_engine1.c_str()));
+  EXPECT_EQ(engine1.Initialize(options1), SUCCESS);
+
+  std::string local_engine2 = "127.0.0.1:16000";
+  HixlEngine engine2(AscendString(local_engine2.c_str()));
+  EXPECT_EQ(engine2.Initialize(options2), SUCCESS);
+
+  int32_t src = 1;
+  MemHandle handle1 = nullptr;
+  Register(engine1, &src, handle1);
+
+  int32_t dst = 2;
+  MemHandle handle2 = nullptr;
+  Register(engine2, &dst, handle2);
+
+  EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  TransferReq req = nullptr;
+
+  ASSERT_EQ(engine1.TransferAsync("127.0.0.1:16000", READ, {desc}, {}, req), SUCCESS);
+
+  TransferStatus status = TransferStatus::WAITING;
+  std::map<TransferReq, TransferStatus> status_map;
+  for (int32_t i = 0; i < kMaxRetryCount && status == TransferStatus::WAITING; i++) {
+    engine1.GetTransferStatus(status_map);
+    status = status_map[req];
+    std::this_thread::sleep_for(std::chrono::milliseconds(kInterval));
+  }
+  EXPECT_EQ(status, TransferStatus::COMPLETED);
+  EXPECT_EQ(src, 2);
+  EXPECT_EQ(engine1.GetTransferStatus(req, status), PARAM_INVALID);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+
+  src = 1;
+  ASSERT_EQ(engine1.TransferAsync("127.0.0.1:16000", WRITE, {desc}, {}, req), SUCCESS);
+  status = TransferStatus::WAITING;
+  for (int32_t i = 0; i < kMaxRetryCount && status == TransferStatus::WAITING; i++) {
+    engine1.GetTransferStatus(status_map);
+    status = status_map[req];
+    std::this_thread::sleep_for(std::chrono::milliseconds(kInterval));
+  }
+  EXPECT_EQ(status, TransferStatus::COMPLETED);
+  EXPECT_EQ(dst, 1);
+  EXPECT_EQ(engine1.GetTransferStatus(req, status), PARAM_INVALID);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
 TEST_F(HixlEngineTest, TestInitFailed) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
   // invalid ip
