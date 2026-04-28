@@ -54,12 +54,18 @@ struct TransferOpDesc {
 }
 ```
 
+## UserData
+```
+using UserData = void *;
+```
+
 ## TransferArgs
 
 传输操作的可选参数，暂未启用。
 
 ```
 struct TransferArgs{
+  UserData user_data = nullptr;
   uint8_t reserved[128] = {};
 }
 ```
@@ -83,6 +89,23 @@ enum class TransferStatus {
   TIMEOUT, //暂不支持
   FAILED
 }
+```
+
+## GetTransferStatusOptions
+```
+struct GetTransferStatusOptions {
+  size_t max_num = std::numeric_limits<size_t>::max();
+  bool skip_waiting = false;
+};
+```
+
+## TransferStatusResult
+```
+struct TransferStatusResult {
+  TransferReq req;
+  TransferStatus status;
+  UserData user_ctx;
+};
 ```
 
 ## NotifyDesc
