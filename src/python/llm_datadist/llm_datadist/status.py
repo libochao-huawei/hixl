@@ -141,3 +141,10 @@ def raise_if_true(pred, fmt, *args, status_code=LLMStatusCode.LLM_PARAM_INVALID,
         error_msg = fmt.format(*args, **kwargs)
         log.error(error_msg)
         raise LLMException(error_msg, status_code=status_code)
+
+try:
+    from llm_datadist_v1.status import (
+        LLMStatusCode, LLMException, Status, code_2_status, handle_llm_status, raise_if_false, raise_if_true
+    )
+except (ImportError, AttributeError):
+    pass
