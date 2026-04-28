@@ -264,11 +264,15 @@ ge::Status DataTransferClient::PullCacheByGet(const CacheEntry &cache_entry, con
 
   uint64_t current_req_buffer_size = comm_entity_->GetLocalReqBufferSize();
   if (request_buffer_size > current_req_buffer_size) {
+    LLMEVENT("PullCacheByGet use dynamic allocated buffer, pre_allocated_buffer_size=%lu ,request_buffer_size=%lu", 
+            current_req_buffer_size, request_buffer_size);
     LLMLOGI("PullCacheByGet use dynamic allocated buffer, pre_allocated_buffer_size=%lu ,request_buffer_size=%lu", 
             current_req_buffer_size, request_buffer_size);
     LLM_CHK_STATUS_RET(comm_entity_->ExpandLocalReqBuffer(request_buffer_size),
                         "Failed to expand local req buffer to size=%lu", request_buffer_size);
   } else {
+    LLMEVENT("PullCacheByGet use pre-allocated buffer, pre_allocated_buffer_size=%lu ,request_buffer_size=%lu", 
+            current_req_buffer_size, request_buffer_size);
     LLMLOGI("PullCacheByGet use pre-allocated buffer, pre_allocated_buffer_size=%lu ,request_buffer_size=%lu", 
             current_req_buffer_size, request_buffer_size);
   }
