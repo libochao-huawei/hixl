@@ -905,6 +905,19 @@ TEST_F(HixlClientUTest, GetTransferStatusSuccessTest) {
   std::cout << "TransferStatus: " << static_cast<int>(status) << std::endl;
 }
 
+TEST_F(HixlClientUTest, GetAllTransferStatusSuccessTest) {
+  SetupTransferTest();
+  auto op_descs = CreateTransferOps();
+  auto req = CreateAsyncTransfer(op_descs, WRITE);
+  std::map<TransferReq, TransferStatus> status_map;
+  Status st = client_->GetTransferStatus(status_map);
+  EXPECT_EQ(st, SUCCESS);
+  const auto it = status_map.find(req);
+  EXPECT_NE(it, status_map.end());
+  EXPECT_EQ(it->second, TransferStatus::COMPLETED);
+  std::cout << "TransferStatus: " << static_cast<int>(status) << std::endl;
+}
+
 // GetTransferStatus 接口测试：异常场景 - 未传输
 TEST_F(HixlClientUTest, GetTransferStatusNoTransferTest) {
   SetupTransferTest();
