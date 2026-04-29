@@ -504,7 +504,7 @@ Status TransferSync(const AscendString &remote_engine,
   //初始化客户端和服务端engine，并完成链接
   Status transfer_status = client_engine.TransferAsync(remote_engine, operation, op_descs, optional_args, req);
   //req是TransferAsync()的输出值，使用这个请求句柄进行传输状态查询
-  Status query_status = GetTransferStatus(req, status);
+  Status query_status = client_engine.GetTransferStatus(req, status);
   //对传输状态进行检查，判断传输是否完成
   ...
 ```
@@ -523,6 +523,49 @@ Status TransferSync(const AscendString &remote_engine,
 - 在调用TransferAsync接口进行异步传输后，需要使用该接口查询对应请求状态，如果查询状态是COMPLETED或FAILED，将释放相关资源。该场景下不支持再次查询。
 - 异步传输时，用户自行判断是否超时，如果用户判断任务超时，建议调用Disconnect接口销毁链路，清理相关资源。
 - 异步传输任务失败后，调用该接口查询的状态和接口返回状态都是FAILED。
+
+## GetTransferStatus
+
+**函数功能**
+
+获取所有异步内存传输的状态。
+
+**函数原型**
+
+```
+  Status GetTransferStatus(std::map<TransferReq, TransferStatus> &statuses)
+```
+
+**参数说明**
+
+| 参数名称 | 输入/输出 | 取值说明 |
+| --- | --- | --- |
+| statuses | 输出 | 所有传输状态，枚举值如下。<br><br>-  WAITING<br>-  COMPLETED<br>-  TIMEOUT（暂不支持）<br>-  FAILED |
+
+**调用示例**
+
+```
+  //初始化客户端和服务端engine，并完成链接
+  Status transfer_status = client_engine.TransferAsync(remote_engine, operation, op_descs, optional_args, req);
+  //req是TransferAsync()的输出值，使用这个请求句柄进行传输状态查询
+  std::map<TransferReq, TransferStatus> statuses;
+  Status query_status = client_engine.GetTransferStatus(statuses);
+  //对传输状态进行检查，判断传输是否完成
+  ...
+```
+
+**返回值**
+
+- SUCCESS：成功
+- UNSUPPORTED: Hixl初始化的options未配置LocalCommRes的version为1.3且未配置GlobalResourceConfig的comm_resource_config.protocol_desc包含uboe:device时，不支持通过该接口查询
+- 其他：失败
+
+**约束说明**
+
+- 调用该接口之前，需要先调用Connect接口完成与对端的建链。
+- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
+- 在调用TransferAsync接口进行异步传输后，需要使用该接口查询所有请求状态，如果某请求状态是COMPLETED或FAILED，将释放相关资源。该场景下再次查询将不再返回该请求状态。
+- 异步传输时，用户自行判断是否超时，如果用户判断任务超时，建议调用Disconnect接口销毁链路，清理相关资源。
 
 ## SendNotify
 
