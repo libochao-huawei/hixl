@@ -83,14 +83,8 @@ Status TransferPool::Initialize(uint32_t pool_size) {
     s.stream = nullptr;
     s.thread = 0U;
     s.notify = nullptr;
-    s.host_flag = nullptr;
   }
   Status ret = InitAllSlotsLocked();
-  if (ret != SUCCESS) {
-    DeinitAllSlotsLocked();
-    return ret;
-  }
-  ret = EnsureDevConstOneLocked();
   if (ret != SUCCESS) {
     DeinitAllSlotsLocked();
     return ret;
@@ -136,7 +130,6 @@ Status TransferPool::Acquire(SlotHandle *handle) {
   Slot &slot = slots_[idx];
   slot.in_use = true;
   FillHandleFromSlot(device_id_, idx, slot, handle);
-  handle->dev_const_one = dev_const_one_;
   HIXL_LOGI("[TransferPool] Acquire slot success. device_id=%d index=%u", device_id_, idx);
   return SUCCESS;
 }
@@ -157,9 +150,6 @@ void TransferPool::Release(const SlotHandle &handle) {
   if (!slot.in_use) {
     HIXL_LOGW("[TransferPool] Release slot %u not in use (device_id=%d)", handle.slot_index, device_id_);
     return;
-  }
-  if (slot.host_flag != nullptr) {
-    *(static_cast<uint64_t *>(slot.host_flag)) = kFlagInitValue;
   }
   slot.in_use = false;
   free_list_.push_back(handle.slot_index);
@@ -205,8 +195,6 @@ void TransferPool::FillHandleFromSlot(int32_t device_id, uint32_t index, const S
   handle->stream = slot.stream;
   handle->thread = slot.thread;
   handle->notify = slot.notify;
-  handle->host_flag = slot.host_flag;
-  handle->dev_const_one = nullptr;  // dev_const_one 在 GetAllSlots 时为空，只有 Acquire 时才填充
 }
 
 Status TransferPool::InitAllSlotsLocked() {
@@ -240,7 +228,6 @@ Status TransferPool::InitOneSlotLocked(Slot &slot, uint32_t slot_index) {
   HIXL_CHK_STATUS_RET(EnsureDefaultStreamLocked(slot), "[TransferPool] EnsureDefaultStreamLocked failed");
   HIXL_CHK_STATUS_RET(EnsureThreadLocked(slot), "[TransferPool] EnsureThreadLocked failed");
   HIXL_CHK_STATUS_RET(EnsureNotifyLocked(slot), "[TransferPool] EnsureNotifyLocked failed");
-  HIXL_CHK_STATUS_RET(EnsurePinnedHostFlagLocked(slot), "[TransferPool] EnsurePinnedHostFlagLocked failed");
   return SUCCESS;
 }
 
@@ -271,10 +258,6 @@ void TransferPool::AbortSlotByIndexLocked(uint32_t slot_index) {
     if (slot.thread != 0U) {
       HIXL_CHK_ACL(HcommProxy::ThreadFree(&slot.thread, 1U), "HcommThreadFree failed");
       slot.thread = 0U;
-    }
-    if (slot.host_flag != nullptr) {
-      HIXL_CHK_ACL(aclrtFreeHost(slot.host_flag));
-      slot.host_flag = nullptr;
     }
     if (slot.ctx != nullptr) {
       HIXL_CHK_ACL(aclrtDestroyContext(slot.ctx), "[TransferPool] aclrtDestroyContext failed in Abort");
@@ -323,12 +306,6 @@ Status TransferPool::CreateNotifyLocked(Slot &slot, uint32_t &notify_id) {
 }
 
 void TransferPool::DeinitAllSlotsLocked() {
-  if (dev_const_one_ != nullptr && !slots_.empty() && slots_[0].ctx != nullptr) {
-    hixl::TemporaryRtContext guard(slots_[0].ctx);
-    HIXL_CHK_ACL(aclrtFree(dev_const_one_));
-    dev_const_one_ = nullptr;
-    HIXL_LOGI("[TransferPool] released dev_const_one_ on device %d", device_id_);
-  }
   for (uint32_t i = 0U; i < pool_size_; ++i) {
     DestroySlotLocked(slots_[i]);
     slots_[i] = Slot{};
@@ -371,18 +348,6 @@ Status TransferPool::EnsureThreadLocked(Slot &slot) const {
   return SUCCESS;
 }
 
-Status TransferPool::EnsurePinnedHostFlagLocked(Slot &slot) const {
-  if (slot.host_flag != nullptr) {
-    return SUCCESS;
-  }
-  void *p = nullptr;
-  HIXL_CHK_ACL_RET(aclrtMallocHost(&p, sizeof(uint64_t)));
-  HIXL_CHECK_NOTNULL(p, "[TransferPool] aclrtMallocHost returned null");
-  slot.host_flag = p;
-  *(static_cast<uint64_t *>(slot.host_flag)) = kFlagInitValue;
-  return SUCCESS;
-}
-
 Status TransferPool::EnsureDevConstOneLocked() {
   if (dev_const_one_ != nullptr) {
     return SUCCESS;
@@ -415,10 +380,6 @@ void TransferPool::DestroySlotLocked(Slot &slot) const {
     slot.ctx = nullptr;
   }
   slot.stream = nullptr;
-  if (slot.host_flag != nullptr) {
-    HIXL_CHK_ACL(aclrtFreeHost(slot.host_flag));
-    slot.host_flag = nullptr;
-  }
 }
 
 }  // namespace hixl

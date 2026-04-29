@@ -34,7 +34,6 @@ class TransferPool {
     aclrtStream stream;
     ThreadHandle thread;
     aclrtNotify notify;
-    void *host_flag;
     void *dev_const_one;
   };
 
@@ -59,7 +58,6 @@ class TransferPool {
     aclrtStream stream;
     ThreadHandle thread;
     aclrtNotify notify;
-    void *host_flag;
   };
 
   void InitFreeListLocked();
@@ -73,7 +71,6 @@ class TransferPool {
   Status EnsureContextLocked(Slot &slot) const;
   Status EnsureDefaultStreamLocked(Slot &slot) const;
   Status EnsureThreadLocked(Slot &slot) const;
-  Status EnsurePinnedHostFlagLocked(Slot &slot) const;
   void DestroySlotLocked(Slot &slot) const;
   void AbortSlotByIndexLocked(uint32_t slot_index);
   static void FillHandleFromSlot(int32_t device_id, uint32_t index, const Slot &slot, SlotHandle *handle);
