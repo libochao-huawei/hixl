@@ -21,6 +21,7 @@
 #include <map>
 #include "cs/hixl_cs.h"
 #include "common/hixl_inner_types.h"
+#include "common/hixl_utils.h"
 #include "endpoint.h"
 #include "channel.h"
 #include "hixl_mem_store.h"
@@ -174,6 +175,9 @@ class HixlCSClient {
   Status PrepareDeviceTransferArgs(const CommunicateMem &communicate_mem, DeviceCompleteHandle &handle,
                                    void *&remote_flag);
   Status AllocateHostFlag(void *&host_flag);
+
+  // 获取 context 切换 guard，用于对外接口的 context 管理
+  std::shared_ptr<hixl::TemporaryRtContext> GetContextGuard() const;
 
  private:
   std::mutex mutex_;
