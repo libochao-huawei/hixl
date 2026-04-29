@@ -352,6 +352,8 @@ Status HixlCSClient::InitDeviceResource() {
 }
 
 Status HixlCSClient::Create(const HixlClientDesc *client_desc, const HixlClientConfig *config) {
+  auto ctx_guard = GetContextGuard();
+  (void)ctx_guard;
   HIXL_CHECK_NOTNULL(client_desc->server_ip);
   HIXL_CHECK_NOTNULL(client_desc->local_endpoint);
   HIXL_CHECK_NOTNULL(client_desc->remote_endpoint);
@@ -377,6 +379,8 @@ Status HixlCSClient::Create(const HixlClientDesc *client_desc, const HixlClientC
 
 // 注册client的endpoint的内存信息到内存注册表中。mem是一个结构体，其中记录了内存类型、地址和大小。
 Status HixlCSClient::RegMem(const char *mem_tag, const CommMem *mem, MemHandle *mem_handle) {
+  auto ctx_guard = GetContextGuard();
+  (void)ctx_guard;
   HIXL_CHECK_NOTNULL(mem);
   auto check_result = mem_store_.CheckMemoryForRegister(false, mem->addr, mem->size);
   if (check_result) {
@@ -791,9 +795,18 @@ Status HixlCSClient::AllocateHostFlag(void *&host_flag) {
   return SUCCESS;
 }
 
+std::shared_ptr<hixl::TemporaryRtContext> HixlCSClient::GetContextGuard() const {
+  if (device_id_ >= 0) {
+    aclrtContext ctx = TransferPool::GetInstance(device_id_).GetContext();
+    if (ctx != nullptr) {
+      return std::make_shared<hixl::TemporaryRtContext>(ctx);
+    }
+  }
+  return nullptr;  // 不切换 context
+}
+
 Status HixlCSClient::PrepareDeviceTransferArgs(const CommunicateMem &communicate_mem, DeviceCompleteHandle &handle,
                                                void *&remote_flag) {
-  hixl::TemporaryRtContext with_context(handle.shared_slot->ctx);
   MemDev mem_dev{};
   HIXL_DISMISSABLE_GUARD(mem_guard, [&mem_dev]() { FreeMemDev(mem_dev); });
   HIXL_CHK_STATUS_RET(PrepareDeviceBatchMemBuffers(communicate_mem, mem_dev), "PrepareDeviceBatchMemBuffers failed");
@@ -975,20 +988,22 @@ Status HixlCSClient::BatchTransferHostSync(bool is_get, const CommunicateMem &co
 }
 
 Status HixlCSClient::BatchTransferSync(bool is_get, CommunicateMem &communicate_mem_param, uint32_t timeout_ms) {
+  auto ctx_guard = GetContextGuard();
+  (void)ctx_guard;
   HIXL_CHK_STATUS_RET(ValidateAddress(is_get, communicate_mem_param), "[HixlClient] ValidateAddress failed.");
   HIXL_CHECK_NOTNULL(local_endpoint_);
-  const EndpointDesc ep = local_endpoint_->GetEndpoint();
-  if (IsDeviceEndpoint(ep)) {
-    if (ep.protocol == COMM_PROTOCOL_UBOE) {
+  const EndpointDesc endpoint = local_endpoint_->GetEndpoint();
+  if (IsDeviceEndpoint(endpoint)) {
+    if (endpoint.protocol == COMM_PROTOCOL_UBOE) {
       HIXL_CHK_STATUS_RET(ConvertUboeCommunicateMem(is_get, communicate_mem_param),
                           "[HixlClient] convert uboe communicate mem failed.");
     }
     return BatchTransferDeviceSync(is_get, communicate_mem_param, timeout_ms);
   }
-  if (ep.loc.locType == ENDPOINT_LOC_TYPE_HOST) {
+  if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_HOST) {
     return BatchTransferHostSync(is_get, communicate_mem_param, timeout_ms);
   }
-  HIXL_LOGE(PARAM_INVALID, "[HixlClient] Invalid endpoint location: %d", ep.loc.locType);
+  HIXL_LOGE(PARAM_INVALID, "[HixlClient] Invalid endpoint location: %d", endpoint.loc.locType);
   return PARAM_INVALID;
 }
 
@@ -1025,6 +1040,8 @@ Status HixlCSClient::ConvertUboeCommunicateMem(bool is_get, CommunicateMem &comm
 
 // 通过已经建立好的channel，从用户提取的地址列表中，批量读取server内存地址中的内容
 Status HixlCSClient::BatchTransfer(bool is_get, CommunicateMem &communicate_mem_param, void **query_handle) {
+  auto ctx_guard = GetContextGuard();
+  (void)ctx_guard;
   HIXL_CHK_STATUS_RET(ValidateAddress(is_get, communicate_mem_param), "[HixlClient] ValidateAddress failed.");
   HIXL_CHECK_NOTNULL(local_endpoint_);
   const EndpointDesc ep = local_endpoint_->GetEndpoint();
@@ -1073,7 +1090,6 @@ Status HixlCSClient::CheckStatusDevice(DeviceCompleteHandle &query_handle, HixlC
   }
   HIXL_CHECK_NOTNULL(query_handle.shared_slot.get(), "[HixlClient] CheckStatusDevice shared_slot is null");
   HIXL_CHECK_NOTNULL(query_handle.host_flag, "[HixlClient] CheckStatusDevice host_flag is null");
-  hixl::TemporaryRtContext with_context(query_handle.shared_slot->ctx);
 
   void *host_flag = query_handle.host_flag;
   volatile uint64_t *flag_ptr = static_cast<uint64_t *>(host_flag);
@@ -1092,6 +1108,8 @@ Status HixlCSClient::CheckStatusDevice(DeviceCompleteHandle &query_handle, HixlC
 
 // 通过已经建立好的channel，检查批量读写的状态。
 Status HixlCSClient::CheckStatus(void *query_handle, HixlCompleteStatus *status) {
+  auto ctx_guard = GetContextGuard();
+  (void)ctx_guard;
   HIXL_CHECK_NOTNULL(query_handle);
   HIXL_CHECK_NOTNULL(status);
 
@@ -1119,6 +1137,8 @@ Status HixlCSClient::CheckStatus(void *query_handle, HixlCompleteStatus *status)
 
 // 注销client的endpoint的内存信息。
 Status HixlCSClient::UnRegMem(MemHandle mem_handle) {
+  auto ctx_guard = GetContextGuard();
+  (void)ctx_guard;
   HIXL_CHECK_NOTNULL(mem_handle);
   HixlMemDesc desc;
   Status query_status = local_endpoint_->GetMemDesc(mem_handle, desc);
@@ -1139,6 +1159,8 @@ Status HixlCSClient::UnRegMem(MemHandle mem_handle) {
 }
 
 Status HixlCSClient::Connect(uint32_t timeout_ms) {
+  auto ctx_guard = GetContextGuard();
+  (void)ctx_guard;
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHECK_NOTNULL(local_endpoint_);
   HIXL_CHK_BOOL_RET_STATUS(remote_endpoint_.protocol != COMM_PROTOCOL_RESERVED, PARAM_INVALID,
@@ -1217,6 +1239,8 @@ Status HixlCSClient::GetRemoteMemLocked(uint32_t timeout_ms, CommMem **remote_me
 
 Status HixlCSClient::GetRemoteMem(CommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num,
                                   uint32_t timeout_ms) {
+  auto ctx_guard = GetContextGuard();
+  (void)ctx_guard;
   HIXL_EVENT("[HixlClient] GetRemoteMem begin. fd=%d, remote_ep_handle=%" PRIu64 ", timeout=%u ms", socket_,
              remote_endpoint_handle_, timeout_ms);
   HIXL_CHECK_NOTNULL(remote_mem_list);
@@ -1390,6 +1414,8 @@ void HixlCSClient::ReleaseDeviceResourcesLocked() {
 }
 
 Status HixlCSClient::Destroy() {
+  auto ctx_guard = GetContextGuard();
+  (void)ctx_guard;
   HIXL_EVENT("[HixlClient] Destroy start. fd=%d, imported_bufs=%zu, recorded_addrs=%zu", socket_,
              imported_remote_bufs_.size(), recorded_remote_addrs_.size());
   std::lock_guard<std::mutex> lock(mutex_);
