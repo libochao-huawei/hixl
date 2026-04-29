@@ -12,12 +12,13 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <map>
 #include <vector>
 #include <cstdio>
-#include <acl/acl.h>
 
+#include "acl/acl.h"
 #include "local_comm_res_tool.h"
 
 namespace {
