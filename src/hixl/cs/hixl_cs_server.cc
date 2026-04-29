@@ -9,6 +9,7 @@
  */
 
 #include "hixl_cs_server.h"
+#include <memory>
 #include <sys/epoll.h>
 #include "nlohmann/json.hpp"
 #include "common/hixl_checker.h"
@@ -96,6 +97,14 @@ Status HixlCSServer::RegisterDeviceTransFinishedFlag() {
 }
 
 Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config) {
+  std::shared_ptr<hixl::TemporaryRtContext> ctx_guard;
+  if (device_id_ >= 0) {
+    aclrtContext ctx = TransferPool::GetInstance(device_id_).GetContext();
+    if (ctx != nullptr) {
+      ctx_guard = std::make_shared<hixl::TemporaryRtContext>(ctx);
+    }
+  }
+  (void)ctx_guard;
   HIXL_CHECK_NOTNULL(endpoint_list);
   HIXL_CHECK_NOTNULL(config);
   HIXL_CHK_BOOL_RET_STATUS(list_num > 0, PARAM_INVALID, "endpoint list num:%u is invalid, must > 0", list_num);
@@ -145,6 +154,14 @@ Status HixlCSServer::DestroyChannel(int32_t fd, const char *msg, uint64_t msg_le
 }
 
 Status HixlCSServer::Finalize() {
+  std::shared_ptr<hixl::TemporaryRtContext> ctx_guard;
+  if (device_id_ >= 0) {
+    aclrtContext ctx = TransferPool::GetInstance(device_id_).GetContext();
+    if (ctx != nullptr) {
+      ctx_guard = std::make_shared<hixl::TemporaryRtContext>(ctx);
+    }
+  }
+  (void)ctx_guard;
   if (listener_running_) {
     listener_running_ = false;
     if (listener_.joinable()) {
@@ -191,6 +208,14 @@ Status HixlCSServer::Finalize() {
 }
 
 Status HixlCSServer::RegisterMem(const char *mem_tag, const CommMem *mem, MemHandle *mem_handle) {
+  std::shared_ptr<hixl::TemporaryRtContext> ctx_guard;
+  if (device_id_ >= 0) {
+    aclrtContext ctx = TransferPool::GetInstance(device_id_).GetContext();
+    if (ctx != nullptr) {
+      ctx_guard = std::make_shared<hixl::TemporaryRtContext>(ctx);
+    }
+  }
+  (void)ctx_guard;
   HIXL_EVENT("[HixlServer] register mem start, addr:%p, size:%lu, type:%d",
              mem->addr, mem->size, static_cast<int32_t>(mem->type));
   auto all_handles = endpoint_store_.GetAllEndpointHandles();
@@ -215,6 +240,14 @@ Status HixlCSServer::RegisterMem(const char *mem_tag, const CommMem *mem, MemHan
 }
 
 Status HixlCSServer::DeregisterMem(MemHandle mem_handle) {
+  std::shared_ptr<hixl::TemporaryRtContext> ctx_guard;
+  if (device_id_ >= 0) {
+    aclrtContext ctx = TransferPool::GetInstance(device_id_).GetContext();
+    if (ctx != nullptr) {
+      ctx_guard = std::make_shared<hixl::TemporaryRtContext>(ctx);
+    }
+  }
+  (void)ctx_guard;
   HIXL_EVENT("[HixlServer] deregister mem start, handle:%p", mem_handle);
   std::lock_guard<std::mutex> lock(reg_mutex_);
   auto it = reg_mems_.find(mem_handle);
@@ -389,6 +422,14 @@ Status HixlCSServer::ExportMem(int32_t fd, const char *msg, uint64_t msg_len) {
 }
 
 Status HixlCSServer::Listen(uint32_t backlog) {
+  std::shared_ptr<hixl::TemporaryRtContext> ctx_guard;
+  if (device_id_ >= 0) {
+    aclrtContext ctx = TransferPool::GetInstance(device_id_).GetContext();
+    if (ctx != nullptr) {
+      ctx_guard = std::make_shared<hixl::TemporaryRtContext>(ctx);
+    }
+  }
+  (void)ctx_guard;
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Listen(ip_, port_, backlog, listen_fd_), "Failed to server listen");
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::AddFdToEpoll(epoll_fd_, listen_fd_), "Failed to add listen fd to epoll");
   HIXL_EVENT("[HixlServer] start to listen on %s:%u", ip_.c_str(), port_);
@@ -403,6 +444,14 @@ Status HixlCSServer::Listen(uint32_t backlog) {
 }
 
 Status HixlCSServer::RegProc(CtrlMsgType msg_type, MsgProcessor proc) {
+  std::shared_ptr<hixl::TemporaryRtContext> ctx_guard;
+  if (device_id_ >= 0) {
+    aclrtContext ctx = TransferPool::GetInstance(device_id_).GetContext();
+    if (ctx != nullptr) {
+      ctx_guard = std::make_shared<hixl::TemporaryRtContext>(ctx);
+    }
+  }
+  (void)ctx_guard;
   HIXL_CHK_STATUS_RET(msg_handler_.RegisterMsgProcessor(msg_type, proc),
                       "Failed to reg msg processor, msg type:%d", static_cast<int32_t>(msg_type));
   return SUCCESS;

@@ -76,6 +76,8 @@ Status TransferPool::Initialize(uint32_t pool_size) {
   pool_size_ = pool_size;
   slots_.clear();
   slots_.resize(pool_size_);
+  // 为对外接口创建共享 rts context
+  HIXL_CHK_ACL_RET(aclrtCreateContext(&rts_context_, device_id_), "aclrtCreateContext rts_context_ failed");
   for (uint32_t i = 0U; i < pool_size_; ++i) {
     Slot &s = slots_[i];
     s.in_use = false;
@@ -206,7 +208,6 @@ void TransferPool::FillHandleFromSlot(int32_t device_id, uint32_t index, const S
 
 Status TransferPool::InitAllSlotsLocked() {
   InitFreeListLocked();
-  hixl::TemporaryRtContext ctx_guard(nullptr);
   for (uint32_t i = 0U; i < pool_size_; ++i) {
     Status ret = InitOneSlotLocked(slots_[i], i);
     if (ret != SUCCESS) {
@@ -313,6 +314,10 @@ Status TransferPool::CreateNotifyLocked(Slot &slot, uint32_t &notify_id) {
 }
 
 void TransferPool::DeinitAllSlotsLocked() {
+  if (rts_context_ != nullptr) {
+    HIXL_CHK_ACL(aclrtDestroyContext(rts_context_));
+    rts_context_ = nullptr;
+  }
   if (dev_const_one_ != nullptr && !slots_.empty() && slots_[0].ctx != nullptr) {
     hixl::TemporaryRtContext guard(slots_[0].ctx);
     HIXL_CHK_ACL(aclrtFree(dev_const_one_));
@@ -365,9 +370,9 @@ Status TransferPool::EnsureDevConstOneLocked() {
   if (dev_const_one_ != nullptr) {
     return SUCCESS;
   }
-  HIXL_CHK_BOOL_RET_STATUS(!slots_.empty() && slots_[0].ctx != nullptr, FAILED,
-                           "[TransferPool] EnsureDevConstOneLocked: no valid context");
-  const hixl::TemporaryRtContext guard(slots_[0].ctx);
+  HIXL_CHK_BOOL_RET_STATUS(rts_context_ != nullptr, FAILED,
+                           "[TransferPool] EnsureDevConstOneLocked: rts_context_ is null");
+  const hixl::TemporaryRtContext guard(rts_context_);
   HIXL_CHK_ACL_RET(aclrtMalloc(&dev_const_one_, sizeof(uint64_t), ACL_MEM_MALLOC_NORMAL_ONLY),
                    "[TransferPool] aclrtMalloc dev_const_one_ failed");
   constexpr uint64_t host_one = 1U;
@@ -393,6 +398,10 @@ void TransferPool::DestroySlotLocked(Slot &slot) const {
     slot.ctx = nullptr;
   }
   slot.stream = nullptr;
+}
+
+aclrtContext TransferPool::GetContext() const {
+  return rts_context_;
 }
 
 }  // namespace hixl
