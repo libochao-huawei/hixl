@@ -5,24 +5,39 @@ project(local_comm_res_test)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 查找 ACL 库路径
-set(ACL_SEARCH_PATHS
-    /usr/local/Ascend/aoe/lib64
-    /usr/local/Ascend/atc/lib64
-    /usr/local/Ascend/ascend-toolkit/latest/aoe/lib64
-    /usr/local/Ascend/ascend-toolkit/latest/atc/lib64
-    /usr/lib64
-    /usr/lib
-)
+# Ascend 软件包路径（从环境变量获取）
+# 优先使用 ASCEND_HOME_PATH，其次使用 ASCEND_TOOLKIT_HOME
+if(DEFINED ENV{ASCEND_HOME_PATH})
+    set(ASCEND_ROOT "$ENV{ASCEND_HOME_PATH}")
+elseif(DEFINED ENV{ASCEND_TOOLKIT_HOME})
+    set(ASCEND_ROOT "$ENV{ASCEND_TOOLKIT_HOME}")
+else()
+    message(FATAL_ERROR "ASCEND_HOME_PATH or ASCEND_TOOLKIT_HOME environment variable must be set")
+endif()
 
-find_library(ACL_LIB acl HINTS ${ACL_SEARCH_PATHS})
+# 根据架构设置库路径
+if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "aarch64|arm")
+    set(ACL_ARCH_DIR "aarch64-linux")
+else()
+    set(ACL_ARCH_DIR "x86_64-linux")
+endif()
 
-# 头文件路径（不需要 hal.h 了）
+# ACL 库和头文件路径
+set(ACL_LIB_DIR "${ASCEND_ROOT}/${ACL_ARCH_DIR}/lib64")
+set(ACL_INCLUDE_DIR "${ASCEND_ROOT}/${ACL_ARCH_DIR}/include/")
+
+# 头文件路径
 set(INCLUDE_PATHS
     ${CMAKE_SOURCE_DIR}
+    ${ACL_INCLUDE_DIR}
 )
 
 include_directories(${INCLUDE_PATHS})
+
+# 链接库目录
+if(EXISTS ${ACL_LIB_DIR})
+    link_directories(${ACL_LIB_DIR})
+endif()
 
 # 源文件
 set(SOURCES
@@ -34,19 +49,15 @@ set(SOURCES
 add_executable(test_local_comm_res ${SOURCES})
 
 # 链接库
-if(ACL_LIB)
-    target_link_libraries(test_local_comm_res ${ACL_LIB})
-else()
-    target_link_libraries(test_local_comm_res acl)
-endif()
-
-# 动态链接 dl（用于 dlopen）
+target_link_libraries(test_local_comm_res acl_rt)
 target_link_libraries(test_local_comm_res dl)
 
 # 打印配置信息
 message(STATUS "========================================")
 message(STATUS "LocalCommRes Test Build Configuration")
 message(STATUS "========================================")
-message(STATUS "ACL_LIB: ${ACL_LIB}")
+message(STATUS "ASCEND_ROOT: ${ASCEND_ROOT}")
+message(STATUS "ACL_LIB_DIR: ${ACL_LIB_DIR}")
+message(STATUS "ACL_INCLUDE_DIR: ${ACL_INCLUDE_DIR}")
 message(STATUS "INCLUDE_PATHS: ${INCLUDE_PATHS}")
 message(STATUS "========================================")
