@@ -12,6 +12,7 @@
 
 #include <cstdio>
 #include <map>
+#include <cstring>
 #include <vector>
 
 #include "acl/acl.h"
@@ -148,6 +149,24 @@ bool ServerRunner::AllocServerBufferForRun() {
     return false;
   }
   buffer_allocated_ = true;
+
+  if (is_host_) {
+    memset(buffer_, 'S', alloc_size);
+  } else {
+    void *tmp_host = nullptr;
+    aclError ar_host = aclrtMallocHost(&tmp_host, alloc_size);
+    if (ar_host != ACL_ERROR_NONE) {
+      std::printf("[ERROR] server init host buffer failed acl=%d\n", static_cast<int>(ar_host));
+      return false;
+    }
+    memset(tmp_host, 'S', alloc_size);
+    aclError ar_copy = aclrtMemcpy(buffer_, alloc_size, tmp_host, alloc_size, ACL_MEMCPY_HOST_TO_DEVICE);
+    (void)aclrtFreeHost(tmp_host);
+    if (ar_copy != ACL_ERROR_NONE) {
+      std::printf("[ERROR] server H2D init failed acl=%d\n", static_cast<int>(ar_copy));
+      return false;
+    }
+  }
   return true;
 }
 

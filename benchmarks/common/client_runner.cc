@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cinttypes>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <mutex>
 #include <string>
@@ -46,6 +47,62 @@ const char *RecentErrMsg() {
   return errmsg;
 }
 
+
+bool ValidateDataContent(void *buffer, size_t size, bool is_host, char expected) {
+  if (buffer == nullptr || size == 0) {
+    std::fprintf(stderr, "[ERROR] ValidateDataContent invalid params buffer=%p size=%zu\n", buffer, size);
+    return false;
+  }
+
+  uint8_t *check_data = nullptr;
+  bool need_free = false;
+
+  if (is_host) {
+    check_data = reinterpret_cast<uint8_t *>(buffer);
+  } else {
+    void *tmp_host = nullptr;
+    aclError er = aclrtMallocHost(&tmp_host, size);
+    if (er != ACL_ERROR_NONE) {
+      std::fprintf(stderr, "[ERROR] ValidateDataContent alloc host buffer failed aclError=%d\n", static_cast<int>(er));
+      return false;
+    }
+    check_data = reinterpret_cast<uint8_t *>(tmp_host);
+    need_free = true;
+
+    er = aclrtMemcpy(tmp_host, size, buffer, size, ACL_MEMCPY_DEVICE_TO_HOST);
+    if (er != ACL_ERROR_NONE) {
+      std::fprintf(stderr, "[ERROR] ValidateDataContent D2H failed aclError=%d\n", static_cast<int>(er));
+      (void)aclrtFreeHost(tmp_host);
+      return false;
+    }
+  }
+
+  bool all_match = true;
+  size_t mismatch_count = 0;
+  size_t max_report = 10;
+  for (size_t i = 0; i < size; ++i) {
+    if (check_data[i] != static_cast<uint8_t>(expected)) {
+      all_match = false;
+      mismatch_count++;
+      if (mismatch_count <= max_report) {
+        std::fprintf(stderr, "[ERROR] Data mismatch at offset %zu: expected '%c' (0x%02X), got 0x%02X\n",
+                     i, expected, static_cast<uint8_t>(expected), check_data[i]);
+      }
+    }
+  }
+
+  if (!all_match) {
+    std::fprintf(stderr, "[ERROR] Total mismatches: %zu out of %zu bytes\n", mismatch_count, size);
+  } else {
+    std::printf("[INFO] Data validation passed: all %zu bytes match expected '%c'\n", size, expected);
+  }
+
+  if (need_free) {
+    (void)aclrtFreeHost(reinterpret_cast<void *>(check_data));
+  }
+
+  return all_match;
+}
 int32_t InitializeHixl(const std::string &local_engine, const BenchmarkConfig &cfg, Hixl *hixl) {
   const std::map<AscendString, AscendString> init_options = BenchmarkConfigParser::BuildInitializeOptions(cfg);
   const auto ret = hixl->Initialize(AscendString(local_engine.c_str()), init_options);
@@ -102,6 +159,26 @@ int32_t AllocLocalBuffer(const BenchmarkConfig &cfg, bool *is_host, void **out_s
     return -1;
   }
   *out_src = tmp;
+
+  if (*is_host) {
+    memset(tmp, 'C', alloc_size);
+  } else {
+    void *init_host = nullptr;
+    aclError er_host = aclrtMallocHost(&init_host, alloc_size);
+    if (er_host != ACL_ERROR_NONE) {
+      std::fprintf(stderr, "[ERROR] client init host buffer failed aclError=%d\n", static_cast<int>(er_host));
+      (void)aclrtFree(tmp);
+      return -1;
+    }
+    memset(init_host, 'C', alloc_size);
+    aclError er_copy = aclrtMemcpy(tmp, alloc_size, init_host, alloc_size, ACL_MEMCPY_HOST_TO_DEVICE);
+    (void)aclrtFreeHost(init_host);
+    if (er_copy != ACL_ERROR_NONE) {
+      std::fprintf(stderr, "[ERROR] client H2D init failed aclError=%d\n", static_cast<int>(er_copy));
+      (void)aclrtFree(tmp);
+      return -1;
+    }
+  }
   return 0;
 }
 
@@ -465,6 +542,16 @@ bool SharedRemoteConnectTransferAndCleanup(Hixl *hixl, size_t idx, void *slice_b
     (void)SendNotify(tcp_client);
     return false;
   }
+
+  const bool is_host = (cfg.transfer_mode == "h2d" || cfg.transfer_mode == "h2h");
+  const size_t slice_size = static_cast<size_t>(cfg.total_size);
+  if (cfg.transfer_op == "read" && !ValidateDataContent(slice_base, slice_size, is_host, 'S')) {
+    std::printf("[ERROR] [remote %zu] Data validation failed after Read operation\n", idx);
+    MarkFirstFail(first_fail, fail_mu);
+    (void)hixl->Disconnect(AscendString(remote.c_str()));
+    (void)SendNotify(tcp_client);
+    return false;
+  }
   return true;
 }
 
@@ -594,6 +681,13 @@ bool LaneWorkerRemoteTransferPhase(LaneState *p, const BenchmarkConfig &cfg, siz
   p->bench_records.clear();
   if (RunTransfer(p->hixl, p->buffer, remote.c_str(), remote_addr, cfg, &p->bench_records, BenchWorkerTag::kLane,
                   lane_idx) != 0) {
+    MarkFirstFail(first_fail, fail_mu);
+    return false;
+  }
+
+  const size_t buffer_size = static_cast<size_t>(cfg.total_size);
+  if (cfg.transfer_op == "read" && !ValidateDataContent(p->buffer, buffer_size, p->is_host, 'S')) {
+    std::printf("[ERROR] [lane %zu] Data validation failed after Read operation\n", lane_idx);
     MarkFirstFail(first_fail, fail_mu);
     return false;
   }
@@ -765,6 +859,11 @@ int ClientRunner::RunOnePair(const std::string &remote, void *src_slice, size_t 
     return -1;
   }
 
+
+  if (cfg_.transfer_op == "read" && !ValidateDataContent(src_slice, register_len, lane_is_host_, 'S')) {
+    std::printf("[ERROR] Data validation failed after Read operation\n");
+    return -1;
+  }
   lane_need_tcp_notify_ = true;
   std::printf("[INFO] Client Sample end\n");
   return 0;
