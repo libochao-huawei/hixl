@@ -120,10 +120,10 @@ class ASCEND_FUNC_VISIBILITY Hixl {
 
   /**
     * @brief 获取全部请求状态
-    * @param [out] status_map 传输状态
+    * @param [out] statuses 传输状态
     * @return 成功:SUCCESS, 失败:其它.
     */
-    Status GetTransferStatus(std::map<TransferReq, TransferStatus>& status_map);
+    Status GetTransferStatus(std::map<TransferReq, TransferStatus>& statuses);
 
   /**
    * @brief Client向Server发送Notify信息
