@@ -99,6 +99,7 @@ class TemporaryRtContext {
 
  private:
   aclrtContext prev_context_ = nullptr;
+  bool context_changed_ = false;
 };
 
 }  // namespace hixl

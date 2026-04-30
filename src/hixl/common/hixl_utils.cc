@@ -305,11 +305,12 @@ TemporaryRtContext::TemporaryRtContext(aclrtContext context) {
   if (context != nullptr && prev_context_ != context) {
     HIXL_LOGI("Set new current aclrt ctx:%p", context);
     HIXL_CHK_ACL(aclrtSetCurrentContext(context));
+    context_changed_ = true;
   }
 }
 
 TemporaryRtContext::~TemporaryRtContext() {
-  if (prev_context_ != nullptr) {
+  if (context_changed_ && prev_context_ != nullptr) {
     HIXL_LOGI("Restore previous aclrt ctx:%p", prev_context_);
     HIXL_CHK_STATUS(aclrtSetCurrentContext(prev_context_));
   }
