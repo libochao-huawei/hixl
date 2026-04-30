@@ -110,6 +110,7 @@ void TransferPool::Finalize() {
   if (ref_cnt_ != 0U) {
     return;
   }
+  HIXL_LOGI("[TransferPool] Finalize start. device_id=%d", device_id_);
   if (inited_) {
     for (uint32_t i = 0U; i < pool_size_; ++i) {
       if (slots_[i].in_use) {
@@ -118,6 +119,7 @@ void TransferPool::Finalize() {
     }
   }
   DeinitAllSlotsLocked();
+  HIXL_LOGI("[TransferPool] Finalize end. device_id=%d", device_id_);
 }
 
 Status TransferPool::Acquire(SlotHandle *handle) {
