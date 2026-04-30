@@ -109,23 +109,43 @@ void CommEntityManager::HandleAllEntities() {
   if (mgr_high_priority_flag_.load()) {
     return;
   }
-  std::lock_guard<std::mutex> lock(mutex_);
-  for (auto it = entity_map_.begin(); it != entity_map_.end();) {
-    auto entity = it->second;
-    if ((entity->GetCurState() == FsmState::FSM_INIT_STATE) ||
-        (entity->GetCurState() == FsmState::FSM_ERROR_STATE)) {
-      it++;
+  std::vector<std::pair<uint64_t, EntityPtr>> entities;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    entities.reserve(entity_map_.size());
+    for (const auto &entity_pair : entity_map_) {
+      entities.emplace_back(entity_pair.first, entity_pair.second);
+    }
+  }
+
+  for (const auto &entity_pair : entities) {
+    const uint64_t entity_id = entity_pair.first;
+    auto entity = entity_pair.second;
+    bool remove_entity = false;
+    {
+      std::lock_guard<std::mutex> process_lock(entity->GetProcessMutex());
+      const FsmState cur_state = entity->GetCurState();
+      if ((cur_state == FsmState::FSM_INIT_STATE) ||
+          (cur_state == FsmState::FSM_ERROR_STATE)) {
+        continue;
+      }
+      if (cur_state == FsmState::FSM_DESTROYED_STATE) {
+        remove_entity = true;
+      } else {
+        LLM_CHK_BOOL_EXEC(entity->ProcessState() == ge::SUCCESS, entity->MarkEntityError(),
+                         "Failed to process state");
+      }
+    }
+
+    if (remove_entity) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = entity_map_.find(entity_id);
+      if ((it != entity_map_.end()) && (it->second == entity)) {
+        cluster_id_to_entity_id_.erase(entity->GetClusterId());
+        entity_map_.erase(it);
+      }
       continue;
     }
-    std::lock_guard<std::mutex> process_lock(entity->GetProcessMutex());
-    if (entity->GetCurState() == FsmState::FSM_DESTROYED_STATE) {
-      cluster_id_to_entity_id_.erase(entity->GetClusterId());
-      it = entity_map_.erase(it);
-      continue;
-    }
-    LLM_CHK_BOOL_EXEC(entity->ProcessState() == ge::SUCCESS, entity->MarkEntityError(),
-                     "Failed to process state");
-    it++;
   }
 }
 
