@@ -158,35 +158,41 @@ Status HixlCSServer::DestroyChannel(int32_t fd, const char *msg, uint64_t msg_le
 }
 
 Status HixlCSServer::Finalize() {
-  auto ctx_guard = GetContextGuard();
-  (void)ctx_guard;
-  if (listener_running_) {
-    listener_running_ = false;
-    if (listener_.joinable()) {
-      listener_.join();
+  Status ret = SUCCESS;
+  // ctx_guard 在 TransferPool::Finalize() 之前必须析构，否则 Finalize 会销毁 rts_context_
+  // 而 ctx_guard 析构时需要恢复到之前的 context，如果之前 context 和 rts_context_ 相同会报错
+  {
+    auto ctx_guard = GetContextGuard();
+    (void)ctx_guard;
+    if (listener_running_) {
+      listener_running_ = false;
+      if (listener_.joinable()) {
+        listener_.join();
+      }
+    }
+    msg_handler_.Finalize();
+    ret = endpoint_store_.Finalize();
+    HIXL_CHK_STATUS(ret, "Failed to finalize endpoint store.");
+    if (trans_flag_ != nullptr) {
+      auto rt_ret = aclrtFree(trans_flag_);
+      if (rt_ret != ACL_SUCCESS) {
+        HIXL_LOGE(FAILED, "Failed to free trans finished flag, ret:%d", rt_ret);
+      }
+      trans_flag_ = nullptr;
+    }
+    if (host_trans_flag_ != nullptr) {
+      free(host_trans_flag_);
+      host_trans_flag_ = nullptr;
+    }
+    if (dev_trans_flag_ != nullptr) {
+      auto rt_ret = aclrtFree(dev_trans_flag_);
+      if (rt_ret != ACL_SUCCESS) {
+        HIXL_LOGE(FAILED, "Failed to free DEVICE trans finished flag, ret:%d", rt_ret);
+      }
+      dev_trans_flag_ = nullptr;
     }
   }
-  msg_handler_.Finalize();
-  auto ret = endpoint_store_.Finalize();
-  HIXL_CHK_STATUS(ret, "Failed to finalize endpoint store.");
-  if (trans_flag_ != nullptr) {
-    auto rt_ret = aclrtFree(trans_flag_);
-    if (rt_ret != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "Failed to free trans finished flag, ret:%d", rt_ret);
-    }
-    trans_flag_ = nullptr;
-  }
-  if (host_trans_flag_ != nullptr) {
-    free(host_trans_flag_);
-    host_trans_flag_ = nullptr;
-  }
-  if (dev_trans_flag_ != nullptr) {
-    auto rt_ret = aclrtFree(dev_trans_flag_);
-    if (rt_ret != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "Failed to free DEVICE trans finished flag, ret:%d", rt_ret);
-    }
-    dev_trans_flag_ = nullptr;
-  }
+  // ctx_guard 已析构，现在可以安全销毁 TransferPool
   if (device_id_ >= 0) {
     TransferPool::GetInstance(device_id_).Finalize();
     device_id_ = -1;

@@ -1401,9 +1401,6 @@ void HixlCSClient::ReleaseDeviceResourcesLocked() {
   notify_mem_handles_.clear();
   // Cleanup active slot before finalizing TransferPool
   CleanupActiveSlot();
-  if (device_id_ >= 0) {
-    TransferPool::GetInstance(device_id_).Finalize();
-  }
   if (device_kernel_loaded_) {
     if (device_kernel_handle_ != nullptr) {
       aclrtBinaryUnLoad(device_kernel_handle_);
@@ -1413,37 +1410,43 @@ void HixlCSClient::ReleaseDeviceResourcesLocked() {
     device_func_put_ = nullptr;
     device_kernel_loaded_ = false;
   }
-  device_id_ = -1;
 }
 
 Status HixlCSClient::Destroy() {
-  auto ctx_guard = GetContextGuard();
-  (void)ctx_guard;
-  HIXL_EVENT("[HixlClient] Destroy start. fd=%d, imported_bufs=%zu, recorded_addrs=%zu", socket_,
-             imported_remote_bufs_.size(), recorded_remote_addrs_.size());
-  std::lock_guard<std::mutex> lock(mutex_);
   Status first_error = SUCCESS;
-  ReleaseLegacyHandlesLocked();
-  AbortAllPendingDeviceHandlesLocked();
-  ReleaseDeviceResourcesLocked();
-  Status ret = ClearRemoteMemInfo();
-  if (ret != SUCCESS) {
-    HIXL_LOGW("[HixlClient] ClearRemoteMemInfo failed. fd=%d, ret=%u", socket_, static_cast<uint32_t>(ret));
-    first_error = (first_error == SUCCESS) ? ret : first_error;
-  }
-  if (socket_ != -1) {
-    HIXL_LOGI("[HixlClient] Closing socket. fd=%d", socket_);
-    close(socket_);
-    socket_ = -1;
-  }
-  if (local_endpoint_ != nullptr) {
-    ret = local_endpoint_->Finalize();
+  {
+    auto ctx_guard = GetContextGuard();
+    (void)ctx_guard;
+    HIXL_EVENT("[HixlClient] Destroy start. fd=%d, imported_bufs=%zu, recorded_addrs=%zu", socket_,
+               imported_remote_bufs_.size(), recorded_remote_addrs_.size());
+    std::lock_guard<std::mutex> lock(mutex_);
+    ReleaseLegacyHandlesLocked();
+    AbortAllPendingDeviceHandlesLocked();
+    ReleaseDeviceResourcesLocked();
+    Status ret = ClearRemoteMemInfo();
     if (ret != SUCCESS) {
-      HIXL_LOGW("[HixlClient] Finalize endpoint failed in Destroy. ep_handle=%p, ret=%u", local_endpoint_->GetHandle(),
-                static_cast<uint32_t>(ret));
+      HIXL_LOGW("[HixlClient] ClearRemoteMemInfo failed. fd=%d, ret=%u", socket_, static_cast<uint32_t>(ret));
       first_error = (first_error == SUCCESS) ? ret : first_error;
     }
-    local_endpoint_.reset();
+    if (socket_ != -1) {
+      HIXL_LOGI("[HixlClient] Closing socket. fd=%d", socket_);
+      close(socket_);
+      socket_ = -1;
+    }
+    if (local_endpoint_ != nullptr) {
+      ret = local_endpoint_->Finalize();
+      if (ret != SUCCESS) {
+        HIXL_LOGW("[HixlClient] Finalize endpoint failed in Destroy. ep_handle=%p, ret=%u", local_endpoint_->GetHandle(),
+                  static_cast<uint32_t>(ret));
+        first_error = (first_error == SUCCESS) ? ret : first_error;
+      }
+      local_endpoint_.reset();
+    }
+  }
+  // ctx_guard 已析构，TransferPool 放到最后销毁
+  if (device_id_ >= 0) {
+    TransferPool::GetInstance(device_id_).Finalize();
+    device_id_ = -1;
   }
   HIXL_EVENT("[HixlClient] Destroy done. first_error=%u", static_cast<uint32_t>(first_error));
   return first_error;
