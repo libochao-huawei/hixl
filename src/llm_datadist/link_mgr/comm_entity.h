@@ -198,6 +198,7 @@ class CommEntity {
 
  private:
   std::mutex process_mutex_;
+  std::mutex req_buffer_mutex_;
   std::atomic<FsmState> cur_state_{FsmState::FSM_INIT_STATE};
   uint64_t comm_id_;
   uint64_t cluster_id_;  // remote cluster id
