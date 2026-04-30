@@ -819,6 +819,7 @@ Status HixlCSClient::PrepareDeviceTransferArgs(const CommunicateMem &communicate
 }
 
 Status HixlCSClient::LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handle, const void *remote_flag) {
+  hixl::TemporaryRtContext guard(handle.shared_slot->ctx);
   HIXL_CHECK_NOTNULL(remote_flag);
   const char *kernel_name = is_get ? kDeviceFuncGet : kDeviceFuncPut;
   HIXL_LOGI("[HixlClient] LaunchDeviceKernel start. kernel=%s", kernel_name);
@@ -896,6 +897,7 @@ Status HixlCSClient::BatchTransferDevice(bool is_get, const CommunicateMem &comm
   {
     std::lock_guard<std::mutex> lock(device_launch_mu_);
     HIXL_CHK_STATUS_RET(LaunchDeviceKernel(is_get, *handle, remote_flag), "LaunchDeviceKernel failed");
+    hixl::TemporaryRtContext ctx_guard(handle->shared_slot->ctx);
     HIXL_CHK_ACL_RET(aclrtMemcpyAsync(handle->host_flag, sizeof(uint64_t), handle->shared_slot->dev_const_one, sizeof(uint64_t),
                                       ACL_MEMCPY_DEVICE_TO_HOST, handle->shared_slot->stream),
                      "[HixlClient] aclrtMemcpyAsync (Flag D2H) failed");
@@ -949,6 +951,7 @@ Status HixlCSClient::BatchTransferDeviceSync(bool is_get, const CommunicateMem &
     std::lock_guard<std::mutex> lock(device_launch_mu_);
     HIXL_CHK_STATUS_RET(LaunchDeviceKernel(is_get, *handle, remote_flag), "LaunchDeviceKernel failed");
 
+    hixl::TemporaryRtContext ctx_guard(handle->shared_slot->ctx);
     const aclError sync_ret = aclrtSynchronizeStreamWithTimeout(handle->shared_slot->stream, timeout_ms);
     if (sync_ret != ACL_SUCCESS && handle->shared_slot != nullptr) {
       TransferPool::GetInstance(handle->shared_slot->device_id).Abort(*handle->shared_slot);
