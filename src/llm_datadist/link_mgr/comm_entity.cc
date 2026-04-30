@@ -810,7 +810,7 @@ CacheAccessTable &CommEntity::GetCacheAccessTable() {
 }
 
 ge::Status CommEntity::ExpandLocalReqBuffer(uint64_t new_req_buffer_size) {
-  std::lock_guard<std::mutex> process_lock(process_mutex_);
+  std::lock_guard<std::mutex> lock(req_buffer_mutex_);
   LLM_CHK_STATUS_RET(mem_info_ptr_->ExpandReqBuffer(new_req_buffer_size),
                      "Failed to expand req buffer");
   info_.local_req_flag_ptr = mem_info_ptr_->req_;
