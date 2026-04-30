@@ -320,14 +320,14 @@ void TransferPool::DeinitAllSlotsLocked() {
     dev_const_one_ = nullptr;
     HIXL_LOGI("[TransferPool] released dev_const_one_ on device %d", device_id_);
   }
-  if (rts_context_ != nullptr) {
-    HIXL_CHK_ACL(aclrtDestroyContext(rts_context_));
-    rts_context_ = nullptr;
-  }
   for (uint32_t i = 0U; i < pool_size_; ++i) {
     DestroySlotLocked(slots_[i]);
     slots_[i] = Slot{};
     slots_[i].in_use = false;
+  }
+  if (rts_context_ != nullptr) {
+    HIXL_CHK_ACL(aclrtDestroyContext(rts_context_));
+    rts_context_ = nullptr;
   }
   slots_.clear();
   pool_size_ = 0U;
