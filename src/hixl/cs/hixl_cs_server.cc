@@ -158,10 +158,12 @@ Status HixlCSServer::DestroyChannel(int32_t fd, const char *msg, uint64_t msg_le
 }
 
 Status HixlCSServer::Finalize() {
+  HIXL_LOGI("[HixlServer] finalize begin");
   Status ret = SUCCESS;
   // ctx_guard 在 TransferPool::Finalize() 之前必须析构，否则 Finalize 会销毁 rts_context_
   // 而 ctx_guard 析构时需要恢复到之前的 context，如果之前 context 和 rts_context_ 相同会报错
   {
+
     auto ctx_guard = GetContextGuard();
     (void)ctx_guard;
     if (listener_running_) {
