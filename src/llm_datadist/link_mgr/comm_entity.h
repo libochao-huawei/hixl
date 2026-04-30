@@ -79,7 +79,6 @@ class EntityMemInfo {
   ~EntityMemInfo();
   ge::Status Initialize();
   ge::Status ExpandReqBuffer(uint64_t new_req_buffer_size);
-  uint64_t GetReqBufferSize() const { return req_buffer_size_; }
 
  private:
   friend class CommEntity;
@@ -196,7 +195,6 @@ class CommEntity {
   ge::Status SetRemoteAddresses();
   CacheAccessTable &GetCacheAccessTable();
   ge::Status ExpandLocalReqBuffer(uint64_t new_req_buffer_size);
-  uint64_t GetLocalReqBufferSize() const;
 
  private:
   std::mutex process_mutex_;

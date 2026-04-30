@@ -125,7 +125,7 @@ EntityMemInfo::EntityMemInfo(bool remote_cache_accessible,
 
 ge::Status EntityMemInfo::Initialize() {
   req_buffer_size_ = kDefaultReqBufferSize;
-  uint64_t msg_buffer_size = kDefaultReqBufferSize + kDefaultRespBufferSize + kFlagSize * 2U;
+  uint64_t msg_buffer_size = kDefaultReqBufferSize + kDefaultRespBufferSize;
   msg_buffer_size_ = msg_buffer_size;
   if (remote_cache_accessible_) {
     LLM_CHK_ACL_RET(aclrtMallocHost(&msg_buffer_, msg_buffer_size_));
@@ -141,7 +141,7 @@ ge::Status EntityMemInfo::Initialize() {
     transfer_resp_ = static_cast<uint8_t *>(transfer_buffer_) + kDefaultReqBufferSize;
   }
   req_ = msg_buffer_;
-  resp_ = static_cast<uint8_t *>(msg_buffer_) + req_buffer_size_ + kFlagSize;
+  resp_ = static_cast<uint8_t *>(msg_buffer_) + req_buffer_size_;
   LLMLOGI("Mem info init success, remote_cache_accessible:%d, req_buffer_size=%lu", 
           static_cast<int32_t>(remote_cache_accessible_), req_buffer_size_);
   return ge::SUCCESS;
@@ -158,7 +158,7 @@ ge::Status EntityMemInfo::ExpandReqBuffer(uint64_t new_req_buffer_size) {
     return ge::SUCCESS;
   }
 
-  uint64_t new_msg_buffer_size = new_req_buffer_size + kDefaultRespBufferSize + kFlagSize * 2U;
+  uint64_t new_msg_buffer_size = new_req_buffer_size + kDefaultRespBufferSize;
   void *new_msg_buffer = nullptr;
   LLM_CHK_ACL_RET(aclrtMallocHost(&new_msg_buffer, new_msg_buffer_size));
   LLM_DISMISSABLE_GUARD(fail_guard, ([&new_msg_buffer]() {
@@ -175,7 +175,7 @@ ge::Status EntityMemInfo::ExpandReqBuffer(uint64_t new_req_buffer_size) {
   msg_buffer_size_ = new_msg_buffer_size;
   req_buffer_size_ = new_req_buffer_size;
   req_ = msg_buffer_;
-  resp_ = static_cast<uint8_t *>(msg_buffer_) + req_buffer_size_ + kFlagSize;
+  resp_ = static_cast<uint8_t *>(msg_buffer_) + req_buffer_size_;
 
   LLM_DISMISS_GUARD(fail_guard);
   LLMLOGI("ExpandReqBuffer success, new_req_buffer_size=%lu, msg_buffer_size=%lu", 
@@ -819,9 +819,5 @@ ge::Status CommEntity::ExpandLocalReqBuffer(uint64_t new_req_buffer_size) {
   info_.local_resp_flag_ptr = mem_info_ptr_->resp_;
   info_.local_resp_ptr = static_cast<uint8_t *>(mem_info_ptr_->resp_) + kFlagSize;
   return ge::SUCCESS;
-}
-
-uint64_t CommEntity::GetLocalReqBufferSize() const {
-  return mem_info_ptr_->GetReqBufferSize();
 }
 }  // namespace llm
