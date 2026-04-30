@@ -270,6 +270,7 @@ void TransferPool::AbortSlotByIndexLocked(uint32_t slot_index) {
       slot.thread = 0U;
     }
     if (slot.ctx != nullptr) {
+      HIXL_LOGI("[TransferPool] destroying context %p in AbortSlotByIndexLocked", slot.ctx);
       HIXL_CHK_ACL(aclrtDestroyContext(slot.ctx), "[TransferPool] aclrtDestroyContext failed in Abort");
       slot.ctx = nullptr;
     }
@@ -328,6 +329,7 @@ void TransferPool::DeinitAllSlotsLocked() {
     slots_[i].in_use = false;
   }
   if (rts_context_ != nullptr) {
+    HIXL_LOGI("[TransferPool] destroying rts context %p", rts_context_);
     HIXL_CHK_ACL(aclrtDestroyContext(rts_context_));
     rts_context_ = nullptr;
   }
@@ -392,6 +394,7 @@ void TransferPool::DestroySlotLocked(Slot &slot) const {
     slot.thread = 0U;
   }
   if (slot.ctx != nullptr) {
+    HIXL_LOGI("[TransferPool] destroying context %p", slot.ctx);
     HIXL_CHK_ACL(aclrtDestroyContext(slot.ctx), "destroy context failed");
     slot.ctx = nullptr;
   }
