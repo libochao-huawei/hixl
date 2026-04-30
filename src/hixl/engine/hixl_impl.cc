@@ -260,6 +260,7 @@ Status Hixl::TransferSync(const AscendString &remote_engine,
   HIXL_LOGI("TransferSync start, remote_engine:%s, operation:%s, op_descs size:%zu, timeout:%d ms",
          remote_engine.GetString(), TransferOpToString(operation).c_str(), op_descs.size(), timeout_in_millis);
   HIXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check Hixl init");
+  HIXL_CHK_BOOL_RET_STATUS(!op_descs.empty(), PARAM_INVALID, "TransferSync failed, op_descs is empty.");
   HIXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, PARAM_INVALID, "timeout_in_millis:%d must > 0", timeout_in_millis);
   const auto ret = impl_->TransferSync(remote_engine, operation, op_descs, timeout_in_millis);
   HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
@@ -277,6 +278,7 @@ Status Hixl::TransferAsync(const AscendString &remote_engine,
                            const TransferArgs &optional_args,
                            TransferReq &req) {
   HIXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "HixlImpl is nullptr, check Hixl init.");
+  HIXL_CHK_BOOL_RET_STATUS(!op_descs.empty(), PARAM_INVALID, "TransferAsync failed, op_descs is empty.");
   const auto ret = impl_->TransferAsync(remote_engine, operation, op_descs, optional_args, req);
   HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
                            "Failed to transfer async, remote_engine:%s, operation:%s, op_descs size:%zu.",
