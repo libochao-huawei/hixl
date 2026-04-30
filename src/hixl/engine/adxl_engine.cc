@@ -9,6 +9,7 @@
  */
 
 #include "adxl_engine.h"
+#include "common/hixl_checker.h"
 
 namespace hixl {
 Status AdxlEngine::Initialize(const std::map<AscendString, AscendString> &options) {
