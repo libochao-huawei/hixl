@@ -107,7 +107,7 @@ void RegBufferPool::Free(void *buffer) {
   }
 }
 
-EntityMemInfo::EntityMemInfo(bool remote_cache_accessible, 
+EntityMemInfo::EntityMemInfo(bool remote_cache_accessible,
                              RegBufferPool *host_reg_pool,
                              RegBufferPool *device_reg_pool)
     : remote_cache_accessible_(remote_cache_accessible),
@@ -142,7 +142,7 @@ ge::Status EntityMemInfo::Initialize() {
   }
   req_ = msg_buffer_;
   resp_ = static_cast<uint8_t *>(msg_buffer_) + req_buffer_size_;
-  LLMLOGI("Mem info init success, remote_cache_accessible:%d, req_buffer_size=%lu", 
+  LLMLOGI("Mem info init success, remote_cache_accessible:%d, req_buffer_size=%lu",
           static_cast<int32_t>(remote_cache_accessible_), req_buffer_size_);
   return ge::SUCCESS;
 }
@@ -153,11 +153,12 @@ ge::Status EntityMemInfo::ExpandReqBuffer(uint64_t new_req_buffer_size) {
     return ge::LLM_PARAM_INVALID;
   }
   if (new_req_buffer_size <= req_buffer_size_) {
-    LLMLOGI("Req buffer size %lu is not larger than current %lu, no need to expand", 
+    LLMLOGI("Req buffer size %lu is not larger than current %lu, no need to expand",
             new_req_buffer_size, req_buffer_size_);
     return ge::SUCCESS;
   }
 
+  const uint64_t prev_req_size = req_buffer_size_;
   uint64_t new_msg_buffer_size = new_req_buffer_size + kDefaultRespBufferSize;
   void *new_msg_buffer = nullptr;
   LLM_CHK_ACL_RET(aclrtMallocHost(&new_msg_buffer, new_msg_buffer_size));
@@ -178,8 +179,7 @@ ge::Status EntityMemInfo::ExpandReqBuffer(uint64_t new_req_buffer_size) {
   resp_ = static_cast<uint8_t *>(msg_buffer_) + req_buffer_size_;
 
   LLM_DISMISS_GUARD(fail_guard);
-  LLMLOGI("ExpandReqBuffer success, new_req_buffer_size=%lu, msg_buffer_size=%lu", 
-          req_buffer_size_, msg_buffer_size_);
+  LLMLOGI("[ExpandReqBuffer] req %lu -> %lu msg_total %lu", prev_req_size, req_buffer_size_, msg_buffer_size_);
   return ge::SUCCESS;
 }
 
@@ -235,7 +235,7 @@ ge::Status EntityCommInfo::Initialize() {
   }
 
   LLM_CHK_STATUS_RET(PrepareHcclComm(), "Failed to prepare hccl comm");
-  LLM_CHK_BOOL_RET_STATUS(params_.timeout >= 0, ge::LLM_PARAM_INVALID, 
+  LLM_CHK_BOOL_RET_STATUS(params_.timeout >= 0, ge::LLM_PARAM_INVALID,
                          "timeout should be greater than or equal 0, given value is %d", params_.timeout);
   LLM_CHK_BOOL_RET_STATUS(params_.link_retry_count >= kRetryCountMin && params_.link_retry_count <= kRetryCountMax,
                          ge::LLM_PARAM_INVALID,
@@ -252,9 +252,9 @@ ge::Status EntityCommInfo::PrepareHcclComm() const {
   for (int32_t i = 0; i < params_.link_retry_count; i++) {
     prepare_ret = HcclAdapter::GetInstance().HcclCommPrepare(comm_, &prepareConfig, avg_timeout);
     if (prepare_ret != HcclResult::HCCL_SUCCESS && (!stop_flag_)) {
-      LLMEVENT("Retrying, there will be a total of %d retries, this time is %d, returned value this time:%d; " 
-              "the hccl logs during the calling of HcclCommPrepare from current thread could be ignored " 
-              "if HcclCommPrepare finally succeeds.", 
+      LLMEVENT("Retrying, there will be a total of %d retries, this time is %d, returned value this time:%d; "
+              "the hccl logs during the calling of HcclCommPrepare from current thread could be ignored "
+              "if HcclCommPrepare finally succeeds.",
               params_.link_retry_count, i + 1, prepare_ret);
     } else {
       break;
@@ -812,8 +812,8 @@ CacheAccessTable &CommEntity::GetCacheAccessTable() {
 
 ge::Status CommEntity::ExpandLocalReqBuffer(uint64_t new_req_buffer_size) {
   std::lock_guard<std::mutex> process_lock(process_mutex_);
-  LLM_CHK_STATUS_RET(mem_info_ptr_->ExpandReqBuffer(new_req_buffer_size), 
-                      "Failed to expand req buffer");
+  LLM_CHK_STATUS_RET(mem_info_ptr_->ExpandReqBuffer(new_req_buffer_size),
+                     "Failed to expand req buffer");
   info_.local_req_flag_ptr = mem_info_ptr_->req_;
   info_.local_req_ptr = static_cast<uint8_t *>(mem_info_ptr_->req_) + kFlagSize;
   info_.local_resp_flag_ptr = mem_info_ptr_->resp_;
