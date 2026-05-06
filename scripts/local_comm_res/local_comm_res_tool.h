@@ -107,8 +107,8 @@ struct TopoLink {
     int32_t local_b;          // 本地节点 B
     int32_t remote_a;         // 远端节点 A
     int32_t remote_b;         // 远端节点 B
-    std::string local_a_ports;  // 本地 A 端口（EID）
-    std::string local_b_ports;  // 本地 B 端口（EID）
+    std::vector<std::string> local_a_ports;  // 本地 A 端口列表（串口标识，如 "die_id/port"）
+    std::vector<std::string> local_b_ports;  // 本地 B 端口列表
 };
 
 struct TopoData {
@@ -128,6 +128,18 @@ struct RouteEntry {
 
 struct RouteData {
     std::vector<RouteEntry> entries;
+};
+
+// ============ RootInfo 数据结构 ============
+
+/**
+ * @brief NPU 串口到 EID 的映射信息
+ * key: 串口标识 "die_id/port"
+ * value: 对应的 EID 字符串
+ */
+struct NpuRootInfo {
+    std::map<std::string, std::string> port_to_eid;  // Mesh 层串口到 EID 映射
+    std::string clos_pg_eid;                          // CLOS 层 PG EID（串口组标识）
 };
 
 // ============ 核心接口 ============
@@ -264,30 +276,30 @@ int32_t ParseRouteFile(const std::string& route_path, RouteData& route_data);
 /**
  * @brief 生成 D2D 直连边（Device to Device）
  * @param [in] topo_data topology 数据
- * @param [in] eid_list 当前 NPU 的 EID 列表
+ * @param [in] npu_rootinfos 所有相关 NPU 的 rootinfo 映射
  * @param [in] phy_id 当前 NPU 物理 ID
  * @param [out] edges 生成的边列表
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
 int32_t GenerateD2DEdges(
     const TopoData& topo_data,
-    const std::vector<std::string>& eid_list,
+    const std::map<int32_t, NpuRootInfo>& npu_rootinfos,
     int32_t phy_id,
     std::vector<EndpointConfig>& edges);
 
 /**
  * @brief 生成 D2U 非直连边（Device to UB Gateway）
  * @param [in] topo_data topology 数据
- * @param [in] clos_pg_eid CLOS 层 PG EID
- * @param [in] clos_ports CLOS 层串口组
+ * @param [in] npu_rootinfos 所有相关 NPU 的 rootinfo 映射
+ * @param [in] clos_plane_ids CLOS 层 plane_id 列表
  * @param [in] phy_id 当前 NPU 物理 ID
  * @param [out] edges 生成的边列表
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
 int32_t GenerateD2UEdges(
     const TopoData& topo_data,
-    const std::string& clos_pg_eid,
-    const std::vector<std::string>& clos_ports,
+    const std::map<int32_t, NpuRootInfo>& npu_rootinfos,
+    const std::vector<std::string>& clos_plane_ids,
     int32_t phy_id,
     std::vector<EndpointConfig>& edges);
 

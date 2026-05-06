@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <dirent.h>
 #include <fstream>
 #include <iostream>
@@ -26,7 +27,7 @@
 
 namespace {
 
-const char* TEST_OUTPUT_FILE = "/home/lutianming/CLionProjects/hixl/scripts/local_comm_res/test_output.json";
+const char* TEST_OUTPUT_FILE = "./test_output.json";
 
 // 将 LocalCommRes 结构体转换为 JSON 字符串
 std::string LocalCommResToJson(const hixl::LocalCommRes& res) {

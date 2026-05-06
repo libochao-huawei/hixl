@@ -360,6 +360,7 @@ struct ClosEidPort {
 - `topo_type = 1DMESH`
 - `local_a` 在 NPU ID 范围内
 
+
 **JSON 格式**：
 ```json
 {
