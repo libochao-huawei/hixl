@@ -27,19 +27,43 @@ class MockAclRuntimeStub : public llm::AclRuntimeStub {
   int32_t phy_device_id_ = 0;
   int64_t super_device_id_ = 9;
   int64_t super_pod_id_ = 8;
+  uint32_t device_count_ = 1;
   bool return_null_soc_name_ = false;
+  bool get_device_count_failed_ = false;
+  bool get_device_failed_ = false;
   bool phy_dev_failed_ = false;
   bool device_info_failed_ = false;
+  bool get_current_context_failed_ = false;
+  bool set_current_context_failed_ = false;
+  aclrtContext current_context_ = reinterpret_cast<aclrtContext>(0x1);
+  uint32_t get_device_count_call_count_ = 0;
+  uint32_t get_soc_name_call_count_ = 0;
+  uint32_t get_device_call_count_ = 0;
+  uint32_t get_phy_device_call_count_ = 0;
+  uint32_t get_device_info_call_count_ = 0;
+  uint32_t get_current_context_call_count_ = 0;
+  uint32_t set_current_context_call_count_ = 0;
 
   const char *aclrtGetSocName() override {
+    ++get_soc_name_call_count_;
     if (return_null_soc_name_) {
       return nullptr;
     }
     return soc_name_.c_str();
   }
 
+  aclError aclrtGetDeviceCount(uint32_t *count) override {
+    ++get_device_count_call_count_;
+    if (get_device_count_failed_ || count == nullptr) {
+      return ACL_ERROR_FAILURE;
+    }
+    *count = device_count_;
+    return ACL_SUCCESS;
+  }
+
   aclError aclrtGetDevice(int32_t *deviceId) override {
-    if (deviceId == nullptr) {
+    ++get_device_call_count_;
+    if (get_device_failed_ || deviceId == nullptr) {
       return ACL_ERROR_FAILURE;
     }
     *deviceId = device_id_;
@@ -47,6 +71,7 @@ class MockAclRuntimeStub : public llm::AclRuntimeStub {
   }
 
   aclError aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, int32_t *const phyDevId) override {
+    ++get_phy_device_call_count_;
     (void)logicDevId;
     if (phy_dev_failed_ || phyDevId == nullptr) {
       return ACL_ERROR_FAILURE;
@@ -56,6 +81,7 @@ class MockAclRuntimeStub : public llm::AclRuntimeStub {
   }
 
   aclError aclrtGetDeviceInfo(uint32_t deviceId, aclrtDevAttr attr, int64_t *value) override {
+    ++get_device_info_call_count_;
     (void)deviceId;
     if (device_info_failed_ || value == nullptr) {
       return ACL_ERROR_FAILURE;
@@ -69,6 +95,24 @@ class MockAclRuntimeStub : public llm::AclRuntimeStub {
       return ACL_SUCCESS;
     }
     *value = 0;
+    return ACL_SUCCESS;
+  }
+
+  aclError aclrtGetCurrentContext(aclrtContext *context) override {
+    ++get_current_context_call_count_;
+    if (get_current_context_failed_ || context == nullptr) {
+      return ACL_ERROR_FAILURE;
+    }
+    *context = current_context_;
+    return ACL_SUCCESS;
+  }
+
+  aclError aclrtSetCurrentContext(aclrtContext context) override {
+    ++set_current_context_call_count_;
+    if (set_current_context_failed_ || context == nullptr) {
+      return ACL_ERROR_FAILURE;
+    }
+    current_context_ = context;
     return ACL_SUCCESS;
   }
 };

@@ -366,6 +366,30 @@ TEST_F(HixlEngineTest, TestHixlEngine) {
   }
 }
 
+TEST_F(HixlEngineTest, InitializeHostOnlySkipsAclRuntimeQueries) {
+  HixlEngine engine("127.0.0.1:16010");
+  auto options = BuildOptions(BuildLocalCommRes("127.0.0.1",
+                                                "1.3",
+                                                {BuildHostRoceEndpoint("127.0.0.1")}));
+
+  EXPECT_EQ(engine.Initialize(options), SUCCESS);
+  EXPECT_EQ(acl_stub_->get_soc_name_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_phy_device_call_count_, 0U);
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, InitializeFailsWhenDeviceEndpointHasNoLocalDeviceResource) {
+  acl_stub_->get_device_failed_ = true;
+  HixlEngine engine("127.0.0.1:16011");
+  auto options = BuildOptions(BuildLocalCommRes("superpod1_1",
+                                                "1.3",
+                                                {BuildDeviceRoceEndpoint("127.0.0.1")}));
+
+  EXPECT_NE(engine.Initialize(options), SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 1U);
+}
+
 TEST_F(HixlEngineTest, TestTransferAsync) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
   std::string local_engine1 = "127.0.0.1";
