@@ -23,6 +23,7 @@
 #include "common/hixl_inner_types.h"
 #include "common/segment.h"
 #include "common/ctrl_msg.h"
+#include "engine/endpoint_generator.h"
 
 namespace hixl {
 
@@ -191,6 +192,8 @@ class HixlClient {
   Status CreateCsClients(const EndpointConfig &local_endpoint_config, const EndpointConfig &remote_endpoint_config,
                          CommType type);
 
+  Status EnsureRuntimeContextForLocalEndpoint(const EndpointConfig &local_endpoint_config);
+
   Status GetMemType(const std::vector<SegmentPtr> &segments, uintptr_t addr, size_t len, MemType &mem_type) const;
 
   // 将 op_descs 根据 local_segments_ 和 remote_segments_ 的信息，按照 D2D，H2D，D2H，H2H 进行分类，结果保存在
@@ -219,6 +222,9 @@ class HixlClient {
   uint32_t server_port_;
   uint8_t rdma_tc_{kRdmaTrafficClass};
   uint8_t rdma_sl_{kRdmaServiceLevel};
+  EndpointGenerator::LocalRuntimeContext runtime_ctx_{};
+  bool runtime_ctx_resolved_{false};
+  bool has_local_device_client_{false};
   bool is_connected_{false};  // true为已建链；false未建链
   bool is_finalized_{false};
   // Finalize 置位后拒绝新 TransferSync；在析构 CS client 前等待为 0（与 TransferSync 内 fetch_add 配对）
