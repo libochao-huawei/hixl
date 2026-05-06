@@ -216,6 +216,86 @@ typedef struct {
     };
 } HcommChannelDesc;
 
+// 传输类型定义
+typedef enum {
+    HCOMM_TRANSFER_TYPE_INVALID = -1,
+    HCOMM_TRANSFER_TYPE_WRITE = 0,
+    HCOMM_TRANSFER_TYPE_READ = 1,
+    HCOMM_TRANSFER_TYPE_WRITE_WITH_NOTIFY = 2, ///< 带通知的写操作
+} HcommTransferType;
+
+// 归约操作类型定义
+typedef enum {
+    HCOMM_REDUCE_SUM = 0,
+    HCOMM_REDUCE_PROD = 1,
+    HCOMM_REDUCE_MAX = 2,
+    HCOMM_REDUCE_MIN = 3,
+    HCOMM_REDUCE_RESERVED = 255
+} HcommReduceOp;
+
+// 数据类型定义
+typedef enum {
+    HCOMM_DATA_TYPE_INT8 = 0,
+    HCOMM_DATA_TYPE_INT16 = 1,
+    HCOMM_DATA_TYPE_INT32 = 2,
+    HCOMM_DATA_TYPE_FP16 = 3,
+    HCOMM_DATA_TYPE_FP32 = 4,
+    HCOMM_DATA_TYPE_INT64 = 5,
+    HCOMM_DATA_TYPE_UINT64 = 6,
+    HCOMM_DATA_TYPE_UINT8 = 7,
+    HCOMM_DATA_TYPE_UINT16 = 8,
+    HCOMM_DATA_TYPE_UINT32 = 9,
+    HCOMM_DATA_TYPE_FP64 = 10,
+    HCOMM_DATA_TYPE_BFP16 = 11,
+    HCOMM_DATA_TYPE_INT128 = 12,
+    HCOMM_DATA_TYPE_HIF8 = 14,
+    HCOMM_DATA_TYPE_FP8E4M3 = 15,
+    HCOMM_DATA_TYPE_FP8E5M2 = 16,
+    HCOMM_DATA_TYPE_FP8E8M0 = 17,
+    HCOMM_DATA_TYPE_RESERVED = 255
+} HcommDataType;
+
+/**
+ * @brief 批量传输描述符
+ * @note 结构体末尾扩展需要自增版本号，并补充兼容处理逻辑。
+ */
+typedef struct {
+    CommAbiHeader header;            ///< ABI头部，包含版本等信息
+    HcommTransferType transType;     ///< 传输类型
+    union {
+        uint8_t reserved[32];        ///< 保留字段
+    };
+    union {
+        uint8_t raws[32];            ///< 通用数据
+        struct {
+            uint64_t len;            ///< 数据长度（字节）
+            void *dst;               ///< 目标内存地址
+            void *src;               ///< 源内存地址
+        } write;
+        struct {
+            uint64_t len;            ///< 数据长度（字节）
+            void *dst;               ///< 目标内存地址
+            void *src;               ///< 源内存地址
+        } read;
+        struct {
+            uint64_t count;          ///< 个数
+            void *dst;               ///< 目标内存地址
+            void *src;               ///< 源内存地址
+            HcommReduceOp reduceOp;  ///< 归约操作
+            HcommDataType dataType;  ///< 数据类型
+        } reduce;
+        struct {
+            uint32_t notifyIdx;      ///< 通知索引
+        } notifyRecord;
+        struct {
+            uint64_t len;            ///< 数据长度（字节）
+            void *dst;               ///< 目标内存地址
+            void *src;               ///< 源内存地址
+            uint32_t notifyIdx;      ///< 远端通知索引
+        } writeWithNotify;
+    };
+} HcommBatchTransferDesc;
+
 /**
  * @brief 初始化EndpointDesc结构体
  *
