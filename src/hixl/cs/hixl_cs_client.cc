@@ -344,9 +344,33 @@ Status HixlCSClient::InitDeviceResource() {
   std::vector<TransferPool::SlotHandle> all_slots;
   HIXL_CHK_STATUS_RET(TransferPool::GetInstance(device_id_).GetAllSlots(all_slots),
                       "[HixlClient] TransferPool GetAllSlots failed. devId=%d", device_id_);
+
+  // 预先解析所有 slot 的 notify 地址，避免传输时重新获取
+  slot_notify_addrs_.clear();
+  slot_notify_addrs_.resize(all_slots.size());
+  for (size_t i = 0U; i < all_slots.size(); ++i) {
+    uint64_t notify_addr = 0U;
+    uint32_t notify_len = 0U;
+    HIXL_CHK_STATUS_RET(ResolveNotifyDeviceAddress(all_slots[i].notify, notify_addr, notify_len),
+                        "[HixlClient] ResolveNotifyDeviceAddress failed for slot %zu", i);
+    slot_notify_addrs_[i] = notify_addr;
+    if (i == 0U) {
+      notify_len_ = notify_len;
+    }
+  }
+
   if (ep.protocol != COMM_PROTOCOL_ROCE && ep.protocol != COMM_PROTOCOL_HCCS) {
     HIXL_CHK_STATUS_RET(RegisterNotifyMemForAllSlots(all_slots),
                         "[HixlClient] RegisterNotifyMemForAllSlots failed. devId=%d", device_id_);
+  }
+
+  // 提前初始化 remote flag 和 kernel，避免传输时引入耗时
+  {
+    std::lock_guard<std::mutex> lock(device_mu_);
+    HIXL_CHK_STATUS_RET(EnsureDeviceRemoteFlagInitedLocked(),
+                        "[HixlClient] EnsureDeviceRemoteFlagInitedLocked failed");
+    HIXL_CHK_STATUS_RET(EnsureDeviceKernelLoadedLocked(),
+                        "[HixlClient] EnsureDeviceKernelLoadedLocked failed");
   }
   return SUCCESS;
 }
@@ -730,22 +754,8 @@ Status HixlCSClient::ValidateDeviceInputs(bool is_get, const CommunicateMem &mem
 
 Status HixlCSClient::PrepareDeviceRemoteFlagAndKernel(void *&remote_flag) {
   HIXL_LOGI("[HixlClient] PrepareDeviceRemoteFlagAndKernel start");
-  remote_flag = nullptr;
-
-  {
-    std::lock_guard<std::mutex> lock(device_mu_);
-    const Status flag_ret = EnsureDeviceRemoteFlagInitedLocked();
-    HIXL_CHK_STATUS_RET(flag_ret, "[HixlClient] EnsureDeviceRemoteFlagInitedLocked failed");
-    remote_flag = device_remote_flag_addr_;
-  }
-
+  remote_flag = device_remote_flag_addr_;
   HIXL_CHECK_NOTNULL(remote_flag, "[HixlClient] remote_flag is nullptr");
-
-  {
-    std::lock_guard<std::mutex> lock(device_mu_);
-    const Status kernel_ret = EnsureDeviceKernelLoadedLocked();
-    HIXL_CHK_STATUS_RET(kernel_ret, "[HixlClient] EnsureDeviceKernelLoadedLocked failed");
-  }
   HIXL_LOGI("[HixlClient] PrepareDeviceRemoteFlagAndKernel end, remote_flag=%p", remote_flag);
   return SUCCESS;
 }
@@ -770,10 +780,9 @@ Status HixlCSClient::PrepareDeviceBatchMemBuffers(const CommunicateMem &communic
 
 Status HixlCSClient::FillDeviceArgs(const CommunicateMem &mem_param, MemDev &mem_dev, const TransferPool::SlotHandle &slot,
                                     void *remote_flag, DeviceArgs &args) {
-  uint64_t notify_addr = 0U;
-  uint32_t notify_len = 0U;
-  HIXL_CHK_STATUS_RET(ResolveNotifyDeviceAddress(slot.notify, notify_addr, notify_len),
-                      "[HixlClient] FillDeviceArgs ResolveNotifyDeviceAddress failed");
+  HIXL_CHK_BOOL_RET_STATUS(slot.slot_index < slot_notify_addrs_.size(), PARAM_INVALID,
+                            "[HixlClient] slot_index %u out of range %zu", slot.slot_index, slot_notify_addrs_.size());
+  uint64_t notify_addr = slot_notify_addrs_[slot.slot_index];
   args.thread = slot.thread;
   args.channel = static_cast<uint64_t>(client_channel_handle_);
   args.list_num = mem_param.list_num;
@@ -784,7 +793,7 @@ Status HixlCSClient::FillDeviceArgs(const CommunicateMem &mem_param, MemDev &mem
   args.len_list = mem_dev.len_list_dev;
   args.remote_flag = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(remote_flag));
   args.local_flag = notify_addr;
-  args.flag_size = notify_len;
+  args.flag_size = notify_len_;
   return SUCCESS;
 }
 
@@ -818,8 +827,8 @@ Status HixlCSClient::PrepareDeviceTransferArgs(const CommunicateMem &communicate
   return SUCCESS;
 }
 
+// device 内存由runtime kernel管理，handle能否复用？参数更新，notify地址提前获取，EnsureDeviceKernelLoadedLocked提前加载；
 Status HixlCSClient::LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handle, const void *remote_flag) {
-  hixl::TemporaryRtContext guard(handle.shared_slot->ctx);
   HIXL_CHECK_NOTNULL(remote_flag);
   const char *kernel_name = is_get ? kDeviceFuncGet : kDeviceFuncPut;
   HIXL_LOGI("[HixlClient] LaunchDeviceKernel start. kernel=%s", kernel_name);
@@ -896,8 +905,8 @@ Status HixlCSClient::BatchTransferDevice(bool is_get, const CommunicateMem &comm
   // Mutex protects LaunchDeviceKernel + memcpy async serialization
   {
     std::lock_guard<std::mutex> lock(device_launch_mu_);
-    HIXL_CHK_STATUS_RET(LaunchDeviceKernel(is_get, *handle, remote_flag), "LaunchDeviceKernel failed");
     hixl::TemporaryRtContext ctx_guard(handle->shared_slot->ctx);
+    HIXL_CHK_STATUS_RET(LaunchDeviceKernel(is_get, *handle, remote_flag), "LaunchDeviceKernel failed");
     HIXL_CHK_ACL_RET(aclrtMemcpyAsync(handle->host_flag, sizeof(uint64_t), handle->shared_slot->dev_const_one, sizeof(uint64_t),
                                       ACL_MEMCPY_DEVICE_TO_HOST, handle->shared_slot->stream),
                      "[HixlClient] aclrtMemcpyAsync (Flag D2H) failed");
@@ -949,9 +958,8 @@ Status HixlCSClient::BatchTransferDeviceSync(bool is_get, const CommunicateMem &
   // Mutex protects LaunchDeviceKernel + sync serialization
   {
     std::lock_guard<std::mutex> lock(device_launch_mu_);
-    HIXL_CHK_STATUS_RET(LaunchDeviceKernel(is_get, *handle, remote_flag), "LaunchDeviceKernel failed");
-
     hixl::TemporaryRtContext ctx_guard(handle->shared_slot->ctx);
+    HIXL_CHK_STATUS_RET(LaunchDeviceKernel(is_get, *handle, remote_flag), "LaunchDeviceKernel failed");
     const aclError sync_ret = aclrtSynchronizeStreamWithTimeout(handle->shared_slot->stream, timeout_ms);
     if (sync_ret != ACL_SUCCESS && handle->shared_slot != nullptr) {
       TransferPool::GetInstance(handle->shared_slot->device_id).Abort(*handle->shared_slot);

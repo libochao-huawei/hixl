@@ -198,6 +198,9 @@ class HixlClient {
   Status ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs,
                            std::map<CommType, std::vector<TransferOpDesc>> &op_descs_table);
 
+  // 判断是否仅有 ROCE/UBOE/HCCS 单一客户端，返回该类型
+  bool IsOnlyRoceUboeHccsClient(CommType &single_type);
+
   Status BatchTransfer(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
                        std::vector<TransferCompleteInfo> &complete_handle_list);
 
