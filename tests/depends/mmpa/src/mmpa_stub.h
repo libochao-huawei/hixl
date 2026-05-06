@@ -18,6 +18,7 @@
 #ifndef AIR_TESTS_DEPENDS_MMPA_SRC_MMAP_STUB_H_
 #define AIR_TESTS_DEPENDS_MMPA_SRC_MMAP_STUB_H_
 
+#include <cstring>
 #include <cstdint>
 #include <memory>
 #include "mmpa/mmpa_api.h"
@@ -28,6 +29,18 @@ class MmpaStubApiGe {
   virtual ~MmpaStubApiGe() = default;
 
   virtual void *DlOpen(const char *file_name, int32_t mode) {
+    if (file_name != nullptr && std::strcmp(file_name, "libruntime.so") == 0) {
+      void *handle = dlopen("libruntime_stub.so", mode);
+      if (handle != nullptr) {
+        return handle;
+      }
+    }
+    if (file_name != nullptr && std::strcmp(file_name, "libascendcl.so") == 0) {
+      void *handle = dlopen("libascendcl_stub.so", mode);
+      if (handle != nullptr) {
+        return handle;
+      }
+    }
     return dlopen(file_name, mode);
   }
 

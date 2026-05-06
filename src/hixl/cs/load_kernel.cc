@@ -18,6 +18,7 @@
 #include "common/hixl_log.h"
 #include "common/scope_guard.h"
 #include "common/hixl_checker.h"
+#include "proxy/runtime_proxy.h"
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -64,7 +65,7 @@ Status LoadBinaryFromJson(const char *json_path, aclrtBinHandle &bin_handle) {
   option.value.cpuKernelMode = kCpuKernelMode;
   load_options.numOpt = 1U;
   load_options.options = &option;
-  aclError aerr = aclrtBinaryLoadFromFile(resolved_path, &load_options, &bin_handle);
+  aclError aerr = RuntimeProxy::GetInstance().aclrtBinaryLoadFromFile(resolved_path, &load_options, &bin_handle);
   if (aerr != ACL_SUCCESS) {
     HIXL_LOGE(FAILED, "[LoadKernel] aclrtBinaryLoadFromFile failed. path=%s ret=%d",
               resolved_path, static_cast<int32_t>(aerr));
@@ -81,7 +82,7 @@ Status GetFuncHandle(aclrtBinHandle bin_handle, const char *func_name, aclrtFunc
   if (func_name == nullptr) {
     return PARAM_INVALID;
   }
-  aclError aerr = aclrtBinaryGetFunction(bin_handle, func_name, &func_handle);
+  aclError aerr = RuntimeProxy::GetInstance().aclrtBinaryGetFunction(bin_handle, func_name, &func_handle);
   if (aerr != ACL_SUCCESS) {
     HIXL_LOGE(FAILED, "[LoadKernel] aclrtBinaryGetFunction failed. func=%s ret=%d",
               func_name, static_cast<int32_t>(aerr));

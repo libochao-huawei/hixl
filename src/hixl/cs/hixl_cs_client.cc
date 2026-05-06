@@ -31,6 +31,7 @@
 #include "mem_msg_handler.h"
 #include "proxy/hcomm_proxy.h"
 #include "proxy/hccp_proxy.h"
+#include "proxy/runtime_proxy.h"
 #include "runtime/runtime/rts/rts_device.h"
 
 namespace hixl {
@@ -178,15 +179,15 @@ hixl::Status AllocAndCopyDeviceBuffer(void **dev_ptr, const void *host_ptr, size
     *dev_ptr = nullptr;
     return hixl::SUCCESS;
   }
-  HIXL_CHK_ACL_RET(aclrtMalloc(dev_ptr, size, ACL_MEM_MALLOC_HUGE_ONLY), "[HixlClient] aclrtMalloc %s failed. size=%zu",
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtMalloc(dev_ptr, size, ACL_MEM_MALLOC_HUGE_ONLY), "[HixlClient] aclrtMalloc %s failed. size=%zu",
                    tag, size);
   HIXL_DISMISSABLE_GUARD(mem_guard, [dev_ptr]() {
     if (*dev_ptr != nullptr) {
-      aclrtFree(*dev_ptr);
+      RuntimeProxy::GetInstance().aclrtFree(*dev_ptr);
       *dev_ptr = nullptr;
     }
   });
-  HIXL_CHK_ACL_RET(aclrtMemcpy(*dev_ptr, size, host_ptr, size, ACL_MEMCPY_HOST_TO_DEVICE),
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtMemcpy(*dev_ptr, size, host_ptr, size, ACL_MEMCPY_HOST_TO_DEVICE),
                    "[HixlClient] aclrtMemcpy %s failed. size=%zu", tag, size);
   HIXL_DISMISS_GUARD(mem_guard);
   return hixl::SUCCESS;
@@ -194,15 +195,15 @@ hixl::Status AllocAndCopyDeviceBuffer(void **dev_ptr, const void *host_ptr, size
 
 void FreeMemDev(hixl::MemDev &mem_dev) {
   if (mem_dev.dst_buf_list_dev != nullptr) {
-    aclrtFree(mem_dev.dst_buf_list_dev);
+    RuntimeProxy::GetInstance().aclrtFree(mem_dev.dst_buf_list_dev);
     mem_dev.dst_buf_list_dev = nullptr;
   }
   if (mem_dev.src_buf_list_dev != nullptr) {
-    aclrtFree(mem_dev.src_buf_list_dev);
+    RuntimeProxy::GetInstance().aclrtFree(mem_dev.src_buf_list_dev);
     mem_dev.src_buf_list_dev = nullptr;
   }
   if (mem_dev.len_list_dev != nullptr) {
-    aclrtFree(mem_dev.len_list_dev);
+    RuntimeProxy::GetInstance().aclrtFree(mem_dev.len_list_dev);
     mem_dev.len_list_dev = nullptr;
   }
 }
@@ -222,7 +223,7 @@ Status HixlCSClient::ResolveNotifyDeviceAddress(aclrtNotify notify, uint64_t &no
   constexpr rtDevResProcType_t kNotifyDevResProcType = RT_PROCESS_HCCP;
   constexpr rtDevResType_t kNotifyDevResType = RT_RES_TYPE_STARS_NOTIFY_RECORD;
   uint32_t notify_id = 0U;
-  HIXL_CHK_ACL_RET(aclrtGetNotifyId(notify, &notify_id), "[HixlClient] aclrtGetNotifyId failed");
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtGetNotifyId(notify, &notify_id), "[HixlClient] aclrtGetNotifyId failed");
   rtDevResInfo res_info{};
   res_info.dieId = 0U;
   res_info.procType = kNotifyDevResProcType;
@@ -232,7 +233,7 @@ Status HixlCSClient::ResolveNotifyDeviceAddress(aclrtNotify notify, uint64_t &no
   rtDevResAddrInfo addr_info{};
   addr_info.resAddress = &notify_addr;
   addr_info.len = &notify_len;
-  HIXL_CHK_ACL_RET(rtGetDevResAddress(&res_info, &addr_info), "[HixlClient] rtGetDevResAddress failed");
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().rtGetDevResAddress(&res_info, &addr_info), "[HixlClient] rtGetDevResAddress failed");
   return SUCCESS;
 }
 
@@ -337,7 +338,7 @@ Status HixlCSClient::InitDeviceResource() {
     device_id_ = -1;
     return SUCCESS;
   }
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id_), "[HixlClient] aclrtGetDevice failed");
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtGetDevice(&device_id_), "[HixlClient] aclrtGetDevice failed");
   HIXL_LOGI("[HixlClient] device_id=%d", device_id_);
   Status pret = TransferPool::GetInstance(device_id_).Initialize(kDeviceTransferPoolSize);
   HIXL_CHK_STATUS_RET(pret, "[HixlClient] TransferPool Initialize failed. devId=%d", device_id_);
@@ -622,7 +623,7 @@ Status HixlCSClient::ReleaseDevCompleteHandle(DeviceCompleteHandle *handle) {
 
   // Free independent host_flag (allocated for async transfers)
   if (handle->host_flag != nullptr) {
-    HIXL_CHK_ACL(aclrtFreeHost(handle->host_flag));
+    HIXL_CHK_ACL(RuntimeProxy::GetInstance().aclrtFreeHost(handle->host_flag));
     handle->host_flag = nullptr;
   }
 
@@ -790,7 +791,7 @@ Status HixlCSClient::FillDeviceArgs(const CommunicateMem &mem_param, MemDev &mem
 
 Status HixlCSClient::AllocateHostFlag(void *&host_flag) {
   host_flag = nullptr;
-  HIXL_CHK_ACL_RET(aclrtMallocHost(&host_flag, sizeof(uint64_t)), "[HixlClient] aclrtMallocHost host_flag failed");
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtMallocHost(&host_flag, sizeof(uint64_t)), "[HixlClient] aclrtMallocHost host_flag failed");
   *(static_cast<uint64_t *>(host_flag)) = kDeviceFlagInitValue;
   return SUCCESS;
 }
@@ -828,13 +829,13 @@ Status HixlCSClient::LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handl
   constexpr uint32_t block_dim = 1U;
   aclrtFuncHandle funcHandle = func;
   aclrtArgsHandle argsHandle = nullptr;
-  HIXL_CHK_ACL_RET(aclrtKernelArgsInit(funcHandle, &argsHandle), "[HixlClient] aclrtKernelArgsInit failed. kernel=%s",
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtKernelArgsInit(funcHandle, &argsHandle), "[HixlClient] aclrtKernelArgsInit failed. kernel=%s",
                    kernel_name);
   aclrtParamHandle paraHandle;
-  HIXL_CHK_ACL_RET(aclrtKernelArgsAppend(argsHandle, &handle.args, sizeof(DeviceArgs), &paraHandle),
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtKernelArgsAppend(argsHandle, &handle.args, sizeof(DeviceArgs), &paraHandle),
                    "[HixlClient] aclrtKernelArgsAppend failed, kernel = %s", kernel_name);
 
-  HIXL_CHK_ACL_RET(aclrtKernelArgsFinalize(argsHandle), "[HixlClient] aclrtKernelArgsFinalize failed, kernel = %s",
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtKernelArgsFinalize(argsHandle), "[HixlClient] aclrtKernelArgsFinalize failed, kernel = %s",
                    kernel_name);
 
   aclrtLaunchKernelCfg cfg;
@@ -845,9 +846,9 @@ Status HixlCSClient::LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handl
   cfg.attrs = &attr;
 
   HIXL_CHECK_NOTNULL(handle.shared_slot.get(), "[HixlClient] LaunchDeviceKernel shared_slot is null");
-  HIXL_CHK_ACL_RET(aclrtLaunchKernelWithConfig(funcHandle, block_dim, handle.shared_slot->stream, &cfg, argsHandle, nullptr),
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtLaunchKernelWithConfig(funcHandle, block_dim, handle.shared_slot->stream, &cfg, argsHandle, nullptr),
                    "[HixlClient] aclrtLaunchKernelWithConfig failed");
-  HIXL_CHK_ACL_RET(aclrtWaitAndResetNotify(handle.shared_slot->notify, handle.shared_slot->stream, kCustomTimeoutMs),
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtWaitAndResetNotify(handle.shared_slot->notify, handle.shared_slot->stream, kCustomTimeoutMs),
                    "[HixlClient] aclrtWaitAndResetNotify failed");
   HIXL_LOGI("[HixlClient] LaunchDeviceKernel end. kernel=%s", kernel_name);
   return SUCCESS;
@@ -867,7 +868,7 @@ Status HixlCSClient::BatchTransferDevice(bool is_get, const CommunicateMem &comm
   HIXL_CHK_STATUS_RET(AllocateHostFlag(host_flag), "[HixlClient] AllocateHostFlag failed");
   HIXL_DISMISSABLE_GUARD(flag_guard, [&host_flag]() {
     if (host_flag != nullptr) {
-      aclrtFreeHost(host_flag);
+      RuntimeProxy::GetInstance().aclrtFreeHost(host_flag);
     }
   });
 
@@ -898,7 +899,7 @@ Status HixlCSClient::BatchTransferDevice(bool is_get, const CommunicateMem &comm
     std::lock_guard<std::mutex> lock(device_launch_mu_);
     HIXL_CHK_STATUS_RET(LaunchDeviceKernel(is_get, *handle, remote_flag), "LaunchDeviceKernel failed");
     hixl::TemporaryRtContext ctx_guard(handle->shared_slot->ctx);
-    HIXL_CHK_ACL_RET(aclrtMemcpyAsync(handle->host_flag, sizeof(uint64_t), handle->shared_slot->dev_const_one, sizeof(uint64_t),
+    HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtMemcpyAsync(handle->host_flag, sizeof(uint64_t), handle->shared_slot->dev_const_one, sizeof(uint64_t),
                                       ACL_MEMCPY_DEVICE_TO_HOST, handle->shared_slot->stream),
                      "[HixlClient] aclrtMemcpyAsync (Flag D2H) failed");
   }
@@ -952,7 +953,7 @@ Status HixlCSClient::BatchTransferDeviceSync(bool is_get, const CommunicateMem &
     HIXL_CHK_STATUS_RET(LaunchDeviceKernel(is_get, *handle, remote_flag), "LaunchDeviceKernel failed");
 
     hixl::TemporaryRtContext ctx_guard(handle->shared_slot->ctx);
-    const aclError sync_ret = aclrtSynchronizeStreamWithTimeout(handle->shared_slot->stream, timeout_ms);
+    const aclError sync_ret = RuntimeProxy::GetInstance().aclrtSynchronizeStreamWithTimeout(handle->shared_slot->stream, timeout_ms);
     if (sync_ret != ACL_SUCCESS && handle->shared_slot != nullptr) {
       TransferPool::GetInstance(handle->shared_slot->device_id).Abort(*handle->shared_slot);
     }
@@ -1403,7 +1404,7 @@ void HixlCSClient::ReleaseDeviceResourcesLocked() {
   CleanupActiveSlot();
   if (device_kernel_loaded_) {
     if (device_kernel_handle_ != nullptr) {
-      aclrtBinaryUnLoad(device_kernel_handle_);
+      RuntimeProxy::GetInstance().aclrtBinaryUnLoad(device_kernel_handle_);
     }
     device_kernel_handle_ = nullptr;
     device_func_get_ = nullptr;

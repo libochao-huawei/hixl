@@ -9,13 +9,13 @@
  */
 
 #include "hccp_proxy.h"
+#include "runtime_proxy.h"
 #include <chrono>
 #include <cstdint>
 #include <mutex>
 #include <thread>
 #include "acl/acl.h"
 #include "mmpa/mmpa_api.h"
-#include "runtime/rt_external_event.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
 
@@ -113,7 +113,7 @@ Status ResolveRaNotifyPhyId(int32_t device_id, unsigned int &phy_id) {
     return PARAM_INVALID;
   }
   int32_t phy_device_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(device_id, &phy_device_id),
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtGetPhyDevIdByLogicDevId(device_id, &phy_device_id),
                    "[HccpProxy] aclrtGetPhyDevIdByLogicDevId failed");
   if (phy_device_id < 0) {
     HIXL_LOGE(PARAM_INVALID, "[HccpProxy] invalid phy_device_id=%d", phy_device_id);
@@ -142,7 +142,7 @@ Status RaOpenRdev(unsigned int phy_id, RaRdevGetHandleFn get_handle_fn, RdmaHand
 Status CombineNotifyDeviceVa(unsigned int phy_id, unsigned long long base_va, aclrtNotify notify,
                              uint64_t &notify_addr) {
   uint64_t offset = 0ULL;
-  const rtError_t rt_ret = rtNotifyGetAddrOffset(reinterpret_cast<rtNotify_t>(notify), &offset);
+  const rtError_t rt_ret = RuntimeProxy::GetInstance().rtNotifyGetAddrOffset(reinterpret_cast<rtNotify_t>(notify), &offset);
   if (rt_ret != RT_ERROR_NONE) {
     REPORT_INNER_ERR_MSG("E19999", "Call rtNotifyGetAddrOffset fail, ret: 0x%X",
                          static_cast<uint32_t>(rt_ret));

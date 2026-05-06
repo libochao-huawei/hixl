@@ -16,7 +16,9 @@
 #include "common/ctrl_msg.h"
 #include "common/scope_guard.h"
 #include "common/ctrl_msg_plugin.h"
+#include "proxy/runtime_proxy.h"
 #include "transfer_pool.h"
+#include "engine/endpoint_generator.h"
 
 static inline void to_json(nlohmann::json &j, const CommMem &m) {
   j = nlohmann::json{};
@@ -84,15 +86,15 @@ Status HixlCSServer::RegisterHostTransFinishedFlag() {
 
 Status HixlCSServer::RegisterDeviceTransFinishedFlag() {
   int32_t dev_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_id), "Failed to aclrtGetDevice for CS server TransferPool");
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtGetDevice(&dev_id), "Failed to aclrtGetDevice for CS server TransferPool");
   HIXL_CHK_STATUS_RET(TransferPool::GetInstance(dev_id).Initialize(kDeviceTransferPoolSize),
                       "Failed to init TransferPool for CS server, dev_id:%d", dev_id);
   HIXL_DISMISSABLE_GUARD(pool_rollback, ([dev_id]() { TransferPool::GetInstance(dev_id).Finalize(); }));
   void *dev_flag = nullptr;
-  HIXL_CHK_ACL_RET(aclrtMalloc(&dev_flag, sizeof(int64_t),
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtMalloc(&dev_flag, sizeof(int64_t),
                                static_cast<aclrtMemMallocPolicy>(ACL_MEM_TYPE_HIGH_BAND_WIDTH | ACL_MEM_MALLOC_HUGE_ONLY)));
   int64_t val = 1;
-  HIXL_CHK_ACL_RET(aclrtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), ACL_MEMCPY_HOST_TO_DEVICE));
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), ACL_MEMCPY_HOST_TO_DEVICE));
   CommMem mem{};
   mem.type = COMM_MEM_TYPE_DEVICE;
   mem.addr = dev_flag;
@@ -112,6 +114,7 @@ Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list
   HIXL_CHECK_NOTNULL(endpoint_list);
   HIXL_CHECK_NOTNULL(config);
   HIXL_CHK_BOOL_RET_STATUS(list_num > 0, PARAM_INVALID, "endpoint list num:%u is invalid, must > 0", list_num);
+  const bool has_device_ep = EndpointGenerator::HasLocalDeviceEndpoint(endpoint_list, list_num);
   for (uint32_t i = 0U; i < list_num; ++i) {
     EndpointHandle handle = nullptr;
     HIXL_CHK_STATUS_RET(endpoint_store_.CreateEndpoint(endpoint_list[i], handle), "Failed to create endpoint.");
@@ -133,7 +136,7 @@ Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list
                                       return this->DestroyChannel(fd, msg, msg_len);
                                     });
   CtrlMsgPlugin::Initialize();
-  msg_handler_.Initialize();
+  HIXL_CHK_STATUS_RET(msg_handler_.Initialize(has_device_ep), "Failed to initialize msg handler");
   HIXL_CHK_STATUS_RET(InitTransFinishedFlag(), "Failed to init trans finished flag");
   HIXL_EVENT("[HixlServer] init success, endpoint_list_num:%u", list_num);
   return SUCCESS;
@@ -176,7 +179,7 @@ Status HixlCSServer::Finalize() {
     ret = endpoint_store_.Finalize();
     HIXL_CHK_STATUS(ret, "Failed to finalize endpoint store.");
     if (trans_flag_ != nullptr) {
-      auto rt_ret = aclrtFree(trans_flag_);
+      auto rt_ret = RuntimeProxy::GetInstance().aclrtFree(trans_flag_);
       if (rt_ret != ACL_SUCCESS) {
         HIXL_LOGE(FAILED, "Failed to free trans finished flag, ret:%d", rt_ret);
       }
@@ -187,7 +190,7 @@ Status HixlCSServer::Finalize() {
       host_trans_flag_ = nullptr;
     }
     if (dev_trans_flag_ != nullptr) {
-      auto rt_ret = aclrtFree(dev_trans_flag_);
+      auto rt_ret = RuntimeProxy::GetInstance().aclrtFree(dev_trans_flag_);
       if (rt_ret != ACL_SUCCESS) {
         HIXL_LOGE(FAILED, "Failed to free DEVICE trans finished flag, ret:%d", rt_ret);
       }

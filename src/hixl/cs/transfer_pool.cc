@@ -20,6 +20,7 @@
 #include "common/llm_utils.h"
 #include "common/scope_guard.h"
 #include "proxy/hcomm_proxy.h"
+#include "proxy/runtime_proxy.h"
 
 namespace {
 constexpr uint64_t kFlagInitValue = 0ULL;
@@ -77,7 +78,7 @@ Status TransferPool::Initialize(uint32_t pool_size) {
   slots_.clear();
   slots_.resize(pool_size_);
   // 为对外接口创建共享 rts context
-  HIXL_CHK_ACL_RET(aclrtCreateContext(&rts_context_, device_id_), "aclrtCreateContext rts_context_ failed");
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtCreateContext(&rts_context_, device_id_), "aclrtCreateContext rts_context_ failed");
   for (uint32_t i = 0U; i < pool_size_; ++i) {
     Slot &s = slots_[i];
     s.in_use = false;
@@ -253,14 +254,14 @@ void TransferPool::AbortSlotByIndexLocked(uint32_t slot_index) {
   {
     hixl::TemporaryRtContext guard(slot.ctx);
     if (slot.stream != nullptr) {
-      HIXL_CHK_ACL(aclrtStreamAbort(slot.stream), "[TransferPool] aclrtStreamAbort failed");
+      HIXL_CHK_ACL(RuntimeProxy::GetInstance().aclrtStreamAbort(slot.stream), "[TransferPool] aclrtStreamAbort failed");
     }
 
     if (slot.notify != nullptr) {
       aclrtNotify *notify_ptr = &slot.notify;
-      const aclError reset_ret = aclrtNotifyBatchReset(notify_ptr, static_cast<size_t>(1));
+      const aclError reset_ret = RuntimeProxy::GetInstance().aclrtNotifyBatchReset(notify_ptr, static_cast<size_t>(1));
       if (reset_ret != ACL_SUCCESS) {
-        HIXL_CHK_ACL(aclrtDestroyNotify(slot.notify), "[TransferPool] aclrtDestroyNotify fallback after BatchReset");
+        HIXL_CHK_ACL(RuntimeProxy::GetInstance().aclrtDestroyNotify(slot.notify), "[TransferPool] aclrtDestroyNotify fallback after BatchReset");
         slot.notify = nullptr;
       }
     }
@@ -271,7 +272,7 @@ void TransferPool::AbortSlotByIndexLocked(uint32_t slot_index) {
     }
     if (slot.ctx != nullptr) {
       HIXL_LOGI("[TransferPool] destroying context %p in AbortSlotByIndexLocked", slot.ctx);
-      HIXL_CHK_ACL(aclrtDestroyContext(slot.ctx), "[TransferPool] aclrtDestroyContext failed in Abort");
+      HIXL_CHK_ACL(RuntimeProxy::GetInstance().aclrtDestroyContext(slot.ctx), "[TransferPool] aclrtDestroyContext failed in Abort");
       slot.ctx = nullptr;
     }
     slot.stream = nullptr;
@@ -302,16 +303,16 @@ Status TransferPool::EnsureNotifyLocked(Slot &slot) {
 
 void TransferPool::ResetNotifyResourcesLocked(Slot &slot) {
   if (slot.notify != nullptr) {
-    HIXL_CHK_ACL(aclrtDestroyNotify(slot.notify));
+    HIXL_CHK_ACL(RuntimeProxy::GetInstance().aclrtDestroyNotify(slot.notify));
     slot.notify = nullptr;
   }
 }
 
 Status TransferPool::CreateNotifyLocked(Slot &slot, uint32_t &notify_id) {
   notify_id = 0U;
-  HIXL_CHK_ACL_RET(aclrtCreateNotify(&slot.notify, ACL_NOTIFY_DEVICE_USE_ONLY),
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtCreateNotify(&slot.notify, ACL_NOTIFY_DEVICE_USE_ONLY),
                    "[TransferPool] aclrtCreateNotify failed");
-  HIXL_CHK_ACL_RET(aclrtGetNotifyId(slot.notify, &notify_id), "[TransferPool] aclrtGetNotifyId failed");
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtGetNotifyId(slot.notify, &notify_id), "[TransferPool] aclrtGetNotifyId failed");
   HIXL_LOGD("[TransferPool] Created notify. notify_id=%u", notify_id);
   return SUCCESS;
 }
@@ -319,7 +320,7 @@ Status TransferPool::CreateNotifyLocked(Slot &slot, uint32_t &notify_id) {
 void TransferPool::DeinitAllSlotsLocked() {
   // 先释放 dev_const_one_，再销毁 rts_context_
   if (dev_const_one_ != nullptr) {
-    HIXL_CHK_ACL(aclrtFree(dev_const_one_));
+    HIXL_CHK_ACL(RuntimeProxy::GetInstance().aclrtFree(dev_const_one_));
     dev_const_one_ = nullptr;
     HIXL_LOGI("[TransferPool] released dev_const_one_ on device %d", device_id_);
   }
@@ -330,7 +331,7 @@ void TransferPool::DeinitAllSlotsLocked() {
   }
   if (rts_context_ != nullptr) {
     HIXL_LOGI("[TransferPool] destroying rts context %p", rts_context_);
-    HIXL_CHK_ACL(aclrtDestroyContext(rts_context_));
+    HIXL_CHK_ACL(RuntimeProxy::GetInstance().aclrtDestroyContext(rts_context_));
     rts_context_ = nullptr;
   }
   slots_.clear();
@@ -344,7 +345,7 @@ Status TransferPool::EnsureContextLocked(Slot &slot) const {
     return SUCCESS;
   }
   aclrtContext ctx = nullptr;
-  HIXL_CHK_ACL_RET(aclrtCreateContext(&ctx, device_id_));
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtCreateContext(&ctx, device_id_));
   slot.ctx = ctx;
   return SUCCESS;
 }
@@ -356,7 +357,7 @@ Status TransferPool::EnsureDefaultStreamLocked(Slot &slot) const {
   HIXL_CHK_BOOL_RET_STATUS(slot.ctx != nullptr, FAILED, "[TransferPool] EnsureDefaultStreamLocked: slot.ctx is null");
   const hixl::TemporaryRtContext guard(slot.ctx);
   aclrtStream stream = nullptr;
-  HIXL_CHK_ACL_RET(aclrtCtxGetCurrentDefaultStream(&stream), "[TransferPool] aclrtCtxGetCurrentDefaultStream failed");
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtCtxGetCurrentDefaultStream(&stream), "[TransferPool] aclrtCtxGetCurrentDefaultStream failed");
   slot.stream = stream;
   return SUCCESS;
 }
@@ -374,10 +375,10 @@ Status TransferPool::EnsureDevConstOneLocked() {
   if (dev_const_one_ != nullptr) {
     return SUCCESS;
   }
-  HIXL_CHK_ACL_RET(aclrtMalloc(&dev_const_one_, sizeof(uint64_t), ACL_MEM_MALLOC_NORMAL_ONLY),
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtMalloc(&dev_const_one_, sizeof(uint64_t), ACL_MEM_MALLOC_NORMAL_ONLY),
                    "[TransferPool] aclrtMalloc dev_const_one_ failed");
   constexpr uint64_t host_one = 1U;
-  HIXL_CHK_ACL_RET(aclrtMemcpy(dev_const_one_, sizeof(uint64_t), &host_one, sizeof(uint64_t), ACL_MEMCPY_HOST_TO_DEVICE),
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtMemcpy(dev_const_one_, sizeof(uint64_t), &host_one, sizeof(uint64_t), ACL_MEMCPY_HOST_TO_DEVICE),
                    "[TransferPool] aclrtMemcpy dev_const_one_ failed");
   HIXL_LOGI("[TransferPool] dev_const_one initialized at %p on device %d", dev_const_one_, device_id_);
   return SUCCESS;
@@ -387,7 +388,7 @@ void TransferPool::DestroySlotLocked(Slot &slot) const {
   {
     hixl::TemporaryRtContext with_context(slot.ctx);
     if (slot.notify != nullptr) {
-      HIXL_CHK_ACL(aclrtDestroyNotify(slot.notify));
+      HIXL_CHK_ACL(RuntimeProxy::GetInstance().aclrtDestroyNotify(slot.notify));
       slot.notify = nullptr;
     }
     if (slot.thread != 0U) {
@@ -397,7 +398,7 @@ void TransferPool::DestroySlotLocked(Slot &slot) const {
   }
   if (slot.ctx != nullptr) {
     HIXL_LOGI("[TransferPool] destroying context %p", slot.ctx);
-    HIXL_CHK_ACL(aclrtDestroyContext(slot.ctx), "destroy context failed");
+    HIXL_CHK_ACL(RuntimeProxy::GetInstance().aclrtDestroyContext(slot.ctx), "destroy context failed");
     slot.ctx = nullptr;
   }
   slot.stream = nullptr;

@@ -12,6 +12,7 @@
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
+#include "proxy/runtime_proxy.h"
 
 namespace hixl {
 
@@ -74,7 +75,7 @@ HostRegisterProxy::~HostRegisterProxy() {
   for (auto &pair : registered_mems_) {
     void *host_addr = pair.first;
     HIXL_LOGI("host_addr has not been unregistered. host_addr=%p, ref_cnt=%d.", host_addr, pair.second.ref_cnt);
-    const aclError ret = aclrtHostUnregister(host_addr);
+    const aclError ret = RuntimeProxy::GetInstance().aclrtHostUnregister(host_addr);
     if (ret != ACL_ERROR_NONE) {
       HIXL_LOGE(ret, "Failed to unregister host memory in destructor. host_addr=%p", host_addr);
     }
@@ -129,7 +130,7 @@ Status HostRegisterProxy::Register(void *host_addr, uint64_t size, void *&device
     return SUCCESS;
   }
   void *dev_ptr = nullptr;
-  HIXL_CHK_ACL_RET(aclrtHostRegister(host_addr, size, ACL_HOST_REGISTER_MAPPED, &dev_ptr));
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtHostRegister(host_addr, size, ACL_HOST_REGISTER_MAPPED, &dev_ptr));
   HostMemInfo info(host_addr, size, dev_ptr);
   info.ref_cnt++;
   registered_mems_[host_addr] = info;
@@ -155,7 +156,7 @@ Status HostRegisterProxy::Unregister(void *host_addr) {
               mem_info.ref_cnt);
     return SUCCESS;
   }
-  HIXL_CHK_ACL_RET(aclrtHostUnregister(host_addr));
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtHostUnregister(host_addr));
 
   registered_mems_.erase(it);
   HIXL_LOGI("Host memory unregistered successfully. host_addr=%p", host_addr);

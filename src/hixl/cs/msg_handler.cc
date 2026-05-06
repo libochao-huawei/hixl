@@ -11,8 +11,29 @@
 #include "hixl_cs_server.h"
 #include "common/hixl_checker.h"
 #include "common/ctrl_msg.h"
+#include "proxy/runtime_proxy.h"
 
 namespace hixl {
+Status OptionalAclContext::CaptureIfNeeded(bool need_device_context) {
+  enabled_ = need_device_context;
+  ctx_ = nullptr;
+  if (!enabled_) {
+    return SUCCESS;
+  }
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtGetCurrentContext(&ctx_));
+  HIXL_LOGI("aclrtGetCurrentContext ctx=%p", ctx_);
+  return SUCCESS;
+}
+
+Status OptionalAclContext::SetOnCurrentThreadIfNeeded() const {
+  if (!enabled_ || ctx_ == nullptr) {
+    return SUCCESS;
+  }
+  HIXL_CHK_ACL_RET(RuntimeProxy::GetInstance().aclrtSetCurrentContext(ctx_));
+  HIXL_LOGI("aclrtSetCurrentContext ctx=%p", ctx_);
+  return SUCCESS;
+}
+
 void MsgHandler::SubmitMsg(int32_t fd, const CtrlMsgPtr &msg) {
   {
     std::lock_guard<std::mutex> lock(req_mutex_);
@@ -21,15 +42,13 @@ void MsgHandler::SubmitMsg(int32_t fd, const CtrlMsgPtr &msg) {
   req_cv_.notify_one();
 }
 
-Status MsgHandler::Initialize() {
+Status MsgHandler::Initialize(bool need_device_context) {
   constexpr uint32_t kMinThreadPoolSize = 4U;
   constexpr uint32_t kMaxThreadPoolSize = 1024U;
   thread_pool_ = MakeUnique<ThreadPool>("cs_server", kMinThreadPoolSize, kMaxThreadPoolSize);
   HIXL_CHECK_NOTNULL(thread_pool_);
   running_ = true;
-
-  HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&ctx_));
-  HIXL_LOGI("aclrtGetCurrentContext ctx=%p", ctx_);
+  HIXL_CHK_STATUS_RET(acl_context_.CaptureIfNeeded(need_device_context), "Failed to capture acl context");
   listener_ = std::thread([this]() {
     HandleMsg();
   });
@@ -81,9 +100,7 @@ void MsgHandler::HandleMsg() {
     }
     auto proc = it->second;
     (void)thread_pool_->commit([this, req, proc]() -> void {
-      if (ctx_ != nullptr) {
-        aclrtSetCurrentContext(ctx_);
-      }
+      HIXL_CHK_STATUS(acl_context_.SetOnCurrentThreadIfNeeded(), "Failed to set acl context");
       (void)HandleMsg(req.first, req.second, proc);
     });
   }
