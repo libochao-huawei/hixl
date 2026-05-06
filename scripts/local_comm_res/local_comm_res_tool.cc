@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstring>
 #include <iomanip>
+#include <set>
 #include <dlfcn.h>
 #include <unistd.h>
 
@@ -124,6 +125,97 @@ int GetLogicIdFromPhyId(unsigned int phy_id, unsigned int* logic_id) {
         return -1;
     }
     return g_dcmi_get_logicid_from_phyid(phy_id, logic_id);
+}
+
+// ============ JSON 解析辅助函数 ============
+
+bool ParseJsonFieldInt(const std::string& obj, const std::string& key, int32_t& value) {
+    std::string pattern = "\"" + key + "\"";
+    size_t pos = obj.find(pattern);
+    if (pos == std::string::npos) return false;
+    pos = obj.find(':', pos + pattern.length());
+    if (pos == std::string::npos) return false;
+    ++pos;
+    while (pos < obj.length() && std::isspace(static_cast<unsigned char>(obj[pos]))) ++pos;
+    size_t end = pos;
+    while (end < obj.length() && (std::isdigit(static_cast<unsigned char>(obj[end])) || obj[end] == '-')) ++end;
+    if (end == pos) return false;
+    value = std::stoi(obj.substr(pos, end - pos));
+    return true;
+}
+
+bool ParseJsonFieldString(const std::string& obj, const std::string& key, std::string& value) {
+    std::string pattern = "\"" + key + "\"";
+    size_t pos = obj.find(pattern);
+    if (pos == std::string::npos) return false;
+    pos = obj.find(':', pos + pattern.length());
+    if (pos == std::string::npos) return false;
+    ++pos;
+    while (pos < obj.length() && std::isspace(static_cast<unsigned char>(obj[pos]))) ++pos;
+    if (pos >= obj.length() || obj[pos] != '"') return false;
+    ++pos;
+    size_t end = obj.find('"', pos);
+    if (end == std::string::npos) return false;
+    value = obj.substr(pos, end - pos);
+    return true;
+}
+
+bool ParseJsonFieldStringArray(const std::string& obj, const std::string& key, std::vector<std::string>& values) {
+    std::string pattern = "\"" + key + "\"";
+    size_t pos = obj.find(pattern);
+    if (pos == std::string::npos) return false;
+    pos = obj.find('[', pos + pattern.length());
+    if (pos == std::string::npos) return false;
+    ++pos;
+    values.clear();
+    int bracket_depth = 1;
+    std::string current_str;
+    bool in_string = false;
+    while (pos < obj.length() && bracket_depth > 0) {
+        if (obj[pos] == '[') {
+            ++bracket_depth;
+        } else if (obj[pos] == ']') {
+            --bracket_depth;
+            if (bracket_depth == 0) break;
+        } else if (obj[pos] == '"' && !in_string) {
+            in_string = true;
+        } else if (obj[pos] == '"' && in_string) {
+            values.push_back(current_str);
+            current_str.clear();
+            in_string = false;
+        } else if (in_string) {
+            current_str += obj[pos];
+        }
+        ++pos;
+    }
+    return true;
+}
+
+std::vector<std::string> ExtractJsonObjects(const std::string& json, const std::string& array_key) {
+    std::vector<std::string> objects;
+    size_t array_pos = json.find("\"" + array_key + "\"");
+    if (array_pos == std::string::npos) return objects;
+    size_t bracket_pos = json.find('[', array_pos);
+    if (bracket_pos == std::string::npos) return objects;
+    size_t pos = bracket_pos + 1;
+    int brace_depth = 0;
+    size_t obj_start = std::string::npos;
+    while (pos < json.length()) {
+        if (json[pos] == '{') {
+            if (brace_depth == 0) {
+                obj_start = pos;
+            }
+            ++brace_depth;
+        } else if (json[pos] == '}') {
+            --brace_depth;
+            if (brace_depth == 0 && obj_start != std::string::npos) {
+                objects.push_back(json.substr(obj_start, pos - obj_start + 1));
+                obj_start = std::string::npos;
+            }
+        }
+        ++pos;
+    }
+    return objects;
 }
 
 }  // anonymous namespace
@@ -328,95 +420,301 @@ std::vector<std::tuple<int, int, std::vector<int>>> GetLevel1ConfigPod(unsigned 
 // ============ 文件解析实现 ============
 
 int32_t ParseTopoFile(const std::string& topo_path, TopoData& topo_data) {
-    (void)topo_data;  // TODO: 实现解析逻辑后使用
+    topo_data.links.clear();
     std::ifstream file(topo_path);
     if (!file.is_open()) {
         std::cerr << "[ParseTopoFile] Failed to open file: " << topo_path << std::endl;
         return ERROR_FILE_NOT_FOUND;
     }
 
-    // TODO: 实现 JSON 解析逻辑
-
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string content = buffer.str();
     file.close();
+
+    if (content.empty()) {
+        std::cerr << "[ParseTopoFile] File is empty: " << topo_path << std::endl;
+        return ERROR_FILE_PARSE_FAILED;
+    }
+
+    std::vector<std::string> edge_objects = ExtractJsonObjects(content, "edge_list");
+    if (edge_objects.empty()) {
+        std::cerr << "[ParseTopoFile] No edge_list found in: " << topo_path << std::endl;
+        return ERROR_FILE_PARSE_FAILED;
+    }
+
+    for (const auto& obj : edge_objects) {
+        TopoLink link;
+        link.remote_a = -1;
+        link.remote_b = -1;
+
+        if (!ParseJsonFieldInt(obj, "net_layer", link.net_layer)) {
+            std::cerr << "[ParseTopoFile] Missing net_layer in edge object" << std::endl;
+            continue;
+        }
+        ParseJsonFieldString(obj, "link_type", link.link_type);
+        ParseJsonFieldString(obj, "topo_type", link.topo_type);
+        ParseJsonFieldInt(obj, "local_a", link.local_a);
+        ParseJsonFieldInt(obj, "local_b", link.local_b);
+        ParseJsonFieldInt(obj, "remote_a", link.remote_a);
+        ParseJsonFieldInt(obj, "remote_b", link.remote_b);
+        ParseJsonFieldStringArray(obj, "local_a_ports", link.local_a_ports);
+        ParseJsonFieldStringArray(obj, "local_b_ports", link.local_b_ports);
+
+        topo_data.links.push_back(link);
+    }
+
+    std::cout << "[ParseTopoFile] Parsed " << topo_data.links.size() << " links from " << topo_path << std::endl;
     return SUCCESS;
 }
 
 int32_t ParseRouteFile(const std::string& route_path, RouteData& route_data) {
-    (void)route_data;  // TODO: 实现解析逻辑后使用
+    route_data.entries.clear();
     std::ifstream file(route_path);
     if (!file.is_open()) {
         std::cerr << "[ParseRouteFile] Failed to open file: " << route_path << std::endl;
         return ERROR_FILE_NOT_FOUND;
     }
 
-    // TODO: 实现 route.conf 解析逻辑
-
+    std::map<std::string, std::string> kv_map;
+    std::string line;
+    while (std::getline(file, line)) {
+        size_t eq_pos = line.find('=');
+        if (eq_pos != std::string::npos) {
+            std::string key = line.substr(0, eq_pos);
+            std::string value = line.substr(eq_pos + 1);
+            // trim trailing whitespace from key, leading/trailing from value
+            size_t key_end = key.find_last_not_of(" \t\r\n");
+            if (key_end != std::string::npos) key = key.substr(0, key_end + 1);
+            size_t val_start = value.find_first_not_of(" \t\r\n");
+            size_t val_end = value.find_last_not_of(" \t\r\n");
+            if (val_start != std::string::npos && val_end != std::string::npos) {
+                value = value.substr(val_start, val_end - val_start + 1);
+            }
+            kv_map[key] = value;
+        }
+    }
     file.close();
+
+    auto it = kv_map.find("pair_device_num");
+    if (it == kv_map.end()) {
+        std::cerr << "[ParseRouteFile] Missing pair_device_num in: " << route_path << std::endl;
+        return ERROR_FILE_PARSE_FAILED;
+    }
+
+    int pair_device_num = std::stoi(it->second);
+    for (int i = 0; i < pair_device_num; ++i) {
+        std::string dev_id_key = "pair" + std::to_string(i) + "_dev_id";
+        auto dev_it = kv_map.find(dev_id_key);
+        if (dev_it == kv_map.end()) continue;
+
+        int device_id = std::stoi(dev_it->second);
+
+        std::string chan_num_key = "pair" + std::to_string(i) + "_chan_num";
+        int chan_num = 1;
+        auto chan_num_it = kv_map.find(chan_num_key);
+        if (chan_num_it != kv_map.end()) {
+            chan_num = std::stoi(chan_num_it->second);
+        }
+
+        for (int j = 0; j < chan_num; ++j) {
+            std::string local_key = "pair" + std::to_string(i) + "_chan" + std::to_string(j) + "_local_eid";
+            std::string remote_key = "pair" + std::to_string(i) + "_chan" + std::to_string(j) + "_remote_eid";
+
+            auto local_it = kv_map.find(local_key);
+            auto remote_it = kv_map.find(remote_key);
+
+            if (local_it != kv_map.end() && remote_it != kv_map.end()) {
+                RouteEntry entry;
+                entry.device_id = device_id;
+                entry.local_eid = local_it->second;
+                entry.remote_eid = remote_it->second;
+                route_data.entries.push_back(entry);
+            }
+        }
+    }
+
+    std::cout << "[ParseRouteFile] Parsed " << route_data.entries.size() << " entries from " << route_path << std::endl;
     return SUCCESS;
+}
+
+// ============ RootInfo 构建 ============
+
+/**
+ * @brief 从 EID 列表构建 NPU 的 rootinfo（串口到 EID 映射）
+ * @param eid_list 该 NPU 的 EID 列表
+ * @param is_server 是否为 Server 产品形态（决定 die_id 提取方式）
+ * @return 串口标识 "die_id/port" -> EID 的映射
+ *
+ * 映射规则（参考 generate_local_comm_res.md 4.2.2）:
+ *   - port = GetPortFromEid(eid)（1-9 有效）
+ *   - die_id = GetServerDieIdFromEid(eid) 或 GetPodDieIdFromEid(eid)
+ *   - rootinfo key = "die_id/(port-1)"
+ */
+NpuRootInfo BuildNpuRootInfo(const std::vector<std::string>& eid_list, bool is_server) {
+    NpuRootInfo rootinfo;
+    for (const auto& eid : eid_list) {
+        int port = GetPortFromEid(eid);
+        if (port >= 1 && port <= 9) {
+            // Mesh 层有效端口
+            int die_id = is_server ? GetServerDieIdFromEid(eid) : GetPodDieIdFromEid(eid);
+            std::string port_key = std::to_string(die_id) + "/" + std::to_string(port - 1);
+            rootinfo.port_to_eid[port_key] = eid;
+        } else if (port > 9 && rootinfo.clos_pg_eid.empty()) {
+            // CLOS 层 PG EID（串口组标识），只取第一个
+            rootinfo.clos_pg_eid = eid;
+        }
+    }
+    std::cout << "[BuildNpuRootInfo] Built " << rootinfo.port_to_eid.size()
+              << " port->eid mappings, clos_pg_eid="
+              << (rootinfo.clos_pg_eid.empty() ? "(none)" : rootinfo.clos_pg_eid) << std::endl;
+    for (const auto& kv : rootinfo.port_to_eid) {
+        std::cout << "[BuildNpuRootInfo]   " << kv.first << " -> " << kv.second << std::endl;
+    }
+    return rootinfo;
 }
 
 // ============ 边生成实现 ============
 
 int32_t GenerateD2DEdges(
     const TopoData& topo_data,
-    const std::vector<std::string>& eid_list,
+    const std::map<int32_t, NpuRootInfo>& npu_rootinfos,
     int32_t phy_id,
     std::vector<EndpointConfig>& edges) {
 
-    (void)eid_list;  // TODO: 实现时可能需要使用
     edges.clear();
 
+    auto self_it = npu_rootinfos.find(phy_id);
+    if (self_it == npu_rootinfos.end()) {
+        std::cerr << "[GenerateD2DEdges] No rootinfo for self npu_id=" << phy_id << std::endl;
+        return SUCCESS;
+    }
+    const auto& self_rootinfo = self_it->second;
+
+    std::cout << "[GenerateD2DEdges] phy_id=" << phy_id
+              << ", topo_links=" << topo_data.links.size()
+              << ", self_rootinfo_size=" << self_rootinfo.port_to_eid.size() << std::endl;
+
+    size_t skip_reason[4] = {0, 0, 0, 0};
+    size_t no_rootinfo_local = 0;
+    size_t no_rootinfo_peer = 0;
+    size_t no_port_match_local = 0;
+    size_t no_port_match_peer = 0;
+
     for (const auto& link : topo_data.links) {
-        if (link.net_layer != 0) continue;
-        if (link.link_type != "PEER2PEER") continue;
-        if (link.topo_type != "1DMESH") continue;
-        if (link.local_a != phy_id) continue;
+        if (link.net_layer != 0) { ++skip_reason[0]; continue; }
+        if (link.link_type != "PEER2PEER") { ++skip_reason[1]; continue; }
+        if (link.topo_type != "1DMESH") { ++skip_reason[2]; continue; }
+        if (link.local_a != phy_id) { ++skip_reason[3]; continue; }
 
-        std::string comm_id = link.local_a_ports;
-        std::string dst_eid = link.local_b_ports;
-
-        if (IsMeshLayerEid(comm_id) && IsMeshLayerEid(dst_eid)) {
-            EndpointConfig edge;
-            edge.protocol = "ub_ctp";
-            edge.comm_id = comm_id;
-            edge.placement = "device";
-            edge.dst_eid = dst_eid;
-            edges.push_back(edge);
+        if (link.local_a_ports.empty() || link.local_b_ports.empty()) {
+            std::cout << "[GenerateD2DEdges] skip (empty ports): local_a_ports=" << link.local_a_ports.size()
+                      << ", local_b_ports=" << link.local_b_ports.size() << std::endl;
+            continue;
         }
+
+        std::string local_port = link.local_a_ports[0];
+        std::string peer_port = link.local_b_ports[0];
+
+        auto local_eid_it = self_rootinfo.port_to_eid.find(local_port);
+        if (local_eid_it == self_rootinfo.port_to_eid.end()) {
+            ++no_port_match_local;
+            std::cout << "[GenerateD2DEdges] No EID for local port '" << local_port << "'" << std::endl;
+            continue;
+        }
+        std::string comm_id = local_eid_it->second;
+
+        int peer_id = link.local_b;
+        auto peer_it = npu_rootinfos.find(peer_id);
+        if (peer_it == npu_rootinfos.end()) {
+            ++no_rootinfo_peer;
+            std::cout << "[GenerateD2DEdges] No rootinfo for peer npu_id=" << peer_id << std::endl;
+            continue;
+        }
+        auto peer_eid_it = peer_it->second.port_to_eid.find(peer_port);
+        if (peer_eid_it == peer_it->second.port_to_eid.end()) {
+            ++no_port_match_peer;
+            std::cout << "[GenerateD2DEdges] No EID for peer port '" << peer_port << "' on npu_id=" << peer_id << std::endl;
+            continue;
+        }
+        std::string dst_eid = peer_eid_it->second;
+
+        EndpointConfig edge;
+        edge.protocol = "ub_ctp";
+        edge.comm_id = comm_id;
+        edge.placement = "device";
+        edge.dst_eid = dst_eid;
+        edges.push_back(edge);
+        std::cout << "[GenerateD2DEdges] matched: comm_id=" << comm_id
+                  << ", dst_eid=" << dst_eid << std::endl;
     }
 
+    std::cout << "[GenerateD2DEdges] result: matched=" << edges.size()
+              << ", skip(net_layer)=" << skip_reason[0]
+              << ", skip(link_type)=" << skip_reason[1]
+              << ", skip(topo_type)=" << skip_reason[2]
+              << ", skip(phy_id)=" << skip_reason[3]
+              << ", no_port_match_local=" << no_port_match_local
+              << ", no_port_match_peer=" << no_port_match_peer
+              << ", no_rootinfo_peer=" << no_rootinfo_peer << std::endl;
     return SUCCESS;
 }
 
 int32_t GenerateD2UEdges(
     const TopoData& topo_data,
-    const std::string& clos_pg_eid,
-    const std::vector<std::string>& clos_ports,
+    const std::map<int32_t, NpuRootInfo>& npu_rootinfos,
+    const std::vector<std::string>& clos_plane_ids,
     int32_t phy_id,
     std::vector<EndpointConfig>& edges) {
 
     edges.clear();
 
-    if (clos_pg_eid.empty()) {
+    auto self_it = npu_rootinfos.find(phy_id);
+    if (self_it == npu_rootinfos.end()) {
+        std::cerr << "[GenerateD2UEdges] No rootinfo for self npu_id=" << phy_id << std::endl;
         return SUCCESS;
     }
+    const auto& self_rootinfo = self_it->second;
 
+    std::cout << "[GenerateD2UEdges] phy_id=" << phy_id
+              << ", clos_planes=" << clos_plane_ids.size()
+              << ", topo_links=" << topo_data.links.size()
+              << ", clos_pg_eid=" << (self_rootinfo.clos_pg_eid.empty() ? "(none)" : self_rootinfo.clos_pg_eid)
+              << std::endl;
+
+    size_t skip_reason[4] = {0, 0, 0, 0};
+    size_t no_clos_eid = 0;
     for (const auto& link : topo_data.links) {
-        if (link.net_layer != 1) continue;
-        if (link.link_type != "PEER2NET") continue;
-        if (link.topo_type != "CLOS") continue;
-        if (link.local_a != phy_id) continue;
+        if (link.net_layer != 1) { ++skip_reason[0]; continue; }
+        if (link.link_type != "PEER2NET") { ++skip_reason[1]; continue; }
+        if (link.topo_type != "CLOS") { ++skip_reason[2]; continue; }
+        if (link.local_a != phy_id) { ++skip_reason[3]; continue; }
 
-        for (const auto& plane_id : clos_ports) {
+        // 从当前 NPU 的 rootinfo 中获取 CLOS 层 PG EID
+        if (self_rootinfo.clos_pg_eid.empty()) {
+            ++no_clos_eid;
+            std::cout << "[GenerateD2UEdges] No CLOS PG EID in rootinfo for phy_id=" << phy_id << std::endl;
+            continue;
+        }
+
+        for (const auto& plane_id : clos_plane_ids) {
             EndpointConfig edge;
             edge.protocol = "ub_ctp";
-            edge.comm_id = clos_pg_eid;
+            edge.comm_id = self_rootinfo.clos_pg_eid;
             edge.placement = "device";
             edge.plane = plane_id;
             edges.push_back(edge);
+            std::cout << "[GenerateD2UEdges] matched: comm_id=" << self_rootinfo.clos_pg_eid
+                      << ", plane=" << plane_id << std::endl;
         }
     }
 
+    std::cout << "[GenerateD2UEdges] result: matched=" << edges.size()
+              << ", skip(net_layer)=" << skip_reason[0]
+              << ", skip(link_type)=" << skip_reason[1]
+              << ", skip(topo_type)=" << skip_reason[2]
+              << ", skip(phy_id)=" << skip_reason[3]
+              << ", no_clos_eid=" << no_clos_eid << std::endl;
     return SUCCESS;
 }
 
@@ -427,8 +725,12 @@ int32_t GenerateH2DEdges(
 
     edges.clear();
 
+    std::cout << "[GenerateH2DEdges] phy_id=" << phy_id
+              << ", route_entries=" << route_data.entries.size() << std::endl;
+
+    size_t skip_phy_id = 0;
     for (const auto& entry : route_data.entries) {
-        if (entry.device_id != phy_id) continue;
+        if (entry.device_id != phy_id) { ++skip_phy_id; continue; }
 
         EndpointConfig edge;
         edge.protocol = "ub_ctp";
@@ -436,8 +738,12 @@ int32_t GenerateH2DEdges(
         edge.placement = "host";
         edge.dst_eid = entry.remote_eid;
         edges.push_back(edge);
+        std::cout << "[GenerateH2DEdges] matched: local_eid=" << entry.local_eid
+                  << ", remote_eid=" << entry.remote_eid << std::endl;
     }
 
+    std::cout << "[GenerateH2DEdges] result: matched=" << edges.size()
+              << ", skip(phy_id)=" << skip_phy_id << std::endl;
     return SUCCESS;
 }
 
@@ -449,8 +755,13 @@ int32_t GenerateH2UEdges(
 
     edges.clear();
 
+    std::cout << "[GenerateH2UEdges] phy_id=" << phy_id
+              << ", route_entries=" << route_data.entries.size()
+              << ", clos_plane_ids=" << clos_plane_ids.size() << std::endl;
+
+    size_t skip_phy_id = 0;
     for (const auto& entry : route_data.entries) {
-        if (entry.device_id != phy_id) continue;
+        if (entry.device_id != phy_id) { ++skip_phy_id; continue; }
 
         for (const auto& plane_id : clos_plane_ids) {
             EndpointConfig edge;
@@ -459,9 +770,13 @@ int32_t GenerateH2UEdges(
             edge.placement = "host";
             edge.plane = plane_id;
             edges.push_back(edge);
+            std::cout << "[GenerateH2UEdges] matched: local_eid=" << entry.local_eid
+                      << ", plane=" << plane_id << std::endl;
         }
     }
 
+    std::cout << "[GenerateH2UEdges] result: matched=" << edges.size()
+              << ", skip(phy_id)=" << skip_phy_id << std::endl;
     return SUCCESS;
 }
 
@@ -568,31 +883,73 @@ int32_t GenerateLocalCommRes(
     std::cout << "[GenerateLocalCommRes] Mesh EID count=" << mesh_eids.size() << std::endl;
     std::cout << "[GenerateLocalCommRes] CLOS pg_eid=" << (clos_pg_eid.empty() ? "(none)" : clos_pg_eid) << std::endl;
 
+    // 收集所有相关 NPU ID（从 topo 边中的 local_a 和 local_b）
+    std::set<int32_t> related_npu_ids;
+    related_npu_ids.insert(phy_dev_id);
+    for (const auto& link : topo_data.links) {
+        related_npu_ids.insert(link.local_a);
+        related_npu_ids.insert(link.local_b);
+    }
+    std::cout << "[GenerateLocalCommRes] Related NPU IDs: ";
+    for (int id : related_npu_ids) std::cout << id << " ";
+    std::cout << std::endl;
+
+    // 为每个相关 NPU 获取 EID 列表并构建 rootinfo
+    std::map<int32_t, NpuRootInfo> npu_rootinfos;
+    for (int32_t npu_id : related_npu_ids) {
+        std::vector<std::string> npu_eids;
+        int32_t eid_ret = GetEidListByPhyId(npu_id, npu_eids);
+        if (eid_ret != SUCCESS) {
+            std::cerr << "[GenerateLocalCommRes] Failed to get eid for npu_id=" << npu_id << ", ret=" << eid_ret << std::endl;
+            continue;
+        }
+        if (npu_eids.empty()) {
+            std::cerr << "[GenerateLocalCommRes] No eid for npu_id=" << npu_id << std::endl;
+            continue;
+        }
+        npu_rootinfos[npu_id] = BuildNpuRootInfo(npu_eids, is_server);
+    }
+    std::cout << "[GenerateLocalCommRes] Built rootinfo for " << npu_rootinfos.size() << " NPU(s)" << std::endl;
+
     std::vector<EndpointConfig> all_edges;
 
     std::vector<EndpointConfig> d2d_edges;
-    if (!topo_data.links.empty()) {
-        GenerateD2DEdges(topo_data, mesh_eids, phy_dev_id, d2d_edges);
+    if (topo_data.links.empty()) {
+        std::cout << "[GenerateLocalCommRes] Skip D2D: topo_data.links is empty" << std::endl;
+    } else if (npu_rootinfos.empty()) {
+        std::cout << "[GenerateLocalCommRes] Skip D2D: no rootinfo available" << std::endl;
+    } else {
+        GenerateD2DEdges(topo_data, npu_rootinfos, phy_dev_id, d2d_edges);
         all_edges.insert(all_edges.end(), d2d_edges.begin(), d2d_edges.end());
     }
     std::cout << "[GenerateLocalCommRes] D2D edges=" << d2d_edges.size() << std::endl;
 
     std::vector<EndpointConfig> d2u_edges;
-    if (!clos_pg_eid.empty() && !topo_data.links.empty()) {
-        GenerateD2UEdges(topo_data, clos_pg_eid, clos_plane_ids, phy_dev_id, d2u_edges);
+    if (clos_plane_ids.empty()) {
+        std::cout << "[GenerateLocalCommRes] Skip D2U: no CLOS plane_ids found" << std::endl;
+    } else if (topo_data.links.empty()) {
+        std::cout << "[GenerateLocalCommRes] Skip D2U: topo_data.links is empty" << std::endl;
+    } else {
+        GenerateD2UEdges(topo_data, npu_rootinfos, clos_plane_ids, phy_dev_id, d2u_edges);
         all_edges.insert(all_edges.end(), d2u_edges.begin(), d2u_edges.end());
     }
     std::cout << "[GenerateLocalCommRes] D2U edges=" << d2u_edges.size() << std::endl;
 
     std::vector<EndpointConfig> h2d_edges;
-    if (!route_data.entries.empty()) {
+    if (route_data.entries.empty()) {
+        std::cout << "[GenerateLocalCommRes] Skip H2D: route_data.entries is empty" << std::endl;
+    } else {
         GenerateH2DEdges(route_data, phy_dev_id, h2d_edges);
         all_edges.insert(all_edges.end(), h2d_edges.begin(), h2d_edges.end());
     }
     std::cout << "[GenerateLocalCommRes] H2D edges=" << h2d_edges.size() << std::endl;
 
     std::vector<EndpointConfig> h2u_edges;
-    if (!clos_plane_ids.empty() && !route_data.entries.empty()) {
+    if (clos_plane_ids.empty()) {
+        std::cout << "[GenerateLocalCommRes] Skip H2U: no CLOS plane_ids found" << std::endl;
+    } else if (route_data.entries.empty()) {
+        std::cout << "[GenerateLocalCommRes] Skip H2U: route_data.entries is empty" << std::endl;
+    } else {
         GenerateH2UEdges(route_data, clos_plane_ids, phy_dev_id, h2u_edges);
         all_edges.insert(all_edges.end(), h2u_edges.begin(), h2u_edges.end());
     }
