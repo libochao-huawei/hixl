@@ -472,6 +472,9 @@ int32_t GenerateLocalCommRes(
     const std::map<std::string, std::string>& options,
     LocalCommRes& local_comm_res) {
 
+    std::cout << "[GenerateLocalCommRes] ===== Start =====" << std::endl;
+    std::cout << "[GenerateLocalCommRes] phy_dev_id=" << phy_dev_id << std::endl;
+
     std::string topo_path;
     std::string route_path;
 
@@ -485,6 +488,9 @@ int32_t GenerateLocalCommRes(
         route_path = it->second;
     }
 
+    std::cout << "[GenerateLocalCommRes] topo_path=" << topo_path << std::endl;
+    std::cout << "[GenerateLocalCommRes] route_path=" << route_path << std::endl;
+
     std::vector<std::string> eid_list;
     int32_t ret = GetEidListByPhyId(phy_dev_id, eid_list);
     if (ret != SUCCESS) {
@@ -497,22 +503,50 @@ int32_t GenerateLocalCommRes(
         return ERROR_NO_EID_FOUND;
     }
 
+    std::cout << "[GenerateLocalCommRes] Got " << eid_list.size() << " EID(s)" << std::endl;
+    for (size_t i = 0; i < eid_list.size() && i < 10; ++i) {
+        std::cout << "[GenerateLocalCommRes]   EID[" << i << "]: " << eid_list[i] << std::endl;
+    }
+
     unsigned int mainboard_id = 0;
     ret = GetMainboardId(phy_dev_id, mainboard_id);
     if (ret != SUCCESS) {
         std::cerr << "[GenerateLocalCommRes] Failed to get mainboard id: " << ret << std::endl;
+    } else {
+        std::cout << "[GenerateLocalCommRes] mainboard_id=0x" << std::hex << mainboard_id << std::dec << std::endl;
+    }
+
+    // 根据 mainboard_id 判断产品形态
+    constexpr unsigned int MAIN_BOARD_ID_POD_2D = 0x03;
+    constexpr unsigned int MAIN_BOARD_ID_SERVER_TYPE1 = 0x23;
+    constexpr unsigned int MAIN_BOARD_ID_SERVER_8PMESH = 0x25;
+    constexpr unsigned int MAIN_BOARD_ID_SERVER_16PMESH = 0x44;
+    bool is_pod = (mainboard_id == MAIN_BOARD_ID_POD_2D);
+    bool is_server = (mainboard_id == MAIN_BOARD_ID_SERVER_TYPE1 ||
+                      mainboard_id == MAIN_BOARD_ID_SERVER_8PMESH ||
+                      mainboard_id == MAIN_BOARD_ID_SERVER_16PMESH);
+    if (is_pod) {
+        std::cout << "[GenerateLocalCommRes] Product type: Pod (mainboard_id=0x" << std::hex << mainboard_id << std::dec << ")" << std::endl;
+    } else if (is_server) {
+        std::cout << "[GenerateLocalCommRes] Product type: Server (mainboard_id=0x" << std::hex << mainboard_id << std::dec << ")" << std::endl;
+    } else {
+        std::cout << "[GenerateLocalCommRes] Product type: Unknown/default (mainboard_id=0x" << std::hex << mainboard_id << std::dec << ")" << std::endl;
     }
 
     TopoData topo_data;
     ret = ParseTopoFile(topo_path, topo_data);
     if (ret != SUCCESS && ret != ERROR_FILE_NOT_FOUND) {
         std::cerr << "[GenerateLocalCommRes] Failed to parse topo file: " << ret << std::endl;
+    } else {
+        std::cout << "[GenerateLocalCommRes] ParseTopoFile " << (ret == SUCCESS ? "ok" : "not found") << ", links=" << topo_data.links.size() << std::endl;
     }
 
     RouteData route_data;
     ret = ParseRouteFile(route_path, route_data);
     if (ret != SUCCESS && ret != ERROR_FILE_NOT_FOUND) {
         std::cerr << "[GenerateLocalCommRes] Failed to parse route file: " << ret << std::endl;
+    } else {
+        std::cout << "[GenerateLocalCommRes] ParseRouteFile " << (ret == SUCCESS ? "ok" : "not found") << ", entries=" << route_data.entries.size() << std::endl;
     }
 
     std::vector<std::string> mesh_eids;
@@ -531,6 +565,9 @@ int32_t GenerateLocalCommRes(
         }
     }
 
+    std::cout << "[GenerateLocalCommRes] Mesh EID count=" << mesh_eids.size() << std::endl;
+    std::cout << "[GenerateLocalCommRes] CLOS pg_eid=" << (clos_pg_eid.empty() ? "(none)" : clos_pg_eid) << std::endl;
+
     std::vector<EndpointConfig> all_edges;
 
     std::vector<EndpointConfig> d2d_edges;
@@ -538,28 +575,34 @@ int32_t GenerateLocalCommRes(
         GenerateD2DEdges(topo_data, mesh_eids, phy_dev_id, d2d_edges);
         all_edges.insert(all_edges.end(), d2d_edges.begin(), d2d_edges.end());
     }
+    std::cout << "[GenerateLocalCommRes] D2D edges=" << d2d_edges.size() << std::endl;
 
     std::vector<EndpointConfig> d2u_edges;
     if (!clos_pg_eid.empty() && !topo_data.links.empty()) {
         GenerateD2UEdges(topo_data, clos_pg_eid, clos_plane_ids, phy_dev_id, d2u_edges);
         all_edges.insert(all_edges.end(), d2u_edges.begin(), d2u_edges.end());
     }
+    std::cout << "[GenerateLocalCommRes] D2U edges=" << d2u_edges.size() << std::endl;
 
     std::vector<EndpointConfig> h2d_edges;
     if (!route_data.entries.empty()) {
         GenerateH2DEdges(route_data, phy_dev_id, h2d_edges);
         all_edges.insert(all_edges.end(), h2d_edges.begin(), h2d_edges.end());
     }
+    std::cout << "[GenerateLocalCommRes] H2D edges=" << h2d_edges.size() << std::endl;
 
     std::vector<EndpointConfig> h2u_edges;
     if (!clos_plane_ids.empty() && !route_data.entries.empty()) {
         GenerateH2UEdges(route_data, clos_plane_ids, phy_dev_id, h2u_edges);
         all_edges.insert(all_edges.end(), h2u_edges.begin(), h2u_edges.end());
     }
+    std::cout << "[GenerateLocalCommRes] H2U edges=" << h2u_edges.size() << std::endl;
 
     local_comm_res.version = "1.3";
     local_comm_res.net_instance_id = "";
     local_comm_res.endpoint_list = all_edges;
+
+    std::cout << "[GenerateLocalCommRes] Total endpoints=" << all_edges.size() << ", Done" << std::endl;
 
     return SUCCESS;
 }
