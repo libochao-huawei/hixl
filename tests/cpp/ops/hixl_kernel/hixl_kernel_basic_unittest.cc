@@ -9,9 +9,27 @@
  */
 #include <array>
 #include <algorithm>  // 补充：确保std::fill能正常使用
+#include <cstdint>
 #include "gtest/gtest.h"
 #include "hixl/hixl_types.h"
 #include "hixl_kernel/hixl_batch_transfer.h"
+#include "proxy/hcomm/hcomm_res_defs.h"
+#include "hccl/hccl_types.h"
+
+// Mock 控制变量
+static int32_t g_mock_batch_transfer_ret = 0;
+static uint32_t g_mock_batch_transfer_call_count = 0;
+
+// Mock 函数覆盖弱引用
+extern "C" int32_t HcommBatchTransferOnThread(ThreadHandle thread, ChannelHandle channel,
+    HcommBatchTransferDesc *transfer_descs, uint32_t transfer_desc_num) {
+  (void)thread;
+  (void)channel;
+  (void)transfer_descs;
+  (void)transfer_desc_num;
+  g_mock_batch_transfer_call_count++;
+  return g_mock_batch_transfer_ret;
+}
 
 namespace {
 template <size_t kN>
@@ -129,4 +147,150 @@ TEST(HixlKernelBasicTest, BatchGetFailByMemSize) {
 
   uint32_t ret = HixlBatchGet(&param);
   EXPECT_EQ(ret, FAILED);
+}
+
+// ========== 批量传输接口测试用例 ==========
+
+class HixlBatchTransferTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    g_mock_batch_transfer_ret = 0;
+    g_mock_batch_transfer_call_count = 0;
+  }
+
+  void TearDown() override {
+    g_mock_batch_transfer_ret = 0;
+    g_mock_batch_transfer_call_count = 0;
+  }
+};
+
+// 测试批量接口成功的情况
+TEST_F(HixlBatchTransferTest, BatchTransferSuccess) {
+  std::array<std::array<uint8_t, 8>, 3> local_addr{};
+  std::array<std::array<uint8_t, 8>, 3> remote_addr{};
+  std::array<uint64_t, 3> lens_storage{8, 8, 8};
+
+  for (auto &arr : local_addr) {
+    std::fill(arr.begin(), arr.end(), 0x11);
+  }
+  for (auto &arr : remote_addr) {
+    std::fill(arr.begin(), arr.end(), 0xBB);
+  }
+
+  uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
+  uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
+
+  auto param = CreateTestParamFixed<3>(local_addr, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
+
+  // 设置 mock 返回成功
+  g_mock_batch_transfer_ret = HCCL_SUCCESS;
+
+  uint32_t ret = HixlBatchPut(&param);
+  EXPECT_EQ(ret, SUCCESS);
+  // 验证批量接口被调用
+  EXPECT_EQ(g_mock_batch_transfer_call_count, 1u);
+}
+
+// 测试批量接口不支持时 fallback 到单次调用
+TEST_F(HixlBatchTransferTest, BatchTransferFallbackToSingle) {
+  std::array<std::array<uint8_t, 8>, 3> local_addr{};
+  std::array<std::array<uint8_t, 8>, 3> remote_addr{};
+  std::array<uint64_t, 3> lens_storage{8, 8, 8};
+
+  for (auto &arr : local_addr) {
+    std::fill(arr.begin(), arr.end(), 0x22);
+  }
+  for (auto &arr : remote_addr) {
+    std::fill(arr.begin(), arr.end(), 0xBB);
+  }
+
+  uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
+  uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
+
+  auto param = CreateTestParamFixed<3>(local_addr, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
+
+  // 设置 mock 返回不支持，触发 fallback
+  g_mock_batch_transfer_ret = HCCL_E_NOT_SUPPORT;
+
+  uint32_t ret = HixlBatchPut(&param);
+  EXPECT_EQ(ret, SUCCESS);
+  // 验证批量接口被调用一次（尝试），然后 fallback
+  EXPECT_EQ(g_mock_batch_transfer_call_count, 1u);
+}
+
+// 测试批量接口返回其他错误时失败
+TEST_F(HixlBatchTransferTest, BatchTransferOtherError) {
+  std::array<std::array<uint8_t, 8>, 3> local_addr{};
+  std::array<std::array<uint8_t, 8>, 3> remote_addr{};
+  std::array<uint64_t, 3> lens_storage{8, 8, 8};
+
+  for (auto &arr : local_addr) {
+    std::fill(arr.begin(), arr.end(), 0x33);
+  }
+  for (auto &arr : remote_addr) {
+    std::fill(arr.begin(), arr.end(), 0xBB);
+  }
+
+  uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
+  uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
+
+  auto param = CreateTestParamFixed<3>(local_addr, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
+
+  // 设置 mock 返回其他错误（如参数错误）
+  g_mock_batch_transfer_ret = HCCL_E_PARA;
+
+  uint32_t ret = HixlBatchPut(&param);
+  EXPECT_EQ(ret, FAILED);
+  // 验证批量接口被调用一次
+  EXPECT_EQ(g_mock_batch_transfer_call_count, 1u);
+}
+
+// 测试 BatchGet 批量接口成功
+TEST_F(HixlBatchTransferTest, BatchGetSuccess) {
+  std::array<std::array<uint8_t, 8>, 3> remote_addr{};
+  std::array<std::array<uint8_t, 8>, 3> local_addr{};
+  std::array<uint64_t, 3> lens_storage{8, 8, 8};
+
+  for (auto &arr : remote_addr) {
+    std::fill(arr.begin(), arr.end(), 0xAA);
+  }
+  for (auto &arr : local_addr) {
+    std::fill(arr.begin(), arr.end(), 0xBB);
+  }
+
+  uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
+  uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
+
+  auto param = CreateTestParamFixed<3>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
+
+  g_mock_batch_transfer_ret = HCCL_SUCCESS;
+
+  uint32_t ret = HixlBatchGet(&param);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(g_mock_batch_transfer_call_count, 1u);
+}
+
+// 测试 BatchGet 批量接口不支持时 fallback
+TEST_F(HixlBatchTransferTest, BatchGetFallbackToSingle) {
+  std::array<std::array<uint8_t, 8>, 3> remote_addr{};
+  std::array<std::array<uint8_t, 8>, 3> local_addr{};
+  std::array<uint64_t, 3> lens_storage{8, 8, 8};
+
+  for (auto &arr : remote_addr) {
+    std::fill(arr.begin(), arr.end(), 0xAA);
+  }
+  for (auto &arr : local_addr) {
+    std::fill(arr.begin(), arr.end(), 0xBB);
+  }
+
+  uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
+  uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
+
+  auto param = CreateTestParamFixed<3>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
+
+  g_mock_batch_transfer_ret = HCCL_E_NOT_SUPPORT;
+
+  uint32_t ret = HixlBatchGet(&param);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(g_mock_batch_transfer_call_count, 1u);
 }
