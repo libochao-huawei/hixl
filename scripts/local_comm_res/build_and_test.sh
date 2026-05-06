@@ -58,10 +58,19 @@ fi
 echo ""
 echo "[3/3] Running test..."
 echo ""
+echo "[INFO] Test execution started at $(date)"
+echo "[INFO] Working directory: ${SCRIPT_DIR}"
+echo "[INFO] Executable: ${BUILD_DIR}/test_local_comm_res"
+echo ""
 
 # 运行测试（可以使用 --device 指定设备 ID）
 cd "${SCRIPT_DIR}"
 "${BUILD_DIR}/test_local_comm_res" "$@"
+TEST_RESULT=$?
+
+echo ""
+echo "[INFO] Test execution finished at $(date)"
+echo "[INFO] Exit code: ${TEST_RESULT}"
 
 # 显示输出文件
 if [ -f "${OUTPUT_FILE}" ]; then

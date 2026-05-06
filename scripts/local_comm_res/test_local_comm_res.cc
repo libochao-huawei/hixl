@@ -10,13 +10,16 @@
  * 5. 将结果写入 JSON 文件
  */
 
-#include <iostream>
+#include <algorithm>
+#include <cstdio>
+#include <dirent.h>
 #include <fstream>
+#include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
-#include <map>
+#include <sys/stat.h>
 #include <vector>
-#include <cstdio>
 
 #include "acl/acl.h"
 #include "local_comm_res_tool.h"
@@ -68,6 +71,41 @@ std::string LocalCommResToJson(const hixl::LocalCommRes& res) {
     return oss.str();
 }
 
+// 在 /etc/ 目录下模糊匹配以 noroce.json 结尾的文件，返回修改时间最新的一个
+std::string FindLatestTopoFile() {
+    const char* dir_path = "/etc/";
+    const char* suffix = "noroce.json";
+    DIR* dir = opendir(dir_path);
+    if (!dir) {
+        std::cerr << "[Test] WARNING: Failed to open /etc/ for topo file scan" << std::endl;
+        return "";
+    }
+
+    std::string latest_file;
+    time_t latest_mtime = 0;
+    struct dirent* entry = nullptr;
+    while ((entry = readdir(dir)) != nullptr) {
+        std::string name(entry->d_name);
+        if (name.size() < std::strlen(suffix)) {
+            continue;
+        }
+        if (name.compare(name.size() - std::strlen(suffix), std::strlen(suffix), suffix) != 0) {
+            continue;
+        }
+
+        std::string full_path = std::string(dir_path) + name;
+        struct stat st;
+        if (stat(full_path.c_str(), &st) == 0) {
+            if (st.st_mtime > latest_mtime) {
+                latest_mtime = st.st_mtime;
+                latest_file = full_path;
+            }
+        }
+    }
+    closedir(dir);
+    return latest_file;
+}
+
 // 打印 EID 列表（用于调试）
 void PrintEidList(const std::vector<std::string>& eid_list) {
     std::cout << "[Test] EID list count: " << eid_list.size() << std::endl;
@@ -91,7 +129,7 @@ int main(int argc, char* argv[]) {
 
     // 1. 解析命令行参数
     int32_t deviceId = 0;  // 默认设备 ID
-    std::string topoPath = "/etc/superpod_2d_noroce.json";
+    std::string topoPath;
     std::string routePath = "/lib/route.conf";
 
     for (int i = 1; i < argc; ++i) {
@@ -113,29 +151,44 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // 如果未通过 --topo 指定，则在 /etc/ 下模糊匹配最新的 *noroce.json
+    if (topoPath.empty()) {
+        std::string found = FindLatestTopoFile();
+        if (!found.empty()) {
+            topoPath = found;
+        } else {
+            topoPath = "/etc/superpod_2d_noroce.json";
+            std::cerr << "[Test] WARNING: No *noroce.json found in /etc/, fallback to default" << std::endl;
+        }
+    }
+
     std::cout << "[Test] Configuration:" << std::endl;
     std::cout << "[Test]   device_id: " << deviceId << std::endl;
     std::cout << "[Test]   topo_path: " << topoPath << std::endl;
     std::cout << "[Test]   route_path: " << routePath << std::endl;
+    std::cout << "[Test] ===== Start ACL Init =====" << std::endl;
 
     // 2. ACL 初始化
+    std::cout << "[Test] [INFO] Calling aclInit..." << std::endl;
     aclError ret = aclInit(nullptr);
     if (ret != ACL_SUCCESS) {
         std::cerr << "[Test] ERROR: aclInit failed with error " << ret << std::endl;
         return -1;
     }
-    std::cout << "[Test] aclInit succeeded" << std::endl;
+    std::cout << "[Test] [INFO] aclInit succeeded" << std::endl;
 
     // 3. 设置设备
+    std::cout << "[Test] [INFO] Calling aclrtSetDevice(" << deviceId << ")..." << std::endl;
     ret = aclrtSetDevice(deviceId);
     if (ret != ACL_SUCCESS) {
         std::cerr << "[Test] ERROR: aclrtSetDevice failed with error " << ret << std::endl;
         aclFinalize();
         return -1;
     }
-    std::cout << "[Test] aclrtSetDevice(" << deviceId << ") succeeded" << std::endl;
+    std::cout << "[Test] [INFO] aclrtSetDevice(" << deviceId << ") succeeded" << std::endl;
 
     // 4. 获取设备信息
+    std::cout << "[Test] [INFO] Calling aclrtGetDevice..." << std::endl;
     int32_t logicId = 0;
     int32_t phyId = 0;
 
@@ -146,8 +199,9 @@ int main(int argc, char* argv[]) {
         aclFinalize();
         return -1;
     }
-    std::cout << "[Test] aclrtGetDevice: logicId=" << logicId << std::endl;
+    std::cout << "[Test] [INFO] aclrtGetDevice: logicId=" << logicId << std::endl;
 
+    std::cout << "[Test] [INFO] Calling aclrtGetPhyDevIdByLogicDevId..." << std::endl;
     ret = aclrtGetPhyDevIdByLogicDevId(logicId, &phyId);
     if (ret != ACL_SUCCESS) {
         std::cerr << "[Test] ERROR: aclrtGetPhyDevIdByLogicDevId failed with error " << ret << std::endl;
@@ -155,10 +209,11 @@ int main(int argc, char* argv[]) {
         aclFinalize();
         return -1;
     }
-    std::cout << "[Test] aclrtGetPhyDevIdByLogicDevId: phyId=" << phyId << std::endl;
+    std::cout << "[Test] [INFO] aclrtGetPhyDevIdByLogicDevId: phyId=" << phyId << std::endl;
 
     // 5. 直接调用 DCMI 接口获取 EID 列表（用于验证）
     std::cout << "\n[Test] ===== DCMI Interface Test =====" << std::endl;
+    std::cout << "[Test] [INFO] Calling GetEidListByPhyId..." << std::endl;
     std::vector<std::string> eidList;
     int32_t dcmiRet = hixl::GetEidListByPhyId(phyId, eidList);
     if (dcmiRet != hixl::SUCCESS) {
@@ -169,11 +224,12 @@ int main(int argc, char* argv[]) {
 
     // 6. 获取主板 ID（用于验证）
     unsigned int mainboardId = 0;
+    std::cout << "[Test] [INFO] Calling GetMainboardId..." << std::endl;
     int32_t mbRet = hixl::GetMainboardId(phyId, mainboardId);
     if (mbRet != hixl::SUCCESS) {
         std::cerr << "[Test] WARNING: GetMainboardId failed with error " << mbRet << std::endl;
     } else {
-        std::cout << "[Test] Mainboard ID: 0x" << std::hex << mainboardId << std::dec << std::endl;
+        std::cout << "[Test] [INFO] Mainboard ID: 0x" << std::hex << mainboardId << std::dec << std::endl;
     }
 
     // 7. 生成 LocalCommRes
@@ -184,6 +240,7 @@ int main(int argc, char* argv[]) {
     options["route_path"] = routePath;
 
     hixl::LocalCommRes localCommRes;
+    std::cout << "[Test] [INFO] Calling GenerateLocalCommRes..." << std::endl;
     int32_t genRet = hixl::GenerateLocalCommRes(phyId, options, localCommRes);
 
     if (genRet != hixl::SUCCESS) {
@@ -214,6 +271,7 @@ int main(int argc, char* argv[]) {
     }
 
     // 9. 写入 JSON 文件
+    std::cout << "[Test] [INFO] Writing output to file..." << std::endl;
     std::string jsonContent = LocalCommResToJson(localCommRes);
 
     std::ofstream outFile(TEST_OUTPUT_FILE);
