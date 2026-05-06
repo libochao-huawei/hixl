@@ -17,6 +17,7 @@
 #include "common/scope_guard.h"
 #include "common/ctrl_msg_plugin.h"
 #include "transfer_pool.h"
+#include "engine/endpoint_generator.h"
 
 static inline void to_json(nlohmann::json &j, const CommMem &m) {
   j = nlohmann::json{};
@@ -125,6 +126,7 @@ Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list
   HIXL_CHECK_NOTNULL(endpoint_list);
   HIXL_CHECK_NOTNULL(config);
   HIXL_CHK_BOOL_RET_STATUS(list_num > 0, PARAM_INVALID, "endpoint list num:%u is invalid, must > 0", list_num);
+  const bool has_device_ep = EndpointGenerator::HasLocalDeviceEndpoint(endpoint_list, list_num);
   for (uint32_t i = 0U; i < list_num; ++i) {
     EndpointHandle handle = nullptr;
     HIXL_CHK_STATUS_RET(endpoint_store_.CreateEndpoint(endpoint_list[i], handle), "Failed to create endpoint.");
@@ -146,7 +148,7 @@ Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list
                                       return this->DestroyChannel(fd, msg, msg_len);
                                     });
   CtrlMsgPlugin::Initialize();
-  msg_handler_.Initialize();
+  HIXL_CHK_STATUS_RET(msg_handler_.Initialize(has_device_ep), "Failed to initialize msg handler");
   HIXL_CHK_STATUS_RET(InitTransFinishedFlag(), "Failed to init trans finished flag");
   HIXL_EVENT("[HixlServer] init success, endpoint_list_num:%u", list_num);
   return SUCCESS;
