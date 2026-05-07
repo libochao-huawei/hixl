@@ -285,10 +285,13 @@ TEST_F(HixlEngineTest, TestHixl) {
   notify.name = AscendString(notify_name.c_str());
   std::string notify_msg = "message";
   notify.notify_msg = AscendString(notify_msg.c_str());
-  EXPECT_EQ(engine1.SendNotify("127.0.0.1:16000", notify, kTimeOut), UNSUPPORTED);
+  EXPECT_EQ(engine1.SendNotify("127.0.0.1:16000", notify, kTimeOut), SUCCESS);
 
   std::vector<NotifyDesc> notifies;
-  EXPECT_EQ(engine2.GetNotifies(notifies), UNSUPPORTED);
+  EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+  ASSERT_EQ(notifies.size(), 1U);
+  EXPECT_EQ(std::string(notifies[0].name.GetString()), notify_name);
+  EXPECT_EQ(std::string(notifies[0].notify_msg.GetString()), notify_msg);
 
   EXPECT_EQ(engine1.Disconnect("127.0.0.1:16000"), SUCCESS);
   EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
@@ -510,9 +513,135 @@ TEST_F(HixlEngineTest, TestSendAndGetNotifies) {
   notify.name = AscendString(notify_name.c_str());
   std::string notify_msg = "message";
   notify.notify_msg = AscendString(notify_msg.c_str());
-  EXPECT_EQ(engine1.SendNotify("127.0.0.1:16000", notify, kTimeOut), UNSUPPORTED);
+  EXPECT_EQ(engine1.SendNotify("127.0.0.1:16000", notify, kTimeOut), SUCCESS);
   std::vector<NotifyDesc> notifies;
-  EXPECT_EQ(engine2.GetNotifies(notifies), UNSUPPORTED);
+  EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+  ASSERT_EQ(notifies.size(), 1U);
+  EXPECT_EQ(std::string(notifies[0].name.GetString()), notify_name);
+  EXPECT_EQ(std::string(notifies[0].notify_msg.GetString()), notify_msg);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestSendNotifyWithoutConnection) {
+  HixlEngine engine1("127.0.0.1");
+  EXPECT_EQ(engine1.Initialize(options1), SUCCESS);
+
+  NotifyDesc notify;
+  notify.name = AscendString("test_notify");
+  notify.notify_msg = AscendString("message");
+  EXPECT_EQ(engine1.SendNotify("127.0.0.1:16000", notify, kTimeOut), NOT_CONNECTED);
+
+  engine1.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestMultipleNotifyMessages) {
+  HixlEngine engine1("127.0.0.1");
+  HixlEngine engine2("127.0.0.1:16000");
+  InitializeAndConnectEngines(engine1, options1, engine2, options2);
+
+  constexpr size_t kNotifyCount = 5U;
+  for (size_t i = 0; i < kNotifyCount; ++i) {
+    NotifyDesc notify;
+    const std::string notify_name = "test_notify" + std::to_string(i);
+    const std::string notify_msg = "message " + std::to_string(i);
+    notify.name = AscendString(notify_name.c_str());
+    notify.notify_msg = AscendString(notify_msg.c_str());
+    EXPECT_EQ(engine1.SendNotify("127.0.0.1:16000", notify, kTimeOut), SUCCESS);
+  }
+
+  std::vector<NotifyDesc> notifies;
+  EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+  ASSERT_EQ(notifies.size(), kNotifyCount);
+  for (size_t i = 0; i < kNotifyCount; ++i) {
+    EXPECT_EQ(std::string(notifies[i].name.GetString()), "test_notify" + std::to_string(i));
+    EXPECT_EQ(std::string(notifies[i].notify_msg.GetString()), "message " + std::to_string(i));
+  }
+
+  notifies.clear();
+  EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+  EXPECT_TRUE(notifies.empty());
+  CleanupEngines(engine1, engine2);
+}
+
+TEST_F(HixlEngineTest, TestNotifyWithTooLongMessage) {
+  HixlEngine engine1("127.0.0.1");
+  HixlEngine engine2("127.0.0.1:16000");
+  InitializeAndConnectEngines(engine1, options1, engine2, options2);
+
+  NotifyDesc notify;
+  notify.name = AscendString("test_notify");
+  std::string long_msg(4097U, 'a');
+  notify.notify_msg = AscendString(long_msg.c_str());
+
+  EXPECT_EQ(engine1.SendNotify("127.0.0.1:16000", notify, kTimeOut), PARAM_INVALID);
+  CleanupEngines(engine1, engine2);
+}
+
+TEST_F(HixlEngineTest, TestAutoConnectForTransferSync) {
+  std::map<AscendString, AscendString> auto_connect_options = options1;
+  auto_connect_options[hixl::OPTION_AUTO_CONNECT] = "1";
+  HixlEngine engine1("127.0.0.1");
+  EXPECT_EQ(engine1.Initialize(auto_connect_options), SUCCESS);
+
+  HixlEngine engine2("127.0.0.1:16000");
+  EXPECT_EQ(engine2.Initialize(options2), SUCCESS);
+
+  int32_t src = 1;
+  MemHandle handle1 = nullptr;
+  Register(engine1, &src, handle1);
+  int32_t dst = 2;
+  MemHandle handle2 = nullptr;
+  Register(engine2, &dst, handle2);
+
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:16000", READ, {desc}, kTimeOut), SUCCESS);
+  EXPECT_EQ(src, 2);
+  src = 3;
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:16000", WRITE, {desc}, kTimeOut), SUCCESS);
+  EXPECT_EQ(dst, 3);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestParseAutoConnectConfigInvalid) {
+  for (const char *invalid_auto_connect : {"2", "invalid"}) {
+    std::map<AscendString, AscendString> invalid_options = options1;
+    invalid_options[hixl::OPTION_AUTO_CONNECT] = AscendString(invalid_auto_connect);
+    HixlEngine engine("127.0.0.1");
+    EXPECT_EQ(engine.Initialize(invalid_options), PARAM_INVALID);
+    engine.Finalize();
+  }
+}
+
+TEST_F(HixlEngineTest, TestAutoConnectDisconnectOnError) {
+  std::map<AscendString, AscendString> auto_connect_options = options1;
+  auto_connect_options[hixl::OPTION_AUTO_CONNECT] = "1";
+  HixlEngine engine1("127.0.0.1");
+  EXPECT_EQ(engine1.Initialize(auto_connect_options), SUCCESS);
+
+  HixlEngine engine2("127.0.0.1:16000");
+  EXPECT_EQ(engine2.Initialize(options2), SUCCESS);
+
+  int32_t src = 1;
+  MemHandle handle1 = nullptr;
+  Register(engine1, &src, handle1);
+  int32_t dst = 2;
+  MemHandle handle2 = nullptr;
+  Register(engine2, &dst, handle2);
+
+  int32_t unregistered = 3;
+  TransferOpDesc invalid_desc{reinterpret_cast<uintptr_t>(&unregistered), reinterpret_cast<uintptr_t>(&dst),
+                              sizeof(int32_t)};
+  EXPECT_NE(engine1.TransferSync("127.0.0.1:16000", READ, {invalid_desc}, kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.client_manager_.GetClient("127.0.0.1:16000"), nullptr);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+
   engine1.Finalize();
   engine2.Finalize();
 }
