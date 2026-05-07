@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "channel.h"
+#include "adxl_channel.h"
 #include <mutex>
 #include <fcntl.h>
 #include <unistd.h>
@@ -19,7 +19,7 @@
 #include "common/def_types.h"
 #include "common/llm_log.h"
 #include "virtual_memory_manager.h"
-#include "statistic_manager.h"
+#include "adxl_statistic_manager.h"
 
 #include <base/err_msg.h>
 

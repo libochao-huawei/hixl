@@ -12,7 +12,7 @@
 #include <vector>
 #include <gtest/gtest.h>
 
-#include "adxl/statistic_manager.h"
+#include "adxl/adxl_statistic_manager.h"
 
 namespace adxl {
 namespace {

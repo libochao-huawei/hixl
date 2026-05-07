@@ -16,7 +16,7 @@
 #include <utility>
 #include <vector>
 #include "adxl/adxl_types.h"
-#include "channel.h"
+#include "adxl_channel.h"
 #include "control_msg_handler.h"
 #include "adxl/acl_compat.h"
 

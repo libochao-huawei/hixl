@@ -21,7 +21,7 @@
 #include "common/def_types.h"
 #include "base/err_msg.h"
 #include "control_msg_handler.h"
-#include "statistic_manager.h"
+#include "adxl_statistic_manager.h"
 
 namespace adxl {
 namespace {
@@ -277,7 +277,7 @@ Status ChannelManager::HandleRequestDisconnectMessage(const ChannelPtr &channel,
     } else {
       resp.error_code = static_cast<uint32_t>(ret);
       resp.error_message = "Disconnect failed";
-      LLMLOGI("Failed to disconnect channel %s by request, ret=%d", req_msg.channel_id.c_str(), ret);
+      LLMLOGW("Failed to disconnect channel %s by request, ret=%d", req_msg.channel_id.c_str(), ret);
     }
   } else if (!can_disconnect) {
     resp.error_code = static_cast<uint32_t>(FAILED);

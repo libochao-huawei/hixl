@@ -18,7 +18,7 @@
 #include "common/def_types.h"
 #include "common/llm_scope_guard.h"
 #include "common/llm_log.h"
-#include "statistic_manager.h"
+#include "adxl_statistic_manager.h"
 #include "virtual_memory_manager.h"
 #include "common/hixl_utils.h"
 

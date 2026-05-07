@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "adxl_engine.h"
+#include "cs_adxl_engine.h"
 #include "common/hixl_checker.h"
 
 namespace hixl {

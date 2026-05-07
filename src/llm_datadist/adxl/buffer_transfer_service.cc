@@ -21,7 +21,7 @@
 #include "base/err_msg.h"
 #include "common/llm_scope_guard.h"
 #include "adxl/adxl_utils.h"
-#include "statistic_manager.h"
+#include "adxl_statistic_manager.h"
 
 namespace adxl {
 namespace {

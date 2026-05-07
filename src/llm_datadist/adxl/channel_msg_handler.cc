@@ -17,13 +17,13 @@
 #include "common/msg_handler_plugin.h"
 #include "hccl/hccl_adapter.h"
 #include "common/llm_utils.h"
-#include "channel.h"
+#include "adxl_channel.h"
 #include "common/llm_checker.h"
 #include "common/llm_scope_guard.h"
 #include "common/def_types.h"
 #include "adxl_utils.h"
 #include "control_msg_handler.h"
-#include "statistic_manager.h"
+#include "adxl_statistic_manager.h"
 
 namespace adxl {
 
@@ -938,7 +938,7 @@ Status ChannelMsgHandler::ProcessServerEviction(const std::string& channel_id, C
     } 
     RequestDisconnectResp resp = pending_req->resp;
     pending_disconnect_requests_.erase(req_id);
-    LLMLOGI("Client refused or failed to disconnect channel %s, error_code=%u, error_message=%s", 
+    LLMLOGW("Client refused or failed to disconnect channel %s, error_code=%u, error_message=%s", 
       channel_id.c_str(), resp.error_code, resp.error_message.c_str());
     channel->SetDisconnecting(false);
     return SUCCESS;

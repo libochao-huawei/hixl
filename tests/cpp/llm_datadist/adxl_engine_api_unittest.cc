@@ -18,11 +18,11 @@
 
 #include "adxl/adxl_engine.h"
 #include "adxl/channel_manager.h"
-#include "adxl/statistic_manager.h"
+#include "adxl/adxl_statistic_manager.h"
 #include "adxl/virtual_memory_manager.h"
 #include "engine/engine_factory.h"
 #include "engine/hixl_engine.h"
-#include "engine/adxl_engine.h"
+#include "engine/cs_adxl_engine.h"
 #include "dlog_pub.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"

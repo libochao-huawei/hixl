@@ -17,7 +17,7 @@
 #include "adxl/buffer_transfer_service.h"
 #undef private
 
-#include "adxl/channel.h"
+#include "adxl/adxl_channel.h"
 #include "depends/ascendcl/src/ascendcl_stub.h"
 
 namespace adxl {
