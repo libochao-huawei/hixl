@@ -32,6 +32,7 @@ namespace {
 constexpr uint64_t kMaxRecvRespBodySize = static_cast<uint64_t>(4ULL * 1024ULL * 1024ULL);  // 4MB 示例上限
 constexpr uint32_t kCtrlMsgPluginTimeoutMs = 10000U;
 constexpr uint32_t kMaxUbCsClientNum = 4U;
+constexpr int32_t kInvalidSocket = -1;
 constexpr const char *kMemTypeDevice = "DEVICE";
 constexpr const char *kMemTypeHost = "HOST";
 
@@ -130,25 +131,26 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
     int32_t socket = -1;
     HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip_, server_port_, socket, kCtrlMsgPluginTimeoutMs),
                         "Connect socket failed");
-    ScopeGuard socket_guard([&socket]() {
-      if (socket != -1) {
-        HIXL_LOGI("HixlClient close socket start, socket:%d", socket);
-        close(socket);
-        HIXL_LOGI("HixlClient close socket end, socket:%d", socket);
-        socket = -1;
-      }
-    });
+    {
+      std::lock_guard<std::mutex> lock(ctrl_socket_mutex_);
+      ctrl_socket_ = socket;
+    }
+    HIXL_LOGI("HixlClient save ctrl_socket:%d for notify communication", socket);
+    HIXL_DISMISSABLE_GUARD(socket_guard, ([this]() {
+      CloseCtrlSocket();
+    }));
     HIXL_CHK_STATUS_RET(SendEndpointInfoReq(socket, CtrlMsgType::kGetEndpointInfoReq),
                         "HixlClient send GetEndpointInfoReq failed, socket:%d", socket);
     HIXL_CHK_STATUS_RET(RecvEndpointInfoResp(socket, remote_endpoint_list),
                         "HixlClient receive GetEndpointInfoResp failed, socket:%d", socket);
+    if (remote_endpoint_list.empty()) {
+      HIXL_LOGE(FAILED, "HixlClient received empty remote_endpoint_list");
+      return FAILED;
+    }
+    HIXL_CHK_STATUS_RET(FindMatchedEndpoints(local_endpoint_list, remote_endpoint_list),
+                        "HixlClient FindMatchedEndpoints failed");
+    HIXL_DISMISS_GUARD(socket_guard);
   }
-  if (remote_endpoint_list.empty()) {
-    HIXL_LOGE(FAILED, "HixlClient received empty remote_endpoint_list");
-    return FAILED;
-  }
-  HIXL_CHK_STATUS_RET(FindMatchedEndpoints(local_endpoint_list, remote_endpoint_list),
-                      "HixlClient FindMatchedEndpoints failed");
   return SUCCESS;
 }
 
@@ -611,6 +613,7 @@ Status HixlClient::Finalize() {
     }
     finalize_pending_ = true;
   }
+  CloseCtrlSocket();
   WaitBatchCsSyncInflightDrain();
   {
     std::lock_guard<std::mutex> lock(status_mutex_);
@@ -890,4 +893,100 @@ Status HixlClient::TransferSync(const std::vector<TransferOpDesc> &op_descs, Tra
   return SUCCESS;
 }
 
+Status HixlClient::RecvNotifyAck(int32_t fd, uint64_t expected_req_id, int32_t timeout_ms) {
+  CtrlMsgHeader header{};
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, &header, static_cast<uint32_t>(sizeof(header)), timeout_ms),
+                      "HixlClient receive NotifyAck header failed, fd:%d", fd);
+  HIXL_CHK_BOOL_RET_STATUS(header.magic == kMagicNumber, PARAM_INVALID,
+                           "Invalid magic for NotifyAck, expect:0x%X, actual:0x%X", kMagicNumber, header.magic);
+  HIXL_CHK_BOOL_RET_STATUS(header.body_size > sizeof(CtrlMsgType) && header.body_size <= kMaxRecvRespBodySize,
+                           PARAM_INVALID, "Invalid body_size for NotifyAck, body_size:%lu", header.body_size);
+
+  const uint64_t body_size = header.body_size;
+  std::vector<uint8_t> body(body_size);
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, body.data(), static_cast<uint32_t>(body_size), timeout_ms),
+                      "HixlClient receive NotifyAck body failed, fd:%d", fd);
+
+  CtrlMsgType msg_type{};
+  const void *src = static_cast<const void *>(body.data());
+  errno_t rc = memcpy_s(&msg_type, sizeof(msg_type), src, sizeof(msg_type));
+  HIXL_CHK_BOOL_RET_STATUS(rc == EOK, FAILED, "memcpy_s msg_type failed, rc:%d", static_cast<int32_t>(rc));
+  HIXL_CHK_BOOL_RET_STATUS(msg_type == CtrlMsgType::kNotifyAck, PARAM_INVALID,
+                           "Unexpected msg_type=%d, expect kNotifyAck=%d", static_cast<int32_t>(msg_type),
+                           static_cast<int32_t>(CtrlMsgType::kNotifyAck));
+
+  const size_t json_len = static_cast<size_t>(body_size - sizeof(CtrlMsgType));
+  std::string json_str(reinterpret_cast<const char *>(body.data() + sizeof(msg_type)), json_len);
+  NotifyAck ack;
+  try {
+    nlohmann::json j = nlohmann::json::parse(json_str);
+    ack = j.get<NotifyAck>();
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "Failed to parse NotifyAck, exception:%s", e.what());
+    return PARAM_INVALID;
+  }
+  HIXL_CHK_BOOL_RET_STATUS(ack.req_id == expected_req_id, PARAM_INVALID,
+                           "NotifyAck req_id mismatch, expect:%lu, actual:%lu", expected_req_id, ack.req_id);
+  if (ack.result != SUCCESS) {
+    HIXL_LOGE(ack.result, "NotifyAck result failed, req_id:%lu, result:%u", ack.req_id, ack.result);
+    return ack.result;
+  }
+  HIXL_LOGI("HixlClient received NotifyAck success, req_id:%lu", ack.req_id);
+  return SUCCESS;
+}
+
+Status HixlClient::SendNotifyInternal(uint64_t req_id, const NotifyDesc &notify, int32_t timeout_ms) {
+  std::string name = notify.name.GetString();
+  std::string msg = notify.notify_msg.GetString();
+
+  if (name.empty() || name.size() > kMaxNotifyNameLen) {
+    HIXL_LOGE(PARAM_INVALID, "Notify name length invalid, size:%zu, max:%zu", name.size(), kMaxNotifyNameLen);
+    return PARAM_INVALID;
+  }
+  if (msg.size() > kMaxNotifyMsgLen) {
+    HIXL_LOGE(PARAM_INVALID, "Notify message too long, size:%zu, max:%zu", msg.size(), kMaxNotifyMsgLen);
+    return PARAM_INVALID;
+  }
+
+  NotifyMsg notify_msg;
+  notify_msg.req_id = req_id;
+  notify_msg.name = name;
+  notify_msg.notify_msg = msg;
+
+  nlohmann::json j = notify_msg;
+  std::string msg_str = j.dump();
+
+  CtrlMsgHeader header{};
+  header.magic = kMagicNumber;
+  header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + msg_str.size());
+  CtrlMsgType msg_type = CtrlMsgType::kNotify;
+
+  std::lock_guard<std::mutex> lock(ctrl_socket_mutex_);
+  if (ctrl_socket_ < 0) {
+    HIXL_LOGE(NOT_CONNECTED, "HixlClient ctrl_socket is not connected");
+    return NOT_CONNECTED;
+  }
+  const int32_t socket = ctrl_socket_;
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(socket, &header, static_cast<uint64_t>(sizeof(header))),
+                      "HixlClient send NotifyMsg header failed");
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(socket, &msg_type, static_cast<uint64_t>(sizeof(msg_type))),
+                      "HixlClient send NotifyMsg msg_type failed");
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(socket, msg_str.c_str(), static_cast<uint64_t>(msg_str.size())),
+                      "HixlClient send NotifyMsg body failed");
+
+  HIXL_LOGI("HixlClient sent NotifyMsg, req_id:%lu, name:%s, socket:%d", req_id, notify_msg.name.c_str(), socket);
+  HIXL_CHK_STATUS_RET(RecvNotifyAck(socket, req_id, timeout_ms),
+                      "HixlClient receive NotifyAck failed, req_id:%lu, timeout:%d ms", req_id, timeout_ms);
+
+  return SUCCESS;
+}
+
+void HixlClient::CloseCtrlSocket() {
+  std::lock_guard<std::mutex> lock(ctrl_socket_mutex_);
+  if (ctrl_socket_ >= 0) {
+    close(ctrl_socket_);
+    HIXL_LOGI("HixlClient closed ctrl_socket:%d", ctrl_socket_);
+    ctrl_socket_ = kInvalidSocket;
+  }
+}
 }  // namespace hixl

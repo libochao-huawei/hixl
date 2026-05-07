@@ -54,13 +54,20 @@ class HixlServer {
    */
   Status Finalize();
 
+  Status GetNotifies(std::vector<NotifyDesc> &notifies);
+
   Status RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor) const;
 
  private:
+  Status RegisterNotifyHandlers();
+
   void *server_handle_ = nullptr;
   std::vector<EndpointConfig> data_endpoint_config_list_;
   std::mutex mtx_;
   std::map<MemHandle, AddrInfo> handle_to_addr_;
+  std::vector<NotifyDesc> notify_messages_;
+  std::mutex notify_mutex_;
+  std::mutex notify_send_mutex_;
 };
 }  // namespace hixl
 #endif  // #ifndef CANN_HIXL_SRC_HIXL_ENGINE_HIXL_SERVER_H
