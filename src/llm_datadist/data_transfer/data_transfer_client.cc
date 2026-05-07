@@ -115,7 +115,7 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
   uint32_t is_pull_block = 0U;
   std::vector<std::vector<std::pair<int64_t, int64_t>>> contiguous_blocks_pair;
   LLM_CHK_STATUS_RET(SetBufferInfoCount(pull_cache_param, buffer_info_count, is_pull_block, contiguous_blocks_pair),
-                     "set buffer_info_count failed");
+                    "set buffer_info_count failed");
 
   const uint64_t transfer_info_count =
       static_cast<uint64_t>(buffer_info_count) * kSrcAndDstNum + cache_entry.cache_addrs.size();
