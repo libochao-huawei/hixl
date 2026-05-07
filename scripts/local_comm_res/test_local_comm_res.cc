@@ -107,17 +107,23 @@ std::string FindLatestTopoFile() {
     return latest_file;
 }
 
-// 打印 EID 列表（用于调试）
-void PrintEidList(const std::vector<std::string>& eid_list) {
-    std::cout << "[Test] EID list count: " << eid_list.size() << std::endl;
-    for (size_t i = 0; i < eid_list.size() && i < 10; ++i) {
-        std::cout << "[Test]   EID[" << i << "]: " << eid_list[i];
-        std::cout << " (port=" << hixl::GetPortFromEid(eid_list[i]);
-        std::cout << ", is_mesh=" << hixl::IsMeshLayerEid(eid_list[i]);
-        std::cout << ", is_clos=" << hixl::IsClosLayerEid(eid_list[i]) << ")" << std::endl;
-    }
-    if (eid_list.size() > 10) {
-        std::cout << "[Test]   ... and " << (eid_list.size() - 10) << " more" << std::endl;
+// 打印 URMA Device 列表（用于调试）
+void PrintUrmaDeviceList(const std::vector<hixl::UrmaDevice>& urma_devices) {
+    std::cout << "[Test] URMA device count: " << urma_devices.size() << std::endl;
+    for (size_t i = 0; i < urma_devices.size(); ++i) {
+        const auto& dev = urma_devices[i];
+        std::cout << "[Test]   Device[" << i << "]: " << dev.name
+                  << ", eid_count=" << dev.eid_list.size() << std::endl;
+        for (size_t j = 0; j < dev.eid_list.size() && j < 5; ++j) {
+            const std::string& eid = dev.eid_list[j];
+            int port = hixl::GetPortFromEid(eid);
+            int die_id = hixl::GetServerDieIdFromEid(eid);
+            std::cout << "[Test]     EID[" << j << "]: " << eid
+                      << " (port=" << port << ", die_id=" << die_id << ")" << std::endl;
+        }
+        if (dev.eid_list.size() > 5) {
+            std::cout << "[Test]     ... and " << (dev.eid_list.size() - 5) << " more" << std::endl;
+        }
     }
 }
 
@@ -212,15 +218,15 @@ int main(int argc, char* argv[]) {
     }
     std::cout << "[Test] [INFO] aclrtGetPhyDevIdByLogicDevId: phyId=" << phyId << std::endl;
 
-    // 5. 直接调用 DCMI 接口获取 EID 列表（用于验证）
+    // 5. 直接调用 DCMI 接口获取 URMA Device 列表（用于验证）
     std::cout << "\n[Test] ===== DCMI Interface Test =====" << std::endl;
-    std::cout << "[Test] [INFO] Calling GetEidListByPhyId..." << std::endl;
-    std::vector<std::string> eidList;
-    int32_t dcmiRet = hixl::GetEidListByPhyId(phyId, eidList);
+    std::cout << "[Test] [INFO] Calling GetUrmaDeviceList..." << std::endl;
+    std::vector<hixl::UrmaDevice> urmaDevices;
+    int32_t dcmiRet = hixl::GetUrmaDeviceList(phyId, urmaDevices);
     if (dcmiRet != hixl::SUCCESS) {
-        std::cerr << "[Test] ERROR: GetEidListByPhyId failed with error " << dcmiRet << std::endl;
+        std::cerr << "[Test] ERROR: GetUrmaDeviceList failed with error " << dcmiRet << std::endl;
     } else {
-        PrintEidList(eidList);
+        PrintUrmaDeviceList(urmaDevices);
     }
 
     // 6. 获取主板 ID（用于验证）
