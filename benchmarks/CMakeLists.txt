@@ -47,6 +47,31 @@ target_link_libraries(benchmark PRIVATE
 )
 target_link_ascend_hal(benchmark)
 
+add_executable(hixl_benchmark hixl_benchmark.cpp ${BENCHMARK_COMMON_SOURCES})
+target_include_directories(hixl_benchmark PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${HIXL_INC_DIR}
+    ${CANN_INSTALL_PATH}/include
+)
+target_compile_options(hixl_benchmark PRIVATE
+    -ftrapv
+    -O2
+    -fno-common
+    -Wfloat-equal
+    -Wall
+    -Werror
+    -Wextra
+)
+target_link_libraries(hixl_benchmark PRIVATE
+    cann_hixl
+    acl_rt_headers
+    acl_rt
+    -lpthread
+    -lrt
+)
+target_link_ascend_hal(hixl_benchmark)
+
 if(NOT TARGET fabric_mem_kv_benchmark)
     add_executable(fabric_mem_kv_benchmark fabric_mem_kv_benchmark.cpp)
     target_include_directories(fabric_mem_kv_benchmark PRIVATE

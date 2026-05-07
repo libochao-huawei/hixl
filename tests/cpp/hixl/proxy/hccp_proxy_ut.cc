@@ -15,6 +15,7 @@
 #include "ascendcl_stub.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "hccp_proxy.h"
+#include "runtime_proxy.h"
 
 namespace hixl {
 
@@ -64,7 +65,10 @@ class ScopedMmpaRaMock {
   explicit ScopedMmpaRaMock(const std::shared_ptr<llm::MmpaStubApiGe> &impl) {
     llm::MmpaStub::GetInstance().SetImpl(impl);
   }
-  ~ScopedMmpaRaMock() { llm::MmpaStub::GetInstance().Reset(); }
+  ~ScopedMmpaRaMock() {
+    RuntimeProxy::GetInstance().ResetForTest();
+    llm::MmpaStub::GetInstance().Reset();
+  }
 
   ScopedMmpaRaMock(const ScopedMmpaRaMock &) = delete;
   ScopedMmpaRaMock &operator=(const ScopedMmpaRaMock &) = delete;
@@ -95,11 +99,16 @@ class MockMmpaRaOk : public llm::MmpaStubApiGe {
       // Return a real dlopen handle so ~LibRaLoader's mmDlclose remains valid after MmpaStub::Reset() at test exit.
       return llm::MmpaStubApiGe::DlOpen("libdl.so.2", mode);
     }
+    if (file_name != nullptr &&
+        (std::strcmp(file_name, "libascendcl.so") == 0 || std::strcmp(file_name, "libruntime.so") == 0)) {
+      return llm::MmpaStubApiGe::DlOpen(file_name, mode);
+    }
     return nullptr;
   }
 
   void *DlSym(void *handle, const char *func_name) override {
-    if (reinterpret_cast<uintptr_t>(handle) < 0x8000) {
+    const uintptr_t handle_value = reinterpret_cast<uintptr_t>(handle);
+    if (handle_value < 0x8000) {
       return nullptr;
     }
     if (func_name != nullptr && std::strcmp(func_name, "RaRdevGetHandle") == 0) {
@@ -108,7 +117,7 @@ class MockMmpaRaOk : public llm::MmpaStubApiGe {
     if (func_name != nullptr && std::strcmp(func_name, "RaGetNotifyBaseAddr") == 0) {
       return reinterpret_cast<void *>(&ut_mock_ra_get_notify_base_addr);
     }
-    return nullptr;
+    return llm::MmpaStubApiGe::DlSym(handle, func_name);
   }
 
   int32_t DlClose(void *handle) override {
@@ -121,9 +130,10 @@ class MockMmpaRaOk : public llm::MmpaStubApiGe {
 class MockMmpaRaDlSymAlwaysFailBase : public llm::MmpaStubApiGe {
  public:
   void *DlSym(void *handle, const char *func_name) override {
-    (void)handle;
-    (void)func_name;
-    return nullptr;
+    if (reinterpret_cast<uintptr_t>(handle) == kMockLibRaHandle) {
+      return nullptr;
+    }
+    return llm::MmpaStubApiGe::DlSym(handle, func_name);
   }
 
   int32_t DlClose(void *handle) override {
@@ -135,8 +145,10 @@ class MockMmpaRaDlSymAlwaysFailBase : public llm::MmpaStubApiGe {
 class MockMmpaRaDlOpenFail : public MockMmpaRaDlSymAlwaysFailBase {
  public:
   void *DlOpen(const char *file_name, int32_t mode) override {
-    (void)file_name;
-    (void)mode;
+    if (file_name != nullptr &&
+        (std::strcmp(file_name, "libascendcl.so") == 0 || std::strcmp(file_name, "libruntime.so") == 0)) {
+      return llm::MmpaStubApiGe::DlOpen(file_name, mode);
+    }
     return nullptr;
   }
 };
@@ -144,9 +156,12 @@ class MockMmpaRaDlOpenFail : public MockMmpaRaDlSymAlwaysFailBase {
 class MockMmpaRaDlSymFail : public MockMmpaRaDlSymAlwaysFailBase {
  public:
   void *DlOpen(const char *file_name, int32_t mode) override {
-    (void)mode;
     if (file_name != nullptr && std::strcmp(file_name, "libra.so") == 0) {
       return reinterpret_cast<void *>(kMockLibRaHandle);
+    }
+    if (file_name != nullptr &&
+        (std::strcmp(file_name, "libascendcl.so") == 0 || std::strcmp(file_name, "libruntime.so") == 0)) {
+      return llm::MmpaStubApiGe::DlOpen(file_name, mode);
     }
     return nullptr;
   }

@@ -53,6 +53,10 @@ bool IsUboeProtocolDescEnabled(const std::vector<std::string> &protocol_desc) {
          std::find(protocol_desc.begin(), protocol_desc.end(), kUboeProtocolDesc) != protocol_desc.end();
 }
 
+bool IsDevicePlacement(const std::string &placement) {
+  return placement == kPlacementDevice;
+}
+
 Status GetUboeIp(std::string &ip) {
   int32_t dev_logic_id = 0;
   int32_t dev_phy_id = 0;
@@ -256,7 +260,8 @@ Status EndpointGenerator::BuildEndpointListFromOptions(const std::map<AscendStri
     has_endpoint_list = HasNonEmptyEndpointList(config);
   }
 
-  if (local_comm_res_cstr != nullptr || is_uboe_enabled) {
+  const bool has_local_comm_res = (local_comm_res_cstr != nullptr);
+  if (has_local_comm_res || is_uboe_enabled) {
     HIXL_CHK_STATUS_RET(BuildEndpointListFromLocalCommRes(config, has_endpoint_list, local_engine, endpoint_list),
                         "BuildEndpointListFromLocalCommRes failed");
   }
@@ -273,28 +278,37 @@ Status EndpointGenerator::BuildEndpointListFromOptions(const std::map<AscendStri
   return SUCCESS;
 }
 
-Status EndpointGenerator::BuildEndpointListFromLocalCommRes(const nlohmann::json &config,
-                                                            bool has_endpoint_list,
+Status EndpointGenerator::BuildEndpointListFromLocalCommRes(const nlohmann::json &config, bool has_endpoint_list,
                                                             const std::string &local_engine,
                                                             std::vector<EndpointConfig> &endpoint_list) {
-  SocType soc_type = SocType::kOther;
-  HIXL_CHK_STATUS_RET(GetSocType(soc_type), "GetSocType failed");
-  const bool auto_generate =
-      (soc_type == SocType::kV2 || soc_type == SocType::kV3) && config.is_object() && !has_endpoint_list;
-
   endpoint_list.clear();
+  uint32_t local_device_count = 0U;
+  bool auto_generate = false;
+  LocalDeviceResource resource{};
+  if (!has_endpoint_list) {
+    HIXL_CHK_STATUS_RET(QueryLocalDeviceCount(local_device_count), "QueryLocalDeviceCount failed");
+    HIXL_CHK_BOOL_RET_STATUS(local_device_count > 0U, FAILED,
+                             "endpoint_list is not configured and local device count is zero");
+    HIXL_CHK_STATUS_RET(QueryLocalDeviceResource(resource),
+                        "endpoint_list contains local device endpoint but no local device resource is available");
+    HIXL_CHK_BOOL_RET_STATUS(resource.phy_device_id >= 0, FAILED,
+                             "endpoint_list contains local device endpoint but no local device resource is available");
+    auto_generate = (resource.soc_type == SocType::kV2 || resource.soc_type == SocType::kV3);
+  }
   if (auto_generate) {
-    int32_t device_id = 0;
-    HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
     LocCommResInfo loc_comm_res_info{};
-    HIXL_CHK_STATUS_RET(GenerateInfo(device_id, local_engine, loc_comm_res_info), "GenerateInfo failed");
+    HIXL_CHK_STATUS_RET(GenerateInfo(resource.logic_device_id, local_engine, loc_comm_res_info), "GenerateInfo failed");
     ConvertLocCommResInfoToEndpointList(loc_comm_res_info, endpoint_list);
-  } else if (has_endpoint_list) {
-    HIXL_CHK_STATUS_RET(ParseLocalCommRes(config, endpoint_list), "ParseLocalCommRes failed");
+    HIXL_CHK_STATUS_RET(FillDeviceInfoIfNeeded(resource, endpoint_list), "FillDeviceInfoIfNeeded failed");
   }
 
-  if (!endpoint_list.empty()) {
-    HIXL_CHK_STATUS_RET(FillDeviceInfoIfNeeded(soc_type, endpoint_list), "FillDeviceInfoIfNeeded failed");
+  if (has_endpoint_list) {
+    HIXL_CHK_STATUS_RET(ParseLocalCommRes(config, endpoint_list), "ParseLocalCommRes failed");
+    LocalRuntimeContext ctx{};
+    HIXL_CHK_STATUS_RET(ResolveLocalRuntimeContext(endpoint_list, ctx), "ResolveLocalRuntimeContext failed");
+    if (ctx.need_device_context) {
+      HIXL_CHK_STATUS_RET(FillDeviceInfoIfNeeded(ctx.device_resource, endpoint_list), "FillDeviceInfoIfNeeded failed");
+    }
   }
   return SUCCESS;
 }
@@ -456,6 +470,68 @@ Status EndpointGenerator::GetSocType(EndpointGenerator::SocType &soc_type) {
   return SUCCESS;
 }
 
+bool EndpointGenerator::HasLocalDeviceEndpoint(const std::vector<EndpointConfig> &endpoint_list) {
+  return std::any_of(endpoint_list.begin(), endpoint_list.end(),
+                     [](const EndpointConfig &endpoint) { return IsDevicePlacement(endpoint.placement); });
+}
+
+bool EndpointGenerator::HasLocalDeviceEndpoint(const EndpointDesc *endpoint_list, uint32_t list_num) {
+  if (endpoint_list == nullptr) {
+    return false;
+  }
+  for (uint32_t i = 0; i < list_num; ++i) {
+    if (endpoint_list[i].loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Status EndpointGenerator::ResolveLocalRuntimeContext(const std::vector<EndpointConfig> &local_endpoints,
+                                                     LocalRuntimeContext &ctx) {
+  ctx = {};
+  HIXL_CHK_BOOL_RET_STATUS(!local_endpoints.empty(), PARAM_INVALID, "local endpoint list is empty");
+  ctx.has_local_device_endpoint = HasLocalDeviceEndpoint(local_endpoints);
+  uint32_t local_device_count = 0U;
+  HIXL_CHK_STATUS_RET(QueryLocalDeviceCount(local_device_count), "QueryLocalDeviceCount failed");
+  if (!ctx.has_local_device_endpoint) {
+    ctx.mode = LocalRuntimeMode::kHostOnly;
+    return SUCCESS;
+  }
+
+  ctx.mode = LocalRuntimeMode::kDevice;
+  ctx.need_device_context = true;
+  HIXL_CHK_BOOL_RET_STATUS(local_device_count > 0U, FAILED,
+                           "endpoint_list contains local device endpoint but local device count is zero");
+  HIXL_CHK_STATUS_RET(QueryLocalDeviceResource(ctx.device_resource),
+                      "endpoint_list contains local device endpoint but no local device resource is available");
+  HIXL_CHK_BOOL_RET_STATUS(ctx.device_resource.phy_device_id >= 0, FAILED,
+                           "endpoint_list contains local device endpoint but no local device resource is available");
+  return SUCCESS;
+}
+
+Status EndpointGenerator::QueryLocalDeviceCount(uint32_t &count) {
+  count = 0U;
+  HIXL_CHK_ACL_RET(aclrtGetDeviceCount(&count), "aclrtGetDeviceCount failed");
+  return SUCCESS;
+}
+
+Status EndpointGenerator::QueryLocalDeviceResource(LocalDeviceResource &resource) {
+  resource = {};
+  HIXL_CHK_STATUS_RET(GetSocType(resource.soc_type), "GetSocType failed");
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&resource.logic_device_id));
+  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(resource.logic_device_id, &resource.phy_device_id));
+  resource.super_device_id = -1;
+  resource.super_pod_id = -1;
+  if (resource.soc_type == SocType::kV3) {
+    HIXL_CHK_ACL_RET(aclrtGetDeviceInfo(static_cast<uint32_t>(resource.logic_device_id), ACL_DEV_ATTR_SUPER_POD_ID,
+                                        &resource.super_pod_id));
+    HIXL_CHK_ACL_RET(aclrtGetDeviceInfo(static_cast<uint32_t>(resource.logic_device_id),
+                                        ACL_DEV_ATTR_SUPER_POD_DEVIDE_ID, &resource.super_device_id));
+  }
+  return SUCCESS;
+}
+
 Status EndpointGenerator::BuildNetInstanceId(int32_t device_id, const std::string &local_engine,
                                              std::string &net_instance_id) {
   SocType soc_type = SocType::kOther;
@@ -500,43 +576,19 @@ Status EndpointGenerator::ParseLocalCommRes(const nlohmann::json &config, std::v
   return SUCCESS;
 }
 
-Status EndpointGenerator::FillDeviceInfoIfNeeded(EndpointGenerator::SocType soc_type,
+Status EndpointGenerator::FillDeviceInfoIfNeeded(const EndpointGenerator::LocalDeviceResource &resource,
                                                  std::vector<EndpointConfig> &endpoint_list) {
-  if (soc_type == SocType::kOther) {
+  if (resource.phy_device_id < 0) {
     return SUCCESS;
   }
 
-  int32_t device_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
-  int32_t phy_device_id = -1;
-  aclError acl_ret = aclrtGetPhyDevIdByLogicDevId(device_id, &phy_device_id);
-  if (acl_ret != ACL_SUCCESS) {
-    HIXL_LOGE(FAILED, "aclrtGetPhyDevIdByLogicDevId failed, device_id=%d, acl_ret=%d", device_id, acl_ret);
-    return FAILED;
-  }
-
-  int64_t super_device_id = -1;
-  int64_t super_pod_id = -1;
-  if (soc_type == SocType::kV3) {
-    acl_ret = aclrtGetDeviceInfo(static_cast<uint32_t>(device_id), ACL_DEV_ATTR_SUPER_POD_ID, &super_pod_id);
-    if (acl_ret != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtGetDeviceInfo SUPER_POD_ID failed, device_id=%d, acl_ret=%d", device_id, acl_ret);
-      return FAILED;
-    }
-    acl_ret = aclrtGetDeviceInfo(static_cast<uint32_t>(device_id), ACL_DEV_ATTR_SUPER_POD_DEVIDE_ID, &super_device_id);
-    if (acl_ret != ACL_SUCCESS) {
-      HIXL_LOGE(FAILED, "aclrtGetDeviceInfo SUPER_DEVICE_ID failed, device_id=%d, acl_ret=%d", device_id, acl_ret);
-      return FAILED;
-    }
-  }
-
   for (auto &ep : endpoint_list) {
-    if (ep.placement != kPlacementDevice) {
+    if (!IsDevicePlacement(ep.placement)) {
       continue;
     }
-    ep.device_info.phy_device_id = phy_device_id;
-    ep.device_info.super_device_id = super_device_id;
-    ep.device_info.super_pod_id = super_pod_id;
+    ep.device_info.phy_device_id = resource.phy_device_id;
+    ep.device_info.super_device_id = resource.super_device_id;
+    ep.device_info.super_pod_id = resource.super_pod_id;
   }
   return SUCCESS;
 }
