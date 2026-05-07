@@ -364,11 +364,9 @@ Status HixlCSClient::InitDeviceResource() {
                         "[HixlClient] RegisterNotifyMemForAllSlots failed. devId=%d", device_id_);
   }
 
-  // 提前初始化 remote flag 和 kernel，避免传输时引入耗时
+  // 提前加载 kernel，避免传输时引入耗时
   {
     std::lock_guard<std::mutex> lock(device_mu_);
-    HIXL_CHK_STATUS_RET(EnsureDeviceRemoteFlagInitedLocked(),
-                        "[HixlClient] EnsureDeviceRemoteFlagInitedLocked failed");
     HIXL_CHK_STATUS_RET(EnsureDeviceKernelLoadedLocked(),
                         "[HixlClient] EnsureDeviceKernelLoadedLocked failed");
   }
@@ -1245,6 +1243,13 @@ Status HixlCSClient::GetRemoteMemLocked(uint32_t timeout_ms, CommMem **remote_me
   HIXL_LOGD("[HixlClient] Recv remote mem descs success. Count=%zu", mem_descs.size());
   ret = ImportRemoteMem(mem_descs, remote_mem_list, mem_tag_list, list_num);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] ImportRemoteMem failed. desc_count=%zu", mem_descs.size());
+
+  // 提前初始化 remote flag，避免传输时引入耗时
+  if (device_id_ >= 0) {
+    std::lock_guard<std::mutex> lock(device_mu_);
+    HIXL_CHK_STATUS_RET(EnsureDeviceRemoteFlagInitedLocked(),
+                        "[HixlClient] EnsureDeviceRemoteFlagInitedLocked failed");
+  }
   return SUCCESS;
 }
 
