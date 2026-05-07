@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <map>
 #include <string>
+#include <iostream>
 
 #include "common/benchmark_config.h"
 #include "common/client_runner.h"
@@ -85,6 +86,8 @@ int32_t main(int32_t argc, char **argv) {
     return -1;
   }
   const int ret = client_runner.Run();
+  std::cout << "[INFO] Press Enter to exit...";
+  std::cin.get();
   client_runner.Shutdown();
   return ret;
 }
