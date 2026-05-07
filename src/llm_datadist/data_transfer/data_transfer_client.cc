@@ -11,16 +11,10 @@
 #include "data_transfer/data_transfer_client.h"
 #include "data_transfer/d2d_data_transfer_job.h"
 #include "common/llm_utils.h"
-#include "common/llm_scope_guard.h"
 
 namespace llm {
 namespace {
 constexpr size_t kSrcAndDstNum = 2U;
-constexpr uint64_t kDefaultReqBufferSize = 112U * 1024U;
-// Dynamic requests are capped at 2 MB to bound host-pinned memory growth per entity.
-constexpr uint64_t kMaxDynamicReqBufferSize = 2U * 1024U * 1024U;
-constexpr uint64_t kReqBufferAlignSize = 1024U;
-constexpr uint32_t kFlagSize = 8U;
 
 ge::Status SetBufferInfoCount(const PullCacheParam &pull_cache_param, uint32_t &buffer_info_count,
                               uint32_t &is_pull_block,
@@ -108,31 +102,9 @@ ge::Status SetBufferInfo(const PullCacheParam &pull_cache_param, const CacheEntr
 
 }  // namespace
 
-ge::Status DataTransferClient::PrepareTransferRequest(uint64_t request_size, uint32_t buffer_info_count,
-                                                      bool remote_cache_accessible,
-                                                      TransferCacheReq *&request) const {
-  const uint64_t max_request_buffer_size =
-      remote_cache_accessible ? kMaxDynamicReqBufferSize : kDefaultReqBufferSize;
-  LLM_CHK_BOOL_RET_STATUS(request_size <= (max_request_buffer_size - kFlagSize), ge::LLM_PARAM_INVALID,
-                         "buffer info count[%u] is to large, request size[%lu] is out of range[0, %lu]",
-                         buffer_info_count, request_size, (max_request_buffer_size - kFlagSize));
-  if (!remote_cache_accessible) {
-    request = PtrToPtr<uint8_t, TransferCacheReq>(comm_entity_->GetEntityInfo().send_buffer_req_ptr);
-    return ge::SUCCESS;
-  }
-  const uint64_t request_buffer_size =
-      ((request_size + kFlagSize + kReqBufferAlignSize - 1U) / kReqBufferAlignSize) * kReqBufferAlignSize;
-  LLM_CHK_STATUS_RET(comm_entity_->PrepareRemoteCacheReqBuffer(request_buffer_size, request),
-                     "Failed to prepare local req buffer to size=%lu", request_buffer_size);
-  LLMLOGI("Prepare remote cache req buffer success, buffer_info_count=%u, request_size=%lu, "
-          "request_buffer_size=%lu",
-          buffer_info_count, request_size, request_buffer_size);
-  return ge::SUCCESS;
-}
-
 ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_cache_param,
                                                      const CacheEntry &cache_entry, const CacheKey &cache_key,
-                                                     int32_t timeout, bool remote_cache_accessible) const {
+                                                     int32_t timeout) const {
   std::vector<std::vector<std::pair<int64_t, int64_t>>> contiguous_blocks_pair;
   uint32_t buffer_info_count = 0U;
   uint32_t is_pull_block = 0U;
@@ -142,8 +114,8 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
       sizeof(TransferCacheReq) + sizeof(TransferInfo) * (static_cast<uint64_t>(buffer_info_count) * kSrcAndDstNum +
                                                          cache_entry.cache_addrs.size());
   TransferCacheReq *request_ptr = nullptr;
-  LLM_CHK_STATUS_RET(PrepareTransferRequest(request_size, buffer_info_count, remote_cache_accessible, request_ptr),
-                     "Failed to prepare transfer request");
+  LLM_CHK_STATUS_RET(comm_entity_->GetTransferCacheReq(request_size, request_ptr),
+                     "Failed to get transfer cache req");
   LLM_ASSERT_NOTNULL(request_ptr);
   TransferCacheReq &request = *request_ptr;
   request.cache_id = cache_key.prompt_cache_id;
@@ -169,7 +141,6 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
   if (!pull_cache_param.src_tensor_indices.empty()) {
     request.src_tensor_start_index = pull_cache_param.src_tensor_indices.front();
   }
-  request.req_size = request_size;
   SetDstAddr(pull_cache_param, cache_entry, request);
   LLM_CHK_STATUS_RET(SetBufferInfo(pull_cache_param, cache_entry, contiguous_blocks_pair, request),
                     "Failed to set buffer info");
@@ -248,7 +219,7 @@ ge::Status DataTransferClient::PullCache(const CacheEntry &cache_entry, const Ca
 
 ge::Status DataTransferClient::PullCacheByGet(const CacheEntry &cache_entry, const CacheKey &cache_key,
                                               const PullCacheParam &pull_cache_param, int32_t timeout_in_ms) const {
-  LLM_CHK_STATUS_RET(ConstructTransferInfo(pull_cache_param, cache_entry, cache_key, timeout_in_ms, true));
+  LLM_CHK_STATUS_RET(ConstructTransferInfo(pull_cache_param, cache_entry, cache_key, timeout_in_ms));
   const auto &request = comm_entity_->GetRequest();
   CacheEntry remote_cache_entry;
   LLM_CHK_STATUS_RET(comm_entity_->GetCacheAccessTable().FindCacheEntry(request, remote_cache_entry));
