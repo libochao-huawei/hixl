@@ -25,14 +25,21 @@ constexpr uint64_t kDefaultTotalSize = 134217728ULL;  // 128 MiB
 constexpr uint32_t kDefaultBlockSteps = 1U;
 constexpr uint32_t kDefaultLoops = 1U;
 constexpr uint32_t kTcpClientCountMax = 65535U;
+constexpr uint32_t kDefaultDurationSec = 5U;
+constexpr uint32_t kDefaultWarmupDurationSec = 1U;
 
 enum class BenchmarkRole { kUnknown, kClient, kServer };
 
 struct BenchmarkConfig {
   BenchmarkRole role = BenchmarkRole::kUnknown;
+  std::string role_name;
+  std::string metadata = "p2p";
+  std::string benchmark_group = "default";
+  std::string output_dir = "output";
   int32_t device_id = 0;
   std::string local_engine;
   std::string remote_engine;
+  std::string target_id;
   uint16_t tcp_port = 20000;
   /// Parsed from `--tcp_port` (comma-separated); if empty before Validate, set to `{tcp_port}`.
   std::vector<uint16_t> tcp_port_list;
@@ -42,20 +49,37 @@ struct BenchmarkConfig {
   uint32_t tcp_accept_wait_sec = 30U;
   /// Server: TCP peers to accept before connect phase succeeds (default 1).
   uint32_t tcp_client_count = 1U;
-  std::string transfer_mode = "d2d";
   std::string transfer_op = "read";
-  bool use_buffer_pool = false;
+  std::string transport = "hccs";
+  std::string initiator_memory_type = "device";
+  std::string target_memory_type = "device";
   bool use_async = false;
+  bool check_consistency = false;
   uint32_t async_batch_num = 1U;
   uint32_t connect_timeout_ms = 60000U;
+  uint32_t duration_sec = kDefaultDurationSec;
+  uint32_t warmup_duration_sec = kDefaultWarmupDurationSec;
   uint64_t total_size = kDefaultTotalSize;
   uint64_t block_size = kDefaultTotalSize;
+  uint64_t start_block_size = kDefaultTotalSize;
+  uint64_t max_block_size = kDefaultTotalSize;
+  uint32_t start_batch_size = 1U;
+  uint32_t max_batch_size = 1U;
+  uint32_t start_threads = 1U;
+  uint32_t max_threads = 1U;
+  uint64_t seed = 0U;
   uint32_t block_steps = kDefaultBlockSteps;
   uint32_t loops = kDefaultLoops;
   /// True if --block_size / -k was set on the command line.
   bool block_size_explicit = false;
   /// Parsed from repeatable --hixl_option=KEY=VALUE / -H=KEY=VALUE (KEY is full HIXL option name).
   std::map<std::string, std::string> hixl_init_options;
+
+  /// Compute human-readable direction from initiator/target memory and op type.
+  /// Returns "D2rD", "rD2D", "D2rH", "rH2D", "H2rH", "rH2H", "H2rD", or "rD2H".
+  static std::string ComputeDirection(const std::string &initiator_mem,
+                                      const std::string &target_mem,
+                                      const std::string &op_type);
 
   /// Comma-separated CLI values (filled after role defaults + overrides; see EnsureEndpointLists).
   std::vector<int32_t> device_id_list;
@@ -86,6 +110,7 @@ class BenchmarkConfigParser {
   static bool Validate(BenchmarkConfig *cfg);
   static void LogExpandedEndpoints(FILE *out, const BenchmarkConfig &cfg);
   static std::map<hixl::AscendString, hixl::AscendString> BuildInitializeOptions(const BenchmarkConfig &cfg);
+  static bool ApplyTransportEnvironment(const BenchmarkConfig &cfg);
 };
 
 }  // namespace hixl_benchmark

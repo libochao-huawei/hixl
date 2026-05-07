@@ -1,0 +1,38 @@
+{
+  "models": [
+    {
+      "name": "deepseek-r1",
+      "tokens_per_key": 128,
+      "layer_count": 61,
+      "kv_strategy": "shared",
+      "caches_per_layer": [
+        {
+          "name": "rope",
+          "bytes_per_key": "16KiB"
+        },
+        {
+          "name": "latent",
+          "bytes_per_key": "128KiB"
+        }
+      ],
+      "source": "DeepSeek-R1 config: num_hidden_layers=61, kv_lora_rank=512, qk_rope_head_dim=64, dtype=bf16"
+    },
+    {
+      "name": "glm5",
+      "tokens_per_key": 128,
+      "layer_count": 78,
+      "kv_strategy": "shared",
+      "caches_per_layer": [
+        {
+          "name": "rope",
+          "bytes_per_key": "16KiB"
+        },
+        {
+          "name": "latent",
+          "bytes_per_key": "128KiB"
+        }
+      ],
+      "source": "GLM-5 config: num_hidden_layers=78, kv_lora_rank=512, qk_rope_head_dim=64, dtype=bf16; DSA indexer cache is not modeled unless added explicitly"
+    }
+  ]
+}

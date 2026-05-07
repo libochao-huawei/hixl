@@ -135,7 +135,7 @@ void ServerRunner::Shutdown() {
 }
 
 bool ServerRunner::AllocServerBufferForRun() {
-  is_host_ = (cfg_.transfer_mode == "d2h" || cfg_.transfer_mode == "h2h");
+  is_host_ = (cfg_.target_memory_type == "host");
   const size_t alloc_size = static_cast<size_t>(cfg_.total_size);
   aclError ar_alloc = ACL_ERROR_NONE;
   if (is_host_) {
@@ -160,10 +160,7 @@ bool ServerRunner::InitHixlAndRegisterMem() {
 
   const std::uintptr_t addr = reinterpret_cast<std::uintptr_t>(buffer_);
   const auto mem_type = is_host_ ? MemType::MEM_HOST : MemType::MEM_DEVICE;
-  need_register_ = !(cfg_.use_buffer_pool && cfg_.transfer_mode == "d2h");
-  if (!need_register_) {
-    return true;
-  }
+  need_register_ = true;
   MemDesc desc{};
   desc.addr = addr;
   desc.len = static_cast<size_t>(cfg_.total_size);
