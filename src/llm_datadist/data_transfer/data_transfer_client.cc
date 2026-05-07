@@ -108,6 +108,28 @@ ge::Status SetBufferInfo(const PullCacheParam &pull_cache_param, const CacheEntr
 
 }  // namespace
 
+ge::Status DataTransferClient::PrepareTransferRequest(uint64_t request_size, uint32_t buffer_info_count,
+                                                      bool remote_cache_accessible,
+                                                      TransferCacheReq *&request) const {
+  const uint64_t max_request_buffer_size =
+      remote_cache_accessible ? kMaxDynamicReqBufferSize : kDefaultReqBufferSize;
+  LLM_CHK_BOOL_RET_STATUS(request_size <= (max_request_buffer_size - kFlagSize), ge::LLM_PARAM_INVALID,
+                         "buffer info count[%u] is to large, request size[%lu] is out of range[0, %lu]",
+                         buffer_info_count, request_size, (max_request_buffer_size - kFlagSize));
+  if (!remote_cache_accessible) {
+    request = PtrToPtr<uint8_t, TransferCacheReq>(comm_entity_->GetEntityInfo().send_buffer_req_ptr);
+    return ge::SUCCESS;
+  }
+  const uint64_t request_buffer_size =
+      ((request_size + kFlagSize + kReqBufferAlignSize - 1U) / kReqBufferAlignSize) * kReqBufferAlignSize;
+  LLM_CHK_STATUS_RET(comm_entity_->PrepareRemoteCacheReqBuffer(request_buffer_size, request),
+                     "Failed to prepare local req buffer to size=%lu", request_buffer_size);
+  LLMLOGI("Prepare remote cache req buffer success, buffer_info_count=%u, request_size=%lu, "
+          "request_buffer_size=%lu",
+          buffer_info_count, request_size, request_buffer_size);
+  return ge::SUCCESS;
+}
+
 ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_cache_param,
                                                       const CacheEntry &cache_entry, const CacheKey &cache_key,
                                                       int32_t timeout, bool remote_cache_accessible) const {
@@ -120,24 +142,9 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
   uint64_t request_size =
       sizeof(TransferCacheReq) + sizeof(TransferInfo) * (static_cast<uint64_t>(buffer_info_count) * kSrcAndDstNum +
                                                          cache_entry.cache_addrs.size());
-  const uint64_t max_request_buffer_size =
-      remote_cache_accessible ? kMaxDynamicReqBufferSize : kDefaultReqBufferSize;
-  LLM_CHK_BOOL_RET_STATUS(request_size <= (max_request_buffer_size - kFlagSize), ge::LLM_PARAM_INVALID,
-                         "buffer info count[%u] is to large, request size[%lu] is out of range[0, %lu]",
-                         buffer_info_count, request_size, (max_request_buffer_size - kFlagSize));
-
   TransferCacheReq *request_ptr = nullptr;
-  if (remote_cache_accessible) {
-    const uint64_t request_buffer_size =
-        ((request_size + kFlagSize + kReqBufferAlignSize - 1U) / kReqBufferAlignSize) * kReqBufferAlignSize;
-    LLM_CHK_STATUS_RET(comm_entity_->PrepareRemoteCacheReqBuffer(request_buffer_size, request_ptr),
-                       "Failed to prepare local req buffer to size=%lu", request_buffer_size);
-    LLMLOGI("Prepare remote cache req buffer success, buffer_info_count=%u, request_size=%lu, "
-            "request_buffer_size=%lu",
-            buffer_info_count, request_size, request_buffer_size);
-  } else {
-    request_ptr = PtrToPtr<uint8_t, TransferCacheReq>(comm_entity_->GetEntityInfo().send_buffer_req_ptr);
-  }
+  LLM_CHK_STATUS_RET(PrepareTransferRequest(request_size, buffer_info_count, remote_cache_accessible, request_ptr),
+                     "Failed to prepare transfer request");
   LLM_ASSERT_NOTNULL(request_ptr);
   TransferCacheReq &request = *request_ptr;
   request.cache_id = cache_key.prompt_cache_id;
