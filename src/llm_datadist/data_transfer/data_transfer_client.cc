@@ -117,9 +117,9 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
   LLM_CHK_STATUS_RET(SetBufferInfoCount(pull_cache_param, buffer_info_count, is_pull_block, contiguous_blocks_pair),
                     "set buffer_info_count failed");
 
-  const uint64_t transfer_info_count =
-      static_cast<uint64_t>(buffer_info_count) * kSrcAndDstNum + cache_entry.cache_addrs.size();
-  uint64_t request_size = sizeof(TransferCacheReq) + sizeof(TransferInfo) * transfer_info_count;
+  uint64_t request_size =
+      sizeof(TransferCacheReq) + sizeof(TransferInfo) * (static_cast<uint64_t>(buffer_info_count) * kSrcAndDstNum +
+                                                         cache_entry.cache_addrs.size());
   const uint64_t max_request_buffer_size =
       remote_cache_accessible ? kMaxDynamicReqBufferSize : kDefaultReqBufferSize;
   LLM_CHK_BOOL_RET_STATUS(request_size <= (max_request_buffer_size - kFlagSize), ge::LLM_PARAM_INVALID,
