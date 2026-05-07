@@ -73,6 +73,7 @@ Status ComputeBatchSyncRemainingMs(const std::chrono::steady_clock::time_point &
 Status BatchTransferSyncInvoke(HixlClientHandle handle, CommType type,
                                const std::vector<TransferOpDesc> &op_descs_vec, TransferOp operation,
                                uint32_t remaining_timeout_ms) {
+  const auto start = std::chrono::steady_clock::now();
   HIXL_LOGI("HixlClient BatchTransferSync start, type:%s, op_descs size:%zu, remaining_timeout_ms:%u",
             CommTypeToString(type), op_descs_vec.size(), remaining_timeout_ms);
   const uint32_t list_num = static_cast<uint32_t>(op_descs_vec.size());
@@ -88,6 +89,9 @@ Status BatchTransferSyncInvoke(HixlClientHandle handle, CommType type,
     remote_const_bufs[i] = reinterpret_cast<const void *>(op_descs_vec[i].remote_addr);
     lens[i] = op_descs_vec[i].len;
   }
+  const auto prepare_end = std::chrono::steady_clock::now();
+  const auto prepare_us = std::chrono::duration_cast<std::chrono::microseconds>(prepare_end - start).count();
+
   CommunicateMem com_mem{};
   com_mem.list_num = list_num;
   com_mem.len_list = lens.data();
@@ -103,6 +107,12 @@ Status BatchTransferSyncInvoke(HixlClientHandle handle, CommType type,
     HIXL_CHK_STATUS_RET(cs_client->BatchTransferSync(true, com_mem, remaining_timeout_ms),
                         "HixlClient BatchGetSync failed, client_handle: %p", handle);
   }
+  const auto transfer_end = std::chrono::steady_clock::now();
+  const auto transfer_us = std::chrono::duration_cast<std::chrono::microseconds>(transfer_end - prepare_end).count();
+  const auto total_us = std::chrono::duration_cast<std::chrono::microseconds>(transfer_end - start).count();
+  HIXL_LOGE(SUCCESS, "[HixlClient] BatchTransferSyncInvoke timing(us): total=%ld prepare=%ld transfer=%ld type=%s list_num=%u op=%s",
+            total_us, prepare_us, transfer_us, CommTypeToString(type), list_num,
+            (operation == WRITE) ? "WRITE" : "READ");
   return SUCCESS;
 }
 
@@ -796,6 +806,7 @@ Status HixlClient::BatchTransfer(const std::vector<TransferOpDesc> &op_descs, Tr
 
 Status HixlClient::BatchTransferSync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
                                      const std::chrono::steady_clock::time_point &sync_start, uint32_t timeout_ms) {
+  const auto func_start = std::chrono::steady_clock::now();
   {
     std::lock_guard<std::mutex> lock(status_mutex_);
     if (!is_connected_) {
@@ -803,6 +814,9 @@ Status HixlClient::BatchTransferSync(const std::vector<TransferOpDesc> &op_descs
       return NOT_CONNECTED;
     }
   }
+  const auto check_end = std::chrono::steady_clock::now();
+  const auto check_us = std::chrono::duration_cast<std::chrono::microseconds>(check_end - func_start).count();
+
   std::map<CommType, std::vector<TransferOpDesc>> op_descs_table;
   CommType single_type;
   if (IsOnlyRoceUboeHccsClient(single_type)) {
@@ -814,6 +828,8 @@ Status HixlClient::BatchTransferSync(const std::vector<TransferOpDesc> &op_descs
     HIXL_CHK_STATUS_RET(ClassifyTransfers(op_descs, op_descs_table),
                         "HixlClient failed to classify transfer op_descs");
   }
+  const auto classify_end = std::chrono::steady_clock::now();
+  const auto classify_us = std::chrono::duration_cast<std::chrono::microseconds>(classify_end - check_end).count();
 
   for (const auto &type_with_op_descs : op_descs_table) {
     uint32_t remaining_timeout_ms = 0;
@@ -834,6 +850,11 @@ Status HixlClient::BatchTransferSync(const std::vector<TransferOpDesc> &op_descs
     HIXL_CHK_STATUS_RET(BatchTransferSyncInvoke(handle, type, op_descs_vec, operation, remaining_timeout_ms),
                         "HixlClient BatchTransferSync failed for client_handle: %p", handle);
   }
+  const auto func_end = std::chrono::steady_clock::now();
+  const auto transfer_us = std::chrono::duration_cast<std::chrono::microseconds>(func_end - classify_end).count();
+  const auto total_us = std::chrono::duration_cast<std::chrono::microseconds>(func_end - func_start).count();
+  HIXL_LOGE(SUCCESS, "[HixlClient] BatchTransferSync timing(us): total=%ld check=%ld classify=%ld transfer=%ld op_descs=%zu op=%s",
+            total_us, check_us, classify_us, transfer_us, op_descs.size(), (operation == WRITE) ? "WRITE" : "READ");
   return SUCCESS;
 }
 
