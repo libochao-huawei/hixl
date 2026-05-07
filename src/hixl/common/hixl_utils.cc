@@ -98,7 +98,9 @@ void from_json(const nlohmann::json &j, CommResourceConfig &config) {
 Status ParseCommResourceConfig(const std::string &json_str, CommResourceConfig &config) {
   try {
     auto j = nlohmann::json::parse(json_str);
-    j.get_to(config);
+    if (j.contains("comm_resource_config.protocol_desc")) {
+      j.get_to(config);
+    }
     return SUCCESS;
   } catch (const nlohmann::json::exception &e) {
     HIXL_LOGE(PARAM_INVALID, "parse CommResourceConfig json failed, json=%s, exception=%s", json_str.c_str(), e.what());
