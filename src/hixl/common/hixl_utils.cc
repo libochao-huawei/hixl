@@ -98,7 +98,9 @@ void from_json(const nlohmann::json &j, CommResourceConfig &config) {
 Status ParseCommResourceConfig(const std::string &json_str, CommResourceConfig &config) {
   try {
     auto j = nlohmann::json::parse(json_str);
-    j.get_to(config);
+    if (j.contains("comm_resource_config.protocol_desc")) {
+      j.get_to(config);
+    }
     return SUCCESS;
   } catch (const nlohmann::json::exception &e) {
     HIXL_LOGE(PARAM_INVALID, "parse CommResourceConfig json failed, json=%s, exception=%s", json_str.c_str(), e.what());
@@ -198,12 +200,22 @@ Status CheckOptions(const std::map<AscendString, AscendString> &options) {
     HIXL_CHK_BOOL_RET_SPECIAL_STATUS(kOptionsFields.find(pair.first.GetString()) == kOptionsFields.end(), 
                                      PARAM_INVALID, 
                                      "Invalid option '%s' is not supported, options for hixl engine only support "
-                                     "OPTION_LOCAL_COMM_RES, OPTION_BUFFER_POOL, OPTION_RDMA_TRAFFIC_CLASS and OPTION_RDMA_SERVICE_LEVEL",
+                                     "OPTION_LOCAL_COMM_RES, OPTION_BUFFER_POOL, OPTION_RDMA_TRAFFIC_CLASS, "
+                                     "OPTION_RDMA_SERVICE_LEVEL and OPTION_GLOBAL_RESOURCE_CONFIG",
                                      pair.first.GetString());
     if ((pair.first == hixl::OPTION_BUFFER_POOL) || (pair.first == adxl::OPTION_BUFFER_POOL)) {
       HIXL_CHK_BOOL_RET_STATUS(pair.second.GetString() == std::string("0:0"), 
                                PARAM_INVALID, 
                                "Invalid option fields, OPTION_BUFFER_POOL for hixl engine only supports 0:0");
+    }
+    if (pair.first == hixl::OPTION_GLOBAL_RESOURCE_CONFIG) {
+      try {
+        nlohmann::json j = nlohmann::json::parse(pair.second.GetString());
+        (void)j;
+      } catch (const nlohmann::json::exception &e) {
+        HIXL_LOGE(PARAM_INVALID, "Failed to parse OPTION_GLOBAL_RESOURCE_CONFIG, exception:%s", e.what());
+        return PARAM_INVALID;
+      }
     }
   }
   return SUCCESS;
