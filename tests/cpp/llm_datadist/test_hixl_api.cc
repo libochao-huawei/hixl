@@ -489,4 +489,51 @@ TEST_F(HixlSTest, TestHixlFabricMem) {
   engine2.Finalize();
 }
 
+TEST_F(HixlSTest, TestAsync) {
+  llm::AutoCommResRuntimeMock::SetDevice(0);
+  Hixl engine1;
+  std::map<AscendString, AscendString> options1;
+  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options1), SUCCESS);
+
+  llm::AutoCommResRuntimeMock::SetDevice(1);
+  Hixl engine2;
+  std::map<AscendString, AscendString> options2;
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options2), SUCCESS);
+
+  hixl::MemDesc mem{};
+  mem.addr = 1234;
+  mem.len = 10;
+  MemHandle handle1 = nullptr;
+  MemHandle handle2 = nullptr;
+  EXPECT_EQ(engine1.RegisterMem(mem, MEM_DEVICE, handle1), SUCCESS);
+  EXPECT_EQ(engine2.RegisterMem(mem, MEM_DEVICE, handle2), SUCCESS);
+  EXPECT_EQ(engine1.ConnectAsync("127.0.0.1:26001"), SUCCESS);
+  AsyncConnectStatus status;
+  do {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    engine1.GetAsyncConnectStatus("127.0.0.1:26001", status);
+  } while (status == AsyncConnectStatus::CONNECT_PENDING || status == AsyncConnectStatus::CONNECTING);
+  EXPECT_EQ(status, AsyncConnectStatus::CONNECTED);
+  int32_t src = 1;
+  int32_t dst = 2;
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", READ, {desc}), SUCCESS);
+  EXPECT_EQ(src, 2);
+  src = 1;
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", WRITE, {desc}), SUCCESS);
+  EXPECT_EQ(dst, 1);
+  EXPECT_EQ(engine1.DisconnectAsync("127.0.0.1:26001"), SUCCESS);
+  std::map<AscendString, AsyncConnectStatus> statuses;
+  do {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    engine1.GetAsyncConnectStatus(statuses);
+    status = statuses["127.0.0.1:26001"];
+  } while (status == AsyncConnectStatus::DISCONNECT_PENDING || status == AsyncConnectStatus::DISCONNECTING);
+  EXPECT_EQ(status, AsyncConnectStatus::NOT_CONNECT);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
 }  // namespace hixl
