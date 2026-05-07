@@ -295,7 +295,15 @@ int32_t GetUrmaDeviceList(int32_t phy_dev_id, std::vector<UrmaDevice>& urma_devi
         }
 
         for (int j = 0; j < eid_cnt; ++j) {
+            // 调试打印：打印 DCMI 返回的原始 interface_id 值
+            std::cout << "[GetUrmaDeviceList] DCMI raw interface_id["
+                      << urma_dev.name << "][" << j << "]: "
+                      << std::hex << std::setfill('0') << std::setw(16)
+                      << eid_buf[j].eid.in6.interface_id << std::dec << std::endl;
+
             std::string eid_str = EidToString(eid_buf[j].eid);
+            std::cout << "[GetUrmaDeviceList] EidToString result: " << eid_str << std::endl;
+
             if (!eid_str.empty() && eid_str != "00000000000000000000000000000000") {
                 urma_dev.eid_list.push_back(eid_str);
             }
@@ -368,8 +376,27 @@ int32_t GetMainboardId(int32_t phy_dev_id, unsigned int& mainboard_id) {
 // ============ EID 解析实现 ============
 
 std::string EidToString(const dcmi_urma_eid_t& eid) {
+    // DCMI 返回的 interface_id 每字节已经反转
+    // 例如：hccn interface_id = 0010:0000:fee6:af59 -> DCMI 返回 59afe6fe00001000
+    // 需要将每字节反转回正确顺序
+    unsigned long long high = (eid.in6.interface_id >> 56) & 0xFF;
+    unsigned long long hhigh = (eid.in6.interface_id >> 48) & 0xFF;
+    unsigned long long mhigh = (eid.in6.interface_id >> 40) & 0xFF;
+    unsigned long long lhigh = (eid.in6.interface_id >> 32) & 0xFF;
+    unsigned long long high2 = (eid.in6.interface_id >> 24) & 0xFF;
+    unsigned long long hhigh2 = (eid.in6.interface_id >> 16) & 0xFF;
+    unsigned long long mhigh2 = (eid.in6.interface_id >> 8) & 0xFF;
+    unsigned long long lhigh2 = eid.in6.interface_id & 0xFF;
+
     std::ostringstream oss;
-    oss << std::hex << std::setfill('0') << std::setw(16) << eid.in6.interface_id;
+    oss << std::hex << std::setfill('0') << std::setw(2) << lhigh2
+        << std::setw(2) << mhigh2
+        << std::setw(2) << hhigh2
+        << std::setw(2) << high2
+        << std::setw(2) << lhigh
+        << std::setw(2) << mhigh
+        << std::setw(2) << hhigh
+        << std::setw(2) << high;
     return oss.str();
 }
 
