@@ -182,12 +182,6 @@ int32_t GenerateLocalCommRes(
 
 /**
  * @brief 通过 phyId 获取 EID 列表
- * @param [in] phy_dev_id 物理设备 ID
- * @param [out] eid_list EID 列表
- * @return 成功: SUCCESS, 失败: 其它错误码
- */
-int32_t GetEidListByPhyId(int32_t phy_dev_id, std::vector<std::string>& eid_list);
-
 /**
  * @brief 获取 UB 实体列表
  * @param [in] phy_dev_id 物理设备 ID

@@ -222,47 +222,6 @@ std::vector<std::string> ExtractJsonObjects(const std::string& json, const std::
 
 // ============ DCMI 接口封装实现 ============
 
-int32_t GetEidListByPhyId(int32_t phy_dev_id, std::vector<std::string>& eid_list) {
-    if (LoadDcmi() != 0) {
-        std::cerr << "[GetEidListByPhyId] DCMI not loaded" << std::endl;
-        return ERROR_DCMI_INTERFACE_FAILED;
-    }
-
-    unsigned int logic_id = 0;
-    if (GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
-        std::cerr << "[GetEidListByPhyId] Failed to get logic id from phy id: " << phy_dev_id << std::endl;
-        return ERROR_DCMI_INTERFACE_FAILED;
-    }
-
-    unsigned int dev_cnt = 0;
-    int ret = g_dcmi_get_urma_device_cnt(logic_id, &dev_cnt);
-    if (ret != 0) {
-        std::cerr << "[GetEidListByPhyId] Failed to get urma device count, ret=" << ret << std::endl;
-        return ERROR_DCMI_INTERFACE_FAILED;
-    }
-
-    eid_list.clear();
-    dcmi_urma_eid_info_t eid_list_buf[MAX_EID_NUM];
-    size_t eid_current_cnt = 0;
-    size_t eid_space_left = MAX_EID_NUM;
-
-    for (size_t i = 0; i < dev_cnt && eid_space_left > 0; ++i) {
-        int left = static_cast<int>(eid_space_left);
-        ret = g_dcmi_get_eid_list(logic_id, i, &eid_list_buf[eid_current_cnt], &left);
-        if (ret != 0) {
-            continue;
-        }
-        eid_space_left -= left;
-        eid_current_cnt += left;
-    }
-
-    for (size_t i = 0; i < eid_current_cnt; ++i) {
-        eid_list.push_back(EidToString(eid_list_buf[i].eid));
-    }
-
-    return SUCCESS;
-}
-
 int32_t GetUrmaDeviceList(int32_t phy_dev_id, std::vector<UrmaDevice>& urma_devices) {
     if (LoadDcmi() != 0) {
         std::cerr << "[GetUrmaDeviceList] DCMI not loaded" << std::endl;
@@ -295,14 +254,26 @@ int32_t GetUrmaDeviceList(int32_t phy_dev_id, std::vector<UrmaDevice>& urma_devi
         }
 
         for (int j = 0; j < eid_cnt; ++j) {
-            // 调试打印：打印 DCMI 返回的原始 interface_id 值
-            std::cout << "[GetUrmaDeviceList] DCMI raw interface_id["
-                      << urma_dev.name << "][" << j << "]: "
-                      << std::hex << std::setfill('0') << std::setw(16)
+            // 调试打印：打印 DCMI 返回的完整 EID 信息
+            std::cout << "[GetUrmaDeviceList] DCMI EID["
+                      << urma_dev.name << "][" << j << "]:" << std::endl;
+
+            // 打印 raw[16] 原始字节数组
+            std::cout << "  raw: ";
+            for (int k = 0; k < 16; ++k) {
+                std::cout << std::hex << std::setfill('0') << std::setw(2)
+                          << static_cast<int>(eid_buf[j].eid.raw[k]);
+            }
+            std::cout << std::dec << std::endl;
+
+            // 打印 interface_id 和 subnet_prefix
+            std::cout << "  interface_id: 0x" << std::hex << std::setfill('0') << std::setw(16)
                       << eid_buf[j].eid.in6.interface_id << std::dec << std::endl;
+            std::cout << "  subnet_prefix: 0x" << std::hex << std::setfill('0') << std::setw(16)
+                      << eid_buf[j].eid.in6.subnet_prefix << std::dec << std::endl;
 
             std::string eid_str = EidToString(eid_buf[j].eid);
-            std::cout << "[GetUrmaDeviceList] EidToString result: " << eid_str << std::endl;
+            std::cout << "  EidToString: " << eid_str << std::endl;
 
             if (!eid_str.empty() && eid_str != "00000000000000000000000000000000") {
                 urma_dev.eid_list.push_back(eid_str);
@@ -376,27 +347,11 @@ int32_t GetMainboardId(int32_t phy_dev_id, unsigned int& mainboard_id) {
 // ============ EID 解析实现 ============
 
 std::string EidToString(const dcmi_urma_eid_t& eid) {
-    // DCMI 返回的 interface_id 每字节已经反转
-    // 例如：hccn interface_id = 0010:0000:fee6:af59 -> DCMI 返回 59afe6fe00001000
-    // 需要将每字节反转回正确顺序
-    unsigned long long high = (eid.in6.interface_id >> 56) & 0xFF;
-    unsigned long long hhigh = (eid.in6.interface_id >> 48) & 0xFF;
-    unsigned long long mhigh = (eid.in6.interface_id >> 40) & 0xFF;
-    unsigned long long lhigh = (eid.in6.interface_id >> 32) & 0xFF;
-    unsigned long long high2 = (eid.in6.interface_id >> 24) & 0xFF;
-    unsigned long long hhigh2 = (eid.in6.interface_id >> 16) & 0xFF;
-    unsigned long long mhigh2 = (eid.in6.interface_id >> 8) & 0xFF;
-    unsigned long long lhigh2 = eid.in6.interface_id & 0xFF;
-
+    // 直接从 raw[16] 字节数组转换为十六进制字符串
     std::ostringstream oss;
-    oss << std::hex << std::setfill('0') << std::setw(2) << lhigh2
-        << std::setw(2) << mhigh2
-        << std::setw(2) << hhigh2
-        << std::setw(2) << high2
-        << std::setw(2) << lhigh
-        << std::setw(2) << mhigh
-        << std::setw(2) << hhigh
-        << std::setw(2) << high;
+    for (int i = 0; i < 16; ++i) {
+        oss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(eid.raw[i]);
+    }
     return oss.str();
 }
 
@@ -905,21 +860,28 @@ int32_t GenerateLocalCommRes(
     std::cout << "[GenerateLocalCommRes] topo_path=" << topo_path << std::endl;
     std::cout << "[GenerateLocalCommRes] route_path=" << route_path << std::endl;
 
-    std::vector<std::string> eid_list;
-    int32_t ret = GetEidListByPhyId(phy_dev_id, eid_list);
+    // 使用 GetUrmaDeviceList 获取 URMA Device 列表
+    std::vector<UrmaDevice> urma_devices;
+    int32_t ret = GetUrmaDeviceList(phy_dev_id, urma_devices);
     if (ret != SUCCESS) {
-        std::cerr << "[GenerateLocalCommRes] Failed to get eid list: " << ret << std::endl;
+        std::cerr << "[GenerateLocalCommRes] Failed to get urma devices: " << ret << std::endl;
         return ret;
     }
 
-    if (eid_list.empty()) {
-        std::cerr << "[GenerateLocalCommRes] No eid found for phy_dev_id: " << phy_dev_id << std::endl;
+    if (urma_devices.empty()) {
+        std::cerr << "[GenerateLocalCommRes] No urma devices for phy_dev_id: " << phy_dev_id << std::endl;
         return ERROR_NO_EID_FOUND;
     }
 
-    std::cout << "[GenerateLocalCommRes] Got " << eid_list.size() << " EID(s)" << std::endl;
-    for (size_t i = 0; i < eid_list.size() && i < 10; ++i) {
-        std::cout << "[GenerateLocalCommRes]   EID[" << i << "]: " << eid_list[i] << std::endl;
+    // 统计总 EID 数
+    size_t total_eid_count = 0;
+    for (const auto& dev : urma_devices) {
+        total_eid_count += dev.eid_list.size();
+    }
+    std::cout << "[GenerateLocalCommRes] Got " << urma_devices.size() << " URMA device(s), total " << total_eid_count << " EID(s)" << std::endl;
+    for (size_t i = 0; i < urma_devices.size() && i < 5; ++i) {
+        std::cout << "[GenerateLocalCommRes]   Device[" << i << "]: " << urma_devices[i].name
+                  << ", eid_count=" << urma_devices[i].eid_list.size() << std::endl;
     }
 
     unsigned int mainboard_id = 0;
@@ -967,14 +929,17 @@ int32_t GenerateLocalCommRes(
     std::string clos_pg_eid;
     std::vector<std::string> clos_plane_ids;
 
-    for (const auto& eid : eid_list) {
-        if (IsMeshLayerEid(eid)) {
-            mesh_eids.push_back(eid);
-        } else if (IsClosLayerEid(eid)) {
-            if (clos_pg_eid.empty()) {
-                clos_pg_eid = eid;
-                clos_plane_ids.push_back("plane_pg_0");
-                clos_plane_ids.push_back("plane_pg_1");
+    // 遍历 URMA Device 列表获取 mesh_eids 和 clos_pg_eid
+    for (const auto& urma_dev : urma_devices) {
+        for (const auto& eid : urma_dev.eid_list) {
+            if (IsMeshLayerEid(eid)) {
+                mesh_eids.push_back(eid);
+            } else if (IsClosLayerEid(eid)) {
+                if (clos_pg_eid.empty()) {
+                    clos_pg_eid = eid;
+                    clos_plane_ids.push_back("plane_pg_0");
+                    clos_plane_ids.push_back("plane_pg_1");
+                }
             }
         }
     }
