@@ -5,6 +5,7 @@
 - LLM-DataDist
   - LLM-DataDist相关接口存放在："INSTALL\_DIR\/include/llm\_datadist/llm\_datadist.h"。INSTALL\_DIR请替换为CANN软件安装后文件存储路径。若安装的Ascend-cann-toolkit软件包，以root安装举例，则安装后文件存储路径为：/usr/local/Ascend/cann。
   - LLM-DataDist接口对应的库文件是：libllm\_datadist.so。
+  - LLM-DataDist V1接口原归属于cann\_ge\_compiler仓，目前计划废弃，ge\_compiler仓中对应头文件不再打包安装，如需使用V1相关接口需安装Ascend-cann-toolkit与hixl软件包。
 
 - HIXL：Huawei Xfer Library
   - HIXL相关接口存放在："INSTALL\_DIR/include/hixl/hixl.h"。INSTALL\_DIR请替换为CANN软件安装后文件存储路径。若安装的Ascend-cann-toolkit软件包，以root安装举例，则安装后文件存储路径为：/usr/local/Ascend/cann。
