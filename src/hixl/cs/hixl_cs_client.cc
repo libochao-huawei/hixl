@@ -827,6 +827,7 @@ Status HixlCSClient::PrepareDeviceTransferArgs(const CommunicateMem &communicate
 
 // device 内存由runtime kernel管理，handle能否复用？参数更新，notify地址提前获取，EnsureDeviceKernelLoadedLocked提前加载；
 Status HixlCSClient::LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handle, const void *remote_flag) {
+  const auto total_start = std::chrono::steady_clock::now();
   HIXL_CHECK_NOTNULL(remote_flag);
   const char *kernel_name = is_get ? kDeviceFuncGet : kDeviceFuncPut;
   HIXL_LOGI("[HixlClient] LaunchDeviceKernel start. kernel=%s", kernel_name);
@@ -835,14 +836,17 @@ Status HixlCSClient::LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handl
   constexpr uint32_t block_dim = 1U;
   aclrtFuncHandle funcHandle = func;
   aclrtArgsHandle argsHandle = nullptr;
+
+  const auto args_init_start = std::chrono::steady_clock::now();
   HIXL_CHK_ACL_RET(aclrtKernelArgsInit(funcHandle, &argsHandle), "[HixlClient] aclrtKernelArgsInit failed. kernel=%s",
                    kernel_name);
   aclrtParamHandle paraHandle;
   HIXL_CHK_ACL_RET(aclrtKernelArgsAppend(argsHandle, &handle.args, sizeof(DeviceArgs), &paraHandle),
                    "[HixlClient] aclrtKernelArgsAppend failed, kernel = %s", kernel_name);
-
   HIXL_CHK_ACL_RET(aclrtKernelArgsFinalize(argsHandle), "[HixlClient] aclrtKernelArgsFinalize failed, kernel = %s",
                    kernel_name);
+  const auto args_end = std::chrono::steady_clock::now();
+  const auto args_us = std::chrono::duration_cast<std::chrono::microseconds>(args_end - args_init_start).count();
 
   aclrtLaunchKernelCfg cfg;
   aclrtLaunchKernelAttr attr;
@@ -852,10 +856,22 @@ Status HixlCSClient::LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handl
   cfg.attrs = &attr;
 
   HIXL_CHECK_NOTNULL(handle.shared_slot.get(), "[HixlClient] LaunchDeviceKernel shared_slot is null");
+  const auto launch_start = std::chrono::steady_clock::now();
   HIXL_CHK_ACL_RET(aclrtLaunchKernelWithConfig(funcHandle, block_dim, handle.shared_slot->stream, &cfg, argsHandle, nullptr),
                    "[HixlClient] aclrtLaunchKernelWithConfig failed");
+  const auto launch_end = std::chrono::steady_clock::now();
+  const auto launch_us = std::chrono::duration_cast<std::chrono::microseconds>(launch_end - launch_start).count();
+
+  const auto notify_start = std::chrono::steady_clock::now();
   HIXL_CHK_ACL_RET(aclrtWaitAndResetNotify(handle.shared_slot->notify, handle.shared_slot->stream, kCustomTimeoutMs),
                    "[HixlClient] aclrtWaitAndResetNotify failed");
+  const auto notify_end = std::chrono::steady_clock::now();
+  const auto notify_us = std::chrono::duration_cast<std::chrono::microseconds>(notify_end - notify_start).count();
+
+  const auto total_end = std::chrono::steady_clock::now();
+  const auto total_us = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start).count();
+  HIXL_LOGE(SUCCESS, "[HixlClient] LaunchDeviceKernel timing(us): total=%ld args=%ld launch=%ld notify=%ld kernel=%s list_num=%u",
+            total_us, args_us, launch_us, notify_us, kernel_name, handle.args.list_num);
   HIXL_LOGI("[HixlClient] LaunchDeviceKernel end. kernel=%s", kernel_name);
   return SUCCESS;
 }
