@@ -131,14 +131,13 @@ ge::Status DataTransferClient::PrepareTransferRequest(uint64_t request_size, uin
 }
 
 ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_cache_param,
-                                                      const CacheEntry &cache_entry, const CacheKey &cache_key,
-                                                      int32_t timeout, bool remote_cache_accessible) const {
+                                                     const CacheEntry &cache_entry, const CacheKey &cache_key,
+                                                     int32_t timeout, bool remote_cache_accessible) const {
+  std::vector<std::vector<std::pair<int64_t, int64_t>>> contiguous_blocks_pair;
   uint32_t buffer_info_count = 0U;
   uint32_t is_pull_block = 0U;
-  std::vector<std::vector<std::pair<int64_t, int64_t>>> contiguous_blocks_pair;
   LLM_CHK_STATUS_RET(SetBufferInfoCount(pull_cache_param, buffer_info_count, is_pull_block, contiguous_blocks_pair),
                     "set buffer_info_count failed");
-
   uint64_t request_size =
       sizeof(TransferCacheReq) + sizeof(TransferInfo) * (static_cast<uint64_t>(buffer_info_count) * kSrcAndDstNum +
                                                          cache_entry.cache_addrs.size());
@@ -248,7 +247,7 @@ ge::Status DataTransferClient::PullCache(const CacheEntry &cache_entry, const Ca
 }
 
 ge::Status DataTransferClient::PullCacheByGet(const CacheEntry &cache_entry, const CacheKey &cache_key,
-                                               const PullCacheParam &pull_cache_param, int32_t timeout_in_ms) const {
+                                              const PullCacheParam &pull_cache_param, int32_t timeout_in_ms) const {
   LLM_CHK_STATUS_RET(ConstructTransferInfo(pull_cache_param, cache_entry, cache_key, timeout_in_ms, true));
   const auto &request = comm_entity_->GetRequest();
   CacheEntry remote_cache_entry;
