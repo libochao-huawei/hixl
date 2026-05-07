@@ -810,13 +810,14 @@ CacheAccessTable &CommEntity::GetCacheAccessTable() {
   return cache_access_table_;
 }
 
-ge::Status CommEntity::ExpandLocalReqBuffer(uint64_t new_req_buffer_size) {
+ge::Status CommEntity::PrepareRemoteCacheReqBuffer(uint64_t new_req_buffer_size, TransferCacheReq *&request) {
   LLM_CHK_STATUS_RET(mem_info_ptr_->ExpandReqBuffer(new_req_buffer_size),
                      "Failed to expand req buffer");
   info_.local_req_flag_ptr = mem_info_ptr_->req_;
   info_.local_req_ptr = static_cast<uint8_t *>(mem_info_ptr_->req_) + kFlagSize;
   info_.local_resp_flag_ptr = mem_info_ptr_->resp_;
   info_.local_resp_ptr = static_cast<uint8_t *>(mem_info_ptr_->resp_) + kFlagSize;
+  request = PtrToPtr<void, TransferCacheReq>(info_.local_req_ptr);
   return ge::SUCCESS;
 }
 }  // namespace llm

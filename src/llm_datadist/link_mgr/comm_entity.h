@@ -194,7 +194,7 @@ class CommEntity {
   void *GetTransferBuffer() const;
   ge::Status SetRemoteAddresses();
   CacheAccessTable &GetCacheAccessTable();
-  ge::Status ExpandLocalReqBuffer(uint64_t new_req_buffer_size);
+  ge::Status PrepareRemoteCacheReqBuffer(uint64_t new_req_buffer_size, TransferCacheReq *&request);
 
  private:
   std::mutex process_mutex_;

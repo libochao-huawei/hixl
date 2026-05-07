@@ -21,12 +21,6 @@
 namespace llm {
 using TimePoint = std::chrono::time_point<std::chrono::steady_clock>;
 
-struct BufferInfoContext {
-  uint32_t buffer_info_count = 0U;
-  uint32_t is_pull_block = 0U;
-  std::vector<std::vector<std::pair<int64_t, int64_t>>> contiguous_blocks_pair;
-};
-
 class DataTransferClient {
  public:
   DataTransferClient(CommEntity &comm_entity, aclrtStream stream) : comm_entity_(&comm_entity), req_stream_(stream) {}
@@ -42,12 +36,8 @@ class DataTransferClient {
   ge::Status SynchronizeStreamTask(const TimePoint &start_time) const;
   ge::Status GetResponseInfo() const;
   ge::Status ConstructTransferInfo(const PullCacheParam &pull_cache_param, const CacheEntry &cache_entry,
-                                   const CacheKey &cache_key, int32_t timeout, TransferCacheReq &request,
-                                   uint64_t max_request_buffer_size,
-                                   const BufferInfoContext *buffer_info_ctx = nullptr) const;
-  ge::Status GetDynamicRequestBufferSize(const PullCacheParam &pull_cache_param, const CacheEntry &cache_entry,
-                                          uint64_t &request_buffer_size,
-                                          BufferInfoContext &buffer_info_ctx) const;
+                                   const CacheKey &cache_key, int32_t timeout,
+                                   bool remote_cache_accessible = false) const;
 
   CommEntity *comm_entity_;
   aclrtStream req_stream_{};
