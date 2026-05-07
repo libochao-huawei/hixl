@@ -130,6 +130,25 @@ struct RouteData {
     std::vector<RouteEntry> entries;
 };
 
+// ============ URMA Device 数据结构 ============
+
+/**
+ * @brief URMA Device 结构（参考 Python 的 UrmaDevice 类）
+ * 每个 URMA Device 包含多个 EID，die_id 从第一个 EID 获取
+ */
+struct UrmaDevice {
+    std::string name;                      // 设备名称，如 "udma0"
+    std::vector<std::string> eid_list;    // 该设备下的所有 EID 列表
+};
+
+/**
+ * @brief 获取 URMA Device 列表
+ * @param [in] phy_dev_id 物理设备 ID
+ * @param [out] urma_devices URMA Device 列表
+ * @return 成功: SUCCESS, 失败: 其它错误码
+ */
+int32_t GetUrmaDeviceList(int32_t phy_dev_id, std::vector<UrmaDevice>& urma_devices);
+
 // ============ RootInfo 数据结构 ============
 
 /**

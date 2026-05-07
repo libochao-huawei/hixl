@@ -263,6 +263,55 @@ int32_t GetEidListByPhyId(int32_t phy_dev_id, std::vector<std::string>& eid_list
     return SUCCESS;
 }
 
+int32_t GetUrmaDeviceList(int32_t phy_dev_id, std::vector<UrmaDevice>& urma_devices) {
+    if (LoadDcmi() != 0) {
+        std::cerr << "[GetUrmaDeviceList] DCMI not loaded" << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
+
+    unsigned int logic_id = 0;
+    if (GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
+        std::cerr << "[GetUrmaDeviceList] Failed to get logic id from phy id: " << phy_dev_id << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
+
+    unsigned int dev_cnt = 0;
+    int ret = g_dcmi_get_urma_device_cnt(logic_id, &dev_cnt);
+    if (ret != 0) {
+        std::cerr << "[GetUrmaDeviceList] Failed to get urma device count, ret=" << ret << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
+
+    urma_devices.clear();
+    for (size_t i = 0; i < dev_cnt; ++i) {
+        UrmaDevice urma_dev;
+        urma_dev.name = "udma" + std::to_string(i);
+
+        dcmi_urma_eid_info_t eid_buf[MAX_EID_PER_UE];
+        int eid_cnt = MAX_EID_PER_UE;
+        ret = g_dcmi_get_eid_list(logic_id, i, eid_buf, &eid_cnt);
+        if (ret != 0) {
+            continue;
+        }
+
+        for (int j = 0; j < eid_cnt; ++j) {
+            std::string eid_str = EidToString(eid_buf[j].eid);
+            if (!eid_str.empty() && eid_str != "00000000000000000000000000000000") {
+                urma_dev.eid_list.push_back(eid_str);
+            }
+        }
+
+        // 跳过空设备（UBOE 设备在未配置 EID 之前是空的）
+        if (urma_dev.eid_list.empty()) {
+            continue;
+        }
+
+        urma_devices.push_back(urma_dev);
+    }
+
+    return SUCCESS;
+}
+
 int32_t GetUBEntityList(int32_t phy_dev_id, UEList& ue_list) {
     if (LoadDcmi() != 0) {
         std::cerr << "[GetUBEntityList] DCMI not loaded" << std::endl;
@@ -550,21 +599,44 @@ int32_t ParseRouteFile(const std::string& route_path, RouteData& route_data) {
  *   - port = GetPortFromEid(eid)（1-9 有效）
  *   - die_id = GetServerDieIdFromEid(eid) 或 GetPodDieIdFromEid(eid)
  *   - rootinfo key = "die_id/(port-1)"
+ *
+ * 参考 Python 的 process_level0 逻辑:
+ *   - 先获取 urma_device 的 die_id（从第一个 EID）
+ *   - 如果 die_id == 0，跳过该 urma_device 下的所有 EID
+ *   - 否则遍历其 eid_list 构建 rootinfo
  */
-NpuRootInfo BuildNpuRootInfo(const std::vector<std::string>& eid_list, bool is_server) {
+NpuRootInfo BuildNpuRootInfo(const std::vector<UrmaDevice>& urma_devices, bool is_server) {
     NpuRootInfo rootinfo;
-    for (const auto& eid : eid_list) {
-        int port = GetPortFromEid(eid);
-        if (port >= 1 && port <= 9) {
-            // Mesh 层有效端口
-            int die_id = is_server ? GetServerDieIdFromEid(eid) : GetPodDieIdFromEid(eid);
-            std::string port_key = std::to_string(die_id) + "/" + std::to_string(port - 1);
-            rootinfo.port_to_eid[port_key] = eid;
-        } else if (port > 9 && rootinfo.clos_pg_eid.empty()) {
-            // CLOS 层 PG EID（串口组标识），只取第一个
-            rootinfo.clos_pg_eid = eid;
+
+    for (const auto& urma_dev : urma_devices) {
+        if (urma_dev.eid_list.empty()) {
+            continue;
+        }
+
+        // 从第一个 EID 获取 die_id（参考 Python 的 urma_device.get_die_id()）
+        const std::string& first_eid = urma_dev.eid_list[0];
+        int die_id = is_server ? GetServerDieIdFromEid(first_eid) : GetPodDieIdFromEid(first_eid);
+
+        // Python 逻辑: if die_id == 0: continue (跳过 die_id == 0 的 urma_device)
+        if (die_id == 0) {
+            std::cout << "[BuildNpuRootInfo] Skip urma_device (die_id == 0): " << urma_dev.name << std::endl;
+            continue;
+        }
+
+        // 遍历该 urma_device 下的所有 EID
+        for (const auto& eid : urma_dev.eid_list) {
+            int port = GetPortFromEid(eid);
+            if (port >= 1 && port <= 9) {
+                // Mesh 层有效端口: port 1-9 映射到 0-8
+                std::string port_key = std::to_string(die_id) + "/" + std::to_string(port - 1);
+                rootinfo.port_to_eid[port_key] = eid;
+            } else if (port > 9 && rootinfo.clos_pg_eid.empty()) {
+                // CLOS 层 PG EID（串口组标识），只取第一个
+                rootinfo.clos_pg_eid = eid;
+            }
         }
     }
+
     std::cout << "[BuildNpuRootInfo] Built " << rootinfo.port_to_eid.size()
               << " port->eid mappings, clos_pg_eid="
               << (rootinfo.clos_pg_eid.empty() ? "(none)" : rootinfo.clos_pg_eid) << std::endl;
@@ -894,20 +966,22 @@ int32_t GenerateLocalCommRes(
     for (int id : related_npu_ids) std::cout << id << " ";
     std::cout << std::endl;
 
-    // 为每个相关 NPU 获取 EID 列表并构建 rootinfo
+    // 为每个相关 NPU 获取 URMA Device 列表并构建 rootinfo
+    // 参考 Python 的 get_urma_device_list 和 process_rootinfo_server 逻辑
     std::map<int32_t, NpuRootInfo> npu_rootinfos;
     for (int32_t npu_id : related_npu_ids) {
-        std::vector<std::string> npu_eids;
-        int32_t eid_ret = GetEidListByPhyId(npu_id, npu_eids);
-        if (eid_ret != SUCCESS) {
-            std::cerr << "[GenerateLocalCommRes] Failed to get eid for npu_id=" << npu_id << ", ret=" << eid_ret << std::endl;
+        std::vector<UrmaDevice> urma_devices;
+        int32_t urma_ret = GetUrmaDeviceList(npu_id, urma_devices);
+        if (urma_ret != SUCCESS) {
+            std::cerr << "[GenerateLocalCommRes] Failed to get urma devices for npu_id=" << npu_id << ", ret=" << urma_ret << std::endl;
             continue;
         }
-        if (npu_eids.empty()) {
-            std::cerr << "[GenerateLocalCommRes] No eid for npu_id=" << npu_id << std::endl;
+        if (urma_devices.empty()) {
+            std::cerr << "[GenerateLocalCommRes] No urma devices for npu_id=" << npu_id << std::endl;
             continue;
         }
-        npu_rootinfos[npu_id] = BuildNpuRootInfo(npu_eids, is_server);
+        std::cout << "[GenerateLocalCommRes] NPU " << npu_id << " has " << urma_devices.size() << " urma_device(s)" << std::endl;
+        npu_rootinfos[npu_id] = BuildNpuRootInfo(urma_devices, is_server);
     }
     std::cout << "[GenerateLocalCommRes] Built rootinfo for " << npu_rootinfos.size() << " NPU(s)" << std::endl;
 
