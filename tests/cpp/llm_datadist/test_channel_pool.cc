@@ -121,7 +121,7 @@ TEST_F(ChannelPoolSystemTest, ClientDisconnectHandling) {
 
   llm::AutoCommResRuntimeMock::SetDevice(1);
   Hixl engine2;
-  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options_), SUCCESS);
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:28001", options_), SUCCESS);
 
   hixl::MemDesc mem{};
   // mock addr 1234
@@ -137,14 +137,14 @@ TEST_F(ChannelPoolSystemTest, ClientDisconnectHandling) {
   int32_t src = 1;
   int32_t dst = 2;
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", READ, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28001", READ, {desc}), SUCCESS);
   // after transfer, src set to 2
   EXPECT_EQ(src, 2);
   src = 1;
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", WRITE, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28001", WRITE, {desc}), SUCCESS);
   EXPECT_EQ(dst, 1);
 
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:28001"), SUCCESS);
   EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
