@@ -10,7 +10,7 @@
 
 #include "common/llm_log.h"
 #include "llm_datadist_timer.h"
-#include "statistic_manager.h"
+#include "adxl_statistic_manager.h"
 
 namespace adxl {
 namespace {

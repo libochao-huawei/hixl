@@ -17,13 +17,13 @@
 #include "common/msg_handler_plugin.h"
 #include "hccl/hccl_adapter.h"
 #include "common/llm_utils.h"
-#include "channel.h"
+#include "adxl_channel.h"
 #include "common/llm_checker.h"
 #include "common/llm_scope_guard.h"
 #include "common/def_types.h"
 #include "adxl_utils.h"
 #include "control_msg_handler.h"
-#include "statistic_manager.h"
+#include "adxl_statistic_manager.h"
 
 namespace adxl {
 

@@ -21,7 +21,7 @@
 #include "common/def_types.h"
 #include "base/err_msg.h"
 #include "control_msg_handler.h"
-#include "statistic_manager.h"
+#include "adxl_statistic_manager.h"
 
 namespace adxl {
 namespace {

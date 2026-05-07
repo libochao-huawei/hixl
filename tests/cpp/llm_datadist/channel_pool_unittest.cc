@@ -14,11 +14,11 @@
 #include <vector>
 #include <atomic>
 #include <algorithm>
-#include "adxl/channel.h"
+#include "adxl/adxl_channel.h"
 #include "adxl/channel_manager.h"
 #include "adxl/channel_msg_handler.h"
 #include "adxl/buffer_transfer_service.h"
-#include "adxl/statistic_manager.h"
+#include "adxl/adxl_statistic_manager.h"
 #include "hixl/hixl.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
 #include "depends/mmpa/src/mmpa_stub.h"

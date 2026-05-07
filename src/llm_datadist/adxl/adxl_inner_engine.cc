@@ -15,7 +15,7 @@
 #include "common/llm_scope_guard.h"
 #include "common/llm_checker.h"
 #include "common/hixl_utils.h"
-#include "statistic_manager.h"
+#include "adxl_statistic_manager.h"
 #include "adxl_utils.h"
 #include "virtual_memory_manager.h"
 #include "profiling/prof_api_reg.h"

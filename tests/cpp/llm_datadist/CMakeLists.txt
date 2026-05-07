@@ -11,8 +11,8 @@
 set(LLM_DATADIST_TEST_FILES
         channel_manager_unittest.cc
         channel_msg_handler_unittest.cc
-        channel_pool_unit_test.cc
-        channel_pool_system_test.cc
+        channel_pool_unittest.cc
+        test_channel_pool.cc
         test_data_cache_engine.cc
         test_llm_datadist_v2_api.cc
         test_hixl_api.cc

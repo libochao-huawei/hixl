@@ -16,7 +16,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include "adxl/fabric_mem_transfer_service.h"
-#include "adxl/channel.h"
+#include "adxl/adxl_channel.h"
 #include "depends/ascendcl/src/ascendcl_stub.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
 #include "acl/acl.h"
