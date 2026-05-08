@@ -22,13 +22,15 @@ namespace {
 typedef int (*dcmi_init_func)();
 typedef int (*dcmi_get_urma_device_cnt_func)(int npu_id, unsigned int* dev_cnt);
 typedef int (*dcmi_get_eid_list_func)(int npu_id, int urma_dev_index,
-                                       void* eid_list, int* eid_cnt);
+                                       dcmi_urma_eid_info_t* eid_list, int* eid_cnt);
+typedef int (*dcmi_get_mainboard_id_func)(int npu_id, unsigned int* mainboard_id);
 typedef int (*dcmi_get_logicid_from_phyid_func)(unsigned int phy_id, unsigned int* logic_id);
 
 // DCMI 接口函数指针（全局）
 dcmi_init_func g_dcmi_init = nullptr;
 dcmi_get_urma_device_cnt_func g_dcmi_get_urma_device_cnt = nullptr;
 dcmi_get_eid_list_func g_dcmi_get_eid_list = nullptr;
+dcmi_get_mainboard_id_func g_dcmi_get_mainboard_id = nullptr;
 dcmi_get_logicid_from_phyid_func g_dcmi_get_logicid_from_phyid = nullptr;
 
 // DCMI 库句柄
@@ -37,16 +39,6 @@ void* g_dcmi_handle = nullptr;
 // 加载状态
 volatile bool g_dcmi_loaded = false;
 volatile int g_dcmi_init_status = -1;
-
-/**
- * @brief DCMI EID 信息结构（用于 DCMI 接口调用）
- */
-typedef struct {
-    unsigned char eid[16];
-    unsigned int eid_index;
-} DcmiEidInfo;
-
-const int MAX_EID_PER_UE = 32;
 
 // ============ DCMI 接口动态加载 ============
 
@@ -72,6 +64,8 @@ int LoadDcmi() {
         dlsym(g_dcmi_handle, "dcmiv2_get_urma_device_cnt"));
     g_dcmi_get_eid_list = reinterpret_cast<dcmi_get_eid_list_func>(
         dlsym(g_dcmi_handle, "dcmiv2_get_eid_list_by_urma_dev_index"));
+    g_dcmi_get_mainboard_id = reinterpret_cast<dcmi_get_mainboard_id_func>(
+        dlsym(g_dcmi_handle, "dcmiv2_get_mainboard_id"));
     g_dcmi_get_logicid_from_phyid = reinterpret_cast<dcmi_get_logicid_from_phyid_func>(
         dlsym(g_dcmi_handle, "dcmiv2_get_dev_id_by_chip_phy_id"));
 
@@ -85,6 +79,7 @@ int LoadDcmi() {
     if (g_dcmi_init == nullptr ||
         g_dcmi_get_urma_device_cnt == nullptr ||
         g_dcmi_get_eid_list == nullptr ||
+        g_dcmi_get_mainboard_id == nullptr ||
         g_dcmi_get_logicid_from_phyid == nullptr) {
         std::cerr << "[LoadDcmi] Failed to load DCMI function symbols" << std::endl;
         dlclose(g_dcmi_handle);
@@ -186,7 +181,7 @@ int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices)
         UrmaDevice urma_dev;
         urma_dev.name = "udma" + std::to_string(i);
 
-        DcmiEidInfo eid_buf[MAX_EID_PER_UE];
+        dcmi_urma_eid_info_t eid_buf[MAX_EID_PER_UE];
         int eid_cnt = MAX_EID_PER_UE;
         ret = g_dcmi_get_eid_list(logic_id, i, eid_buf, &eid_cnt);
         if (ret != 0) {
@@ -194,11 +189,11 @@ int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices)
         }
 
         for (int j = 0; j < eid_cnt; ++j) {
-            // 将 raw[16] 字节数组转换为十六进制字符串
+            // 直接将 raw[16] 字节数组转换为十六进制字符串（已经是正确顺序）
             std::ostringstream oss;
             for (int k = 0; k < 16; ++k) {
                 oss << std::hex << std::setfill('0') << std::setw(2)
-                    << static_cast<int>(eid_buf[j].eid[k]);
+                    << static_cast<int>(eid_buf[j].eid.raw[k]);
             }
             std::string eid_str = oss.str();
 

@@ -23,30 +23,12 @@ namespace hixl {
 
 // ============ DCMI 相关数据结构（从 hal.h 复制，避免直接引用） ============
 
-const int32_t DCMI_URMA_EID_SIZE = 16;
+// 注意：DCMI_URMA_EID_SIZE, MAX_EID_PER_UE, dcmi_urma_eid_t, dcmi_urma_eid_info_t
+// 已通过 rootinfo_builder.h 引入
+
 const int32_t MAX_EID_NUM = 32;
 const int32_t MAX_NPU_COUNT = 64;
-const int32_t MAX_EID_PER_UE = 32;
 const int32_t MAX_UE_PER_NPU = 8;
-
-/**
- * @brief DCMI URMA EID 结构
- */
-typedef union dcmi_urma_eid {
-    unsigned char raw[DCMI_URMA_EID_SIZE];
-    struct {
-        unsigned long subnet_prefix;
-        unsigned long interface_id;
-    } in6;
-} dcmi_urma_eid_t;
-
-/**
- * @brief DCMI URMA EID 信息结构
- */
-typedef struct dcmi_urma_eid_info {
-    dcmi_urma_eid_t eid;
-    unsigned int eid_index;
-} dcmi_urma_eid_info_t;
 
 /**
  * @brief UB 实体结构
