@@ -36,7 +36,10 @@ int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param) {
         descs[i].write.src = param->src_buf_addr_list[i];
       }
     }
-    return HcommProxy::BatchTransferOnThread(param->thread, param->channel, descs, param->list_num);
+
+    auto ret = HcommProxy::BatchTransferOnThread(param->thread, param->channel, descs, param->list_num);
+    HIXL_LOGE(SUCCESS, "[HixlBatchTransfer] BatchTransferOnThread with batch size %u, ret=%d", param->list_num, ret);
+    return ret;
   }
   // 大批量使用动态分配（这种情况较少）
   std::vector<HcommBatchTransferDesc> descs(param->list_num);
