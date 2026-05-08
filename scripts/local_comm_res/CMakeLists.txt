@@ -42,6 +42,7 @@ endif()
 # 源文件
 set(SOURCES
     local_comm_res_tool.cc
+    rootinfo_builder.cc
     test_local_comm_res.cc
 )
 
