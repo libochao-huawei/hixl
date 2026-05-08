@@ -687,14 +687,11 @@ int32_t GenerateLocalCommRes(
     }
 
     // 根据 mainboard_id 判断产品形态
-    constexpr unsigned int MAIN_BOARD_ID_POD_2D = 0x03;
-    constexpr unsigned int MAIN_BOARD_ID_SERVER_TYPE1 = 0x23;
-    constexpr unsigned int MAIN_BOARD_ID_SERVER_8PMESH = 0x25;
-    constexpr unsigned int MAIN_BOARD_ID_SERVER_16PMESH = 0x44;
-    bool is_pod = (mainboard_id == MAIN_BOARD_ID_POD_2D);
-    bool is_server = (mainboard_id == MAIN_BOARD_ID_SERVER_TYPE1 ||
-                      mainboard_id == MAIN_BOARD_ID_SERVER_8PMESH ||
-                      mainboard_id == MAIN_BOARD_ID_SERVER_16PMESH);
+    // Pod: 0x3, 0x5, 0x7
+    // Server: 0x21~0x2B 的奇数 (0x21, 0x23, 0x25, 0x27, 0x29, 0x2B), 0x40~0x46 的偶数 (0x40, 0x42, 0x44, 0x46)
+    bool is_pod = (mainboard_id == 0x3 || mainboard_id == 0x5 || mainboard_id == 0x7);
+    bool is_server = ((mainboard_id >= 0x21 && mainboard_id <= 0x2B && (mainboard_id % 2 == 1)) ||
+                      (mainboard_id >= 0x40 && mainboard_id <= 0x46 && (mainboard_id % 2 == 0)));
     if (is_pod) {
         std::cout << "[GenerateLocalCommRes] Product type: Pod (mainboard_id=0x" << std::hex << mainboard_id << std::dec << ")" << std::endl;
     } else if (is_server) {
