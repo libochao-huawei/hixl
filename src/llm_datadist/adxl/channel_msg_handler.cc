@@ -186,6 +186,9 @@ Status ChannelMsgHandler::ParseTrafficClass(const std::map<AscendString, AscendS
     ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(traffic_class_str, traffic_class),
                      "%s is invalid, value = %s",
                      hixl::OPTION_RDMA_TRAFFIC_CLASS, traffic_class_str.c_str());
+    ADXL_CHK_BOOL_RET_STATUS(traffic_class <= 255U && (traffic_class % 4U == 0U), PARAM_INVALID,
+                             "%s is invalid, value = %u, must be between 0-255 and a multiple of 4",
+                             hixl::OPTION_RDMA_TRAFFIC_CLASS, traffic_class);
     comm_config_.hcclRdmaTrafficClass = traffic_class;
     LLMLOGI("set rdma traffic class to %u.", traffic_class);
   }
@@ -209,6 +212,8 @@ Status ChannelMsgHandler::ParseServiceLevel(const std::map<AscendString, AscendS
     ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(service_level_str, service_level),
                      "%s is invalid, value = %s",
                      hixl::OPTION_RDMA_SERVICE_LEVEL, service_level_str.c_str());
+    ADXL_CHK_BOOL_RET_STATUS(service_level <= 7U, PARAM_INVALID, "%s must be in [0, 7], value = %u",
+                             hixl::OPTION_RDMA_SERVICE_LEVEL, service_level);
     comm_config_.hcclRdmaServiceLevel = service_level;
     LLMLOGI("set rdma service level to %u.", service_level);
   }
