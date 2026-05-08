@@ -16,18 +16,10 @@
 #include <map>
 #include <tuple>
 
-namespace hixl {
+// 引入 rootinfo_builder 的数据结构
+#include "rootinfo_builder.h"
 
-/**
- * @brief 错误码定义
- */
-const int32_t SUCCESS = 0;
-const int32_t ERROR_INVALID_PARAM = 1001;
-const int32_t ERROR_FILE_NOT_FOUND = 1002;
-const int32_t ERROR_FILE_PARSE_FAILED = 1003;
-const int32_t ERROR_DCMI_INTERFACE_FAILED = 1004;
-const int32_t ERROR_NO_EID_FOUND = 1005;
-const int32_t ERROR_NO_CLOS_EID_FOUND = 1006;
+namespace hixl {
 
 // ============ DCMI 相关数据结构（从 hal.h 复制，避免直接引用） ============
 
@@ -130,37 +122,6 @@ struct RouteData {
     std::vector<RouteEntry> entries;
 };
 
-// ============ URMA Device 数据结构 ============
-
-/**
- * @brief URMA Device 结构（参考 Python 的 UrmaDevice 类）
- * 每个 URMA Device 包含多个 EID，die_id 从第一个 EID 获取
- */
-struct UrmaDevice {
-    std::string name;                      // 设备名称，如 "udma0"
-    std::vector<std::string> eid_list;    // 该设备下的所有 EID 列表
-};
-
-/**
- * @brief 获取 URMA Device 列表
- * @param [in] phy_dev_id 物理设备 ID
- * @param [out] urma_devices URMA Device 列表
- * @return 成功: SUCCESS, 失败: 其它错误码
- */
-int32_t GetUrmaDeviceList(int32_t phy_dev_id, std::vector<UrmaDevice>& urma_devices);
-
-// ============ RootInfo 数据结构 ============
-
-/**
- * @brief NPU 串口到 EID 的映射信息
- * key: 串口标识 "die_id/port"
- * value: 对应的 EID 字符串
- */
-struct NpuRootInfo {
-    std::map<std::string, std::string> port_to_eid;  // Mesh 层串口到 EID 映射
-    std::string clos_pg_eid;                          // CLOS 层 PG EID（串口组标识）
-};
-
 // ============ 核心接口 ============
 
 /**
@@ -181,8 +142,6 @@ int32_t GenerateLocalCommRes(
 // ============ DCMI 接口封装 ============
 
 /**
- * @brief 通过 phyId 获取 EID 列表
-/**
  * @brief 获取 UB 实体列表
  * @param [in] phy_dev_id 物理设备 ID
  * @param [out] ue_list UB 实体列表
@@ -198,58 +157,7 @@ int32_t GetUBEntityList(int32_t phy_dev_id, UEList& ue_list);
  */
 int32_t GetMainboardId(int32_t phy_dev_id, unsigned int& mainboard_id);
 
-// ============ EID 解析接口 ============
-
-/**
- * @brief 将 dcmi_urma_eid_t 转换为字符串格式
- * @param [in] eid DCMI EID 结构
- * @return 字符串格式的 EID
- */
-std::string EidToString(const dcmi_urma_eid_t& eid);
-
-/**
- * @brief 从 EID 获取 port（单个物理串口）
- * @param [in] eid 字符串格式 EID
- * @return port 编号 (0-9)，port > 9 表示 CLOS 层串口组
- */
-int GetPortFromEid(const std::string& eid);
-
-/**
- * @brief 从 EID 获取 die_id（Server 类型）
- * @param [in] eid 字符串格式 EID
- * @return die_id (0 或 1)
- */
-int GetServerDieIdFromEid(const std::string& eid);
-
-/**
- * @brief 从 EID 获取 die_id（Pod 类型）
- * @param [in] eid 字符串格式 EID
- * @return die_id (0 或 1)
- */
-int GetPodDieIdFromEid(const std::string& eid);
-
-/**
- * @brief 判断 EID 是否为 Mesh 层（单个物理串口）
- * @param [in] eid 字符串格式 EID
- * @return true: Mesh 层 (port ≤ 9), false: CLOS 层 (port > 9)
- */
-bool IsMeshLayerEid(const std::string& eid);
-
-/**
- * @brief 判断 EID 是否为 CLOS 层（串口组）
- * @param [in] eid 字符串格式 EID
- * @return true: CLOS 层 (port > 9), false: Mesh 层 (port ≤ 9)
- */
-bool IsClosLayerEid(const std::string& eid);
-
 // ============ CLOS 层专用接口 ============
-
-/**
- * @brief 从 eid_list 获取 CLOS 层 EID（PG EID，串口组标识）
- * @param [in] eid_list EID 列表
- * @return 第一个 port > 9 的 EID，若未找到则返回空字符串
- */
-std::string GetPgEid(const std::vector<std::string>& eid_list);
 
 /**
  * @brief 获取 CLOS 层串口组配置（Server 类型）

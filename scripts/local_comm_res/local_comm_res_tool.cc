@@ -2,7 +2,13 @@
  * @file local_comm_res_tool.cc
  * @brief LocalCommRes 生成工具实现文件
  *
- * DCMI 接口通过 dlopen 方式动态加载 libdcmi.so
+ * 本文件负责：
+ * - DCMI 接口封装（GetUBEntityList, GetMainboardId）
+ * - 文件解析（ParseTopoFile, ParseRouteFile）
+ * - 边生成（GenerateD2DEdges, GenerateD2UEdges, GenerateH2DEdges, GenerateH2UEdges）
+ * - 核心流程（GenerateLocalCommRes）
+ *
+ * RootInfo 构建功能已拆分到 rootinfo_builder 模块
  */
 
 #include "local_comm_res_tool.h"
@@ -222,75 +228,6 @@ std::vector<std::string> ExtractJsonObjects(const std::string& json, const std::
 
 // ============ DCMI 接口封装实现 ============
 
-int32_t GetUrmaDeviceList(int32_t phy_dev_id, std::vector<UrmaDevice>& urma_devices) {
-    if (LoadDcmi() != 0) {
-        std::cerr << "[GetUrmaDeviceList] DCMI not loaded" << std::endl;
-        return ERROR_DCMI_INTERFACE_FAILED;
-    }
-
-    unsigned int logic_id = 0;
-    if (GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
-        std::cerr << "[GetUrmaDeviceList] Failed to get logic id from phy id: " << phy_dev_id << std::endl;
-        return ERROR_DCMI_INTERFACE_FAILED;
-    }
-
-    unsigned int dev_cnt = 0;
-    int ret = g_dcmi_get_urma_device_cnt(logic_id, &dev_cnt);
-    if (ret != 0) {
-        std::cerr << "[GetUrmaDeviceList] Failed to get urma device count, ret=" << ret << std::endl;
-        return ERROR_DCMI_INTERFACE_FAILED;
-    }
-
-    urma_devices.clear();
-    for (size_t i = 0; i < dev_cnt; ++i) {
-        UrmaDevice urma_dev;
-        urma_dev.name = "udma" + std::to_string(i);
-
-        dcmi_urma_eid_info_t eid_buf[MAX_EID_PER_UE];
-        int eid_cnt = MAX_EID_PER_UE;
-        ret = g_dcmi_get_eid_list(logic_id, i, eid_buf, &eid_cnt);
-        if (ret != 0) {
-            continue;
-        }
-
-        for (int j = 0; j < eid_cnt; ++j) {
-            // 调试打印：打印 DCMI 返回的完整 EID 信息
-            std::cout << "[GetUrmaDeviceList] DCMI EID["
-                      << urma_dev.name << "][" << j << "]:" << std::endl;
-
-            // 打印 raw[16] 原始字节数组
-            std::cout << "  raw: ";
-            for (int k = 0; k < 16; ++k) {
-                std::cout << std::hex << std::setfill('0') << std::setw(2)
-                          << static_cast<int>(eid_buf[j].eid.raw[k]);
-            }
-            std::cout << std::dec << std::endl;
-
-            // 打印 interface_id 和 subnet_prefix
-            std::cout << "  interface_id: 0x" << std::hex << std::setfill('0') << std::setw(16)
-                      << eid_buf[j].eid.in6.interface_id << std::dec << std::endl;
-            std::cout << "  subnet_prefix: 0x" << std::hex << std::setfill('0') << std::setw(16)
-                      << eid_buf[j].eid.in6.subnet_prefix << std::dec << std::endl;
-
-            std::string eid_str = EidToString(eid_buf[j].eid);
-            std::cout << "  EidToString: " << eid_str << std::endl;
-
-            if (!eid_str.empty() && eid_str != "00000000000000000000000000000000") {
-                urma_dev.eid_list.push_back(eid_str);
-            }
-        }
-
-        // 跳过空设备（UBOE 设备在未配置 EID 之前是空的）
-        if (urma_dev.eid_list.empty()) {
-            continue;
-        }
-
-        urma_devices.push_back(urma_dev);
-    }
-
-    return SUCCESS;
-}
-
 int32_t GetUBEntityList(int32_t phy_dev_id, UEList& ue_list) {
     if (LoadDcmi() != 0) {
         std::cerr << "[GetUBEntityList] DCMI not loaded" << std::endl;
@@ -344,67 +281,7 @@ int32_t GetMainboardId(int32_t phy_dev_id, unsigned int& mainboard_id) {
     return SUCCESS;
 }
 
-// ============ EID 解析实现 ============
-
-std::string EidToString(const dcmi_urma_eid_t& eid) {
-    // 直接从 raw[16] 字节数组转换为十六进制字符串
-    std::ostringstream oss;
-    for (int i = 0; i < 16; ++i) {
-        oss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(eid.raw[i]);
-    }
-    return oss.str();
-}
-
-int GetPortFromEid(const std::string& eid) {
-    if (eid.length() < 2) {
-        return -1;
-    }
-    std::string last = eid.substr(eid.length() - 2);
-    int h = std::stoi(last, nullptr, 16);
-    int p = ((~128) & h) >> 3;
-    return p;
-}
-
-int GetServerDieIdFromEid(const std::string& eid) {
-    if (eid.length() < 2) {
-        return -1;
-    }
-    char low = eid[eid.length() - 2];
-    int h = std::stoi(std::string(1, low), nullptr, 16);
-    int die_id = (8 & h) >> 3;
-    return die_id;
-}
-
-int GetPodDieIdFromEid(const std::string& eid) {
-    if (eid.length() < 3) {
-        return -1;
-    }
-    char third = eid[eid.length() - 3];
-    int h = std::stoi(std::string(1, third), nullptr, 16);
-    int die_id = (4 & h) >> 2;
-    return die_id;
-}
-
-bool IsMeshLayerEid(const std::string& eid) {
-    int port = GetPortFromEid(eid);
-    return port >= 0 && port <= 9;
-}
-
-bool IsClosLayerEid(const std::string& eid) {
-    int port = GetPortFromEid(eid);
-    return port > 9;
-}
-
 // ============ CLOS 层专用接口实现 ============
-
-std::string GetPgEid(const std::vector<std::string>& eid_list) {
-    for (const auto& eid : eid_list) {
-        if (IsClosLayerEid(eid)) {
-            return eid;
-        }
-    }
-    return "";
-}
 
 std::vector<std::tuple<int, int, std::vector<int>>> GetLevel1ConfigServer(unsigned int mainboard_id) {
     std::vector<std::tuple<int, int, std::vector<int>>> config;
@@ -569,65 +446,6 @@ int32_t ParseRouteFile(const std::string& route_path, RouteData& route_data) {
     return SUCCESS;
 }
 
-// ============ RootInfo 构建 ============
-
-/**
- * @brief 从 EID 列表构建 NPU 的 rootinfo（串口到 EID 映射）
- * @param eid_list 该 NPU 的 EID 列表
- * @param is_server 是否为 Server 产品形态（决定 die_id 提取方式）
- * @return 串口标识 "die_id/port" -> EID 的映射
- *
- * 映射规则（参考 generate_local_comm_res.md 4.2.2）:
- *   - port = GetPortFromEid(eid)（1-9 有效）
- *   - die_id = GetServerDieIdFromEid(eid) 或 GetPodDieIdFromEid(eid)
- *   - rootinfo key = "die_id/(port-1)"
- *
- * 参考 Python 的 process_level0 逻辑:
- *   - 先获取 urma_device 的 die_id（从第一个 EID）
- *   - 如果 die_id == 0，跳过该 urma_device 下的所有 EID
- *   - 否则遍历其 eid_list 构建 rootinfo
- */
-NpuRootInfo BuildNpuRootInfo(const std::vector<UrmaDevice>& urma_devices, bool is_server) {
-    NpuRootInfo rootinfo;
-
-    for (const auto& urma_dev : urma_devices) {
-        if (urma_dev.eid_list.empty()) {
-            continue;
-        }
-
-        // 从第一个 EID 获取 die_id（参考 Python 的 urma_device.get_die_id()）
-        const std::string& first_eid = urma_dev.eid_list[0];
-        int die_id = is_server ? GetServerDieIdFromEid(first_eid) : GetPodDieIdFromEid(first_eid);
-
-        // Python 逻辑: if die_id == 0: continue (跳过 die_id == 0 的 urma_device)
-        if (die_id == 0) {
-            std::cout << "[BuildNpuRootInfo] Skip urma_device (die_id == 0): " << urma_dev.name << std::endl;
-            continue;
-        }
-
-        // 遍历该 urma_device 下的所有 EID
-        for (const auto& eid : urma_dev.eid_list) {
-            int port = GetPortFromEid(eid);
-            if (port >= 1 && port <= 9) {
-                // Mesh 层有效端口: port 1-9 映射到 0-8
-                std::string port_key = std::to_string(die_id) + "/" + std::to_string(port - 1);
-                rootinfo.port_to_eid[port_key] = eid;
-            } else if (port > 9 && rootinfo.clos_pg_eid.empty()) {
-                // CLOS 层 PG EID（串口组标识），只取第一个
-                rootinfo.clos_pg_eid = eid;
-            }
-        }
-    }
-
-    std::cout << "[BuildNpuRootInfo] Built " << rootinfo.port_to_eid.size()
-              << " port->eid mappings, clos_pg_eid="
-              << (rootinfo.clos_pg_eid.empty() ? "(none)" : rootinfo.clos_pg_eid) << std::endl;
-    for (const auto& kv : rootinfo.port_to_eid) {
-        std::cout << "[BuildNpuRootInfo]   " << kv.first << " -> " << kv.second << std::endl;
-    }
-    return rootinfo;
-}
-
 // ============ 边生成实现 ============
 
 int32_t GenerateD2DEdges(
@@ -650,7 +468,6 @@ int32_t GenerateD2DEdges(
               << ", self_rootinfo_size=" << self_rootinfo.port_to_eid.size() << std::endl;
 
     size_t skip_reason[4] = {0, 0, 0, 0};
-    size_t no_rootinfo_local = 0;
     size_t no_rootinfo_peer = 0;
     size_t no_port_match_local = 0;
     size_t no_port_match_peer = 0;
@@ -860,32 +677,9 @@ int32_t GenerateLocalCommRes(
     std::cout << "[GenerateLocalCommRes] topo_path=" << topo_path << std::endl;
     std::cout << "[GenerateLocalCommRes] route_path=" << route_path << std::endl;
 
-    // 使用 GetUrmaDeviceList 获取 URMA Device 列表
-    std::vector<UrmaDevice> urma_devices;
-    int32_t ret = GetUrmaDeviceList(phy_dev_id, urma_devices);
-    if (ret != SUCCESS) {
-        std::cerr << "[GenerateLocalCommRes] Failed to get urma devices: " << ret << std::endl;
-        return ret;
-    }
-
-    if (urma_devices.empty()) {
-        std::cerr << "[GenerateLocalCommRes] No urma devices for phy_dev_id: " << phy_dev_id << std::endl;
-        return ERROR_NO_EID_FOUND;
-    }
-
-    // 统计总 EID 数
-    size_t total_eid_count = 0;
-    for (const auto& dev : urma_devices) {
-        total_eid_count += dev.eid_list.size();
-    }
-    std::cout << "[GenerateLocalCommRes] Got " << urma_devices.size() << " URMA device(s), total " << total_eid_count << " EID(s)" << std::endl;
-    for (size_t i = 0; i < urma_devices.size() && i < 5; ++i) {
-        std::cout << "[GenerateLocalCommRes]   Device[" << i << "]: " << urma_devices[i].name
-                  << ", eid_count=" << urma_devices[i].eid_list.size() << std::endl;
-    }
-
+    // 获取主板 ID
     unsigned int mainboard_id = 0;
-    ret = GetMainboardId(phy_dev_id, mainboard_id);
+    int32_t ret = GetMainboardId(phy_dev_id, mainboard_id);
     if (ret != SUCCESS) {
         std::cerr << "[GenerateLocalCommRes] Failed to get mainboard id: " << ret << std::endl;
     } else {
@@ -909,6 +703,7 @@ int32_t GenerateLocalCommRes(
         std::cout << "[GenerateLocalCommRes] Product type: Unknown/default (mainboard_id=0x" << std::hex << mainboard_id << std::dec << ")" << std::endl;
     }
 
+    // 解析 topo 文件
     TopoData topo_data;
     ret = ParseTopoFile(topo_path, topo_data);
     if (ret != SUCCESS && ret != ERROR_FILE_NOT_FOUND) {
@@ -917,6 +712,7 @@ int32_t GenerateLocalCommRes(
         std::cout << "[GenerateLocalCommRes] ParseTopoFile " << (ret == SUCCESS ? "ok" : "not found") << ", links=" << topo_data.links.size() << std::endl;
     }
 
+    // 解析 route 文件
     RouteData route_data;
     ret = ParseRouteFile(route_path, route_data);
     if (ret != SUCCESS && ret != ERROR_FILE_NOT_FOUND) {
@@ -924,28 +720,6 @@ int32_t GenerateLocalCommRes(
     } else {
         std::cout << "[GenerateLocalCommRes] ParseRouteFile " << (ret == SUCCESS ? "ok" : "not found") << ", entries=" << route_data.entries.size() << std::endl;
     }
-
-    std::vector<std::string> mesh_eids;
-    std::string clos_pg_eid;
-    std::vector<std::string> clos_plane_ids;
-
-    // 遍历 URMA Device 列表获取 mesh_eids 和 clos_pg_eid
-    for (const auto& urma_dev : urma_devices) {
-        for (const auto& eid : urma_dev.eid_list) {
-            if (IsMeshLayerEid(eid)) {
-                mesh_eids.push_back(eid);
-            } else if (IsClosLayerEid(eid)) {
-                if (clos_pg_eid.empty()) {
-                    clos_pg_eid = eid;
-                    clos_plane_ids.push_back("plane_pg_0");
-                    clos_plane_ids.push_back("plane_pg_1");
-                }
-            }
-        }
-    }
-
-    std::cout << "[GenerateLocalCommRes] Mesh EID count=" << mesh_eids.size() << std::endl;
-    std::cout << "[GenerateLocalCommRes] CLOS pg_eid=" << (clos_pg_eid.empty() ? "(none)" : clos_pg_eid) << std::endl;
 
     // 收集所有相关 NPU ID（从 topo 边中的 local_a 和 local_b）
     std::set<int32_t> related_npu_ids;
@@ -958,27 +732,33 @@ int32_t GenerateLocalCommRes(
     for (int id : related_npu_ids) std::cout << id << " ";
     std::cout << std::endl;
 
-    // 为每个相关 NPU 获取 URMA Device 列表并构建 rootinfo
-    // 参考 Python 的 get_urma_device_list 和 process_rootinfo_server 逻辑
+    // 为每个相关 NPU 构建 rootinfo
     std::map<int32_t, NpuRootInfo> npu_rootinfos;
     for (int32_t npu_id : related_npu_ids) {
-        std::vector<UrmaDevice> urma_devices;
-        int32_t urma_ret = GetUrmaDeviceList(npu_id, urma_devices);
-        if (urma_ret != SUCCESS) {
-            std::cerr << "[GenerateLocalCommRes] Failed to get urma devices for npu_id=" << npu_id << ", ret=" << urma_ret << std::endl;
+        NpuRootInfo rootinfo;
+        int32_t build_ret = BuildNpuRootInfo(npu_id, is_server, rootinfo);
+        if (build_ret != SUCCESS) {
+            std::cerr << "[GenerateLocalCommRes] Failed to build rootinfo for npu_id=" << npu_id << ", ret=" << build_ret << std::endl;
             continue;
         }
-        if (urma_devices.empty()) {
-            std::cerr << "[GenerateLocalCommRes] No urma devices for npu_id=" << npu_id << std::endl;
-            continue;
-        }
-        std::cout << "[GenerateLocalCommRes] NPU " << npu_id << " has " << urma_devices.size() << " urma_device(s)" << std::endl;
-        npu_rootinfos[npu_id] = BuildNpuRootInfo(urma_devices, is_server);
+        npu_rootinfos[npu_id] = rootinfo;
     }
     std::cout << "[GenerateLocalCommRes] Built rootinfo for " << npu_rootinfos.size() << " NPU(s)" << std::endl;
 
+    // 获取当前 NPU 的 CLOS pg_eid（用于 D2U 和 H2U）
+    std::string clos_pg_eid;
+    std::vector<std::string> clos_plane_ids;
+    auto self_it = npu_rootinfos.find(phy_dev_id);
+    if (self_it != npu_rootinfos.end() && !self_it->second.clos_pg_eid.empty()) {
+        clos_pg_eid = self_it->second.clos_pg_eid;
+        clos_plane_ids.push_back("plane_pg_0");
+        clos_plane_ids.push_back("plane_pg_1");
+    }
+    std::cout << "[GenerateLocalCommRes] CLOS pg_eid=" << (clos_pg_eid.empty() ? "(none)" : clos_pg_eid) << std::endl;
+
     std::vector<EndpointConfig> all_edges;
 
+    // D2D 边
     std::vector<EndpointConfig> d2d_edges;
     if (topo_data.links.empty()) {
         std::cout << "[GenerateLocalCommRes] Skip D2D: topo_data.links is empty" << std::endl;
@@ -990,6 +770,7 @@ int32_t GenerateLocalCommRes(
     }
     std::cout << "[GenerateLocalCommRes] D2D edges=" << d2d_edges.size() << std::endl;
 
+    // D2U 边
     std::vector<EndpointConfig> d2u_edges;
     if (clos_plane_ids.empty()) {
         std::cout << "[GenerateLocalCommRes] Skip D2U: no CLOS plane_ids found" << std::endl;
@@ -1001,6 +782,7 @@ int32_t GenerateLocalCommRes(
     }
     std::cout << "[GenerateLocalCommRes] D2U edges=" << d2u_edges.size() << std::endl;
 
+    // H2D 边
     std::vector<EndpointConfig> h2d_edges;
     if (route_data.entries.empty()) {
         std::cout << "[GenerateLocalCommRes] Skip H2D: route_data.entries is empty" << std::endl;
@@ -1010,6 +792,7 @@ int32_t GenerateLocalCommRes(
     }
     std::cout << "[GenerateLocalCommRes] H2D edges=" << h2d_edges.size() << std::endl;
 
+    // H2U 边
     std::vector<EndpointConfig> h2u_edges;
     if (clos_plane_ids.empty()) {
         std::cout << "[GenerateLocalCommRes] Skip H2U: no CLOS plane_ids found" << std::endl;
