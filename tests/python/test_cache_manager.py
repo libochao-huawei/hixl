@@ -538,6 +538,7 @@ class LlmCacheManagerDecoderSt(unittest.TestCase):
             cache_mgr.push_blocks(dst_cache_key, dst_blocks_cache, [0], [0],
                               src_layer_range=range(0,1), dst_layer_range=range(0,1), tensor_num_per_layer=2.0)
 
+
         with self.assertRaises(TypeError):
             cache_mgr.push_blocks(dst_cache_key, dst_blocks_cache, [0], [0],
                               src_layer_range=range(0,1), dst_layer_range=range(0,1), tensor_num_per_layer='x')
