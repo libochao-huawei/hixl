@@ -18,7 +18,27 @@
 
 namespace hixl {
 namespace {
+constexpr uint32_t kMaxBatchSizeOnStack = 1024;  // 栈上预分配的最大批量大小
+
 int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param) {
+  // 对于小批量，使用栈数组避免动态分配开销
+  if (param->list_num <= kMaxBatchSizeOnStack) {
+    HcommBatchTransferDesc descs[kMaxBatchSizeOnStack];
+    for (uint32_t i = 0; i < param->list_num; i++) {
+      descs[i].transType = is_read ? HCOMM_TRANSFER_TYPE_READ : HCOMM_TRANSFER_TYPE_WRITE;
+      if (is_read) {
+        descs[i].read.len = param->len_list[i];
+        descs[i].read.dst = param->dst_buf_addr_list[i];
+        descs[i].read.src = param->src_buf_addr_list[i];
+      } else {
+        descs[i].write.len = param->len_list[i];
+        descs[i].write.dst = param->dst_buf_addr_list[i];
+        descs[i].write.src = param->src_buf_addr_list[i];
+      }
+    }
+    return HcommProxy::BatchTransferOnThread(param->thread, param->channel, descs, param->list_num);
+  }
+  // 大批量使用动态分配（这种情况较少）
   std::vector<HcommBatchTransferDesc> descs(param->list_num);
   for (uint32_t i = 0; i < param->list_num; i++) {
     descs[i].transType = is_read ? HCOMM_TRANSFER_TYPE_READ : HCOMM_TRANSFER_TYPE_WRITE;
