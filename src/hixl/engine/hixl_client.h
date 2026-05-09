@@ -16,7 +16,6 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
-#include <sstream>
 #include <vector>
 #include <map>
 #include "cs/hixl_cs.h"
@@ -32,45 +31,6 @@ struct ClientConfig {
   std::string remote_engine;
   uint8_t rdma_tc;
   uint8_t rdma_sl;
-};
-
-struct MatchKey {
-  std::string dst_eid;
-  std::string plane;
-  std::string placement;
-
-  std::string ToString() const {
-    std::ostringstream oss;
-    oss << "MatchKey{";
-    oss << "dst_eid: " << dst_eid << ", ";
-    oss << "plane: " << plane << ", ";
-    oss << "placement: " << placement;
-    oss << "}";
-    return oss.str();
-  }
-
-  bool operator<(const MatchKey &other) const {
-    if (dst_eid != other.dst_eid) {
-      return dst_eid < other.dst_eid;
-    } else if (plane != other.plane) {
-      return plane < other.plane;
-    } else {
-      return placement < other.placement;
-    }
-  }
-
-  bool Matches(const MatchKey &query) const {
-    if (!dst_eid.empty() && !query.dst_eid.empty() && (dst_eid != query.dst_eid)) {
-      return false;
-    }
-    if (plane != query.plane) {
-      return false;
-    }
-    if (placement != query.placement) {
-      return false;
-    }
-    return true;
-  }
 };
 
 struct TransferCompleteInfo {
@@ -102,38 +62,6 @@ class HixlClient {
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
 
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const;
-
-  CommType ParseCommType(const std::string &local_placement, const std::string &remote_placement) const;
-
-  bool MustUseRoce(const std::vector<EndpointConfig> &local_endpoint_list,
-                   const std::vector<EndpointConfig> &remote_endpoint_list) const;
-
-  Status TryMatchRoceEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
-                               const std::vector<EndpointConfig> &remote_endpoint_list,
-                               std::map<CommType, HixlClientHandle> &handles);
-
-  Status TryMatchUboeEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
-                               const std::vector<EndpointConfig> &remote_endpoint_list,
-                               std::map<CommType, HixlClientHandle> &handles);
-
-  Status TryMatchHccsEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
-                               const std::vector<EndpointConfig> &remote_endpoint_list,
-                               std::map<CommType, HixlClientHandle> &handles);
-
-  Status TryMatchUbEndpoints(const EndpointConfig &local_endpoint,
-                             const std::map<MatchKey, EndpointConfig> &peer_match_endpoints,
-                             std::map<CommType, bool> &expected_pairs, uint32_t &count,
-                             std::map<CommType, HixlClientHandle> &handles);
-
-  void BuildEndpointsMatchMap(const std::vector<EndpointConfig> &endpoint_list,
-                              std::map<MatchKey, EndpointConfig> &peer_match_endpoints) const;
-
-  Status FindMatchedEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
-                              const std::vector<EndpointConfig> &remote_endpoint_list,
-                              std::map<CommType, HixlClientHandle> &handles);
-
-  Status CreateCsClients(const EndpointConfig &local_endpoint_config, const EndpointConfig &remote_endpoint_config,
-                         CommType type, std::map<CommType, HixlClientHandle> &handles);
 
   Status BatchTransfer(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
                        std::vector<TransferCompleteInfo> &complete_handle_list);
