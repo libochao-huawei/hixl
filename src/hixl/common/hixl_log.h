@@ -17,7 +17,7 @@
 #include <cstring>
 #include <string>
 #include "dlog_pub.h"
-#include "base/err_msg.h"
+#include "err_msg.h"
 #ifdef __GNUC__
 #include <unistd.h>
 #include <sys/syscall.h>
