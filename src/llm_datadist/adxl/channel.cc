@@ -118,7 +118,11 @@ void Channel::ClearNotifyMessages() {
 }
 
 Status Channel::Finalize() {
-  finalized_.store(true, std::memory_order_release);
+  bool expected = false;
+  if (!finalized_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
+    LLMLOGW("Channel already finalized, channel_id:%s.", channel_info_.channel_id.c_str());
+    return SUCCESS;
+  }
   auto ret = SUCCESS;
   if (enable_use_fabric_mem_) {
     ClearImportedMem();
