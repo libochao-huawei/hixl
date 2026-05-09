@@ -27,6 +27,9 @@ target_link_libraries(cann_hixl_kernel PRIVATE
         $<BUILD_INTERFACE:intf_pub>
         $<BUILD_INTERFACE:hccl_headers>
         $<BUILD_INTERFACE:slog_headers>
+        $<BUILD_INTERFACE:c_sec_headers>
+        $<BUILD_INTERFACE:error_manager_headers>
+        $<BUILD_INTERFACE:metadef_headers>
         -Wl,--no-as-needed
         slog
         hcomm_proxy_static
@@ -38,8 +41,8 @@ message(STATUS "HIXL_DIR = ${HIXL_DIR}")
 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
         COMMAND python3 ${HIXL_DIR}/scripts/kernel/parser_ini.py ${HIXL_DIR}/src/ops/hixl_kernel/libcann_hixl_kernel.ini ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
 )
-add_custom_target(aicpu_kernel_json DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json)
-add_dependencies(cann_hixl_kernel aicpu_kernel_json)
+add_custom_target(hixl_aicpu_kernel_json DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json)
+add_dependencies(cann_hixl_kernel hixl_aicpu_kernel_json)
 
 install(FILES
         ${CMAKE_CURRENT_BINARY_DIR}/libcann_hixl_kernel.json
