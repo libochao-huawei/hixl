@@ -38,12 +38,24 @@ struct TransferCompleteInfo {
   void *complete_handle;
 };
 
+inline const char *CommTypeToString(CommType type) {
+  switch (type) {
+    case CommType::COMM_TYPE_UB_D2D: return "UB_D2D";
+    case CommType::COMM_TYPE_UB_H2D: return "UB_H2D";
+    case CommType::COMM_TYPE_UB_D2H: return "UB_D2H";
+    case CommType::COMM_TYPE_UB_H2H: return "UB_H2H";
+    case CommType::COMM_TYPE_ROCE:   return "ROCE";
+    case CommType::COMM_TYPE_HCCS:   return "HCCS";
+    case CommType::COMM_TYPE_UBOE:   return "UBOE";
+    default:                         return "UNKNOWN";
+  }
+}
+
 class IClientHandler {
  public:
   virtual ~IClientHandler() = default;
 
   virtual Status Connect(uint32_t timeout_ms) = 0;
-  virtual Status FetchRemoteMem(uint32_t timeout_ms) = 0;
   virtual Status RegisterMem(const MemInfo &mem_info) = 0;
 
   virtual Status Transfer(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,

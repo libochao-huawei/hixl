@@ -23,19 +23,6 @@ namespace {
 
 constexpr uint32_t kMaxUbCsClientNum = 4U;
 
-const char *CommTypeToString(CommType type) {
-  switch (type) {
-    case CommType::COMM_TYPE_UB_D2D: return "UB_D2D";
-    case CommType::COMM_TYPE_UB_H2D: return "UB_H2D";
-    case CommType::COMM_TYPE_UB_D2H: return "UB_D2H";
-    case CommType::COMM_TYPE_UB_H2H: return "UB_H2H";
-    case CommType::COMM_TYPE_ROCE:   return "ROCE";
-    case CommType::COMM_TYPE_HCCS:   return "HCCS";
-    case CommType::COMM_TYPE_UBOE:   return "UBOE";
-    default:                         return "UNKNOWN";
-  }
-}
-
 bool IsUbCommType(CommType type) {
   return type == CommType::COMM_TYPE_UB_D2D || type == CommType::COMM_TYPE_UB_H2D ||
          type == CommType::COMM_TYPE_UB_D2H || type == CommType::COMM_TYPE_UB_H2H;

@@ -24,7 +24,6 @@ class DirectClientHandler : public IClientHandler {
   ~DirectClientHandler() override = default;
 
   Status Connect(uint32_t timeout_ms) override;
-  Status FetchRemoteMem(uint32_t timeout_ms) override;
   Status RegisterMem(const MemInfo &mem_info) override;
   Status Transfer(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
                   std::vector<TransferCompleteInfo> &complete_handle_list) override;

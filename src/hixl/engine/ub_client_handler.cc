@@ -24,19 +24,6 @@ namespace {
 constexpr const char *kMemTypeDevice = "DEVICE";
 constexpr const char *kMemTypeHost = "HOST";
 
-const char *CommTypeToString(CommType type) {
-  switch (type) {
-    case CommType::COMM_TYPE_UB_D2D: return "UB_D2D";
-    case CommType::COMM_TYPE_UB_H2D: return "UB_H2D";
-    case CommType::COMM_TYPE_UB_D2H: return "UB_D2H";
-    case CommType::COMM_TYPE_UB_H2H: return "UB_H2H";
-    case CommType::COMM_TYPE_ROCE:   return "ROCE";
-    case CommType::COMM_TYPE_HCCS:   return "HCCS";
-    case CommType::COMM_TYPE_UBOE:   return "UBOE";
-    default:                         return "UNKNOWN";
-  }
-}
-
 Status ComputeRemainingMs(const std::chrono::steady_clock::time_point &start, uint32_t timeout_ms,
                           uint32_t &remaining_ms) {
   auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -73,11 +60,7 @@ Status UbClientHandler::Connect(uint32_t timeout_ms) {
     HIXL_CHK_STATUS_RET(f.get(), "UbClientHandler Connect failed");
   }
 
-  return FetchRemoteMem(timeout_ms);
-}
-
-Status UbClientHandler::FetchRemoteMem(uint32_t timeout_ms) {
-  std::lock_guard<std::mutex> lock(handle_mutex_);
+  // 获取远端内存
   for (const auto &pair : handles_) {
     auto handle = pair.second;
     CommMem *remote_mem_list = nullptr;

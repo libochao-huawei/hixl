@@ -25,11 +25,6 @@ Status DirectClientHandler::Connect(uint32_t timeout_ms) {
   return static_cast<Status>(HixlCSClientConnect(SingleHandle(), timeout_ms));
 }
 
-Status DirectClientHandler::FetchRemoteMem(uint32_t timeout_ms) {
-  (void)timeout_ms;
-  return SUCCESS;
-}
-
 Status DirectClientHandler::RegisterMem(const MemInfo &mem_info) {
   CommMem hccl_mem{};
   hccl_mem.type = (mem_info.type == MemType::MEM_DEVICE) ? COMM_MEM_TYPE_DEVICE : COMM_MEM_TYPE_HOST;
