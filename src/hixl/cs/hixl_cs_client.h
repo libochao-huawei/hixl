@@ -145,7 +145,6 @@ class HixlCSClient {
   Status BatchTransferHostSync(bool is_get, const CommunicateMem &communicate_mem, uint32_t timeout_ms);
   Status BatchTransferDevice(bool is_get, const CommunicateMem &communicate_mem, void **query_handle);
   Status BatchTransferDeviceSync(bool is_get, const CommunicateMem &communicate_mem, uint32_t timeout_ms);
-  DeviceCompleteHandle *CreateDeviceHandle(std::shared_ptr<TransferPool::SlotHandle> &slot);
   template <typename T>
   Status ConvertHostRegisterAddr(bool is_server, const char *name, T &addr);
   Status ConvertUboeCommunicateMem(bool is_get, CommunicateMem &communicate_mem_param);
