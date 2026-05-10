@@ -937,52 +937,42 @@ Status HixlCSClient::BatchTransferDevice(bool is_get, const CommunicateMem &comm
   return SUCCESS;
 }
 
-Status HixlCSClient::BatchTransferDeviceSync(bool is_get, const CommunicateMem &communicate_mem,
-                                             uint32_t timeout_ms) {
-  const auto total_start = std::chrono::steady_clock::now();
-
-  void *handle_ptr = nullptr;
-  const auto validate_start = std::chrono::steady_clock::now();
-  HIXL_CHK_STATUS_RET(ValidateDeviceInputs(is_get, communicate_mem, handle_ptr), "ValidateDeviceInputs failed");
-  const auto validate_end = std::chrono::steady_clock::now();
-  const auto validate_us = std::chrono::duration_cast<std::chrono::microseconds>(validate_end - validate_start).count();
-
-  // Use shared slot (reuse if pending transfer exists)
-  std::shared_ptr<TransferPool::SlotHandle> slot;
-  const auto acquire_start = std::chrono::steady_clock::now();
-  HIXL_CHK_STATUS_RET(AcquireSharedSlot(slot), "[HixlClient] AcquireSharedSlot failed");
-  const auto acquire_end = std::chrono::steady_clock::now();
-  const auto acquire_us = std::chrono::duration_cast<std::chrono::microseconds>(acquire_end - acquire_start).count();
-
-  HIXL_CHECK_NOTNULL(slot->notify, "[HixlClient] slot->notify is null");
-
+DeviceCompleteHandle *HixlCSClient::CreateDeviceHandle(std::shared_ptr<TransferPool::SlotHandle> &slot) {
   auto *handle = new (std::nothrow) DeviceCompleteHandle();
   if (handle == nullptr) {
     HIXL_LOGE(FAILED, "[HixlClient] new DeviceCompleteHandle failed");
     ReleaseSharedSlotRef(slot);
-    return FAILED;
+    return nullptr;
   }
+  handle->magic = kDeviceCompleteMagic;
+  handle->reserved = 0U;
+  handle->shared_slot = slot;
+  handle->host_flag = nullptr;
+  return handle;
+}
+
+Status HixlCSClient::BatchTransferDeviceSync(bool is_get, const CommunicateMem &communicate_mem,
+                                             uint32_t timeout_ms) {
+  void *handle_ptr = nullptr;
+  HIXL_CHK_STATUS_RET(ValidateDeviceInputs(is_get, communicate_mem, handle_ptr), "ValidateDeviceInputs failed");
+
+  std::shared_ptr<TransferPool::SlotHandle> slot;
+  HIXL_CHK_STATUS_RET(AcquireSharedSlot(slot), "[HixlClient] AcquireSharedSlot failed");
+  HIXL_CHECK_NOTNULL(slot->notify, "[HixlClient] slot->notify is null");
+
+  auto *handle = CreateDeviceHandle(slot);
+  if (handle == nullptr) return FAILED;
   HIXL_MAKE_GUARD(handle_guard, ([this, handle]() {
     std::lock_guard<std::mutex> lock(mutex_);
     (void)ReleaseDevCompleteHandle(handle);
   }));
-  handle->magic = kDeviceCompleteMagic;
-  handle->reserved = 0U;
-  handle->shared_slot = slot;
-  handle->host_flag = nullptr;  // Sync transfer does not need host_flag
 
   void *remote_flag = nullptr;
-  const auto prepare_start = std::chrono::steady_clock::now();
   HIXL_CHK_STATUS_RET(PrepareDeviceTransferArgs(communicate_mem, *handle, remote_flag),
                       "PrepareDeviceTransferArgs failed");
-  const auto prepare_end = std::chrono::steady_clock::now();
-  const auto prepare_us = std::chrono::duration_cast<std::chrono::microseconds>(prepare_end - prepare_start).count();
-
   HIXL_LOGI("[HixlClient] BatchTransferDeviceSync. is_get=%d list_num=%u slot=%u", static_cast<int32_t>(is_get),
             handle->args.list_num, handle->shared_slot->slot_index);
 
-  // Mutex protects LaunchDeviceKernel + sync serialization
-  const auto launch_start = std::chrono::steady_clock::now();
   {
     std::lock_guard<std::mutex> lock(device_launch_mu_);
     hixl::TemporaryRtContext ctx_guard(handle->shared_slot->ctx);
@@ -994,13 +984,6 @@ Status HixlCSClient::BatchTransferDeviceSync(bool is_get, const CommunicateMem &
     HIXL_CHK_ACL_RET(sync_ret, "[HixlClient] aclrtSynchronizeStreamWithTimeout failed, kernel=%s, ret=0x%X",
                      is_get ? kDeviceFuncGet : kDeviceFuncPut, static_cast<uint32_t>(sync_ret));
   }
-  const auto launch_end = std::chrono::steady_clock::now();
-  const auto launch_us = std::chrono::duration_cast<std::chrono::microseconds>(launch_end - launch_start).count();
-
-  const auto total_end = std::chrono::steady_clock::now();
-  const auto total_us = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start).count();
-  HIXL_LOGE(SUCCESS, "[HixlClient] BatchTransferDeviceSync timing(us): total=%ld validate=%ld acquire=%ld prepare=%ld launch=%ld is_get=%d list_num=%u",
-            total_us, validate_us, acquire_us, prepare_us, launch_us, static_cast<int32_t>(is_get), communicate_mem.list_num);
 
   HIXL_LOGI("[HixlClient] BatchTransferDeviceSync done. is_get=%d list_num=%u", static_cast<int32_t>(is_get),
             communicate_mem.list_num);
