@@ -427,62 +427,38 @@ TEST_F(HixlEngineUboeTest, InitializeFailsDirectlyWhenEndpointGenerationFails) {
 // 使用 127.0.0.1 进行本地测试，底层接口已打桩
 // UBOE placement 永远是 device，H2H 指的是内存类型
 TEST_F(HixlEngineUboeTest, EndToEndUboeBatchTransferHostToHost) {
-  // Setup mmpa stub to make kHccnToolPath not found
   llm::MmpaStub::GetInstance().SetImpl(std::make_shared<UboeMmpaStub>());
-
-  // Create mock hccn_tool that returns bond IP
   CreateHccnTool("ipaddr:127.0.0.1");
-
-  // 初始化 engine1 (server) - UBOE placement 永远是 device
   std::map<AscendString, AscendString> options;
   SetUboeOptions(options);
 
-  Hixl engine1;
-  Hixl engine2;
-  // Server 使用带端口的 local_engine
+  Hixl engine1, engine2;
   ASSERT_EQ(engine1.Initialize("127.0.0.1:16000", options), SUCCESS);
-  // Client 使用不同的端口
   ASSERT_EQ(engine2.Initialize("127.0.0.1:16001", options), SUCCESS);
 
-  // 注册 host 内存 - Server side (H2H: 双方都是 host 内存)
   std::vector<int32_t> server_data(100, 42);
-  hixl::MemDesc server_mem{};
-  server_mem.addr = reinterpret_cast<uintptr_t>(server_data.data());
-  server_mem.len = server_data.size() * sizeof(int32_t);
-
+  hixl::MemDesc server_mem{reinterpret_cast<uintptr_t>(server_data.data()),
+                             server_data.size() * sizeof(int32_t)};
   MemHandle server_handle = nullptr;
   EXPECT_EQ(engine1.RegisterMem(server_mem, MEM_HOST, server_handle), SUCCESS);
 
-  // 注册 host 内存 - Client side (H2H: 双方都是 host 内存)
   std::vector<int32_t> client_data(100, 0);
-  hixl::MemDesc client_mem{};
-  client_mem.addr = reinterpret_cast<uintptr_t>(client_data.data());
-  client_mem.len = client_data.size() * sizeof(int32_t);
-
+  hixl::MemDesc client_mem{reinterpret_cast<uintptr_t>(client_data.data()),
+                             client_data.size() * sizeof(int32_t)};
   MemHandle client_handle = nullptr;
   EXPECT_EQ(engine2.RegisterMem(client_mem, MEM_HOST, client_handle), SUCCESS);
 
-  // 连接 - Client 连接 Server
   EXPECT_EQ(engine2.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
 
-  // 执行传输 (client 从 server 获取数据) - Host to Host
-  std::vector<TransferOpDesc> op_descs;
-  TransferOpDesc desc;
-  desc.local_addr = client_mem.addr;   // client's local address
-  desc.remote_addr = server_mem.addr;  // server's remote address
-  desc.len = server_mem.len;
-  op_descs.push_back(desc);
-
-  // 执行传输
+  TransferOpDesc desc{client_mem.addr, server_mem.addr, server_mem.len};
+  std::vector<TransferOpDesc> op_descs = {desc};
   (void)engine2.TransferSync("127.0.0.1:16000", TransferOp::READ, op_descs, kTimeOut);
 
-  // 清理
   (void)engine2.Disconnect("127.0.0.1:16000");
   EXPECT_EQ(engine2.DeregisterMem(client_handle), SUCCESS);
   EXPECT_EQ(engine1.DeregisterMem(server_handle), SUCCESS);
   engine2.Finalize();
   engine1.Finalize();
-
   llm::MmpaStub::GetInstance().Reset();
 }
 
