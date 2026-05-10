@@ -100,8 +100,8 @@ Status DirectClientHandler::Finalize() {
     }
   }
   mem_handles_.clear();
-  for (auto &[_, h] : handles_) {
-    if (h != nullptr) HixlCSClientDestroy(h);
+  for (auto &pair : handles_) {
+    if (pair.second != nullptr) HixlCSClientDestroy(pair.second);
   }
   handles_.clear();
   return SUCCESS;

@@ -78,7 +78,8 @@ Status UbClientHandler::Connect(uint32_t timeout_ms) {
 
 Status UbClientHandler::FetchRemoteMem(uint32_t timeout_ms) {
   std::lock_guard<std::mutex> lock(handle_mutex_);
-  for (const auto &[_, handle] : handles_) {
+  for (const auto &pair : handles_) {
+    auto handle = pair.second;
     CommMem *remote_mem_list = nullptr;
     char **mem_tag_list = nullptr;
     uint32_t list_num = 0;
@@ -248,8 +249,8 @@ Status UbClientHandler::Finalize() {
   }
   {
     std::lock_guard<std::mutex> lock(handle_mutex_);
-    for (auto &[_, h] : handles_) {
-      if (h != nullptr) HixlCSClientDestroy(h);
+    for (auto &pair : handles_) {
+      if (pair.second != nullptr) HixlCSClientDestroy(pair.second);
     }
     handles_.clear();
   }
