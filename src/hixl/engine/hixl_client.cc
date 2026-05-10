@@ -95,6 +95,10 @@ Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {
 
 // ===== Connect =====
 Status HixlClient::Connect(uint32_t timeout_ms) {
+  if (client_handler_ == nullptr) {
+    HIXL_LOGE(FAILED, "client not initialized");
+    return FAILED;
+  }
   HIXL_CHK_STATUS_RET(client_handler_->Connect(timeout_ms));
   std::lock_guard<std::mutex> lock(status_mutex_);
   is_connected_ = true;
@@ -107,6 +111,10 @@ Status HixlClient::TransferSync(const std::vector<TransferOpDesc> &op_descs, Tra
   if (op_descs.empty()) {
     HIXL_LOGE(PARAM_INVALID, "op_descs is empty");
     return PARAM_INVALID;
+  }
+  if (client_handler_ == nullptr) {
+    HIXL_LOGE(FAILED, "client not initialized");
+    return FAILED;
   }
   {
     std::lock_guard<std::mutex> lock(status_mutex_);
@@ -133,6 +141,10 @@ Status HixlClient::TransferAsync(const std::vector<TransferOpDesc> &op_descs, Tr
     std::lock_guard<std::mutex> lock(status_mutex_);
     if (!is_connected_) return NOT_CONNECTED;
   }
+  if (client_handler_ == nullptr) {
+    HIXL_LOGE(FAILED, "client not initialized");
+    return FAILED;
+  }
   std::vector<TransferCompleteInfo> complete_handle_list;
   HIXL_CHK_STATUS_RET(client_handler_->Transfer(op_descs, operation, complete_handle_list));
   req = complete_handle_list[0].complete_handle;
@@ -143,7 +155,17 @@ Status HixlClient::TransferAsync(const std::vector<TransferOpDesc> &op_descs, Tr
 
 // ===== GetTransferStatus =====
 Status HixlClient::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
+  if (client_handler_ == nullptr) {
+    HIXL_LOGE(FAILED, "client not initialized");
+    status = TransferStatus::FAILED;
+    return FAILED;
+  }
   std::lock_guard<std::mutex> lock(complete_handles_mutex_);
+  if (complete_handles_.empty()) {
+    HIXL_LOGE(FAILED, "no transfer tasks in progress");
+    status = TransferStatus::FAILED;
+    return FAILED;
+  }
   auto it = complete_handles_.find(req);
   if (it == complete_handles_.end()) {
     HIXL_LOGE(PARAM_INVALID, "invalid req");

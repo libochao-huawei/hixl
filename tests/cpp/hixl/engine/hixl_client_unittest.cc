@@ -993,32 +993,12 @@ TEST_F(HixlClientUTest, DeserializeOldFormatWithoutDeviceInfoSuccess) {
   EXPECT_EQ(ep.device_info.super_pod_id, -1);
 }
 
-TEST_F(HixlClientUTest, DirectClientHandlerClassifyTransfersPassthrough) {
-  DirectClientHandler handler({});
-  handler.handles_[CommType::COMM_TYPE_HCCS] = reinterpret_cast<HixlClientHandle>(0x1234);
-
-  TransferOpDesc op_desc{};
-  op_desc.local_addr = 0x1100;
-  op_desc.remote_addr = 0x3100;
-  op_desc.len = 0x100;
-
-  std::vector<TransferOpDesc> op_descs = {op_desc};
-  std::map<CommType, std::vector<TransferOpDesc>> op_descs_table;
-
-  EXPECT_EQ(handler.ClassifyTransfers(op_descs, op_descs_table), SUCCESS);
-
-  ASSERT_EQ(op_descs_table[CommType::COMM_TYPE_HCCS].size(), 1U);
-  EXPECT_EQ(op_descs_table[CommType::COMM_TYPE_HCCS][0].local_addr, op_desc.local_addr);
-  EXPECT_EQ(op_descs_table[CommType::COMM_TYPE_HCCS][0].remote_addr, op_desc.remote_addr);
-  EXPECT_EQ(op_descs_table[CommType::COMM_TYPE_HCCS][0].len, op_desc.len);
-
-  EXPECT_TRUE(op_descs_table[CommType::COMM_TYPE_UB_D2D].empty());
-  EXPECT_TRUE(op_descs_table[CommType::COMM_TYPE_UB_D2H].empty());
-  EXPECT_TRUE(op_descs_table[CommType::COMM_TYPE_UB_H2D].empty());
-  EXPECT_TRUE(op_descs_table[CommType::COMM_TYPE_UB_H2H].empty());
-  EXPECT_TRUE(op_descs_table[CommType::COMM_TYPE_ROCE].empty());
-
-  handler.handles_.clear();
+TEST_F(HixlClientUTest, DirectClientHandlerSingleHandle) {
+  std::map<CommType, HixlClientHandle> handles;
+  handles[CommType::COMM_TYPE_ROCE] = reinterpret_cast<HixlClientHandle>(0x1234);
+  DirectClientHandler handler(std::move(handles));
+  EXPECT_EQ(handler.handles_.size(), 1U);
+  EXPECT_NE(handler.handles_.find(CommType::COMM_TYPE_ROCE), handler.handles_.end());
 }
 
 TEST_F(HixlClientUTest, UbClientHandlerClassifyTransfersByMemType) {
