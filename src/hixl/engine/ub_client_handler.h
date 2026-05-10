@@ -20,25 +20,22 @@ namespace hixl {
 
 class UbClientHandler : public IClientHandler {
  public:
-  UbClientHandler() = default;
+  explicit UbClientHandler(std::map<CommType, HixlClientHandle> handles);
   ~UbClientHandler() override = default;
 
-  std::mutex &GetHandleMutex() override { return handle_mutex_; }
-  std::mutex &GetMemHandleMutex() override { return mem_handle_mutex_; }
-  std::map<CommType, HixlClientHandle> &GetHandles() override { return handles_; }
-  std::map<CommType, std::vector<MemHandle>> &GetMemHandles() override { return mem_handles_; }
-
-  Status ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs,
-                           std::map<CommType, std::vector<TransferOpDesc>> &table) override;
-
-  Status ProcessLocalMem(const MemInfo &mem_info, const std::string &server_ip,
-                         uint32_t server_port, uint8_t rdma_tc, uint8_t rdma_sl) override;
-
-  Status AddRemoteMem(CommMem *remote_mem_list, uint32_t list_num) override;
-
-  void Clear() override;
+  Status Connect(uint32_t timeout_ms) override;
+  Status FetchRemoteMem(uint32_t timeout_ms) override;
+  Status RegisterMem(const MemInfo &mem_info) override;
+  Status Transfer(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
+                  std::vector<TransferCompleteInfo> &complete_handle_list) override;
+  Status TransferSync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
+                      uint32_t timeout_ms) override;
+  Status QueryStatus(CommType type, CompleteHandle handle, HixlCompleteStatus &status) override;
+  Status Finalize() override;
 
  private:
+  Status ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs,
+                           std::map<CommType, std::vector<TransferOpDesc>> &table);
   Status GetMemType(const std::vector<SegmentPtr> &segments, uintptr_t addr, size_t len, MemType &mem_type) const;
 
   std::map<CommType, HixlClientHandle> handles_;

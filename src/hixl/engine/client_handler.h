@@ -33,24 +33,28 @@ enum class CommType : uint32_t {
   COMM_TYPE_UBOE = 6U
 };
 
+struct TransferCompleteInfo {
+  CommType type;
+  void *complete_handle;
+};
+
 class IClientHandler {
  public:
   virtual ~IClientHandler() = default;
 
-  virtual std::mutex &GetHandleMutex() = 0;
-  virtual std::mutex &GetMemHandleMutex() = 0;
-  virtual std::map<CommType, HixlClientHandle> &GetHandles() = 0;
-  virtual std::map<CommType, std::vector<MemHandle>> &GetMemHandles() = 0;
+  virtual Status Connect(uint32_t timeout_ms) = 0;
+  virtual Status FetchRemoteMem(uint32_t timeout_ms) = 0;
+  virtual Status RegisterMem(const MemInfo &mem_info) = 0;
 
-  virtual Status ClassifyTransfers(const std::vector<TransferOpDesc> &op_descs,
-                                   std::map<CommType, std::vector<TransferOpDesc>> &table) = 0;
+  virtual Status Transfer(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
+                          std::vector<TransferCompleteInfo> &complete_handle_list) = 0;
 
-  virtual Status ProcessLocalMem(const MemInfo &mem_info, const std::string &server_ip,
-                                 uint32_t server_port, uint8_t rdma_tc, uint8_t rdma_sl) = 0;
+  virtual Status TransferSync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
+                              uint32_t timeout_ms) = 0;
 
-  virtual Status AddRemoteMem(CommMem *remote_mem_list, uint32_t list_num) = 0;
+  virtual Status QueryStatus(CommType type, CompleteHandle handle, HixlCompleteStatus &status) = 0;
 
-  virtual void Clear() = 0;
+  virtual Status Finalize() = 0;
 };
 
 }  // namespace hixl

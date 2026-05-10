@@ -12,7 +12,6 @@
 #define CANN_HIXL_SRC_HIXL_ENGINE_HIXL_CLIENT_H_
 
 #include <atomic>
-#include <chrono>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -20,7 +19,6 @@
 #include <map>
 #include "cs/hixl_cs.h"
 #include "common/hixl_inner_types.h"
-#include "common/segment.h"
 #include "common/ctrl_msg.h"
 #include "engine/client_handler.h"
 
@@ -33,50 +31,24 @@ struct ClientConfig {
   uint8_t rdma_sl;
 };
 
-struct TransferCompleteInfo {
-  CommType type;
-  void *complete_handle;
-};
-
 class HixlClient {
  public:
   HixlClient(const std::string &server_ip, uint32_t server_port, const ClientConfig &config)
-      : server_ip_(server_ip), server_port_(server_port), rdma_tc_(config.rdma_tc), rdma_sl_(config.rdma_sl) {};
+      : server_ip_(server_ip), server_port_(server_port), rdma_tc_(config.rdma_tc), rdma_sl_(config.rdma_sl) {}
   ~HixlClient() = default;
 
   Status SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list);
-
   Status Initialize(const std::vector<EndpointConfig> &local_endpoint_list);
-
   Status Connect(uint32_t timeout_ms);
-
   Status Finalize();
-
   Status TransferSync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation, uint32_t timeout_ms);
-
   Status TransferAsync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation, TransferReq &req);
-
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
 
  private:
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
-
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const;
-
-  Status BatchTransfer(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
-                       std::vector<TransferCompleteInfo> &complete_handle_list);
-
-  Status BatchTransferSync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
-                           const std::chrono::steady_clock::time_point &sync_start, uint32_t timeout_ms);
-
-  Status ProcessRemoteMem(uint32_t timeout_ms);
-
-  Status UnregisterMemToCsClient(CommType type, const std::vector<MemHandle> &mem_handles);
-
   void WaitBatchCsSyncInflightDrain();
-  Status FinalizeUnregisterAllMemHandles();
-  Status FinalizeDestroyAllCsClients();
-  void FinalizeClearSharedResources();
 
   std::string server_ip_;
   uint32_t server_port_;
@@ -88,7 +60,6 @@ class HixlClient {
   std::atomic<int> batch_cs_sync_inflight_{0};
   std::map<TransferReq, std::vector<TransferCompleteInfo>> complete_handles_;
   std::unique_ptr<IClientHandler> client_handler_;
-
   std::mutex status_mutex_;
   std::mutex complete_handles_mutex_;
 };

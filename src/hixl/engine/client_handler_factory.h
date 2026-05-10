@@ -28,44 +28,36 @@ struct MatchKey {
 
   std::string ToString() const {
     std::ostringstream oss;
-    oss << "MatchKey{";
-    oss << "dst_eid: " << dst_eid << ", ";
-    oss << "plane: " << plane << ", ";
-    oss << "placement: " << placement;
-    oss << "}";
+    oss << "MatchKey{dst_eid:" << dst_eid << ", plane:" << plane << ", placement:" << placement << "}";
     return oss.str();
   }
 
   bool operator<(const MatchKey &other) const {
-    if (dst_eid != other.dst_eid) {
-      return dst_eid < other.dst_eid;
-    } else if (plane != other.plane) {
-      return plane < other.plane;
-    } else {
-      return placement < other.placement;
-    }
+    if (dst_eid != other.dst_eid) return dst_eid < other.dst_eid;
+    if (plane != other.plane) return plane < other.plane;
+    return placement < other.placement;
   }
 
   bool Matches(const MatchKey &query) const {
-    if (!dst_eid.empty() && !query.dst_eid.empty() && (dst_eid != query.dst_eid)) {
-      return false;
-    }
-    if (plane != query.plane) {
-      return false;
-    }
-    if (placement != query.placement) {
-      return false;
-    }
+    if (!dst_eid.empty() && !query.dst_eid.empty() && (dst_eid != query.dst_eid)) return false;
+    if (plane != query.plane) return false;
+    if (placement != query.placement) return false;
     return true;
   }
 };
 
+struct HandlerCreateArgs {
+  std::string server_ip;
+  uint32_t server_port;
+  uint8_t rdma_tc;
+  uint8_t rdma_sl;
+  std::vector<EndpointConfig> local_endpoints;
+  std::vector<EndpointConfig> remote_endpoints;
+};
+
 class ClientHandlerFactory {
  public:
-  static std::unique_ptr<IClientHandler> Create(
-      const std::string &server_ip, uint32_t server_port, uint8_t rdma_tc, uint8_t rdma_sl,
-      const std::vector<EndpointConfig> &local_endpoints,
-      const std::vector<EndpointConfig> &remote_endpoints);
+  static std::unique_ptr<IClientHandler> Create(const HandlerCreateArgs &args);
 };
 
 }  // namespace hixl

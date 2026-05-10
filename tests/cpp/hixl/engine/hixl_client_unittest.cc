@@ -994,7 +994,7 @@ TEST_F(HixlClientUTest, DeserializeOldFormatWithoutDeviceInfoSuccess) {
 }
 
 TEST_F(HixlClientUTest, DirectClientHandlerClassifyTransfersPassthrough) {
-  DirectClientHandler handler;
+  DirectClientHandler handler({});
   handler.handles_[CommType::COMM_TYPE_HCCS] = reinterpret_cast<HixlClientHandle>(0x1234);
 
   TransferOpDesc op_desc{};
@@ -1022,7 +1022,7 @@ TEST_F(HixlClientUTest, DirectClientHandlerClassifyTransfersPassthrough) {
 }
 
 TEST_F(HixlClientUTest, UbClientHandlerClassifyTransfersByMemType) {
-  UbClientHandler handler;
+  UbClientHandler handler({});
   handler.handles_[CommType::COMM_TYPE_UB_D2D] = reinterpret_cast<HixlClientHandle>(0x1000);
   handler.handles_[CommType::COMM_TYPE_UB_D2H] = reinterpret_cast<HixlClientHandle>(0x2000);
   handler.handles_[CommType::COMM_TYPE_UB_H2D] = reinterpret_cast<HixlClientHandle>(0x3000);

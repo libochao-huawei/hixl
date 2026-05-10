@@ -25,22 +25,14 @@ constexpr uint32_t kMaxUbCsClientNum = 4U;
 
 const char *CommTypeToString(CommType type) {
   switch (type) {
-    case CommType::COMM_TYPE_UB_D2D:
-      return "UB_D2D";
-    case CommType::COMM_TYPE_UB_H2D:
-      return "UB_H2D";
-    case CommType::COMM_TYPE_UB_D2H:
-      return "UB_D2H";
-    case CommType::COMM_TYPE_UB_H2H:
-      return "UB_H2H";
-    case CommType::COMM_TYPE_ROCE:
-      return "ROCE";
-    case CommType::COMM_TYPE_HCCS:
-      return "HCCS";
-    case CommType::COMM_TYPE_UBOE:
-      return "UBOE";
-    default:
-      return "UNKNOWN";
+    case CommType::COMM_TYPE_UB_D2D: return "UB_D2D";
+    case CommType::COMM_TYPE_UB_H2D: return "UB_H2D";
+    case CommType::COMM_TYPE_UB_D2H: return "UB_D2H";
+    case CommType::COMM_TYPE_UB_H2H: return "UB_H2H";
+    case CommType::COMM_TYPE_ROCE:   return "ROCE";
+    case CommType::COMM_TYPE_HCCS:   return "HCCS";
+    case CommType::COMM_TYPE_UBOE:   return "UBOE";
+    default:                         return "UNKNOWN";
   }
 }
 
@@ -50,229 +42,159 @@ bool IsUbCommType(CommType type) {
 }
 
 std::unique_ptr<IClientHandler> CreateClientHandler(std::map<CommType, HixlClientHandle> &handles) {
-  if (handles.size() == 1) {
-    auto type = handles.begin()->first;
-    if (!IsUbCommType(type)) {
-      auto handler = MakeUnique<DirectClientHandler>();
-      handler->GetHandles() = std::move(handles);
-      return handler;
-    }
+  if (handles.size() == 1 && !IsUbCommType(handles.begin()->first)) {
+    return MakeUnique<DirectClientHandler>(std::move(handles));
   }
-  auto handler = MakeUnique<UbClientHandler>();
-  handler->GetHandles() = std::move(handles);
-  return handler;
+  return MakeUnique<UbClientHandler>(std::move(handles));
 }
 
-std::map<MatchKey, EndpointConfig>::const_iterator FindMatchingKey(
-    const std::map<MatchKey, EndpointConfig> &map, const MatchKey &query_key) {
+auto FindMatchingKey(const std::map<MatchKey, EndpointConfig> &map, const MatchKey &query) {
   for (auto it = map.begin(); it != map.end(); ++it) {
-    if (it->first.Matches(query_key)) {
-      return it;
-    }
+    if (it->first.Matches(query)) return it;
   }
   return map.end();
 }
 
-CommType ParseCommType(const std::string &local_placement, const std::string &remote_placement) {
-  if (local_placement == kPlacementDevice && remote_placement == kPlacementDevice) {
-    return CommType::COMM_TYPE_UB_D2D;
-  } else if (local_placement == kPlacementDevice && remote_placement == kPlacementHost) {
-    return CommType::COMM_TYPE_UB_D2H;
-  } else if (local_placement == kPlacementHost && remote_placement == kPlacementHost) {
-    return CommType::COMM_TYPE_UB_H2H;
-  } else {
-    return CommType::COMM_TYPE_UB_H2D;
+CommType ParseCommType(const std::string &local, const std::string &remote) {
+  if (local == kPlacementDevice && remote == kPlacementDevice) return CommType::COMM_TYPE_UB_D2D;
+  if (local == kPlacementDevice && remote == kPlacementHost)   return CommType::COMM_TYPE_UB_D2H;
+  if (local == kPlacementHost   && remote == kPlacementHost)   return CommType::COMM_TYPE_UB_H2H;
+  return CommType::COMM_TYPE_UB_H2D;
+}
+
+bool MustUseRoce(const std::vector<EndpointConfig> &local, const std::vector<EndpointConfig> &remote) {
+  const char *env = std::getenv("HCCL_INTRA_ROCE_ENABLE");
+  if (env != nullptr && std::string(env) == "1") return true;
+  return local[0].net_instance_id != remote[0].net_instance_id;
+}
+
+void BuildEndpointsMatchMap(const std::vector<EndpointConfig> &eps,
+                            std::map<MatchKey, EndpointConfig> &out) {
+  for (const auto &ep : eps) {
+    if (ep.protocol == kProtocolUbCtp || ep.protocol == kProtocolUbTp) {
+      out[{ep.dst_eid, ep.plane, ep.placement}] = ep;
+    }
   }
 }
 
-bool MustUseRoce(const std::vector<EndpointConfig> &local_endpoint_list,
-                 const std::vector<EndpointConfig> &remote_endpoint_list) {
-  std::string env_roce_enable;
-  const char *env_ret = std::getenv("HCCL_INTRA_ROCE_ENABLE");
-  if (env_ret != nullptr) {
-    env_roce_enable = env_ret;
-  }
-  const bool is_env_roce_enabled = (env_roce_enable == "1");
-  const bool is_net_instance_different =
-      local_endpoint_list[0].net_instance_id != remote_endpoint_list[0].net_instance_id;
-  return is_env_roce_enabled || is_net_instance_different;
-}
-
-Status CreateCsClient(const EndpointConfig &local_endpoint_config, const EndpointConfig &remote_endpoint_config,
-                      CommType type, std::map<CommType, HixlClientHandle> &handles,
-                      const std::string &server_ip, uint32_t server_port, uint8_t rdma_tc, uint8_t rdma_sl) {
-  int32_t dev_logic_id = 0;
-  int32_t dev_phy_id = 0;
+Status CreateCsClient(const EndpointConfig &local, const EndpointConfig &remote, CommType type,
+                      std::map<CommType, HixlClientHandle> &handles,
+                      const std::string &ip, uint32_t port, uint8_t tc, uint8_t sl) {
+  int32_t dev_logic_id = 0, dev_phy_id = 0;
   HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
   HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
-  EndpointDesc local_endpoint{};
-  EndpointDesc remote_endpoint{};
-  HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(local_endpoint_config, local_endpoint,
-                                                               static_cast<uint32_t>(dev_phy_id)),
-                      "Convert EndpointConfig to EndpointInfo failed, local_endpoint_config:%s",
-                      local_endpoint_config.ToString().c_str());
-  HIXL_LOGI("Local_endpoint dev_phy_id: %u", local_endpoint.loc.device.devPhyId);
-  HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(remote_endpoint_config, remote_endpoint),
-                      "Convert EndpointConfig to EndpointInfo failed, remote_endpoint_config:%s",
-                      remote_endpoint_config.ToString().c_str());
-  HIXL_LOGI("Remote_endpoint dev_phy_id: %u", remote_endpoint.loc.device.devPhyId);
-  HixlClientHandle handle = nullptr;
+  EndpointDesc le{}, re{};
+  HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(local, le, static_cast<uint32_t>(dev_phy_id)));
+  HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(remote, re));
+
   HixlClientDesc desc{};
-  desc.server_ip = server_ip.c_str();
-  desc.server_port = server_port;
-  desc.local_endpoint = &local_endpoint;
-  desc.remote_endpoint = &remote_endpoint;
-  desc.tc = rdma_tc;
-  desc.sl = rdma_sl;
+  desc.server_ip = ip.c_str();
+  desc.server_port = port;
+  desc.local_endpoint = &le;
+  desc.remote_endpoint = &re;
+  desc.tc = tc;
+  desc.sl = sl;
+  HixlClientHandle handle = nullptr;
   const HixlClientConfig config{};
-  HIXL_CHK_STATUS_RET(HixlCSClientCreate(&desc, &config, &handle), "HixlCSClientCreate failed for type %s",
-                      CommTypeToString(type));
-  HIXL_LOGI("HixlCSClientCreate success for type %s, handle:%p", CommTypeToString(type), handle);
+  HIXL_CHK_STATUS_RET(HixlCSClientCreate(&desc, &config, &handle),
+                      "HixlCSClientCreate failed for type %s", CommTypeToString(type));
   handles[type] = handle;
   return SUCCESS;
 }
 
-Status TryMatchUboeEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
-                              const std::vector<EndpointConfig> &remote_endpoint_list,
-                              std::map<CommType, HixlClientHandle> &handles,
-                              const std::string &server_ip, uint32_t server_port, uint8_t rdma_tc, uint8_t rdma_sl) {
-  auto local_it = std::find_if(local_endpoint_list.begin(), local_endpoint_list.end(),
-                                [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolUboe; });
-  auto remote_it = std::find_if(remote_endpoint_list.begin(), remote_endpoint_list.end(),
-                                 [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolUboe; });
-  if (local_it != local_endpoint_list.end() && remote_it != remote_endpoint_list.end()) {
-    return CreateCsClient(*local_it, *remote_it, CommType::COMM_TYPE_UBOE, handles,
-                          server_ip, server_port, rdma_tc, rdma_sl);
+Status TryMatchUboe(const std::vector<EndpointConfig> &local, const std::vector<EndpointConfig> &remote,
+                    std::map<CommType, HixlClientHandle> &handles,
+                    const std::string &ip, uint32_t port, uint8_t tc, uint8_t sl) {
+  auto li = std::find_if(local.begin(), local.end(), [](auto &e) { return e.protocol == kProtocolUboe; });
+  auto ri = std::find_if(remote.begin(), remote.end(), [](auto &e) { return e.protocol == kProtocolUboe; });
+  if (li != local.end() && ri != remote.end()) {
+    return CreateCsClient(*li, *ri, CommType::COMM_TYPE_UBOE, handles, ip, port, tc, sl);
   }
   return FAILED;
 }
 
-Status TryMatchRoceEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
-                              const std::vector<EndpointConfig> &remote_endpoint_list,
-                              std::map<CommType, HixlClientHandle> &handles,
-                              const std::string &server_ip, uint32_t server_port, uint8_t rdma_tc, uint8_t rdma_sl) {
-  auto local_it = std::find_if(local_endpoint_list.begin(), local_endpoint_list.end(),
-                               [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolRoce; });
-  auto remote_it = std::find_if(remote_endpoint_list.begin(), remote_endpoint_list.end(),
-                                [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolRoce; });
-  if (local_it != local_endpoint_list.end() && remote_it != remote_endpoint_list.end()) {
-    return CreateCsClient(*local_it, *remote_it, CommType::COMM_TYPE_ROCE, handles,
-                          server_ip, server_port, rdma_tc, rdma_sl);
+Status TryMatchRoce(const std::vector<EndpointConfig> &local, const std::vector<EndpointConfig> &remote,
+                    std::map<CommType, HixlClientHandle> &handles,
+                    const std::string &ip, uint32_t port, uint8_t tc, uint8_t sl) {
+  auto li = std::find_if(local.begin(), local.end(), [](auto &e) { return e.protocol == kProtocolRoce; });
+  auto ri = std::find_if(remote.begin(), remote.end(), [](auto &e) { return e.protocol == kProtocolRoce; });
+  if (li != local.end() && ri != remote.end()) {
+    return CreateCsClient(*li, *ri, CommType::COMM_TYPE_ROCE, handles, ip, port, tc, sl);
   }
   HIXL_LOGE(FAILED, "Failed to find matched ROCE endpoints");
   return FAILED;
 }
 
-Status TryMatchHccsEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
-                              const std::vector<EndpointConfig> &remote_endpoint_list,
-                              std::map<CommType, HixlClientHandle> &handles,
-                              const std::string &server_ip, uint32_t server_port, uint8_t rdma_tc, uint8_t rdma_sl) {
-  auto local_it = std::find_if(local_endpoint_list.begin(), local_endpoint_list.end(),
-                               [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolHccs; });
-  auto remote_it = std::find_if(remote_endpoint_list.begin(), remote_endpoint_list.end(),
-                                [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolHccs; });
-  if (local_it != local_endpoint_list.end() && remote_it != remote_endpoint_list.end()) {
-    return CreateCsClient(*local_it, *remote_it, CommType::COMM_TYPE_HCCS, handles,
-                          server_ip, server_port, rdma_tc, rdma_sl);
+Status TryMatchHccs(const std::vector<EndpointConfig> &local, const std::vector<EndpointConfig> &remote,
+                    std::map<CommType, HixlClientHandle> &handles,
+                    const std::string &ip, uint32_t port, uint8_t tc, uint8_t sl) {
+  auto li = std::find_if(local.begin(), local.end(), [](auto &e) { return e.protocol == kProtocolHccs; });
+  auto ri = std::find_if(remote.begin(), remote.end(), [](auto &e) { return e.protocol == kProtocolHccs; });
+  if (li != local.end() && ri != remote.end()) {
+    return CreateCsClient(*li, *ri, CommType::COMM_TYPE_HCCS, handles, ip, port, tc, sl);
   }
   HIXL_LOGE(FAILED, "Failed to find matched HCCS endpoints");
   return FAILED;
 }
 
-void BuildEndpointsMatchMap(const std::vector<EndpointConfig> &endpoint_list,
-                            std::map<MatchKey, EndpointConfig> &peer_match_endpoints) {
-  for (const auto &endpoint : endpoint_list) {
-    if (endpoint.protocol == kProtocolUbCtp || endpoint.protocol == kProtocolUbTp) {
-      MatchKey key = {endpoint.dst_eid, endpoint.plane, endpoint.placement};
-      peer_match_endpoints[key] = endpoint;
-    }
-  }
-}
-
-Status TryMatchUbEndpoints(const EndpointConfig &local_endpoint,
-                           const std::map<MatchKey, EndpointConfig> &peer_match_endpoints,
-                           std::map<CommType, bool> &expected_pairs, uint32_t &count,
-                           std::map<CommType, HixlClientHandle> &handles,
-                           const std::string &server_ip, uint32_t server_port, uint8_t rdma_tc, uint8_t rdma_sl) {
-  if (local_endpoint.protocol != kProtocolUbCtp && local_endpoint.protocol != kProtocolUbTp) {
-    return SUCCESS;
-  }
+Status TryMatchUb(const EndpointConfig &local, const std::map<MatchKey, EndpointConfig> &peers,
+                  std::map<CommType, bool> &expected, uint32_t &count,
+                  std::map<CommType, HixlClientHandle> &handles,
+                  const std::string &ip, uint32_t port, uint8_t tc, uint8_t sl) {
+  if (local.protocol != kProtocolUbCtp && local.protocol != kProtocolUbTp) return SUCCESS;
   for (const auto &placement : {kPlacementDevice, kPlacementHost}) {
-    MatchKey key = {local_endpoint.comm_id, local_endpoint.plane, placement};
-    HIXL_LOGI("TryMatchUbEndpoints: key:%s", key.ToString().c_str());
-    auto it = FindMatchingKey(peer_match_endpoints, key);
-    if (it != peer_match_endpoints.end()) {
-      HIXL_LOGI("Found matched endpoint, remote_endpoint:%s", it->second.ToString().c_str());
-      CommType type = ParseCommType(local_endpoint.placement, it->second.placement);
-      if (!expected_pairs[type]) {
-        HIXL_CHK_STATUS_RET(CreateCsClient(local_endpoint, it->second, type, handles,
-                                            server_ip, server_port, rdma_tc, rdma_sl),
-                            "CreateCsClient failed for type %s", CommTypeToString(type));
-        expected_pairs[type] = true;
+    MatchKey key{local.comm_id, local.plane, placement};
+    auto it = FindMatchingKey(peers, key);
+    if (it != peers.end()) {
+      CommType type = ParseCommType(local.placement, it->second.placement);
+      if (!expected[type]) {
+        HIXL_CHK_STATUS_RET(CreateCsClient(local, it->second, type, handles, ip, port, tc, sl));
+        expected[type] = true;
         count++;
-        HIXL_LOGI("CreateCsClient success for type %s", CommTypeToString(type));
       }
     }
   }
   return SUCCESS;
 }
 
-Status FindMatchedEndpoints(const std::vector<EndpointConfig> &local_endpoint_list,
-                            const std::vector<EndpointConfig> &remote_endpoint_list,
-                            std::map<CommType, HixlClientHandle> &handles,
-                            const std::string &server_ip, uint32_t server_port, uint8_t rdma_tc, uint8_t rdma_sl) {
-  if (TryMatchUboeEndpoints(local_endpoint_list, remote_endpoint_list, handles,
-                             server_ip, server_port, rdma_tc, rdma_sl) == SUCCESS) {
+Status FindMatchedEndpoints(const HandlerCreateArgs &args,
+                            std::map<CommType, HixlClientHandle> &handles) {
+  if (TryMatchUboe(args.local_endpoints, args.remote_endpoints, handles,
+                    args.server_ip, args.server_port, args.rdma_tc, args.rdma_sl) == SUCCESS) {
     return SUCCESS;
   }
-  if (MustUseRoce(local_endpoint_list, remote_endpoint_list)) {
-    return TryMatchRoceEndpoints(local_endpoint_list, remote_endpoint_list, handles,
-                                  server_ip, server_port, rdma_tc, rdma_sl);
+  if (MustUseRoce(args.local_endpoints, args.remote_endpoints)) {
+    return TryMatchRoce(args.local_endpoints, args.remote_endpoints, handles,
+                         args.server_ip, args.server_port, args.rdma_tc, args.rdma_sl);
   }
-  std::map<CommType, bool> expected_pairs = {{CommType::COMM_TYPE_UB_D2D, false},
-                                             {CommType::COMM_TYPE_UB_H2D, false},
-                                             {CommType::COMM_TYPE_UB_D2H, false},
-                                             {CommType::COMM_TYPE_UB_H2H, false}};
+  std::map<CommType, bool> expected = {{CommType::COMM_TYPE_UB_D2D, false},
+                                       {CommType::COMM_TYPE_UB_H2D, false},
+                                       {CommType::COMM_TYPE_UB_D2H, false},
+                                       {CommType::COMM_TYPE_UB_H2H, false}};
   uint32_t count = 0;
-  std::map<MatchKey, EndpointConfig> peer_match_endpoints;
-  BuildEndpointsMatchMap(remote_endpoint_list, peer_match_endpoints);
-  for (const auto &local_endpoint : local_endpoint_list) {
-    HIXL_LOGI("local_endpoint:%s", local_endpoint.ToString().c_str());
-    HIXL_CHK_STATUS_RET(TryMatchUbEndpoints(local_endpoint, peer_match_endpoints, expected_pairs, count,
-                                             handles, server_ip, server_port, rdma_tc, rdma_sl),
-                        "TryMatchUbEndpoints failed");
-    if (count == kMaxUbCsClientNum) {
-      HIXL_LOGI("Created all %u expected UB CS clients", count);
-      return SUCCESS;
-    }
+  std::map<MatchKey, EndpointConfig> peers;
+  BuildEndpointsMatchMap(args.remote_endpoints, peers);
+  for (const auto &ep : args.local_endpoints) {
+    HIXL_CHK_STATUS_RET(TryMatchUb(ep, peers, expected, count, handles,
+                                    args.server_ip, args.server_port, args.rdma_tc, args.rdma_sl));
+    if (count == kMaxUbCsClientNum) return SUCCESS;
   }
-  if (count > 0) {
-    HIXL_LOGW("Found only %u/%u expected UB endpoint pairs", count, kMaxUbCsClientNum);
+  if (count > 0) return SUCCESS;
+
+  if (TryMatchHccs(args.local_endpoints, args.remote_endpoints, handles,
+                    args.server_ip, args.server_port, args.rdma_tc, args.rdma_sl) == SUCCESS) {
     return SUCCESS;
   }
-
-  HIXL_LOGI("No matched UB endpoints found, try HCCS matching");
-  if (TryMatchHccsEndpoints(local_endpoint_list, remote_endpoint_list, handles,
-                             server_ip, server_port, rdma_tc, rdma_sl) == SUCCESS) {
-    return SUCCESS;
-  }
-
-  HIXL_LOGE(FAILED, "Failed to find matched UB/HCCS endpoints");
+  HIXL_LOGE(FAILED, "Failed to find matched endpoints");
   return FAILED;
 }
 
 }  // namespace
 
-std::unique_ptr<IClientHandler> ClientHandlerFactory::Create(
-    const std::string &server_ip, uint32_t server_port, uint8_t rdma_tc, uint8_t rdma_sl,
-    const std::vector<EndpointConfig> &local_endpoints,
-    const std::vector<EndpointConfig> &remote_endpoints) {
+std::unique_ptr<IClientHandler> ClientHandlerFactory::Create(const HandlerCreateArgs &args) {
   std::map<CommType, HixlClientHandle> temp_handles;
-  Status ret = FindMatchedEndpoints(local_endpoints, remote_endpoints, temp_handles,
-                                     server_ip, server_port, rdma_tc, rdma_sl);
-  if (ret != SUCCESS) {
-    return nullptr;
-  }
+  Status ret = FindMatchedEndpoints(args, temp_handles);
+  if (ret != SUCCESS) return nullptr;
   return CreateClientHandler(temp_handles);
 }
 
