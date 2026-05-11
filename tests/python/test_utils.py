@@ -11,8 +11,6 @@
 # ----------------------------------------------------------------------------
 
 # content of test_sample.py
-import os.path
-import time
 import unittest
 import ctypes
 from llm_datadist.utils.utils import (check_uint64, check_int64,check_int32,

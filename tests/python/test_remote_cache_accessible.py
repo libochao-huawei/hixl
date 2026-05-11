@@ -10,17 +10,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-import os.path
 import time
 import unittest
-import ctypes
 from typing import Optional
-import traceback
 
 from llm_datadist import *
-from llm_datadist.v2.llm_types import RegisterMemStatus, Cache, TransferWithCacheKeyConfig
-from llm_datadist.utils.utils import (check_uint64, check_int64, check_int32,
-                                      check_uint32, check_list_int32, check_uint16)
+from llm_datadist.v2.llm_types import RegisterMemStatus, TransferWithCacheKeyConfig
 
 _INVALID_ID = 2 ** 64 - 1
 
