@@ -176,23 +176,54 @@ int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices,
 
         urma_devices.clear();
 
-        // 简单的 JSON 解析：提取 "udmaX": [...] 格式
+        // 构建 npu 名称
+        std::string npu_name = "npu" + std::to_string(npu_id);
+
+        // 查找 npu section
+        size_t npu_pos = json_content.find("\"" + npu_name + "\"");
+        if (npu_pos == std::string::npos) {
+            std::cerr << "[GetUrmaDeviceList] npu section not found: " << npu_name << std::endl;
+            return ERROR_FILE_PARSE_FAILED;
+        }
+
+        // 找到 npu section 的开始位置（跳过 "npuX": ）
+        size_t npu_start = json_content.find(":", npu_pos);
+        if (npu_start == std::string::npos) {
+            return ERROR_FILE_PARSE_FAILED;
+        }
+        npu_start = json_content.find("{", npu_start);
+        if (npu_start == std::string::npos) {
+            return ERROR_FILE_PARSE_FAILED;
+        }
+
+        // 找到对应的结束括号（简单匹配）
+        size_t npu_end = npu_start + 1;
+        int brace_count = 1;
+        while (brace_count > 0 && npu_end < json_content.size()) {
+            if (json_content[npu_end] == '{') brace_count++;
+            else if (json_content[npu_end] == '}') brace_count--;
+            npu_end++;
+        }
+
+        std::string npu_section = json_content.substr(npu_start + 1, npu_end - npu_start - 2);
+
+        // 解析 npu section 中的 udma 设备
         size_t pos = 0;
-        while ((pos = json_content.find("\"udma", pos)) != std::string::npos) {
+        while ((pos = npu_section.find("\"udma", pos)) != std::string::npos) {
             // 找到设备名称
             size_t name_start = pos + 1;
-            size_t name_end = json_content.find("\"", name_start);
+            size_t name_end = npu_section.find("\"", name_start);
             if (name_end == std::string::npos) break;
-            std::string dev_name = json_content.substr(name_start, name_end - name_start);
+            std::string dev_name = npu_section.substr(name_start, name_end - name_start);
 
             // 找到 EID 数组
-            size_t array_start = json_content.find("[", name_end);
-            size_t array_end = json_content.find("]", array_start);
+            size_t array_start = npu_section.find("[", name_end);
+            size_t array_end = npu_section.find("]", array_start);
             if (array_start == std::string::npos || array_end == std::string::npos) {
                 pos = name_end;
                 continue;
             }
-            std::string eid_array = json_content.substr(array_start + 1, array_end - array_start - 1);
+            std::string eid_array = npu_section.substr(array_start + 1, array_end - array_start - 1);
 
             UrmaDevice urma_dev;
             urma_dev.name = dev_name;
@@ -219,11 +250,11 @@ int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices,
         }
 
         if (urma_devices.empty()) {
-            std::cerr << "[GetUrmaDeviceList] No devices found in JSON file" << std::endl;
+            std::cerr << "[GetUrmaDeviceList] No devices found in JSON for " << npu_name << std::endl;
             return ERROR_FILE_PARSE_FAILED;
         }
 
-        std::cout << "[GetUrmaDeviceList] Loaded " << urma_devices.size() << " device(s) from JSON" << std::endl;
+        std::cout << "[GetUrmaDeviceList] Loaded " << urma_devices.size() << " device(s) from JSON for " << npu_name << std::endl;
         return SUCCESS;
     }
 

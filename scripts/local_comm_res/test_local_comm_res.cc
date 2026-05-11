@@ -137,6 +137,7 @@ int main(int argc, char* argv[]) {
     int32_t deviceId = 0;  // 默认设备 ID
     std::string topoPath;
     std::string routePath = "/lib/route.conf";
+    std::string eidJsonPath;  // EID JSON 文件路径
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -146,12 +147,15 @@ int main(int argc, char* argv[]) {
             topoPath = argv[++i];
         } else if (arg == "--route" && i + 1 < argc) {
             routePath = argv[++i];
+        } else if (arg == "--eid-json" && i + 1 < argc) {
+            eidJsonPath = argv[++i];
         } else if (arg == "--help") {
             std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
             std::cout << "Options:" << std::endl;
             std::cout << "  --device <id>   Set device ID (default: 0)" << std::endl;
             std::cout << "  --topo <path>   Set topology file path" << std::endl;
             std::cout << "  --route <path>  Set route.conf path" << std::endl;
+            std::cout << "  --eid-json <path>  Set EID JSON file path (skip DCMI)" << std::endl;
             std::cout << "  --help          Show this help message" << std::endl;
             return 0;
         }
@@ -244,6 +248,9 @@ int main(int argc, char* argv[]) {
     std::map<std::string, std::string> options;
     options["topo_path"] = topoPath;
     options["route_path"] = routePath;
+    if (!eidJsonPath.empty()) {
+        options["eid_json_path"] = eidJsonPath;
+    }
 
     hixl::LocalCommRes localCommRes;
     std::cout << "[Test] [INFO] Calling GenerateLocalCommRes..." << std::endl;

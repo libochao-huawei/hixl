@@ -576,6 +576,7 @@ int32_t GenerateLocalCommRes(
 
     std::string topo_path;
     std::string route_path;
+    std::string eid_json_path;
 
     auto it = options.find("topo_path");
     if (it != options.end()) {
@@ -587,8 +588,14 @@ int32_t GenerateLocalCommRes(
         route_path = it->second;
     }
 
+    it = options.find("eid_json_path");
+    if (it != options.end()) {
+        eid_json_path = it->second;
+    }
+
     std::cout << "[GenerateLocalCommRes] topo_path=" << topo_path << std::endl;
     std::cout << "[GenerateLocalCommRes] route_path=" << route_path << std::endl;
+    std::cout << "[GenerateLocalCommRes] eid_json_path=" << eid_json_path << std::endl;
 
     // 获取主板 ID
     unsigned int mainboard_id = 0;
@@ -646,7 +653,7 @@ int32_t GenerateLocalCommRes(
     std::map<int32_t, NpuRootInfo> npu_rootinfos;
     for (int32_t npu_id : related_npu_ids) {
         NpuRootInfo rootinfo;
-        int32_t build_ret = BuildNpuRootInfo(npu_id, is_server, rootinfo);
+        int32_t build_ret = BuildNpuRootInfo(npu_id, is_server, rootinfo, eid_json_path);
         if (build_ret != SUCCESS) {
             std::cerr << "[GenerateLocalCommRes] Failed to build rootinfo for npu_id=" << npu_id << ", ret=" << build_ret << std::endl;
             continue;
