@@ -35,6 +35,7 @@ file(GLOB LLM_V2_SRC_LIST
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/mmpa_stub.cc"
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/hccl_stub.cc"
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/ascend_string_stub.cc"
+        "${HIXL_CODE_DIR}/tests/depends/error_manager/src/error_manager_stub.cc"
 )
 message("LLM_V2_SRC_LIST = ${LLM_V2_SRC_LIST}")
 
