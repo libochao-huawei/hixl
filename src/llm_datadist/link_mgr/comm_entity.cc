@@ -20,6 +20,8 @@
 #include "common/llm_checker.h"
 #include "common/llm_scope_guard.h"
 
+#include <cinttypes>
+
 namespace llm {
 namespace {
 constexpr uint64_t kDefaultMsgBufferSize = 128U * 1024U;
@@ -142,7 +144,7 @@ ge::Status EntityMemInfo::Initialize() {
   }
   req_ = msg_buffer_;
   resp_ = static_cast<uint8_t *>(msg_buffer_) + req_buffer_size_;
-  LLMLOGI("Mem info init success, remote_cache_accessible:%d, req_buffer_size=%llu",
+  LLMLOGI("Mem info init success, remote_cache_accessible:%d, req_buffer_size=(%" PRIu64 ")",
           static_cast<int32_t>(remote_cache_accessible_), req_buffer_size_);
   return ge::SUCCESS;
 }
@@ -780,7 +782,7 @@ ge::Status CommEntity::GetTransferCacheReq(uint64_t request_size, TransferCacheR
   const uint64_t max_request_buffer_size =
       remote_cache_accessible ? kMaxDynamicReqBufferSize : kDefaultReqBufferSize;
   LLM_CHK_BOOL_RET_STATUS(request_size <= (max_request_buffer_size - kFlagSize), ge::LLM_PARAM_INVALID,
-                         "request size[%llu] is out of range[0, %llu]",
+                         "request size[%" PRIu64 "] is out of range[0, %" PRIu64 "]",
                          request_size, (max_request_buffer_size - kFlagSize));
 
   if (!remote_cache_accessible) {
@@ -809,7 +811,7 @@ ge::Status CommEntity::GetTransferCacheReq(uint64_t request_size, TransferCacheR
     mem_info->req_ = mem_info->msg_buffer_;
     mem_info->resp_ = static_cast<uint8_t *>(mem_info->msg_buffer_) + request_buffer_size;
     LLM_DISMISS_GUARD(fail_guard);
-    LLMLOGI("Expand remote cache req buffer success, req %llu -> %llu, msg_total %llu",
+    LLMLOGI("Expand remote cache req buffer success, req (%" PRIu64 ") -> (%" PRIu64 "), msg_total (%" PRIu64 ")",
             prev_req_size, mem_info->req_buffer_size_, new_msg_buffer_size);
   }
 
