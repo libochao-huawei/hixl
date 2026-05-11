@@ -75,3 +75,33 @@ if(NOT TARGET fabric_mem_kv_benchmark)
     )
     target_link_ascend_hal(fabric_mem_kv_benchmark)
 endif()
+
+if(NOT TARGET hixl_mem_device_register_probe)
+    add_executable(hixl_mem_device_register_probe hixl_mem_device_register_probe.cpp)
+    target_include_directories(hixl_mem_device_register_probe PRIVATE
+        ${HIXL_INC_DIR}
+        ${HIXL_CODE_DIR}/src/llm_datadist
+        ${HIXL_CODE_DIR}/src/llm_datadist/adxl
+        ${HIXL_CODE_DIR}/src/llm_datadist/common
+        ${HIXL_CODE_DIR}/src/hixl
+        ${CANN_INSTALL_PATH}/include
+    )
+    target_compile_options(hixl_mem_device_register_probe PRIVATE
+        -ftrapv
+        -O2
+        -fno-common
+        -Wfloat-equal
+        -Wall
+        -Werror
+        -Wextra
+    )
+    target_link_libraries(hixl_mem_device_register_probe PRIVATE
+        cann_hixl
+        llm_datadist
+        acl_rt_headers
+        acl_rt
+        -lpthread
+        -lrt
+    )
+    target_link_ascend_hal(hixl_mem_device_register_probe)
+endif()
