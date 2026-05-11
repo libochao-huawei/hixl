@@ -176,6 +176,7 @@ int main(int argc, char* argv[]) {
     std::cout << "[Test]   device_id: " << deviceId << std::endl;
     std::cout << "[Test]   topo_path: " << topoPath << std::endl;
     std::cout << "[Test]   route_path: " << routePath << std::endl;
+    std::cout << "[Test]   eidJsonPath: " << eidJsonPath << std::endl;
     std::cout << "[Test] ===== Start ACL Init =====" << std::endl;
 
     // 2. ACL 初始化
