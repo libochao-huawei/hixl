@@ -11,10 +11,17 @@
 #ifndef HIXL_SRC_HIXL_ENGINE_HIXL_ENGINE_H_
 #define HIXL_SRC_HIXL_ENGINE_HIXL_ENGINE_H_
 
-#include <mutex>
+#include <atomic>
 #include <map>
+#include <memory>
+#include <mutex>
 #include "engine.h"
 #include "client_manager.h"
+#include "fabric_mem/fabric_mem_config.h"
+#include "fabric_mem/fabric_mem_control.h"
+#include "fabric_mem/fabric_mem_remote_memory.h"
+#include "fabric_mem/fabric_mem_statistic.h"
+#include "fabric_mem/fabric_mem_transfer_service.h"
 #include "hixl_server.h"
 #include "hixl/hixl_types.h"
 #include "common/hixl_inner_types.h"
@@ -144,6 +151,20 @@ class HixlEngine : public hixl::Engine {
 
  private:
   Status InitServer();
+  Status InitFabricMem();
+  bool IsFabricMemMode() const;
+  Status RegisterFabricMem(const MemDesc &mem, MemType type, MemHandle &mem_handle);
+  Status DeregisterFabricMem(MemHandle mem_handle);
+  Status ConnectFabricMem(const AscendString &remote_engine, int32_t timeout_in_millis);
+  Status DisconnectFabricMem(const AscendString &remote_engine);
+  void DisconnectFabricMem();
+  Status TransferSyncFabricMem(const AscendString &remote_engine, TransferOp operation,
+                               const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis);
+  Status TransferAsyncFabricMem(const AscendString &remote_engine, TransferOp operation,
+                                const std::vector<TransferOpDesc> &op_descs, TransferReq &req);
+  Status GetTransferStatusFabricMem(const TransferReq &req, TransferStatus &status);
+  Status BuildFabricMemContextLocked(const std::string &remote_engine, FabricMemTransferContext &context);
+  bool HasFabricMemConnectionsLocked() const;
   Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
   Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
 
@@ -158,6 +179,12 @@ class HixlEngine : public hixl::Engine {
   uint8_t rdma_traffic_class_{kRdmaTrafficClass};
   uint8_t rdma_service_level_{kRdmaServiceLevel};
   std::map<uint64_t, TransferInfo> req_map_;
+  FabricMemConfig fabric_mem_config_;
+  FabricMemStatistic fabric_mem_statistic_;
+  std::unique_ptr<FabricMemTransferService> fabric_mem_transfer_service_;
+  std::unique_ptr<FabricMemControlServer> fabric_mem_control_server_;
+  std::map<std::string, std::unique_ptr<FabricMemRemoteMemory>> fabric_mem_remote_mems_;
+  std::atomic<uint64_t> next_fabric_req_id_{1};
 };
 }  // namespace hixl
 

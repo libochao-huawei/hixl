@@ -23,6 +23,7 @@
 #include "common/msg_handler_plugin.h"
 #include "segment_table.h"
 #include "fabric_mem_transfer_service.h"
+#include "fabric_mem/fabric_mem_transfer_service.h"
 #include "adxl_utils.h"
 #include "common/hixl_utils.h"
 
@@ -82,6 +83,8 @@ class ChannelMsgHandler {
         comm_config_{} {};
 
   ~ChannelMsgHandler() = default;
+  Status Initialize(const std::map<AscendString, AscendString> &options, SegmentTable *segment_table,
+                    hixl::FabricMemTransferService *fabric_mem_transfer_service);
   Status Initialize(const std::map<AscendString, AscendString> &options, SegmentTable *segment_table,
                     FabricMemTransferService *fabric_mem_transfer_service);
   void Finalize();
@@ -193,7 +196,7 @@ class ChannelMsgHandler {
 
   SegmentTable *segment_table_ = nullptr;
   bool enable_use_fabric_mem_ = false;
-  FabricMemTransferService *fabric_mem_transfer_service_ = nullptr;
+  hixl::FabricMemTransferService *fabric_mem_transfer_service_ = nullptr;
   uint32_t pid_ = 0;
 };
 }  // namespace adxl

@@ -33,6 +33,19 @@ constexpr uint32_t kCheckDisconnetPeriod = 10U; // ms
 constexpr int32_t kConnectWhenTransferTimeout = 3000; // ms
 constexpr size_t kMaxStreams = 512;
 
+std::vector<hixl::TransferOpDesc> ToHixlTransferOpDescs(const std::vector<TransferOpDesc> &op_descs) {
+  std::vector<hixl::TransferOpDesc> hixl_op_descs;
+  hixl_op_descs.reserve(op_descs.size());
+  for (const auto &op_desc : op_descs) {
+    hixl_op_descs.push_back({op_desc.local_addr, op_desc.remote_addr, op_desc.len});
+  }
+  return hixl_op_descs;
+}
+
+hixl::FabricMemTransferContext BuildFabricMemContext(const ChannelPtr &channel) {
+  return {channel->GetChannelId(), channel->GetStatisticChannelId(), channel->GetNewVaToOldVa()};
+}
+
 // Helper function to determine transfer type based on operation and memory types
 TransferType DetermineTransferType(TransferOp operation, MemType local_mem_type, MemType remote_mem_type) {
   if (operation == TransferOp::READ) {
@@ -114,43 +127,6 @@ Status AdxlInnerEngine::ParseChannelPoolConfig(const std::map<AscendString, Asce
   return SUCCESS;
 }
 
-Status AdxlInnerEngine::ParseFabricMemoryCapacity(const std::map<AscendString, AscendString>& json_options) const {
-  auto fabric_mem_it = json_options.find(adxl::OPTION_MAX_FABRIC_MEMORY_CAPACITY);
-  if (fabric_mem_it != json_options.end()) {
-    size_t capacity_tb = 0;
-    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(fabric_mem_it->second.GetString(), capacity_tb),
-                    "Invalid max_fabric_memory_capacity: %s", fabric_mem_it->second.GetString());
-    ADXL_CHK_BOOL_RET_STATUS(capacity_tb > 0, PARAM_INVALID,
-                            "max_fabric_memory_capacity must be > 0 TB, got %zu", capacity_tb);
-    constexpr size_t kMaxCapacityTB = 1024UL;
-    ADXL_CHK_BOOL_RET_STATUS(capacity_tb <= kMaxCapacityTB, PARAM_INVALID,
-                            "max_fabric_memory_capacity exceeds maximum %zu TB, got %zu",
-                            kMaxCapacityTB, capacity_tb);
-    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().SetVirtualMemoryCapacity(capacity_tb),
-                        "Failed to set fabric memory capacity");
-    LLMLOGI("Set fabric memory capacity to %zu TB", capacity_tb);
-  }
-  return SUCCESS;
-}
-
-Status AdxlInnerEngine::ParseFabricMemoryStartAddress(const std::map<AscendString, AscendString>& json_options) const {
-  auto start_addr_it = json_options.find(adxl::OPTION_FABRIC_MEMORY_START_ADDRESS_TB);
-  if (start_addr_it != json_options.end()) {
-    size_t start_addr_tb = 0;
-    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(start_addr_it->second.GetString(), start_addr_tb),
-                    "Invalid fabric_memory.start_address: %s", start_addr_it->second.GetString());
-    constexpr size_t kMinStartAddrTB = 40UL;
-    constexpr size_t kMaxStartAddrTB = 220UL;
-    ADXL_CHK_BOOL_RET_STATUS(start_addr_tb >= kMinStartAddrTB && start_addr_tb <= kMaxStartAddrTB, PARAM_INVALID,
-                            "fabric_memory.start_address must be in [%zu, %zu] TB, got %zu",
-                            kMinStartAddrTB, kMaxStartAddrTB, start_addr_tb);
-    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().SetGlobalStartAddress(start_addr_tb),
-                        "Failed to set fabric memory global start address");
-    LLMLOGI("Set fabric memory global start address to %zu TB", start_addr_tb);
-  }
-  return SUCCESS;
-}
-
 Status AdxlInnerEngine::ParseAutoConnectConfig(const std::map<AscendString, AscendString> &options) {
   auto auto_connect_it = options.find(hixl::OPTION_AUTO_CONNECT);
   if (auto_connect_it != options.end()) {
@@ -171,23 +147,6 @@ Status AdxlInnerEngine::ParseAutoConnectConfig(const std::map<AscendString, Asce
   return SUCCESS;
 }
 
-Status AdxlInnerEngine::ParseTaskStreamNum(const std::map<AscendString, AscendString>& json_options) {
-  auto task_stream_it = json_options.find(adxl::OPTION_TASK_STREAM_NUM);
-  if (task_stream_it != json_options.end()) {
-    size_t task_stream_num = 0U;
-    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(task_stream_it->second.GetString(), task_stream_num),
-                    "Invalid task_stream_num: %s", task_stream_it->second.GetString());
-    constexpr size_t kMinTaskStreamNum = 1U;
-    constexpr size_t kMaxTaskStreamNum = 8U;
-    ADXL_CHK_BOOL_RET_STATUS(task_stream_num >= kMinTaskStreamNum && task_stream_num <= kMaxTaskStreamNum, PARAM_INVALID,
-                            "task_stream_num must be between %zu and %zu, got %zu",
-                            kMinTaskStreamNum, kMaxTaskStreamNum, task_stream_num);
-    task_stream_num_ = task_stream_num;
-    LLMLOGI("Set fabric memory task stream num to %zu", task_stream_num_);
-  }
-  return SUCCESS;
-}
-
 Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, AscendString>& options) {
   auto config_it = options.find(hixl::OPTION_GLOBAL_RESOURCE_CONFIG);
   std::map<AscendString, AscendString> json_options;
@@ -197,9 +156,6 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, As
   }
 
   ADXL_CHK_STATUS_RET(ParseChannelPoolConfig(json_options), "Failed to parse channel pool config.");
-  ADXL_CHK_STATUS_RET(ParseFabricMemoryCapacity(json_options), "Failed to parse fabric memory capacity.");
-  ADXL_CHK_STATUS_RET(ParseFabricMemoryStartAddress(json_options), "Failed to parse fabric memory start address.");
-  ADXL_CHK_STATUS_RET(ParseTaskStreamNum(json_options), "Failed to parse task stream num.");
 
   return SUCCESS;
 }
@@ -207,6 +163,9 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, As
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   std::lock_guard<std::mutex> lk(mutex_);
 
+  ADXL_CHK_STATUS_RET(hixl::FabricMemConfigParser::Parse(options, fabric_mem_config_),
+                      "Failed to parse fabric mem config.");
+  enable_use_fabric_mem_ = fabric_mem_config_.enabled;
   ADXL_CHK_STATUS_RET(LoadGlobalResourceConfig(options), "Failed to load global resource config.");
   ADXL_CHK_LLM_RET(llm::HcclAdapter::GetInstance().Initialize(), "HcclSoManager initialize failed.");
   int32_t device_id = -1;
@@ -218,12 +177,23 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
     (void) aclrtDestroyContext(aclrt_context_);
     aclrt_context_ = nullptr;
   }));
-  ADXL_CHK_STATUS_RET(ParseEnableFabricMem(options), "Failed to parse option.");
   if (enable_use_fabric_mem_) {
+    if (fabric_mem_config_.has_capacity_tb) {
+      ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().SetVirtualMemoryCapacity(fabric_mem_config_.capacity_tb),
+                          "Failed to set fabric memory capacity.");
+    }
+    if (fabric_mem_config_.has_start_address_tb) {
+      ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().SetGlobalStartAddress(
+                              fabric_mem_config_.start_address_tb),
+                          "Failed to set fabric memory start address.");
+    }
     ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().Initialize(), "Failed to initialize virtual memory manager.");
-    fabric_mem_transfer_service_ = llm::MakeUnique<FabricMemTransferService>();
-    ADXL_CHK_STATUS_RET(fabric_mem_transfer_service_->Initialize(kMaxStreams, task_stream_num_),
+    fabric_mem_transfer_service_ = llm::MakeUnique<hixl::FabricMemTransferService>();
+    ADXL_CHK_STATUS_RET(fabric_mem_transfer_service_->Initialize(fabric_mem_config_.max_stream_num,
+                                                                 fabric_mem_config_.task_stream_num,
+                                                                 &fabric_mem_statistic_),
                         "Failed to initialize fabric mem transfer service.");
+    ADXL_CHK_STATUS_RET(fabric_mem_statistic_.StartPeriodicDump(), "Failed to start fabric mem statistic dump.");
   }
   segment_table_ = llm::MakeUnique<SegmentTable>();
   stream_pool_ = llm::MakeUnique<StreamPool>(kMaxStreams);
@@ -242,30 +212,9 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   });
 
   is_initialized_ = true;
-  StatisticManager::GetInstance().SetEnableUseFabricMem(enable_use_fabric_mem_);
+  StatisticManager::GetInstance().SetEnableUseFabricMem(false);
   StatisticManager::GetInstance().StartPeriodicDumpIfNeeded();
   LLM_DISMISS_GUARD(fail_guard);
-  return SUCCESS;
-}
-
-Status AdxlInnerEngine::ParseEnableFabricMem(const std::map<AscendString, AscendString> &options) {
-  std::string enable_use_fabric_mem_str;
-  const auto &it = options.find(hixl::OPTION_ENABLE_USE_FABRIC_MEM);
-  if (it != options.cend()) {
-    enable_use_fabric_mem_str = it->second.GetString();
-  } else {
-  }
-
-  if (!enable_use_fabric_mem_str.empty()) {
-    uint32_t enable_use_fabric_mem = 0U;
-    ADXL_CHK_LLM_RET(llm::LLMUtils::ToNumber(enable_use_fabric_mem_str, enable_use_fabric_mem),
-                     "%s is invalid, value = %s", hixl::OPTION_ENABLE_USE_FABRIC_MEM,
-                     enable_use_fabric_mem_str.c_str());
-    ADXL_CHK_BOOL_RET_STATUS(enable_use_fabric_mem == 1U || enable_use_fabric_mem == 0U, PARAM_INVALID,
-                             "%s is invalid, should be zero or one.", hixl::OPTION_ENABLE_USE_FABRIC_MEM);
-    LLMLOGI("set %s to %d.", hixl::OPTION_ENABLE_USE_FABRIC_MEM, enable_use_fabric_mem);
-    enable_use_fabric_mem_ = enable_use_fabric_mem;
-  }
   return SUCCESS;
 }
 
@@ -383,6 +332,7 @@ void AdxlInnerEngine::Finalize() {
     if (fabric_mem_transfer_service_ != nullptr) {
       fabric_mem_transfer_service_->Finalize();
     }
+    fabric_mem_statistic_.StopPeriodicDump();
     channel_manager_.Finalize();
     msg_handler_.Finalize();
     if (stream_pool_ != nullptr) {
@@ -546,7 +496,10 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
 
   if (fabric_mem_transfer_service_ != nullptr) {
     std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
-    auto ret = fabric_mem_transfer_service_->Transfer(channel, operation, op_descs, timeout_in_millis);
+    auto context = BuildFabricMemContext(channel);
+    auto hixl_op_descs = ToHixlTransferOpDescs(op_descs);
+    auto ret = fabric_mem_transfer_service_->Transfer(context, static_cast<hixl::TransferOp>(operation),
+                                                      hixl_op_descs, timeout_in_millis);
     ADXL_CHK_BOOL_RET_STATUS(ret != ACL_ERROR_RT_SUSPECT_REMOTE_ERROR, ACL_ERROR_RT_SUSPECT_REMOTE_ERROR,
                              "Probably caused by temporary sdma error, please try again.");
     if (ret != SUCCESS) {
@@ -613,7 +566,10 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   }));
   Status trans_status;
   if (fabric_mem_transfer_service_ != nullptr) {
-    trans_status = fabric_mem_transfer_service_->TransferAsync(channel, operation, op_descs, req);
+    auto context = BuildFabricMemContext(channel);
+    auto hixl_op_descs = ToHixlTransferOpDescs(op_descs);
+    trans_status = fabric_mem_transfer_service_->TransferAsync(context, static_cast<hixl::TransferOp>(operation),
+                                                               hixl_op_descs, req);
   } else {
     trans_status = channel->TransferAsync(operation, op_descs, optional_args, req);
   }
@@ -654,7 +610,10 @@ Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus
 
   Status ret;
   if (fabric_mem_transfer_service_ != nullptr) {
-    ret = fabric_mem_transfer_service_->GetTransferStatus(channel, req, status);
+    auto context = BuildFabricMemContext(channel);
+    hixl::TransferStatus hixl_status = hixl::TransferStatus::WAITING;
+    ret = fabric_mem_transfer_service_->GetTransferStatus(context, req, hixl_status);
+    status = static_cast<TransferStatus>(hixl_status);
   } else {
     ret = channel->GetTransferStatus(req, status);
   }

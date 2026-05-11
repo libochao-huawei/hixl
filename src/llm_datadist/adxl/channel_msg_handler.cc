@@ -91,7 +91,12 @@ static void from_json(const nlohmann::json &j, ChannelConnectInfo &c) {
   j.at("comm_res").get_to(c.comm_res);
   j.at("timeout").get_to(c.timeout);
   j.at("addrs").get_to(c.addrs);
-  j.at("share_handles").get_to(c.share_handles);
+  c.share_handles.clear();
+  for (const auto &share_handle_json : j.at("share_handles")) {
+    ShareHandleInfo share_handle{};
+    from_json(share_handle_json, share_handle);
+    c.share_handles.emplace_back(share_handle);
+  }
 }
 
 static void to_json(nlohmann::json &j, const ChannelConnectInfo &c) {
@@ -100,7 +105,13 @@ static void to_json(nlohmann::json &j, const ChannelConnectInfo &c) {
   j["comm_res"] = c.comm_res;
   j["timeout"] = c.timeout;
   j["addrs"] = c.addrs;
-  j["share_handles"] = c.share_handles;
+  auto share_handles = nlohmann::json::array();
+  for (const auto &share_handle : c.share_handles) {
+    nlohmann::json share_handle_json;
+    to_json(share_handle_json, share_handle);
+    share_handles.push_back(std::move(share_handle_json));
+  }
+  j["share_handles"] = std::move(share_handles);
 }
 
 static void from_json(const nlohmann::json &j, ChannelStatus &c) {
@@ -221,7 +232,7 @@ Status ChannelMsgHandler::ParseServiceLevel(const std::map<AscendString, AscendS
 }
 
 Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> &options, SegmentTable *segment_table,
-                                     FabricMemTransferService *fabric_mem_transfer_service) {
+                                     hixl::FabricMemTransferService *fabric_mem_transfer_service) {
   ADXL_CHECK_NOTNULL(channel_manager_);
   ADXL_CHK_ACL_RET(aclrtGetCurrentContext(&aclrt_context_));
   ADXL_CHK_ACL_RET(aclrtGetDevice(&device_id_));
@@ -247,6 +258,12 @@ Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> 
   return SUCCESS;
 }
 
+Status ChannelMsgHandler::Initialize(const std::map<AscendString, AscendString> &options, SegmentTable *segment_table,
+                                     FabricMemTransferService *fabric_mem_transfer_service) {
+  return Initialize(options, segment_table,
+                    fabric_mem_transfer_service == nullptr ? nullptr : fabric_mem_transfer_service->GetInnerService());
+}
+
 void ChannelMsgHandler::Finalize() {
   if (eviction_thread_.joinable()) {
     stop_eviction_ = true;
@@ -270,7 +287,10 @@ void ChannelMsgHandler::Finalize() {
 
 Status ChannelMsgHandler::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
   if (enable_use_fabric_mem_) {
-    ADXL_CHK_STATUS_RET(fabric_mem_transfer_service_->RegisterMem(mem, type, mem_handle), "Failed to register mem.");
+    hixl::MemDesc hixl_mem{mem.addr, mem.len};
+    ADXL_CHK_STATUS_RET(fabric_mem_transfer_service_->RegisterMem(hixl_mem, static_cast<hixl::MemType>(type),
+                                                                  mem_handle),
+                        "Failed to register mem.");
   } else {
     HcclMem hccl_mem = {};
     hccl_mem.type = type == MEM_DEVICE ? COMM_MEM_TYPE_DEVICE : COMM_MEM_TYPE_HOST;

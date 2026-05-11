@@ -9,14 +9,17 @@
  */
 
 #include "adxl/adxl_engine.h"
+#include <chrono>
 #include <mutex>
 #include <string>
 #include "adxl/adxl_inner_engine.h"
 #include "base/err_msg.h"
 #include "adxl/fabric_mem_transfer_service.h"
 #include "adxl/adxl_checker.h"
+#include "adxl/statistic_manager.h"
 #include "engine/engine_factory.h"
 #include "engine/engine.h"
+#include "hixl/hixl_types.h"
 
 namespace adxl {
 namespace {
@@ -45,6 +48,11 @@ Status ToHixlTransferArgs(const TransferArgs &optional_args, hixl::TransferArgs 
 
 hixl::NotifyDesc ToHixlNotifyDesc(const NotifyDesc &notify) {
   return hixl::NotifyDesc{notify.name, notify.notify_msg};
+}
+
+bool IsFabricMemEnabled(const std::map<AscendString, AscendString> &options) {
+  const auto it = options.find(hixl::OPTION_ENABLE_USE_FABRIC_MEM);
+  return it != options.end() && std::string(it->second.GetString()) == "1";
 }
 
 Status CheckTransferOpDescs(const std::vector<TransferOpDesc> &op_descs) {
@@ -98,6 +106,7 @@ class AdxlEngine::AdxlEngineImpl {
   std::mutex mutex_;
   std::string local_engine_;
   std::unique_ptr<hixl::Engine> engine_;
+  bool enable_use_fabric_mem_ = false;
 };
 
 Status AdxlEngine::AdxlEngineImpl::Initialize(const std::map<AscendString, AscendString> &options) {
@@ -105,6 +114,7 @@ Status AdxlEngine::AdxlEngineImpl::Initialize(const std::map<AscendString, Ascen
   if (engine_ != nullptr) {
     ADXL_CHK_BOOL_RET_SPECIAL_STATUS(engine_->IsInitialized(), SUCCESS, "Already initialized");
   }
+  enable_use_fabric_mem_ = IsFabricMemEnabled(options);
   engine_ = hixl::EngineFactory::CreateEngine(local_engine_, options);
   ADXL_CHECK_NOTNULL(engine_, "Failed to create engine, local_engine:%s", local_engine_.c_str());
   ADXL_CHK_STATUS_RET(engine_->Initialize(options), "Failed to initialize AdxlEngine.");
@@ -135,7 +145,18 @@ Status AdxlEngine::AdxlEngineImpl::DeregisterMem(MemHandle mem_handle) {
 
 Status AdxlEngine::AdxlEngineImpl::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
   ADXL_CHK_BOOL_RET_STATUS(engine_ != nullptr && engine_->IsInitialized(), FAILED, "AdxlEngine is not initialized");
+  const auto start = std::chrono::steady_clock::now();
   ADXL_CHK_STATUS_RET(engine_->Connect(remote_engine, timeout_in_millis), "Failed to connect");
+  if (enable_use_fabric_mem_) {
+    const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - start).count();
+    StatisticManager::GetInstance().UpdateConnectTotalCost(
+        StatisticManager::GetClientStatisticChannelId(remote_engine.GetString()), cost);
+    StatisticManager::GetInstance().UpdateTcpConnectCost(
+        StatisticManager::GetClientStatisticChannelId(remote_engine.GetString()), cost);
+    StatisticManager::GetInstance().UpdateConnectTotalCost(
+        StatisticManager::GetServerStatisticChannelId(local_engine_), cost);
+  }
   return SUCCESS;
 }
 

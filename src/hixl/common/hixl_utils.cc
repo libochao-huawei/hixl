@@ -193,12 +193,15 @@ Status CheckOptions(const std::map<AscendString, AscendString> &options) {
                                                            adxl::OPTION_LOCAL_COMM_RES, adxl::OPTION_BUFFER_POOL,
                                                            hixl::OPTION_RDMA_TRAFFIC_CLASS, adxl::OPTION_RDMA_TRAFFIC_CLASS,
                                                            hixl::OPTION_RDMA_SERVICE_LEVEL, adxl::OPTION_RDMA_SERVICE_LEVEL,
-                                                           hixl::OPTION_GLOBAL_RESOURCE_CONFIG};
+                                                           hixl::OPTION_GLOBAL_RESOURCE_CONFIG,
+                                                           hixl::OPTION_ENABLE_USE_FABRIC_MEM};
   for (const auto &pair : options) {
     HIXL_CHK_BOOL_RET_SPECIAL_STATUS(kOptionsFields.find(pair.first.GetString()) == kOptionsFields.end(), 
                                      PARAM_INVALID, 
                                      "Invalid option '%s' is not supported, options for hixl engine only support "
-                                     "OPTION_LOCAL_COMM_RES, OPTION_BUFFER_POOL, OPTION_RDMA_TRAFFIC_CLASS and OPTION_RDMA_SERVICE_LEVEL",
+                                     "OPTION_LOCAL_COMM_RES, OPTION_BUFFER_POOL, OPTION_RDMA_TRAFFIC_CLASS, "
+                                     "OPTION_RDMA_SERVICE_LEVEL, OPTION_GLOBAL_RESOURCE_CONFIG and "
+                                     "OPTION_ENABLE_USE_FABRIC_MEM",
                                      pair.first.GetString());
     if ((pair.first == hixl::OPTION_BUFFER_POOL) || (pair.first == adxl::OPTION_BUFFER_POOL)) {
       HIXL_CHK_BOOL_RET_STATUS(pair.second.GetString() == std::string("0:0"), 

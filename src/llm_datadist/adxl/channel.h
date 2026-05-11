@@ -18,24 +18,15 @@
 #include "nlohmann/json.hpp"
 #include "acl/acl.h"
 #include "adxl/adxl_types.h"
+#include "fabric_mem/fabric_mem_remote_memory.h"
+#include "fabric_mem/fabric_mem_types.h"
 #include "hccl/hccl_adapter.h"
 #include "control_msg_handler.h"
 #include "adxl/stream_pool.h"
 
 namespace adxl {
-struct VaInfo {
-  uintptr_t va_addr;
-  size_t len;
-};
-
-struct ShareHandleInfo {
-  uintptr_t va_addr;
-  size_t len;
-  aclrtMemFabricHandle share_handle;
-  aclrtDrvMemHandle imported_handle;
-  uintptr_t imported_va;
-  bool is_retained;
-};
+using hixl::ShareHandleInfo;
+using hixl::VaInfo;
 
 enum class ChannelType {
   kClient = 0,
@@ -54,15 +45,6 @@ struct ChannelInfo {
   int32_t timeout_sec;
 };
 
-using AsyncResource = std::pair<aclrtStream, aclrtEvent>;
-struct AsyncRecord {
-  std::vector<AsyncResource> async_resources;
-  std::chrono::steady_clock::time_point transfer_start;
-  std::chrono::steady_clock::time_point real_copy_start;
-  uint64_t transfer_bytes = 0UL;
-  uint64_t op_desc_count = 0UL;
-};
-
 class BufferedTransfer {
  public:
   explicit BufferedTransfer(std::function<Status(HcclOneSideOpDesc *descs, uint32_t desc_num)> trans_func);
@@ -73,6 +55,15 @@ class BufferedTransfer {
 
   std::vector<HcclOneSideOpDesc> op_descs_;
   std::function<Status(HcclOneSideOpDesc *descs, uint32_t desc_num)> trans_func_;
+};
+
+using AsyncResource = std::pair<aclrtEvent, aclrtStream>;
+struct AsyncRecord {
+  std::vector<AsyncResource> async_resources;
+  std::chrono::steady_clock::time_point transfer_start;
+  std::chrono::steady_clock::time_point real_copy_start;
+  uint64_t transfer_bytes = 0UL;
+  uint64_t op_desc_count = 0UL;
 };
 
 enum class RecvState {
@@ -181,10 +172,7 @@ class Channel {
   std::unordered_map<uint64_t, AsyncRecord> req_2_async_record_;
   StreamPool *stream_pool_ = nullptr;
 
-  // mutex for va map and pa handlers
-  std::mutex va_map_mutex_;
-  std::unordered_map<uintptr_t, VaInfo> new_va_to_old_va_;
-  std::vector<aclrtDrvMemHandle> remote_pa_handles_;
+  hixl::FabricMemRemoteMemory fabric_mem_remote_memory_;
   bool enable_use_fabric_mem_ = false;
 };
 using ChannelPtr = std::shared_ptr<Channel>;

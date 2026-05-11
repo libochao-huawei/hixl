@@ -18,13 +18,12 @@
 #include "common/llm_mem_pool.h"
 #include "buffer_transfer_service.h"
 #include "segment_table.h"
-#include "fabric_mem_transfer_service.h"
+#include "fabric_mem/fabric_mem_config.h"
+#include "fabric_mem/fabric_mem_statistic.h"
+#include "fabric_mem/fabric_mem_transfer_service.h"
 #include "common/hixl_inner_types.h"
 
 namespace adxl {
-namespace {
-constexpr size_t kDefaultStreamNum = 4U;
-}
 class AdxlInnerEngine {
  public:
   explicit AdxlInnerEngine(const AscendString &local_engine)
@@ -79,15 +78,11 @@ class AdxlInnerEngine {
                              const char* option_name, double& value) const;
   Status LoadGlobalResourceConfig(const std::map<AscendString, AscendString> &options);
   Status ParseChannelPoolConfig(const std::map<AscendString, AscendString> &json_options);
-  Status ParseFabricMemoryCapacity(const std::map<AscendString, AscendString> &json_options) const;
-  Status ParseFabricMemoryStartAddress(const std::map<AscendString, AscendString> &json_options) const;
   Status ConnectWhenTransfer(const AscendString &remote_engine, int32_t timeout_in_millis = 3000);
   Status ParseBufferPoolParams(const std::map<AscendString, AscendString> &options, uint64_t &buffer_size,
                                uint64_t &npu_pool_size);
-  Status ParseEnableFabricMem(const std::map<AscendString, AscendString> &options);
   Status ParseAutoConnectConfig(const std::map<AscendString, AscendString> &options);
   Status DisconnectOnError(const std::string &remote_engine, int32_t timeout_in_millis);
-  Status ParseTaskStreamNum(const std::map<AscendString, AscendString> &json_options);
 
   std::string local_engine_;
   ChannelManager channel_manager_;
@@ -116,8 +111,9 @@ class AdxlInnerEngine {
   std::mutex connection_mutex_;
 
   bool enable_use_fabric_mem_ = false;
-  std::unique_ptr<FabricMemTransferService> fabric_mem_transfer_service_ = nullptr;
-  size_t task_stream_num_ = kDefaultStreamNum;
+  hixl::FabricMemConfig fabric_mem_config_;
+  hixl::FabricMemStatistic fabric_mem_statistic_;
+  std::unique_ptr<hixl::FabricMemTransferService> fabric_mem_transfer_service_ = nullptr;
 };
 }  // namespace adxl
 

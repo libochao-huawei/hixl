@@ -8,4 +8,20 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "virtual_memory_manager.h"
+#ifndef CANN_HIXL_SRC_HIXL_FABRIC_MEM_ACL_COMPAT_H_
+#define CANN_HIXL_SRC_HIXL_FABRIC_MEM_ACL_COMPAT_H_
+
+#include "acl/acl.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+__attribute__((weak)) aclError aclrtReserveMemAddressNoUCMemory(void **virPtr, size_t size, size_t alignment,
+                                                                void *expectPtr, uint64_t flags);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif  // CANN_HIXL_SRC_HIXL_FABRIC_MEM_ACL_COMPAT_H_

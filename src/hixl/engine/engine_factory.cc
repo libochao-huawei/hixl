@@ -27,12 +27,17 @@ bool UseUboe(const std::map<AscendString, AscendString> &options) {
   return !protocol_desc.empty() &&
          std::find(protocol_desc.begin(), protocol_desc.end(), "uboe:device") != protocol_desc.end();
 }
+
+bool EnableFabricMem(const std::map<AscendString, AscendString> &options) {
+  const auto it = options.find(hixl::OPTION_ENABLE_USE_FABRIC_MEM);
+  return it != options.end() && std::string(it->second.GetString()) == "1";
+}
 }  // namespace
 std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engine,
                                                     const std::map<AscendString, AscendString> &options) {
   bool config_use_uboe = UseUboe(options);
-  // uboe must use hixl
-  bool use_hixl = config_use_uboe;
+  // uboe and FabricMem must use hixl
+  bool use_hixl = config_use_uboe || EnableFabricMem(options);
   if (!use_hixl) {
     const auto hixl_it = options.find(hixl::OPTION_LOCAL_COMM_RES);
     const auto adxl_it = options.find(adxl::OPTION_LOCAL_COMM_RES);
