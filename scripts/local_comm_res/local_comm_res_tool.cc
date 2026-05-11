@@ -5,7 +5,7 @@
  * 本文件负责：
  * - DCMI 接口封装（GetUBEntityList, GetMainboardId）
  * - 文件解析（ParseTopoFile, ParseRouteFile）
- * - 边生成（GenerateD2DEdges, GenerateD2UEdges, GenerateH2DEdges, GenerateH2UEdges）
+ * - 边生成（GenerateD2DEdges, GenerateD2UEdges, GenerateH2DEdges, GenerateD2HEdges, GenerateH2UEdges）
  * - 核心流程（GenerateLocalCommRes）
  *
  * RootInfo 构建功能已拆分到 rootinfo_builder 模块
@@ -476,48 +476,64 @@ int32_t GenerateD2DEdges(
         if (link.net_layer != 0) { ++skip_reason[0]; continue; }
         if (link.link_type != "PEER2PEER") { ++skip_reason[1]; continue; }
         if (link.topo_type != "1DMESH") { ++skip_reason[2]; continue; }
-        if (link.local_a != phy_id) { ++skip_reason[3]; continue; }
 
-        if (link.local_a_ports.empty() || link.local_b_ports.empty()) {
-            std::cout << "[GenerateD2DEdges] skip (empty ports): local_a_ports=" << link.local_a_ports.size()
-                      << ", local_b_ports=" << link.local_b_ports.size() << std::endl;
+        // 检查当前 NPU 是否是这条边的端点：local_a 或 local_b
+        bool is_local_a_side = (link.local_a == phy_id);
+        bool is_local_b_side = (link.local_b == phy_id);
+        if (!is_local_a_side && !is_local_b_side) { ++skip_reason[3]; continue; }
+
+        // 确定当前 NPU 对应的端口和对端信息
+        // 如果 local_a = phy_id，则当前 NPU 使用 local_a_ports，对端使用 local_b_ports
+        // 如果 local_b = phy_id，则当前 NPU 使用 local_b_ports，对端使用 local_a_ports
+        int peer_id = is_local_a_side ? link.local_b : link.local_a;
+        const std::vector<std::string>& local_ports = is_local_a_side ? link.local_a_ports : link.local_b_ports;
+        const std::vector<std::string>& peer_ports = is_local_a_side ? link.local_b_ports : link.local_a_ports;
+
+        if (local_ports.empty() || peer_ports.empty()) {
+            std::cout << "[GenerateD2DEdges] skip (empty ports): local_ports=" << local_ports.size()
+                      << ", peer_ports=" << peer_ports.size() << std::endl;
             continue;
         }
 
-        std::string local_port = link.local_a_ports[0];
-        std::string peer_port = link.local_b_ports[0];
-
-        auto local_eid_it = self_rootinfo.port_to_eid.find(local_port);
-        if (local_eid_it == self_rootinfo.port_to_eid.end()) {
-            ++no_port_match_local;
-            std::cout << "[GenerateD2DEdges] No EID for local port '" << local_port << "'" << std::endl;
-            continue;
-        }
-        std::string comm_id = local_eid_it->second;
-
-        int peer_id = link.local_b;
+        // 查找对端 NPU 的 rootinfo
         auto peer_it = npu_rootinfos.find(peer_id);
         if (peer_it == npu_rootinfos.end()) {
             ++no_rootinfo_peer;
             std::cout << "[GenerateD2DEdges] No rootinfo for peer npu_id=" << peer_id << std::endl;
             continue;
         }
-        auto peer_eid_it = peer_it->second.port_to_eid.find(peer_port);
-        if (peer_eid_it == peer_it->second.port_to_eid.end()) {
-            ++no_port_match_peer;
-            std::cout << "[GenerateD2DEdges] No EID for peer port '" << peer_port << "' on npu_id=" << peer_id << std::endl;
-            continue;
-        }
-        std::string dst_eid = peer_eid_it->second;
+        const auto& peer_rootinfo = peer_it->second;
 
-        EndpointConfig edge;
-        edge.protocol = "ub_ctp";
-        edge.comm_id = comm_id;
-        edge.placement = "device";
-        edge.dst_eid = dst_eid;
-        edges.push_back(edge);
-        std::cout << "[GenerateD2DEdges] matched: comm_id=" << comm_id
-                  << ", dst_eid=" << dst_eid << std::endl;
+        // 遍历所有端口，建立边
+        for (size_t i = 0; i < local_ports.size() && i < peer_ports.size(); ++i) {
+            std::string local_port = local_ports[i];
+            std::string peer_port = peer_ports[i];
+
+            auto local_eid_it = self_rootinfo.port_to_eid.find(local_port);
+            if (local_eid_it == self_rootinfo.port_to_eid.end()) {
+                ++no_port_match_local;
+                std::cout << "[GenerateD2DEdges] No EID for local port '" << local_port << "'" << std::endl;
+                continue;
+            }
+            std::string comm_id = local_eid_it->second;
+
+            auto peer_eid_it = peer_rootinfo.port_to_eid.find(peer_port);
+            if (peer_eid_it == peer_rootinfo.port_to_eid.end()) {
+                ++no_port_match_peer;
+                std::cout << "[GenerateD2DEdges] No EID for peer port '" << peer_port << "' on npu_id=" << peer_id << std::endl;
+                continue;
+            }
+            std::string dst_eid = peer_eid_it->second;
+
+            EndpointConfig edge;
+            edge.protocol = "ub_ctp";
+            edge.comm_id = comm_id;
+            edge.placement = "device";
+            edge.dst_eid = dst_eid;
+            edges.push_back(edge);
+            std::cout << "[GenerateD2DEdges] matched: comm_id=" << comm_id
+                      << ", dst_eid=" << dst_eid << std::endl;
+        }
     }
 
     std::cout << "[GenerateD2DEdges] result: matched=" << edges.size()
@@ -535,30 +551,47 @@ int32_t GenerateD2DEdges(
 
 int32_t GenerateH2DEdges(
     const RouteData& route_data,
-    int32_t phy_id,
     std::vector<EndpointConfig>& edges) {
 
     edges.clear();
 
-    std::cout << "[GenerateH2DEdges] phy_id=" << phy_id
-              << ", route_entries=" << route_data.entries.size() << std::endl;
+    std::cout << "[GenerateH2DEdges] route_entries=" << route_data.entries.size() << std::endl;
 
-    size_t skip_phy_id = 0;
     for (const auto& entry : route_data.entries) {
-        if (entry.device_id != phy_id) { ++skip_phy_id; continue; }
-
         EndpointConfig edge;
         edge.protocol = "ub_ctp";
         edge.comm_id = entry.local_eid;
         edge.placement = "host";
         edge.dst_eid = entry.remote_eid;
         edges.push_back(edge);
-        std::cout << "[GenerateH2DEdges] matched: local_eid=" << entry.local_eid
-                  << ", remote_eid=" << entry.remote_eid << std::endl;
+        std::cout << "[GenerateH2DEdges] matched: device_id=" << entry.device_id
+                  << ", local_eid=" << entry.local_eid << ", remote_eid=" << entry.remote_eid << std::endl;
     }
 
-    std::cout << "[GenerateH2DEdges] result: matched=" << edges.size()
-              << ", skip(phy_id)=" << skip_phy_id << std::endl;
+    std::cout << "[GenerateH2DEdges] result: matched=" << edges.size() << std::endl;
+    return SUCCESS;
+}
+
+int32_t GenerateD2HEdges(
+    const RouteData& route_data,
+    std::vector<EndpointConfig>& edges) {
+
+    edges.clear();
+
+    std::cout << "[GenerateD2HEdges] route_entries=" << route_data.entries.size() << std::endl;
+
+    for (const auto& entry : route_data.entries) {
+        EndpointConfig edge;
+        edge.protocol = "ub_ctp";
+        edge.comm_id = entry.remote_eid;
+        edge.placement = "device";
+        edge.dst_eid = entry.local_eid;
+        edges.push_back(edge);
+        std::cout << "[GenerateD2HEdges] matched: device_id=" << entry.device_id
+                  << ", remote_eid=" << entry.remote_eid << ", local_eid=" << entry.local_eid << std::endl;
+    }
+
+    std::cout << "[GenerateD2HEdges] result: matched=" << edges.size() << std::endl;
     return SUCCESS;
 }
 
@@ -735,10 +768,20 @@ int32_t GenerateLocalCommRes(
     if (route_data.entries.empty()) {
         std::cout << "[GenerateLocalCommRes] Skip H2D: route_data.entries is empty" << std::endl;
     } else {
-        GenerateH2DEdges(route_data, phy_dev_id, h2d_edges);
+        GenerateH2DEdges(route_data, h2d_edges);
         all_edges.insert(all_edges.end(), h2d_edges.begin(), h2d_edges.end());
     }
     std::cout << "[GenerateLocalCommRes] H2D edges=" << h2d_edges.size() << std::endl;
+
+    // D2H 边
+    std::vector<EndpointConfig> d2h_edges;
+    if (route_data.entries.empty()) {
+        std::cout << "[GenerateLocalCommRes] Skip D2H: route_data.entries is empty" << std::endl;
+    } else {
+        GenerateD2HEdges(route_data, d2h_edges);
+        all_edges.insert(all_edges.end(), d2h_edges.begin(), d2h_edges.end());
+    }
+    std::cout << "[GenerateLocalCommRes] D2H edges=" << d2h_edges.size() << std::endl;
 
     // H2U 边
     std::vector<EndpointConfig> h2u_edges;

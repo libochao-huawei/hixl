@@ -209,13 +209,21 @@ int32_t GenerateD2UEdges(
 /**
  * @brief 生成 H2D 直连边（Host to Device）
  * @param [in] route_data route 数据
- * @param [in] phy_id 当前 NPU 物理 ID
  * @param [out] edges 生成的边列表
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
 int32_t GenerateH2DEdges(
     const RouteData& route_data,
-    int32_t phy_id,
+    std::vector<EndpointConfig>& edges);
+
+/**
+ * @brief 生成 D2H 直连边（Device to Host）
+ * @param [in] route_data route 数据
+ * @param [out] edges 生成的边列表
+ * @return 成功: SUCCESS, 失败: 其它错误码
+ */
+int32_t GenerateD2HEdges(
+    const RouteData& route_data,
     std::vector<EndpointConfig>& edges);
 
 /**

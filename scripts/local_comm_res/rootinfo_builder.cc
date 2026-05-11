@@ -145,7 +145,7 @@ EidByte6Info ParseEidByte6(const std::string& eid) {
     info.low_nibble = info.byte6 & 0xF;
 
     // 判断 die_id：高4位 bit3
-    info.die_id = (info.high_nibble & 0x8) ? 1 : 0;
+    info.die_id = (info.high_nibble & 0x4) ? 1 : 0;
 
     // 判断是否 PG EID：高4位为 3 或 7
     info.is_pg_eid = (info.high_nibble == 0x3 || info.high_nibble == 0x7);
