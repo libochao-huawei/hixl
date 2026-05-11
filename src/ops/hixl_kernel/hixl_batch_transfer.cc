@@ -9,6 +9,7 @@
  */
 #include "hixl_batch_transfer.h"
 #include <string>
+#include <vector>
 #include "common/hixl_log.h"
 #include "common/hixl_checker.h"
 #include "proxy/hcomm_proxy.h"
@@ -16,44 +17,88 @@
 
 namespace hixl {
 namespace {
-uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param) {
-  if (is_read) {
-    // 批量提交读任务
-    for (uint32_t i = 0; i < param->list_num; i++) {
-      HIXL_LOGI(
-          "[HixlBatchPutAndGet] HcommReadOnThread start, list_num=%u, i=%u, thread=%u, channel=%u, "
-          "dst_buf_list[%u]=%p, src_buf_list[%u]=%p, len_list[%u]=%lu",
-          param->list_num, i, param->thread, param->channel, i, param->dst_buf_addr_list[i], i,
-          param->src_buf_addr_list[i], i, param->len_list[i]);
-      int32_t ret = HcommProxy::ReadOnThread(param->thread, param->channel, param->dst_buf_addr_list[i],
-                                             param->src_buf_addr_list[i], param->len_list[i]);
-      if (ret != 0) {
-        HIXL_LOGE(FAILED,
-                  "HcommReadOnThread failed. The address information is as follows:dst_buf:%p, scr_buf:%p, buf_len:%u, "
-                  "ret is %d.",
-                  param->dst_buf_addr_list[i], param->src_buf_addr_list[i], param->len_list[i], ret);
-        return FAILED;
-      }
+constexpr uint32_t kMaxBatchSize = 1000;
+
+int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param) {
+  std::vector<HcommBatchTransferDesc> descs(param->list_num);
+  for (uint32_t i = 0; i < param->list_num; i++) {
+    descs[i].transType = is_read ? HCOMM_TRANSFER_TYPE_READ : HCOMM_TRANSFER_TYPE_WRITE;
+    descs[i].read.len = param->len_list[i];
+    descs[i].read.dst = param->dst_buf_addr_list[i];
+    descs[i].read.src = param->src_buf_addr_list[i];
+  }
+
+  int32_t ret = 0;
+  uint32_t offset = 0;
+  while (offset < param->list_num) {
+    uint32_t batch_size = std::min(kMaxBatchSize, param->list_num - offset);
+    ret = HcommProxy::BatchTransferOnThread(param->thread, param->channel, descs.data() + offset, batch_size);
+    if (ret != 0) {
+      HIXL_LOGE(FAILED, "[HixlBatchTransfer] BatchTransferOnThread failed at offset %u, batch_size %u, ret=%d",
+                offset, batch_size, ret);
+      return ret;
     }
-  } else {
-    // 批量提交写任务
-    for (uint32_t i = 0; i < param->list_num; i++) {
-      HIXL_LOGI(
-          "[HixlBatchPutAndGet] HcommWriteOnThread start, list_num=%u, i=%u, thread=%u, channel=%u, "
-          "dst_buf_list[%u]=%p, src_buf_list[%u]=%p, len_list[%u]=%lu",
-          param->list_num, i, param->thread, param->channel, i, param->dst_buf_addr_list[i], i,
-          param->src_buf_addr_list[i], i, param->len_list[i]);
-      int32_t ret = HcommProxy::WriteOnThread(param->thread, param->channel, param->dst_buf_addr_list[i],
-                                              param->src_buf_addr_list[i], param->len_list[i]);
+    ret = HcommProxy::ChannelFenceOnThread(param->thread, param->channel);
+    if (ret != 0) {
+      HIXL_LOGE(FAILED, "[HixlBatchTransfer] ChannelFenceOnThread failed at offset %u, ret=%d", offset, ret);
+      return ret;
+    }
+    offset += batch_size;
+  }
+  return ret;
+}
+
+using OpFunc = int32_t (*)(uint32_t, uint64_t, void *, const void *, uint64_t);
+
+uint32_t TransferSingleOps(HixlOneSideOpParam *param, const char *op_name, OpFunc op) {
+  for (uint32_t i = 0; i < param->list_num; i++) {
+    HIXL_LOGI("[HixlBatchPutAndGet] %s start, list_num=%u, i=%u, thread=%u, channel=%u, "
+              "dst=%p, src=%p, len=%lu",
+              op_name, param->list_num, i, param->thread, param->channel,
+              param->dst_buf_addr_list[i], param->src_buf_addr_list[i], param->len_list[i]);
+    int32_t ret = op(param->thread, param->channel, param->dst_buf_addr_list[i],
+                     param->src_buf_addr_list[i], param->len_list[i]);
+    if (ret != 0) {
+      HIXL_LOGE(FAILED, "%s failed. dst:%p, src:%p, len:%u, ret=%d.",
+                op_name, param->dst_buf_addr_list[i], param->src_buf_addr_list[i],
+                param->len_list[i], ret);
+      return FAILED;
+    }
+    if ((i + 1) % kMaxBatchSize == 0 || i + 1 == param->list_num) {
+      ret = HcommProxy::ChannelFenceOnThread(param->thread, param->channel);
       if (ret != 0) {
-        HIXL_LOGE(FAILED,
-                  "HcommWriteOnThread failed. The address information is as follows:dst_buf:%p, scr_buf:%p, "
-                  "buf_len:%u, ret is %d.",
-                  param->dst_buf_addr_list[i], param->src_buf_addr_list[i], param->len_list[i], ret);
+        HIXL_LOGE(FAILED, "[HixlBatchTransfer] ChannelFenceOnThread failed at index %u, ret=%d", i, ret);
         return FAILED;
       }
     }
   }
+  return SUCCESS;
+}
+
+uint32_t TransferWithSingle(bool is_read, HixlOneSideOpParam *param) {
+  if (is_read) {
+    return TransferSingleOps(param, "HcommReadOnThread",
+        [](uint32_t t, uint64_t ch, void *d, const void *s, uint64_t l) -> int32_t {
+          return HcommProxy::ReadOnThread(t, ch, d, s, l);
+        });
+  }
+  return TransferSingleOps(param, "HcommWriteOnThread",
+      [](uint32_t t, uint64_t ch, void *d, const void *s, uint64_t l) -> int32_t {
+        return HcommProxy::WriteOnThread(t, ch, d, s, l);
+      });
+}
+
+uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param) {
+  int32_t batch_ret = TransferWithBatch(is_read, param);
+  if (batch_ret == HCCL_E_NOT_SUPPORT) {
+    HIXL_LOGI("[HixlBatchTransfer] HcommBatchTransferOnThread not supported, fallback to single calls");
+    return TransferWithSingle(is_read, param);
+  }
+  if (batch_ret != 0) {
+    HIXL_LOGE(FAILED, "HcommBatchTransferOnThread failed, ret=%d", batch_ret);
+    return FAILED;
+  }
+  HIXL_LOGI("[HixlBatchTransfer] HcommBatchTransferOnThread success");
   return SUCCESS;
 }
 
@@ -63,31 +108,27 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
     HIXL_LOGE(PARAM_INVALID, "[HixlBatchPutAndGet] param is nullptr");
     return PARAM_INVALID;
   }
-  HIXL_LOGI("[HixlBatchPutAndGet] HcommBatchModeStart start");
+
   constexpr const char *kBatchTag = "HixlKernel";
   int32_t ret = HcommProxy::BatchModeStart(kBatchTag);
-  HIXL_LOGI("[HixlBatchPutAndGet] HcommBatchModeStart end");
   HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommBatchModeStart failed, ret is %d", ret);
+
   ret = HixlBatchTransferTask(is_read, param);
   HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HixlBatchTransferTask failed, ret is %d", ret);
-  ret = HcommProxy::ChannelFenceOnThread(param->thread, param->channel);
-  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommChannelFenceOnThread failed, ret is %d", ret);
-  HIXL_LOGI(
-      "[HixlBatchPutAndGet] HcommReadOnThread start to read remote flag, param->flag_size=%u, param->local_flag=%lu, "
-      "param->remote_flag=%lu",
-      param->flag_size, param->local_flag_addr, param->remote_flag_addr);
+
+  HIXL_LOGI("[HixlBatchPutAndGet] HcommReadOnThread start to read remote flag, flag_size=%u, "
+            "local_flag=%lu, remote_flag=%lu",
+            param->flag_size, param->local_flag_addr, param->remote_flag_addr);
   ret = HcommProxy::ReadOnThread(
       param->thread, param->channel, reinterpret_cast<void *>(static_cast<uintptr_t>(param->local_flag_addr)),
       reinterpret_cast<void *>(static_cast<uintptr_t>(param->remote_flag_addr)), param->flag_size);
-  HIXL_CHK_BOOL_RET_STATUS(
-      ret == 0, FAILED,
-      "[HixlBatchPutAndGet] Remote flag read failed. The address information is as follows:dst_buf:%lu, "
-      "scr_buf:%lu, buf_len:%u, ret is %d.",
+  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED,
+      "[HixlBatchPutAndGet] Remote flag read failed. dst:%lu, src:%lu, len:%u, ret=%d.",
       param->local_flag_addr, param->remote_flag_addr, param->flag_size, ret);
-  HIXL_LOGI("[HixlBatchPutAndGet] HcommBatchModeEnd start");
+
   ret = HcommProxy::BatchModeEnd(kBatchTag);
   HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommBatchModeEnd failed, ret is %d", ret);
-  HIXL_LOGI("[HixlBatchPutAndGet] HcommBatchModeEnd end");
+
   return SUCCESS;
 }
 }  // namespace
