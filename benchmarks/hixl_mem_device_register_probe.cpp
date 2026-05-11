@@ -18,8 +18,6 @@
 //   acl_hbw_huge_first  aclrtMalloc(..., ACL_MEM_TYPE_HIGH_BAND_WIDTH | ACL_MEM_MALLOC_HUGE_FIRST)
 //   vmm_hbm_huge        aclrtReserveMemAddress + aclrtMallocPhysical(DEVICE, ACL_HBM_MEM_HUGE) + aclrtMapMem
 //   vmm_p2p_huge        aclrtReserveMemAddress + aclrtMallocPhysical(DEVICE, ACL_MEM_P2P_HUGE) + aclrtMapMem
-//   vmm_hbm_huge_seed   same as vmm_hbm_huge, then seed FabricMem VA->PA map before RegisterMem
-//   vmm_p2p_huge_seed   same as vmm_p2p_huge, then seed FabricMem VA->PA map before RegisterMem
 
 #include <cstdlib>
 #include <iostream>
@@ -28,13 +26,6 @@
 
 #include "acl/acl.h"
 #include "hixl/hixl.h"
-
-namespace adxl {
-class FabricMemTransferService {
- public:
-  static void AddVaToPaMapping(uintptr_t va_addr, aclrtDrvMemHandle pa_handle);
-};
-}  // namespace adxl
 
 using namespace hixl;
 
@@ -58,7 +49,6 @@ struct Allocation {
   void *ptr = nullptr;
   aclrtDrvMemHandle pa = nullptr;
   bool is_vmm = false;
-  bool seed_pa = false;
   std::string mode;
 };
 
@@ -118,14 +108,6 @@ bool Allocate(int device_id, const std::string &mode, size_t bytes, Allocation &
   if (mode == "vmm_p2p_huge") {
     return AllocVmm(device_id, bytes, ACL_MEM_P2P_HUGE, alloc);
   }
-  if (mode == "vmm_hbm_huge_seed") {
-    alloc.seed_pa = true;
-    return AllocVmm(device_id, bytes, ACL_HBM_MEM_HUGE, alloc);
-  }
-  if (mode == "vmm_p2p_huge_seed") {
-    alloc.seed_pa = true;
-    return AllocVmm(device_id, bytes, ACL_MEM_P2P_HUGE, alloc);
-  }
   std::cerr << "[ERROR] unknown mode=" << mode << "\n";
   return false;
 }
@@ -179,10 +161,6 @@ bool RunRegisterProbe(const ProbeArgs &args, Hixl &hixl_engine, Allocation &allo
     return false;
   }
   std::cout << "[INFO] Allocate success mode=" << args.mode << " addr=" << alloc.ptr << "\n";
-  if (alloc.seed_pa) {
-    adxl::FabricMemTransferService::AddVaToPaMapping(reinterpret_cast<uintptr_t>(alloc.ptr), alloc.pa);
-    std::cout << "[INFO] Seeded FabricMem VA->PA map for addr=" << alloc.ptr << " pa=" << alloc.pa << "\n";
-  }
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(alloc.ptr);
   desc.len = args.bytes;

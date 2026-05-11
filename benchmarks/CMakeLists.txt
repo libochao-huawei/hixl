@@ -80,9 +80,6 @@ if(NOT TARGET hixl_mem_device_register_probe)
     add_executable(hixl_mem_device_register_probe hixl_mem_device_register_probe.cpp)
     target_include_directories(hixl_mem_device_register_probe PRIVATE
         ${HIXL_INC_DIR}
-        ${HIXL_CODE_DIR}/src/llm_datadist
-        ${HIXL_CODE_DIR}/src/llm_datadist/adxl
-        ${HIXL_CODE_DIR}/src/llm_datadist/common
         ${HIXL_CODE_DIR}/src/hixl
         ${CANN_INSTALL_PATH}/include
     )
@@ -97,7 +94,6 @@ if(NOT TARGET hixl_mem_device_register_probe)
     )
     target_link_libraries(hixl_mem_device_register_probe PRIVATE
         cann_hixl
-        llm_datadist
         acl_rt_headers
         acl_rt
         -lpthread
