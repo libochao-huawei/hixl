@@ -116,10 +116,12 @@ void PrintUrmaDeviceList(const std::vector<hixl::UrmaDevice>& urma_devices) {
                   << ", eid_count=" << dev.eid_list.size() << std::endl;
         for (size_t j = 0; j < dev.eid_list.size(); ++j) {
             const std::string& eid = dev.eid_list[j];
-            int port = hixl::GetPortFromEid(eid);
-            int die_id = hixl::GetServerDieIdFromEid(eid);
+            hixl::EidByte6Info info = hixl::ParseEidByte6(eid);
             std::cout << "[Test]     EID[" << j << "]: " << eid
-                      << " (port=" << port << ", die_id=" << die_id << ")" << std::endl;
+                      << " (byte6=0x" << std::hex << info.byte6 << std::dec
+                      << ", die_id=" << info.die_id
+                      << ", is_pg=" << (info.is_pg_eid ? "true" : "false")
+                      << ", port=" << info.port << ")" << std::endl;
         }
     }
 }
