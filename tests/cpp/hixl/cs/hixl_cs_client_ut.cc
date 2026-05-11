@@ -27,6 +27,7 @@
 #include "hixl/hixl_types.h"
 #include "hixl_cs_client.h"
 #include "common/ctrl_msg.h"
+#include "depends/mmpa/src/mmpa_stub.h"
 
 #include <securec.h>
 
@@ -51,6 +52,27 @@ static constexpr char kGetRemoteMemStr2[] = "b";
 static CommMem gRemoteSentinel{};
 static char *gTagsSentinel[1] = {nullptr};
 static constexpr uint32_t kNumSentinel = 123U;
+
+// Mock mmRealPath to handle kernel json file path
+class CsClientMmpaStub : public llm::MmpaStubApiGe {
+ public:
+  INT32 Access(const CHAR *path_name) override {
+    std::string path_str(path_name);
+    if (path_str.find("libcann_hixl_kernel.json") != std::string::npos) {
+      return SUCCESS;
+    }
+    return llm::MmpaStubApiGe::Access(path_name);
+  }
+  int32_t RealPath(const CHAR *path, CHAR *realPath, INT32 realPathLen) override {
+    std::string path_str(path);
+    if (path_str.find("libcann_hixl_kernel.json") != std::string::npos) {
+      strncpy_s(realPath, realPathLen, path, strlen(path));
+      return 0;
+    }
+    return llm::MmpaStubApiGe::RealPath(path, realPath, realPathLen);
+  }
+};
+
 enum class MiniSrvMode : uint32_t {
   kNormal = 0,
 
@@ -74,9 +96,9 @@ enum class MiniSrvMode : uint32_t {
   kGetRemoteMemResp_ExportDescEmpty,  // export_desc="" -> handler 会让解析后 export_len=0
   kGetRemoteMemResp_DuplicateAddr,    // 两个 mem 用同 addr -> RecordMemory(true) 冲突
   kGetRemoteMemResp_MemImportFail,
-  kGetRemoteMemResp_PartialArrayFail,     // 数组中途解析失败 (覆盖资源释放)
-  kGetRemoteMemResp_ExportDescOutOfRange, // export_desc 值超过 UINT8_MAX (255)
-  kGetRemoteMemResp_ExportDescNotInt      // export_desc 里面不是整数
+  kGetRemoteMemResp_PartialArrayFail,      // 数组中途解析失败 (覆盖资源释放)
+  kGetRemoteMemResp_ExportDescOutOfRange,  // export_desc 值超过 UINT8_MAX (255)
+  kGetRemoteMemResp_ExportDescNotInt       // export_desc 里面不是整数
 };
 
 class MiniServer {
@@ -103,10 +125,7 @@ class MiniServer {
     port_ = kPort;
     get_mem_req_cnt_ = 0;
 
-    worker_ = std::thread(
-      [this]() {
-        ThreadMain();
-      });
+    worker_ = std::thread([this]() { ThreadMain(); });
     std::this_thread::sleep_for(std::chrono::milliseconds(kMilliSeconds10));
     return port_;
   }
@@ -181,13 +200,8 @@ class MiniServer {
   }
 
   static bool SendAll(int fd, void *buf, size_t n) {
-    auto fn = [](int f, const char *p, size_t len) -> ssize_t {
-      return ::send(f, p, len, MSG_NOSIGNAL);
-    };
-    return IoAllImpl(fd, buf, n,
-      [fn](int f, char *p, size_t len) {
-      return fn(f, p, len);
-    });
+    auto fn = [](int f, const char *p, size_t len) -> ssize_t { return ::send(f, p, len, MSG_NOSIGNAL); };
+    return IoAllImpl(fd, buf, n, [fn](int f, char *p, size_t len) { return fn(f, p, len); });
   }
 
   // body = [CtrlMsgType][payload...], zero-padded to total_body_bytes (for malformed-size tests).
@@ -214,9 +228,7 @@ class MiniServer {
   }
 
   static bool RecvAll(int fd, void *buf, size_t n) {
-    auto fn = [](int f, char *p, size_t len) -> ssize_t {
-      return ::recv(f, p, len, 0);
-    };
+    auto fn = [](int f, char *p, size_t len) -> ssize_t { return ::recv(f, p, len, 0); };
     return IoAllImpl(fd, buf, n, fn);
   }
 
@@ -429,7 +441,8 @@ class MiniServer {
       return;
     }
     if (mem_mode_ == MiniSrvMode::kGetRemoteMemResp_MemImportFail) {
-      json_str = R"({"result":0,"mem_descs":[{"tag":"a","export_desc":[70,65,73,76],"mem":{"type":0,"addr":1,"size":1}}]})";
+      json_str =
+          R"({"result":0,"mem_descs":[{"tag":"a","export_desc":[70,65,73,76],"mem":{"type":0,"addr":1,"size":1}}]})";
     }
     if (mem_mode_ == MiniSrvMode::kGetRemoteMemResp_PartialArrayFail) {
       json_str = R"({
@@ -443,12 +456,14 @@ class MiniServer {
     }
 
     if (mem_mode_ == MiniSrvMode::kGetRemoteMemResp_ExportDescOutOfRange) {
-      json_str = R"({"result":0,"mem_descs":[{"tag":"bad_val","export_desc":[256],"mem":{"type":0,"addr":1,"size":1}}]})";
+      json_str =
+          R"({"result":0,"mem_descs":[{"tag":"bad_val","export_desc":[256],"mem":{"type":0,"addr":1,"size":1}}]})";
       return;
     }
 
     if (mem_mode_ == MiniSrvMode::kGetRemoteMemResp_ExportDescNotInt) {
-      json_str = R"({"result":0,"mem_descs":[{"tag":"bad_type","export_desc":["string_value"],"mem":{"type":0,"addr":1,"size":1}}]})";
+      json_str =
+          R"({"result":0,"mem_descs":[{"tag":"bad_type","export_desc":["string_value"],"mem":{"type":0,"addr":1,"size":1}}]})";
       return;
     }
   }
@@ -575,12 +590,15 @@ class HixlCSClientUT : public ::testing::Test {
   void SetUp() override {
     src_ = MakeIdEp(kSrcEpId);
     dst_ = MakeIdEp(kDstEpId);
+    // EnsureDeviceKernelLoadedLocked 现在在初始化阶段调用，需要提前设置 MmpaStub
+    llm::MmpaStub::GetInstance().SetImpl(std::make_shared<CsClientMmpaStub>());
   }
 
   void TearDown() override {
     (void)client_.Destroy();
     server_.Stop();
     port_ = kZero;
+    llm::MmpaStub::GetInstance().Reset();
   }
 
   void StartServer(MiniSrvMode c, MiniSrvMode m) {
@@ -593,7 +611,7 @@ class HixlCSClientUT : public ::testing::Test {
   // [修改] 辅助函数增加 config 参数构造
   void CreateClient(const char *ip = "127.0.0.1") {
     ASSERT_NE(port_, 0);
-    HixlClientConfig config{}; // 默认构造
+    HixlClientConfig config{};  // 默认构造
     HixlClientDesc desc{};
     desc.server_ip = ip;
     desc.server_port = port_;
@@ -618,7 +636,7 @@ class HixlCSClientUT : public ::testing::Test {
 
 TEST_F(HixlCSClientUT, CreateSuccess) {
   port_ = kPort;
-  HixlClientConfig config{}; // [修改]
+  HixlClientConfig config{};  // [修改]
   HixlClientDesc desc{};
   desc.server_ip = "127.0.0.1";
   desc.server_port = port_;
@@ -629,7 +647,7 @@ TEST_F(HixlCSClientUT, CreateSuccess) {
 
 TEST_F(HixlCSClientUT, CreateFailNullServerIp) {
   port_ = kPort;
-  HixlClientConfig config{}; // [修改]
+  HixlClientConfig config{};  // [修改]
   HixlClientDesc desc{};
   desc.server_ip = nullptr;
   desc.server_port = port_;
@@ -640,7 +658,7 @@ TEST_F(HixlCSClientUT, CreateFailNullServerIp) {
 
 TEST_F(HixlCSClientUT, CreateFailNullSrcEndpoint) {
   port_ = kPort;
-  HixlClientConfig config{}; // [修改]
+  HixlClientConfig config{};  // [修改]
   HixlClientDesc desc{};
   desc.server_ip = "127.0.0.1";
   desc.server_port = port_;
@@ -651,7 +669,7 @@ TEST_F(HixlCSClientUT, CreateFailNullSrcEndpoint) {
 
 TEST_F(HixlCSClientUT, CreateFailNullDstEndpoint) {
   port_ = kPort;
-  HixlClientConfig config{}; // [修改]
+  HixlClientConfig config{};  // [修改]
   HixlClientDesc desc{};
   desc.server_ip = "127.0.0.1";
   desc.server_port = port_;
@@ -667,7 +685,7 @@ TEST_F(HixlCSClientUT, ConnectFailWithoutCreate) {
 TEST_F(HixlCSClientUT, ConnectFailDstEndpointReserved) {
   port_ = kPort;
   dst_.protocol = COMM_PROTOCOL_RESERVED;
-  HixlClientConfig config{}; // [修改]
+  HixlClientConfig config{};  // [修改]
   HixlClientDesc desc{};
   desc.server_ip = "127.0.0.1";
   desc.server_port = port_;
@@ -771,9 +789,9 @@ TEST_F(HixlCSClientUT, GetRemoteMemSuccessNormalWithTags) {
   EXPECT_NE(remote, nullptr);
   EXPECT_EQ(num, 3U);
   ASSERT_NE(tags, nullptr);
-  EXPECT_STREQ(tags[0], kGetRemoteMemStr0);//0：第一个
-  EXPECT_STREQ(tags[1], kGetRemoteMemStr1);//1：第二个
-  EXPECT_STREQ(tags[2], kGetRemoteMemStr2);//2：第三个
+  EXPECT_STREQ(tags[0], kGetRemoteMemStr0);  // 0：第一个
+  EXPECT_STREQ(tags[1], kGetRemoteMemStr1);  // 1：第二个
+  EXPECT_STREQ(tags[2], kGetRemoteMemStr2);  // 2：第三个
 }
 
 TEST_F(HixlCSClientUT, GetRemoteMemSuccessNormalNoTagsOutParam) {
