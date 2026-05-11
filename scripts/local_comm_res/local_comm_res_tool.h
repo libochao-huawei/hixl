@@ -232,6 +232,15 @@ int32_t GenerateH2UEdges(
     int32_t phy_id,
     std::vector<EndpointConfig>& edges);
 
+/**
+ * @brief 根据 topo 数据获取某个 NPU 的 CLOS PG EID 对应的 port 数量
+ * @param [in] topo_data topology 数据
+ * @param [in] phy_id NPU 物理 ID
+ * @param [in] clos_pg_eid CLOS PG EID
+ * @return port 数量，失败返回 -1
+ */
+int GetClosPgPortCount(const TopoData& topo_data, int32_t phy_id, const std::string& clos_pg_eid);
+
 }  // namespace hixl
 
 #endif  // HIXL_LOCAL_COMM_RES_TOOL_H_

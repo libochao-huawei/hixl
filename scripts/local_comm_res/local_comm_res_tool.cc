@@ -531,63 +531,7 @@ int32_t GenerateD2DEdges(
     return SUCCESS;
 }
 
-int32_t GenerateD2UEdges(
-    const TopoData& topo_data,
-    const std::map<int32_t, NpuRootInfo>& npu_rootinfos,
-    const std::vector<std::string>& clos_plane_ids,
-    int32_t phy_id,
-    std::vector<EndpointConfig>& edges) {
-
-    edges.clear();
-
-    auto self_it = npu_rootinfos.find(phy_id);
-    if (self_it == npu_rootinfos.end()) {
-        std::cerr << "[GenerateD2UEdges] No rootinfo for self npu_id=" << phy_id << std::endl;
-        return SUCCESS;
-    }
-    const auto& self_rootinfo = self_it->second;
-
-    std::cout << "[GenerateD2UEdges] phy_id=" << phy_id
-              << ", clos_planes=" << clos_plane_ids.size()
-              << ", topo_links=" << topo_data.links.size()
-              << ", clos_pg_eid=" << (self_rootinfo.clos_pg_eid.empty() ? "(none)" : self_rootinfo.clos_pg_eid)
-              << std::endl;
-
-    size_t skip_reason[4] = {0, 0, 0, 0};
-    size_t no_clos_eid = 0;
-    for (const auto& link : topo_data.links) {
-        if (link.net_layer != 1) { ++skip_reason[0]; continue; }
-        if (link.link_type != "PEER2NET") { ++skip_reason[1]; continue; }
-        if (link.topo_type != "CLOS") { ++skip_reason[2]; continue; }
-        if (link.local_a != phy_id) { ++skip_reason[3]; continue; }
-
-        // 从当前 NPU 的 rootinfo 中获取 CLOS 层 PG EID
-        if (self_rootinfo.clos_pg_eid.empty()) {
-            ++no_clos_eid;
-            std::cout << "[GenerateD2UEdges] No CLOS PG EID in rootinfo for phy_id=" << phy_id << std::endl;
-            continue;
-        }
-
-        for (const auto& plane_id : clos_plane_ids) {
-            EndpointConfig edge;
-            edge.protocol = "ub_ctp";
-            edge.comm_id = self_rootinfo.clos_pg_eid;
-            edge.placement = "device";
-            edge.plane = plane_id;
-            edges.push_back(edge);
-            std::cout << "[GenerateD2UEdges] matched: comm_id=" << self_rootinfo.clos_pg_eid
-                      << ", plane=" << plane_id << std::endl;
-        }
-    }
-
-    std::cout << "[GenerateD2UEdges] result: matched=" << edges.size()
-              << ", skip(net_layer)=" << skip_reason[0]
-              << ", skip(link_type)=" << skip_reason[1]
-              << ", skip(topo_type)=" << skip_reason[2]
-              << ", skip(phy_id)=" << skip_reason[3]
-              << ", no_clos_eid=" << no_clos_eid << std::endl;
-    return SUCCESS;
-}
+// 注意：GenerateD2UEdges 和 GenerateH2UEdges 已废弃，边生成逻辑已移至 GenerateLocalCommRes 中直接处理
 
 int32_t GenerateH2DEdges(
     const RouteData& route_data,
@@ -618,38 +562,7 @@ int32_t GenerateH2DEdges(
     return SUCCESS;
 }
 
-int32_t GenerateH2UEdges(
-    const RouteData& route_data,
-    const std::vector<std::string>& clos_plane_ids,
-    int32_t phy_id,
-    std::vector<EndpointConfig>& edges) {
-
-    edges.clear();
-
-    std::cout << "[GenerateH2UEdges] phy_id=" << phy_id
-              << ", route_entries=" << route_data.entries.size()
-              << ", clos_plane_ids=" << clos_plane_ids.size() << std::endl;
-
-    size_t skip_phy_id = 0;
-    for (const auto& entry : route_data.entries) {
-        if (entry.device_id != phy_id) { ++skip_phy_id; continue; }
-
-        for (const auto& plane_id : clos_plane_ids) {
-            EndpointConfig edge;
-            edge.protocol = "ub_ctp";
-            edge.comm_id = entry.local_eid;
-            edge.placement = "host";
-            edge.plane = plane_id;
-            edges.push_back(edge);
-            std::cout << "[GenerateH2UEdges] matched: local_eid=" << entry.local_eid
-                      << ", plane=" << plane_id << std::endl;
-        }
-    }
-
-    std::cout << "[GenerateH2UEdges] result: matched=" << edges.size()
-              << ", skip(phy_id)=" << skip_phy_id << std::endl;
-    return SUCCESS;
-}
+// 注意：GenerateH2UEdges 已废弃，边生成逻辑已移至 GenerateLocalCommRes 中直接处理
 
 // ============ 核心接口实现 ============
 
@@ -743,15 +656,30 @@ int32_t GenerateLocalCommRes(
     std::cout << "[GenerateLocalCommRes] Built rootinfo for " << npu_rootinfos.size() << " NPU(s)" << std::endl;
 
     // 获取当前 NPU 的 CLOS pg_eid（用于 D2U 和 H2U）
-    std::string clos_pg_eid;
-    std::vector<std::string> clos_plane_ids;
+    // plane_pg_0: 与 Mesh 层相反 die_id 上的 PG EID
+    // plane_pg_1: 与 Mesh 层相同 die_id 上的 PG EID
+    std::string plane_pg_0_eid;
+    std::string plane_pg_1_eid;
+    int mesh_die_id = GetMeshDieId(phy_dev_id, is_server);
     auto self_it = npu_rootinfos.find(phy_dev_id);
-    if (self_it != npu_rootinfos.end() && !self_it->second.clos_pg_eid.empty()) {
-        clos_pg_eid = self_it->second.clos_pg_eid;
-        clos_plane_ids.push_back("plane_pg_0");
-        clos_plane_ids.push_back("plane_pg_1");
+    if (self_it != npu_rootinfos.end()) {
+        for (const auto& pg : self_it->second.clos_pg_eids) {
+            if (pg.die_id != mesh_die_id) {
+                // 与 Mesh 层相反 die 上的 PG EID -> plane_pg_0
+                if (plane_pg_0_eid.empty()) {
+                    plane_pg_0_eid = pg.eid;
+                }
+            } else {
+                // 与 Mesh 层相同 die 上的 PG EID -> plane_pg_1
+                if (plane_pg_1_eid.empty()) {
+                    plane_pg_1_eid = pg.eid;
+                }
+            }
+        }
     }
-    std::cout << "[GenerateLocalCommRes] CLOS pg_eid=" << (clos_pg_eid.empty() ? "(none)" : clos_pg_eid) << std::endl;
+    std::cout << "[GenerateLocalCommRes] Mesh die_id=" << mesh_die_id << std::endl;
+    std::cout << "[GenerateLocalCommRes] plane_pg_0_eid=" << (plane_pg_0_eid.empty() ? "(none)" : plane_pg_0_eid) << std::endl;
+    std::cout << "[GenerateLocalCommRes] plane_pg_1_eid=" << (plane_pg_1_eid.empty() ? "(none)" : plane_pg_1_eid) << std::endl;
 
     std::vector<EndpointConfig> all_edges;
 
@@ -769,12 +697,28 @@ int32_t GenerateLocalCommRes(
 
     // D2U 边
     std::vector<EndpointConfig> d2u_edges;
-    if (clos_plane_ids.empty()) {
-        std::cout << "[GenerateLocalCommRes] Skip D2U: no CLOS plane_ids found" << std::endl;
+    if (plane_pg_0_eid.empty() && plane_pg_1_eid.empty()) {
+        std::cout << "[GenerateLocalCommRes] Skip D2U: no CLOS PG EID found" << std::endl;
     } else if (topo_data.links.empty()) {
         std::cout << "[GenerateLocalCommRes] Skip D2U: topo_data.links is empty" << std::endl;
     } else {
-        GenerateD2UEdges(topo_data, npu_rootinfos, clos_plane_ids, phy_dev_id, d2u_edges);
+        // 直接生成 D2U 边，使用 plane_pg_0 和 plane_pg_1
+        if (!plane_pg_0_eid.empty()) {
+            EndpointConfig edge;
+            edge.protocol = "ub_ctp";
+            edge.comm_id = plane_pg_0_eid;
+            edge.placement = "device";
+            edge.plane = "plane_pg_0";
+            d2u_edges.push_back(edge);
+        }
+        if (!plane_pg_1_eid.empty()) {
+            EndpointConfig edge;
+            edge.protocol = "ub_ctp";
+            edge.comm_id = plane_pg_1_eid;
+            edge.placement = "device";
+            edge.plane = "plane_pg_1";
+            d2u_edges.push_back(edge);
+        }
         all_edges.insert(all_edges.end(), d2u_edges.begin(), d2u_edges.end());
     }
     std::cout << "[GenerateLocalCommRes] D2U edges=" << d2u_edges.size() << std::endl;
@@ -791,12 +735,28 @@ int32_t GenerateLocalCommRes(
 
     // H2U 边
     std::vector<EndpointConfig> h2u_edges;
-    if (clos_plane_ids.empty()) {
-        std::cout << "[GenerateLocalCommRes] Skip H2U: no CLOS plane_ids found" << std::endl;
+    if (plane_pg_0_eid.empty() && plane_pg_1_eid.empty()) {
+        std::cout << "[GenerateLocalCommRes] Skip H2U: no CLOS PG EID found" << std::endl;
     } else if (route_data.entries.empty()) {
         std::cout << "[GenerateLocalCommRes] Skip H2U: route_data.entries is empty" << std::endl;
     } else {
-        GenerateH2UEdges(route_data, clos_plane_ids, phy_dev_id, h2u_edges);
+        // 直接生成 H2U 边，使用 plane_pg_0 和 plane_pg_1
+        if (!plane_pg_0_eid.empty()) {
+            EndpointConfig edge;
+            edge.protocol = "ub_ctp";
+            edge.comm_id = plane_pg_0_eid;
+            edge.placement = "host";
+            edge.plane = "plane_pg_0";
+            h2u_edges.push_back(edge);
+        }
+        if (!plane_pg_1_eid.empty()) {
+            EndpointConfig edge;
+            edge.protocol = "ub_ctp";
+            edge.comm_id = plane_pg_1_eid;
+            edge.placement = "host";
+            edge.plane = "plane_pg_1";
+            h2u_edges.push_back(edge);
+        }
         all_edges.insert(all_edges.end(), h2u_edges.begin(), h2u_edges.end());
     }
     std::cout << "[GenerateLocalCommRes] H2U edges=" << h2u_edges.size() << std::endl;
