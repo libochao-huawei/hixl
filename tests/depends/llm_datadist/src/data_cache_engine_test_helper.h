@@ -232,6 +232,29 @@ class TransferAsyncSteamRuntimeMocak : public llm::AclRuntimeStub {
   }
 };
 
+class TransferFailHcclStub : public llm::HcclApiStub {
+ public:
+  HcclResult HcclBatchGet(HcclComm comm, uint32_t remoteRank, HcclOneSideOpDesc *desc,
+                          uint32_t descNum, aclrtStream stream) override {
+    (void)comm;
+    (void)remoteRank;
+    (void)desc;
+    (void)descNum;
+    (void)stream;
+    return HcclResult::HCCL_E_INTERNAL;
+  }
+
+  HcclResult HcclBatchPut(HcclComm comm, uint32_t remoteRank, HcclOneSideOpDesc *desc,
+                          uint32_t descNum, aclrtStream stream) override {
+    (void)comm;
+    (void)remoteRank;
+    (void)desc;
+    (void)descNum;
+    (void)stream;
+    return HcclResult::HCCL_E_INTERNAL;
+  }
+};
+
 class AutoCommResRuntimeMock : public llm::AclRuntimeStub {
  public:
   static void Install() {
