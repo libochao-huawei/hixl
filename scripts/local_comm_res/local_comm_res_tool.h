@@ -139,23 +139,6 @@ int32_t GetUBEntityList(int32_t phy_dev_id, UEList& ue_list);
  */
 int32_t GetMainboardId(int32_t phy_dev_id, unsigned int& mainboard_id);
 
-// ============ CLOS 层专用接口 ============
-
-/**
- * @brief 获取 CLOS 层串口组配置（Server 类型）
- * @param [in] mainboard_id 主板 ID
- * @return 配置列表: [(die_id, fe_id, [port1, port2, ...]), ...]
- */
-std::vector<std::tuple<int, int, std::vector<int>>> GetLevel1ConfigServer(unsigned int mainboard_id);
-
-/**
- * @brief 获取 CLOS 层串口组配置（Pod 类型）
- * @param [in] mainboard_id 主板 ID
- * @param [in] phy_id 物理设备 ID
- * @return 配置列表: [(die_id, fe_id, [port1, port2, ...]), ...]
- */
-std::vector<std::tuple<int, int, std::vector<int>>> GetLevel1ConfigPod(unsigned int mainboard_id, int phy_id);
-
 // ============ 文件解析接口 ============
 
 /**
