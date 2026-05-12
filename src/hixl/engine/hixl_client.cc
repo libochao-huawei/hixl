@@ -289,7 +289,6 @@ Status HixlClient::TryMatchHccsEndpoints(const std::vector<EndpointConfig> &loca
                                [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolHccs; });
   auto remote_it = std::find_if(remote_endpoint_list.begin(), remote_endpoint_list.end(),
                                 [](const EndpointConfig &endpoint) { return endpoint.protocol == kProtocolHccs; });
-
   if (local_it != local_endpoint_list.end() && remote_it != remote_endpoint_list.end()) {
     return CreateCsClients(*local_it, *remote_it, CommType::COMM_TYPE_HCCS);
   }
