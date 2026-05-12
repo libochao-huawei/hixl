@@ -22,7 +22,7 @@
 namespace hixl {
 class OptionalAclContext {
  public:
-  Status CaptureIfNeeded(bool need_device_context);
+  Status CaptureIfNeeded();
   Status SetOnCurrentThreadIfNeeded() const;
 
  private:
@@ -32,7 +32,7 @@ class OptionalAclContext {
 
 class MsgHandler {
  public:
-  Status Initialize(bool need_device_context);
+  Status Initialize();
   void Finalize();
   void SubmitMsg(int32_t fd, const CtrlMsgPtr &msg);
   Status RegisterMsgProcessor(CtrlMsgType msg_type, MsgProcessor msg_processor);
