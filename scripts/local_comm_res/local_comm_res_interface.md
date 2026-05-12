@@ -4,7 +4,7 @@
 
 ### 1.1 功能说明
 
-`LocalCommRes` 生成工具用于在 HIXL 初始化阶段自动检测用户输入的 `endpoint_list`，如果为空或不存在，则自动从系统配置文件中读取并生成本地通信资源信息。
+`LocalCommRes` 生成工具用于根据当前 NPU 的物理设备 ID，从系统配置文件（topology 文件、route.conf、EID JSON 文件）和 DCMI 接口自动生成本地通信资源信息，输出 `LocalCommRes` 结构体供 HIXL 初始化使用。
 
 ### 1.2 主要能力
 
@@ -35,6 +35,7 @@ namespace hixl {
  * @param [in] options 生成选项，包含输入文件路径等
  *        - "topo_path": topology 文件路径
  *        - "route_path": route.conf 路径
+ *        - "eid_json_path": EID JSON 文件路径（可选，用于从文件加载 EID 列表替代 DCMI 接口调用）
  * @param [out] local_comm_res 输出的 LocalCommRes 结构体
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
@@ -57,6 +58,7 @@ aclrtGetPhyDevIdByLogicDevId(logicId, &phyId);
 std::map<std::string, std::string> options;
 options["topo_path"] = "/etc/superpod_2d_noroce.json";
 options["route_path"] = "/lib/route.conf";
+options["eid_json_path"] = "/path/to/eid.json";  // 可选
 
 hixl::LocalCommRes localCommRes;
 auto ret = hixl::GenerateLocalCommRes(phyId, options, localCommRes);
@@ -66,30 +68,7 @@ auto ret = hixl::GenerateLocalCommRes(phyId, options, localCommRes);
 
 ### 2.2 DCMI 接口封装
 
-#### 2.2.1 GetEidListByPhyId
-
-```cpp
-namespace hixl {
-
-/**
- * @brief 通过 phyId 获取 EID 列表
- * @param [in] phy_dev_id 物理设备 ID
- * @param [out] eid_list EID 列表（字符串格式）
- * @return 成功: SUCCESS, 失败: 其它错误码
- * @note 底层调用 hal_get_eid_list_by_phy_id
- */
-int32_t GetEidListByPhyId(int32_t phy_dev_id, std::vector<std::string>& eid_list);
-
-}
-```
-
-**使用场景**：
-- DCMI 接口获取 EID 列表的第一步
-- 返回的 EID 为字符串格式，可直接用于解析
-
----
-
-#### 2.2.2 GetUBEntityList
+#### 2.2.1 GetUBEntityList
 
 ```cpp
 namespace hixl {
@@ -127,186 +106,129 @@ int32_t GetMainboardId(int32_t phy_dev_id, unsigned int& mainboard_id);
 
 ---
 
-#### 2.2.4 EidToString
+### 2.3 文件解析接口
+
+#### 2.3.1 ParseTopoFile
 
 ```cpp
 namespace hixl {
 
 /**
- * @brief 将 dcmi_urma_eid_t 转换为字符串格式
- * @param [in] eid DCMI EID 结构
- * @return 字符串格式的 EID
+ * @brief 解析 topology 文件
+ * @param [in] topo_path topology 文件路径
+ * @param [out] topo_data 解析后的 topology 数据
+ * @return 成功: SUCCESS, 失败: 其它错误码
  */
-std::string EidToString(const dcmi_urma_eid_t& eid);
+int32_t ParseTopoFile(const std::string& topo_path, TopoData& topo_data);
 
 }
 ```
 
 ---
 
-### 2.3 EID 解析接口
-
-#### 2.3.1 GetPortFromEid
+#### 2.3.2 ParseRouteFile
 
 ```cpp
 namespace hixl {
 
 /**
- * @brief 从 EID 获取 port（单个物理串口）
+ * @brief 解析 route.conf 文件
+ * @param [in] route_path route.conf 路径
+ * @param [out] route_data 解析后的 route 数据
+ * @return 成功: SUCCESS, 失败: 其它错误码
+ */
+int32_t ParseRouteFile(const std::string& route_path, RouteData& route_data);
+
+}
+```
+
+---
+
+### 2.4 RootInfo 构建接口（rootinfo_builder.h）
+
+> 以下接口定义在 `rootinfo_builder.h` 中，`local_comm_res_tool` 通过该模块获取 EID 和 Port 映射。
+
+#### 2.4.1 ParseEidByte6
+
+```cpp
+namespace hixl {
+
+/**
+ * @brief 解析 EID 的第6字节
  * @param [in] eid 字符串格式 EID
- * @return port 编号 (0-9)
- *         - port ≤ 9: Mesh 层单个物理串口
- *         - port > 9: CLOS 层串口组（应使用 GetPgEid）
- * @note 算法: 取 EID 最后 2 位十六进制字符，清除 bit7，右移 3 位
+ * @return EidByte6Info 解析结果，包含 die_id、is_pg_eid、port 等信息
  */
-int GetPortFromEid(const std::string& eid);
+EidByte6Info ParseEidByte6(const std::string& eid);
 
 }
 ```
 
-**使用场景**：
-- 遍历 eid_list 时，判断该 EID 是 Mesh 层还是 CLOS 层
-- port ≤ 9 表示单个物理串口，用于 D2D 边生成
-
 ---
 
-#### 2.2.2 GetServerDieId
+#### 2.4.2 BuildNpuRootInfo
 
 ```cpp
 namespace hixl {
 
 /**
- * @brief 从 EID 获取 die_id（Server 类型）
- * @param [in] eid EID 字符串
- * @return die_id (0 或 1)
- * @note 算法: 取 EID 倒数第 2 个字符，提取 bit3，右移 3 位
+ * @brief 根据 NPU ID 构建 RootInfo
+ * @param [in] npu_id NPU ID
+ * @param [in] is_server 是否为 Server 产品形态
+ * @param [out] rootinfo 输出的 RootInfo 结构
+ * @param [in] json_path 如果不为空，则从指定 JSON 文件加载 EID 列表（替代 DCMI 接口调用）
+ * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int GetServerDieId(const std::string& eid);
+int32_t BuildNpuRootInfo(int32_t npu_id, bool is_server, NpuRootInfo& rootinfo,
+                         const std::string& json_path = "");
 
 }
 ```
 
 ---
 
-#### 2.2.3 GetPodDieId
+#### 2.4.3 GetUrmaDeviceList
 
 ```cpp
 namespace hixl {
 
 /**
- * @brief 从 EID 获取 die_id（Pod 类型）
- * @param [in] eid EID 字符串
- * @return die_id (0 或 1)
- * @note 算法: 取 EID 倒数第 3 个字符，提取 bit2，右移 2 位
+ * @brief 获取 URMA Device 列表
+ * @param [in] npu_id NPU ID
+ * @param [out] urma_devices URMA Device 列表
+ * @param [in] json_path 如果不为空，则从指定 JSON 文件加载（跳过 DCMI 调用）
+ * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int GetPodDieId(const std::string& eid);
+int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices,
+                          const std::string& json_path = "");
 
 }
 ```
 
 ---
 
-#### 2.2.4 IsMeshLayerEid
+#### 2.4.4 GetMeshDieId
 
 ```cpp
 namespace hixl {
 
 /**
- * @brief 判断 EID 是否为 Mesh 层（单个物理串口）
- * @param [in] eid EID 字符串
- * @return true: Mesh 层 (port ≤ 9), false: CLOS 层 (port > 9)
+ * @brief 确定 Mesh 层的 die_id
+ * @param npu_id NPU ID
+ * @param is_server 是否为 Server 产品形态
+ * @return Mesh 层所在的 die_id
+ *   - Server: Mesh 在 1die
+ *   - Pod: 根据 npu_id % 8 判断，0-3 在 0die，4-7 在 1die
  */
-bool IsMeshLayerEid(const std::string& eid);
+int GetMeshDieId(int32_t npu_id, bool is_server);
 
 }
 ```
 
 ---
 
-#### 2.2.5 IsClosLayerEid
+### 2.5 数据结构
 
-```cpp
-namespace hixl {
-
-/**
- * @brief 判断 EID 是否为 CLOS 层（串口组）
- * @param [in] eid EID 字符串
- * @return true: CLOS 层 (port > 9), false: Mesh 层 (port ≤ 9)
- */
-bool IsClosLayerEid(const std::string& eid);
-
-}
-```
-
----
-
-### 2.3 CLOS 层专用接口
-
-#### 2.3.1 GetPgEid
-
-```cpp
-namespace hixl {
-
-/**
- * @brief 从 urma_dev 获取 CLOS 层 EID（PG EID，串口组标识）
- * @param [in] eid_list EID 列表
- * @return 第一个 port > 9 的 EID，若未找到则返回空字符串
- * @note CLOS 层的 EID 代表一组串口的聚合，使用 port > 9 区分
- */
-std::string GetPgEid(const std::vector<std::string>& eid_list);
-
-}
-```
-
----
-
-#### 2.3.2 GetLevel1ConfigServer
-
-```cpp
-namespace hixl {
-
-/**
- * @brief 获取 CLOS 层串口组配置（Server 类型）
- * @param [in] mainboard_id 主板 ID
- *        - 35: 2+4 服务器
- *        - 37, 39: 其它服务器
- * @return 配置列表，格式: [(die_id, fe_id, [port1, port2, ...]), ...]
- *
- * 配置示例:
- *   - mainboard_id = 35: {{0, 3, {4, 5, 6, 7}}, {1, 2, {5, 6}}}
- *   - mainboard_id = 37/39: {{0, 3, {1, 2, 3, 4, 5, 6, 7, 8}}}
- */
-std::vector<std::tuple<int, int, std::vector<int>>> GetLevel1ConfigServer(int mainboard_id);
-
-}
-```
-
----
-
-#### 2.3.3 GetLevel1ConfigPod
-
-```cpp
-namespace hixl {
-
-/**
- * @brief 获取 CLOS 层串口组配置（Pod 类型）
- * @param [in] mainboard_id 主板 ID
- * @param [in] phy_id 物理设备 ID
- * @return 配置列表，格式: [(die_id, fe_id, [port1, port2, ...]), ...]
- *
- * 配置示例 (mainboard_id = 3, phy_id % 8 < 4):
- *   {{0, 2, {1, 2}}, {1, 2, {0, 1, 2, 3, 5, 6}}}
- */
-std::vector<std::tuple<int, int, std::vector<int>>> GetLevel1ConfigPod(int mainboard_id, int phy_id);
-
-}
-```
-
----
-
-### 2.4 数据结构
-
-#### 2.4.1 LocalCommRes（输出结构体）
+#### 2.5.1 LocalCommRes（输出结构体）
 
 ```cpp
 namespace hixl {
@@ -326,7 +248,7 @@ struct LocalCommRes {
 
 ---
 
-#### 2.4.2 EndpointConfig
+#### 2.5.2 EndpointConfig
 
 ```cpp
 namespace hixl {
@@ -347,7 +269,7 @@ struct EndpointConfig {
 
 ---
 
-#### 2.4.3 TopoLink
+#### 2.5.3 TopoLink
 
 ```cpp
 namespace hixl {
@@ -363,8 +285,8 @@ struct TopoLink {
     int32_t local_b;          // 本地节点 B
     int32_t remote_a;         // 远端节点 A
     int32_t remote_b;         // 远端节点 B
-    std::string local_a_ports;  // 本地 A 端口（EID）
-    std::string local_b_ports;  // 本地 B 端口（EID）
+    std::vector<std::string> local_a_ports;  // 本地 A 端口列表（串口标识，如 "die_id/port"）
+    std::vector<std::string> local_b_ports;  // 本地 B 端口列表
 };
 
 }
@@ -373,13 +295,88 @@ struct TopoLink {
 **使用场景**：
 - 解析 topology 文件后得到
 - 用于 D2D 和 D2U 边生成
+
+---
+
+#### 2.5.4 NpuRootInfo（rootinfo_builder.h）
+
+```cpp
+namespace hixl {
+
+/**
+ * @brief NPU 串口到 EID 的映射信息
+ */
+struct NpuRootInfo {
+    std::map<std::string, std::string> port_to_eid;  // Mesh 层串口到 EID 映射，key: "die_id/port"
+    std::vector<ClosPgEidInfo> clos_pg_eids;          // CLOS 层 PG EID 列表
+};
+
+}
 ```
 
 ---
 
-### 2.5 边生成接口
+#### 2.5.5 ClosPgEidInfo（rootinfo_builder.h）
 
-#### 2.5.1 GenerateD2DEdges
+```cpp
+namespace hixl {
+
+/**
+ * @brief CLOS PG EID 信息
+ */
+struct ClosPgEidInfo {
+    std::string eid;       // CLOS PG EID
+    int die_id;           // 该 PG EID 对应的 die_id
+};
+
+}
+```
+
+---
+
+#### 2.5.6 UrmaDevice（rootinfo_builder.h）
+
+```cpp
+namespace hixl {
+
+/**
+ * @brief URMA Device 结构
+ */
+struct UrmaDevice {
+    std::string name;                      // 设备名称，如 "udma0"
+    std::vector<std::string> eid_list;    // 该设备下的所有 EID 列表
+};
+
+}
+```
+
+---
+
+#### 2.5.7 EidByte6Info（rootinfo_builder.h）
+
+```cpp
+namespace hixl {
+
+/**
+ * @brief EID 第6字节解析结果
+ */
+struct EidByte6Info {
+    int byte6;           // 原始第6字节值
+    int high_nibble;    // 高4位
+    int low_nibble;     // 低4位
+    int die_id;         // die_id (0 或 1)
+    bool is_pg_eid;     // 是否为 PG EID (串口组)
+    int port;           // port 值 (0-15)
+};
+
+}
+```
+
+---
+
+### 2.6 边生成接口
+
+#### 2.6.1 GenerateD2DEdges
 
 ```cpp
 namespace hixl {
@@ -387,7 +384,7 @@ namespace hixl {
 /**
  * @brief 生成 D2D 直连边（Device to Device）
  * @param [in] topo_data topology 解析后的数据
- * @param [in] npu_eid_ports NPU 的 EID 和 Port 映射
+ * @param [in] npu_rootinfos 所有相关 NPU 的 rootinfo 映射
  * @param [in] phy_id 当前 NPU 物理 ID
  * @param [out] edges 生成的边列表
  * @return 成功: SUCCESS, 失败: 其它错误码
@@ -396,54 +393,40 @@ namespace hixl {
  *   - net_layer = 0
  *   - link_type = PEER2PEER
  *   - topo_type = 1DMESH
- *   - local_a 在 NPU ID 范围内
+ *   - local_a 或 local_b 等于 phy_id
  */
-Status GenerateD2DEdges(
+int32_t GenerateD2DEdges(
     const TopoData& topo_data,
-    const NpuEidPortWithClos& npu_eid_ports,
+    const std::map<int32_t, NpuRootInfo>& npu_rootinfos,
     int32_t phy_id,
-    std::vector<EndpointConfig>& edges
-);
+    std::vector<EndpointConfig>& edges);
 
 }
 ```
 
 ---
 
-#### 2.5.2 GenerateD2UEdges
+#### 2.6.2 GenerateD2UEdges
 
 ```cpp
 namespace hixl {
 
 /**
  * @brief 生成 D2U 非直连边（Device to UB Gateway）
- * @param [in] topo_data topology 解析后的数据
- * @param [in] npu_eid_ports NPU 的 EID 和 Port 映射（包含 CLOS 层）
- * @param [in] phy_id 当前 NPU 物理 ID
- * @param [out] edges 生成的边列表
- * @return 成功: SUCCESS, 失败: 其它错误码
- *
- * 拓扑筛选条件：
- *   - net_layer = 1
- *   - link_type = PEER2NET
- *   - topo_type = CLOS
- *   - local_a 在 NPU ID 范围内
- *
- * @note 使用 CLOS 层的 pg_eid 和串口组信息生成边
+ * @param [in] plane_pg_0_eid CLOS 层 plane_pg_0 的 EID（可为空）
+ * @param [in] plane_pg_1_eid CLOS 层 plane_pg_1 的 EID（可为空）
+ * @param [out] d2u_edges 生成的边列表
  */
-Status GenerateD2UEdges(
-    const TopoData& topo_data,
-    const NpuEidPortWithClos& npu_eid_ports,
-    int32_t phy_id,
-    std::vector<EndpointConfig>& edges
-);
+void GenerateD2UEdges(const std::string& plane_pg_0_eid,
+                      const std::string& plane_pg_1_eid,
+                      std::vector<EndpointConfig>& d2u_edges);
 
 }
 ```
 
 ---
 
-#### 2.5.3 GenerateH2DEdges
+#### 2.6.3 GenerateH2DEdges
 
 ```cpp
 namespace hixl {
@@ -451,8 +434,6 @@ namespace hixl {
 /**
  * @brief 生成 H2D 直连边（Host to Device）
  * @param [in] route_data route.conf 解析后的数据
- * @param [in] npu_eid_ports NPU 的 EID 和 Port 映射
- * @param [in] phy_id 当前 NPU 物理 ID
  * @param [out] edges 生成的边列表
  * @return 成功: SUCCESS, 失败: 其它错误码
  *
@@ -461,42 +442,54 @@ namespace hixl {
  *   - dst_eid: remote_eid
  *   - placement: host
  */
-Status GenerateH2DEdges(
+int32_t GenerateH2DEdges(
     const RouteData& route_data,
-    const NpuEidPortWithClos& npu_eid_ports,
-    int32_t phy_id,
-    std::vector<EndpointConfig>& edges
-);
+    std::vector<EndpointConfig>& edges);
 
 }
 ```
 
 ---
 
-#### 2.5.4 GenerateH2UEdges
+#### 2.6.4 GenerateD2HEdges
+
+```cpp
+namespace hixl {
+
+/**
+ * @brief 生成 D2H 直连边（Device to Host）
+ * @param [in] route_data route.conf 解析后的数据
+ * @param [out] edges 生成的边列表
+ * @return 成功: SUCCESS, 失败: 其它错误码
+ *
+ * 数据来源：从 route.conf 获取
+ *   - comm_id: remote_eid
+ *   - dst_eid: local_eid
+ *   - placement: device
+ */
+int32_t GenerateD2HEdges(
+    const RouteData& route_data,
+    std::vector<EndpointConfig>& edges);
+
+}
+```
+
+---
+
+#### 2.6.5 GenerateH2UEdges
 
 ```cpp
 namespace hixl {
 
 /**
  * @brief 生成 H2U 非直连边（Host to UB Gateway）
- * @param [in] route_data route.conf 解析后的数据
- * @param [in] npu_eid_ports NPU 的 EID 和 Port 映射（包含 CLOS 层）
- * @param [in] phy_id 当前 NPU 物理 ID
- * @param [out] edges 生成的边列表
- * @return 成功: SUCCESS, 失败: 其它错误码
- *
- * 数据来源：
- *   - comm_id: 从 route.conf 获取 local_eid
- *   - plane: 使用 CLOS 层的 plane_id (plane_pg_0 或 plane_pg_1)
- *   - placement: host
+ * @param [in] plane_pg_0_eid CLOS 层 plane_pg_0 的 EID（可为空）
+ * @param [in] plane_pg_1_eid CLOS 层 plane_pg_1 的 EID（可为空）
+ * @param [out] h2u_edges 生成的边列表
  */
-Status GenerateH2UEdges(
-    const RouteData& route_data,
-    const NpuEidPortWithClos& npu_eid_ports,
-    int32_t phy_id,
-    std::vector<EndpointConfig>& edges
-);
+void GenerateH2UEdges(const std::string& plane_pg_0_eid,
+                       const std::string& plane_pg_1_eid,
+                       std::vector<EndpointConfig>& h2u_edges);
 
 }
 ```
@@ -514,53 +507,61 @@ Status GenerateH2UEdges(
            │                               │                               │
            ▼                               ▼                               ▼
     ┌─────────────┐                ┌─────────────┐                ┌─────────────┐
-    │ DCMI 接口   │                │ route.conf  │                │ topology    │
-    │ 获取        │                │ 读取         │                │ 文件读取     │
-    │ urma_dev    │                │             │                │             │
+    │ GetMainboardId│              │ ParseRouteFile│              │ ParseTopoFile│
+    │ (DCMI 接口)  │               │ (route.conf) │               │ (topo 文件)  │
     └─────────────┘                └─────────────┘                └─────────────┘
            │                               │                               │
-           ▼                               │                               ▼
-    ┌─────────────────────────────────────────────────────────────────────────┐
-    │                     解析 EID list                                        │
-    │  ┌─────────────────────────┐    ┌─────────────────────────┐            │
-    │  │ Mesh 层 (port ≤ 9)      │    │ CLOS 层 (port > 9)       │            │
-    │  │ - GetMeshPort           │    │ - GetPgEid              │            │
-    │  │ - GetServerDieId        │    │ - GetLevel1ConfigServer │            │
-    │  │ - GetPodDieId            │    │ - GetLevel1ConfigPod    │            │
-    │  └─────────────────────────┘    └─────────────────────────┘            │
-    └─────────────────────────────────────────────────────────────────────────┘
-                   │                                        │
-                   ▼                                        ▼
-           ┌───────────────┐                        ┌───────────────┐
-           │ NpuMeshEidPort │                        │  ClosEidPort   │
-           └───────────────┘                        └───────────────┘
-                   │                                        │
-                   └────────────────┬───────────────────────┘
-                                    ▼
-                         ┌─────────────────────┐
-                         │ NpuEidPortWithClos   │
-                         └─────────────────────┘
-                                    │
-           ┌─────────────────────────┼─────────────────────────┐
-           │                         │                         │
-           ▼                         ▼                         ▼
+           ▼                               ▼                               ▼
+    ┌─────────────┐                ┌─────────────┐                ┌─────────────┐
+    │ 产品形态判断 │                │ RouteData   │                │  TopoData   │
+    │ Pod/Server  │                │ (EID 映射)  │                │ (链路列表)   │
+    └─────────────┘                └─────────────┘                └─────────────┘
+                                           │                               │
+                                           │                               ▼
+                                           │                       ┌───────────────┐
+                                           │                       │CollectRelated │
+                                           │                       │NpuIds         │
+                                           │                       └───────────────┘
+                                           │                               │
+                                           ▼                               ▼
+                                           │                       ┌───────────────┐
+                                           │                       │BuildNpu       │
+                                           │                       │Rootinfos      │
+                                           │                       │(DCMI/JSON)    │
+                                           │                       └───────────────┘
+                                           │                               │
+                                           │                               ▼
+                                           │                       ┌───────────────┐
+                                           │                       │CollectClos    │
+                                           │                       │PgEids         │
+                                           │                       └───────────────┘
+                                           │                               │
+           ┌───────────────────────────────┼───────────────────────────────┘
+           │                               │                               │
+           ▼                               ▼                               ▼
     ┌─────────────┐          ┌─────────────┐          ┌─────────────┐
     │ Generate    │          │ Generate    │          │ Generate    │
     │ D2DEdges    │          │ D2UEdges    │          │ H2DEdges    │
-    │ (Mesh)      │          │ (CLOS)      │          │             │
+    │ (topo+      │          │ (CLOS PG    │          │ (route)     │
+    │  rootinfos) │          │  EIDs)      │          │             │
     └─────────────┘          └─────────────┘          └─────────────┘
-                                                           │
-                                                           ▼
-                                                    ┌─────────────┐
-                                                    │ Generate    │
-                                                    │ H2UEdges    │
-                                                    └─────────────┘
-                                                           │
-                                                           ▼
-                                                    ┌─────────────┐
-                                                    │ JSON 输出    │
-                                                    │ (LocalCommRes)│
-                                                    └─────────────┘
+                                                               │
+           ┌───────────────────────────────────────────────────┘
+           │                               │
+           ▼                               ▼
+    ┌─────────────┐                ┌─────────────┐
+    │ Generate    │                │ Generate    │
+    │ D2HEdges    │                │ H2UEdges    │
+    │ (route)     │                │ (CLOS PG    │
+    │             │                │  EIDs)      │
+    └─────────────┘                └─────────────┘
+           │                               │
+           └───────────────┬───────────────┘
+                           ▼
+                  ┌─────────────────┐
+                  │ LocalCommRes    │
+                  │ (结构体输出)     │
+                  └─────────────────┘
 ```
 
 ---
@@ -644,24 +645,14 @@ int main() {
 
 | 依赖 | 说明 |
 |------|------|
-| hal.h / hal.c | DCMI 接口封装，提供 `hal_get_eid_list_by_phy_id`、`HalGetUBEntityList`、`hal_get_mainboard_id` 等函数 |
-| ACL Runtime | 用于获取设备信息的 ACL 接口（`aclrtGetDevice`、`aclrtGetPhyDevIdByLogicDevId`） |
-| libdcmi.so | DCMI 动态库，通过 dlopen 加载 |
+| libdcmi.so | DCMI 动态库，通过 dlopen 动态加载，提供 `dcmiv2_init`、`dcmiv2_get_urma_device_cnt`、`dcmiv2_get_eid_list_by_urma_dev_index`、`dcmiv2_get_mainboard_id`、`dcmiv2_get_dev_id_by_chip_phy_id` 等函数 |
 
 ### 7.2 内部依赖
 
 | 模块 | 说明 |
 |------|------|
-| hixl_inner_types.h | EndpointConfig 等数据结构定义 |
-| hixl_types.h | HIXL 类型定义 |
-
-### 7.3 编译说明
-
-编译时需要包含 hal.h 所在路径，并链接 libdcmi.so：
-
-```bash
-g++ -I/path/to/hal.h -ldcmi local_comm_res_tool.cc -o local_comm_res_tool
-```
+| rootinfo_builder.h | RootInfo 构建模块，提供 `BuildNpuRootInfo`、`GetUrmaDeviceList`、`GetMeshDieId`、`ParseEidByte6` 等接口，以及 `NpuRootInfo`、`UrmaDevice`、`EidByte6Info` 等数据结构 |
+| local_comm_res_tool.h | 本工具头文件，定义 `LocalCommRes`、`EndpointConfig`、`TopoLink`、`RouteEntry` 等数据结构 |
 
 ---
 
@@ -671,10 +662,6 @@ g++ -I/path/to/hal.h -ldcmi local_comm_res_tool.cc -o local_comm_res_tool
 |------|------|--------|------|
 | 1 | **RoCE 边生成** | 待确认 | 当前方案未实现，需确认是否需要实现 |
 | 2 | **host_pairs.txt 格式** | 待确认 | 用于 RoCE 边生成，需提供格式说明 |
-| 3 | **DCMI 接口确认** | 待确认 | 需确认 urma_dev_list 获取方式是否正确 |
-| 4 | **mainboard_id 获取方式** | 待确认 | 当前通过 options 传入，是否有其他方式获取 |
-| 5 | **CLOSE 层串口组配置表** | 待确认 | 配置表是否完整，是否需要动态查询 |
-| 6 | **拓扑筛选逻辑** | 待确认 | D2D/D2U 边的拓扑筛选条件是否正确 |
 
 ---
 
