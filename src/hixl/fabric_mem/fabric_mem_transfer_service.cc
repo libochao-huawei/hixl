@@ -49,6 +49,18 @@ uint64_t GetDurationUs(const std::chrono::steady_clock::time_point &start,
                        const std::chrono::steady_clock::time_point &end) {
   return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
 }
+
+Status NeedTransLocalAddr(const std::vector<TransferOpDesc> &op_descs, bool &need_trans_local_addr) {
+  need_trans_local_addr = false;
+  if (op_descs.empty()) {
+    return SUCCESS;
+  }
+  aclrtPtrAttributes attributes{};
+  HIXL_CHK_ACL_RET(aclrtPointerGetAttributes(ValueToPtr(op_descs[0].local_addr), &attributes),
+                   "Get local pointer attributes failed.");
+  need_trans_local_addr = (attributes.location.type == ACL_MEM_LOCATION_TYPE_HOST);
+  return SUCCESS;
+}
 }  // namespace
 
 FabricMemTransferService::~FabricMemTransferService() {
@@ -442,10 +454,7 @@ Status FabricMemTransferService::TryGetStream(std::vector<aclrtStream> &streams,
   }
 }
 
-Status FabricMemTransferService::TryGetStreamOnce(std::vector<aclrtStream> &streams, size_t stream_num) {
-  std::lock_guard<std::mutex> lock(stream_pool_mutex_);
-  streams.clear();
-  std::vector<aclrtStream> new_streams;
+Status FabricMemTransferService::ReuseStreamsLocked(std::vector<aclrtStream> &streams, size_t stream_num) {
   for (auto &stream_stat : stream_pool_) {
     if (!stream_stat.second) {
       continue;
@@ -456,26 +465,62 @@ Status FabricMemTransferService::TryGetStreamOnce(std::vector<aclrtStream> &stre
       return SUCCESS;
     }
   }
+  return FAILED;
+}
+
+Status FabricMemTransferService::CreateStreamLocked(std::vector<aclrtStream> &streams,
+                                                    std::vector<aclrtStream> &new_streams) {
+  aclrtStream stream = nullptr;
+  HIXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&stream, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC),
+                   "Create fabric mem stream failed.");
+  streams.emplace_back(stream);
+  new_streams.emplace_back(stream);
+  return SUCCESS;
+}
+
+void FabricMemTransferService::ReturnStreamsLocked(const std::vector<aclrtStream> &streams) {
+  for (auto &stream : streams) {
+    const auto it = stream_pool_.find(stream);
+    if (it == stream_pool_.end()) {
+      continue;
+    }
+    it->second = true;
+  }
+}
+
+void FabricMemTransferService::DestroyStreams(const std::vector<aclrtStream> &streams) {
+  for (auto &stream : streams) {
+    HIXL_CHK_ACL(aclrtDestroyStream(stream), "Destroy newly created fabric mem stream failed.");
+  }
+}
+
+Status FabricMemTransferService::RollbackStreamsLocked(std::vector<aclrtStream> &streams,
+                                                       const std::vector<aclrtStream> &new_streams) {
+  HIXL_EVENT("Fabric mem stream pool is full, current size:%zu.", stream_pool_.size());
+  ReturnStreamsLocked(streams);
+  DestroyStreams(new_streams);
+  streams.clear();
+  return FAILED;
+}
+
+Status FabricMemTransferService::TryGetStreamOnce(std::vector<aclrtStream> &streams, size_t stream_num) {
+  std::lock_guard<std::mutex> lock(stream_pool_mutex_);
+  streams.clear();
+  std::vector<aclrtStream> new_streams;
+  if (ReuseStreamsLocked(streams, stream_num) == SUCCESS) {
+    return SUCCESS;
+  }
   while (streams.size() < stream_num) {
     if (stream_pool_.size() + new_streams.size() >= max_stream_num_) {
-      HIXL_EVENT("Fabric mem stream pool is full, current size:%zu.", stream_pool_.size());
-      for (auto &stream : streams) {
-        const auto it = stream_pool_.find(stream);
-        if (it != stream_pool_.end()) {
-          it->second = true;
-        }
-      }
-      for (auto &stream : new_streams) {
-        HIXL_CHK_ACL(aclrtDestroyStream(stream), "Destroy newly created fabric mem stream failed.");
-      }
-      streams.clear();
-      return FAILED;
+      return RollbackStreamsLocked(streams, new_streams);
     }
-    aclrtStream stream = nullptr;
-    HIXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&stream, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC),
-                     "Create fabric mem stream failed.");
-    streams.emplace_back(stream);
-    new_streams.emplace_back(stream);
+    const Status status = CreateStreamLocked(streams, new_streams);
+    if (status != SUCCESS) {
+      ReturnStreamsLocked(streams);
+      DestroyStreams(new_streams);
+      streams.clear();
+      return status;
+    }
   }
   for (const auto &stream : streams) {
     stream_pool_[stream] = false;
@@ -499,11 +544,16 @@ Status FabricMemTransferService::DoTransfer(const std::vector<aclrtStream> &stre
                                             std::chrono::steady_clock::time_point &start) {
   std::vector<TransferOpDesc> new_op_descs;
   new_op_descs.reserve(op_descs.size());
+  bool need_trans_local_addr = false;
+  HIXL_CHK_STATUS_RET(NeedTransLocalAddr(op_descs, need_trans_local_addr),
+                      "Check local fabric mem address type failed.");
   for (const auto &op : op_descs) {
-    uintptr_t new_local_addr = 0;
+    uintptr_t new_local_addr = op.local_addr;
     uintptr_t new_remote_addr = 0;
-    HIXL_CHK_STATUS_RET(TransLocalOpAddr(op.local_addr, op.len, new_local_addr),
-                        "Local fabric mem address is not registered.");
+    if (need_trans_local_addr) {
+      HIXL_CHK_STATUS_RET(TransLocalHostOpAddr(op.local_addr, op.len, new_local_addr),
+                          "Local host fabric mem address is not registered.");
+    }
     HIXL_CHK_STATUS_RET(TransOpAddr(op.remote_addr, op.len, context.remote_va_to_old_va, new_remote_addr),
                         "Remote fabric mem address is not registered.");
     auto new_op = op;
@@ -533,24 +583,27 @@ Status FabricMemTransferService::TransOpAddr(uintptr_t old_addr, size_t len,
   return PARAM_INVALID;
 }
 
-bool FabricMemTransferService::FindLocalRegisteredAddrLocked(uintptr_t old_addr, size_t len,
-                                                             uintptr_t &new_addr) const {
+bool FabricMemTransferService::FindLocalHostRegisteredAddrLocked(uintptr_t old_addr, size_t len,
+                                                                 uintptr_t &new_addr) const {
   for (const auto &item : share_handles_) {
     const auto &info = item.second;
+    if (info.imported_va == 0) {
+      continue;
+    }
     const auto registered_end = info.va_addr + info.len;
     if (old_addr < info.va_addr || old_addr + len > registered_end) {
       continue;
     }
-    new_addr = (info.imported_va != 0) ? info.imported_va + (old_addr - info.va_addr) : old_addr;
+    new_addr = info.imported_va + (old_addr - info.va_addr);
     return true;
   }
   return false;
 }
 
-Status FabricMemTransferService::TransLocalOpAddr(uintptr_t old_addr, size_t len, uintptr_t &new_addr) {
+Status FabricMemTransferService::TransLocalHostOpAddr(uintptr_t old_addr, size_t len, uintptr_t &new_addr) {
   std::lock_guard<std::mutex> lock(share_handle_mutex_);
-  HIXL_CHK_BOOL_RET_STATUS(FindLocalRegisteredAddrLocked(old_addr, len, new_addr), PARAM_INVALID,
-                           "Local fabric mem address:%lu, len:%zu is not registered.", old_addr, len);
+  HIXL_CHK_BOOL_RET_STATUS(FindLocalHostRegisteredAddrLocked(old_addr, len, new_addr), PARAM_INVALID,
+                           "Local host fabric mem address:%lu, len:%zu is not registered.", old_addr, len);
   return SUCCESS;
 }
 
@@ -566,6 +619,7 @@ Status FabricMemTransferService::ProcessCopyWithAsync(const std::vector<aclrtStr
                        "Fabric mem write copy failed.");
       continue;
     }
+    HIXL_CHK_BOOL_RET_STATUS(operation == TransferOp::READ, PARAM_INVALID, "Invalid fabric mem transfer operation.");
     HIXL_CHK_ACL_RET(aclrtMemcpyAsync(ValueToPtr(op.local_addr), op.len, ValueToPtr(op.remote_addr), op.len,
                                       ACL_MEMCPY_DEVICE_TO_DEVICE, stream),
                      "Fabric mem read copy failed.");

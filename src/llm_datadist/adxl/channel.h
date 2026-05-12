@@ -18,16 +18,11 @@
 #include "nlohmann/json.hpp"
 #include "acl/acl.h"
 #include "adxl/adxl_types.h"
-#include "fabric_mem/fabric_mem_remote_memory.h"
-#include "fabric_mem/fabric_mem_types.h"
 #include "hccl/hccl_adapter.h"
 #include "control_msg_handler.h"
 #include "adxl/stream_pool.h"
 
 namespace adxl {
-using hixl::ShareHandleInfo;
-using hixl::VaInfo;
-
 enum class ChannelType {
   kClient = 0,
   kServer = 1,
@@ -61,32 +56,22 @@ using AsyncResource = std::pair<aclrtEvent, aclrtStream>;
 struct AsyncRecord {
   std::vector<AsyncResource> async_resources;
   std::chrono::steady_clock::time_point transfer_start;
-  std::chrono::steady_clock::time_point real_copy_start;
   uint64_t transfer_bytes = 0UL;
   uint64_t op_desc_count = 0UL;
 };
 
-enum class RecvState {
-  WAITING_FOR_HEADER,
-  WAITING_FOR_BODY
-};
+enum class RecvState { WAITING_FOR_HEADER, WAITING_FOR_BODY };
 
 class Channel {
  public:
-  explicit Channel(ChannelInfo info)
-      : channel_info_(std::move(info)) {};
-  Status Initialize(bool enable_use_fabric_mem = false);
+  explicit Channel(ChannelInfo info) : channel_info_(std::move(info)){};
+  Status Initialize();
   Status Finalize();
   std::string GetChannelId() const;
-  Status TransferSync(TransferOp operation,
-                      const std::vector<TransferOpDesc> &op_descs,
-                      int32_t timeout_in_millis);
+  Status TransferSync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis);
+  Status TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs, aclrtStream stream);
   Status TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
-                       aclrtStream stream);
-  Status TransferAsync(TransferOp operation,
-                       const std::vector<TransferOpDesc> &op_descs,
-                       const TransferArgs &optional_args,
-                       TransferReq &req);
+                       const TransferArgs &optional_args, TransferReq &req);
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
   Status SetSocketNonBlocking(int32_t fd);
   void StopHeartbeat();
@@ -94,18 +79,17 @@ class Channel {
   Status CommWithFd(const std::function<Status(int32_t)> &func);
   Status SendHeartBeat(const std::function<Status(int32_t)> &func);
   static void SetHeartbeatTimeout(int64_t timeout_in_millis);
-  int32_t GetFd() const { return fd_; }
+  int32_t GetFd() const {
+    return fd_;
+  }
   void UpdateHeartbeatTime();
   bool IsHeartbeatTimeout() const;
   void SetStreamPool(StreamPool *stream_pool);
-  StreamPool* GetStreamPool();
+  StreamPool *GetStreamPool();
 
   std::mutex &GetTransferMutex();
-  
-  void GetNotifyMessages(std::vector<NotifyDesc> &notifies);
 
-  Status ImportMem(const std::vector<ShareHandleInfo> &remote_share_handles, int32_t device_id);
-  std::unordered_map<uintptr_t, VaInfo> GetNewVaToOldVa();
+  void GetNotifyMessages(std::vector<NotifyDesc> &notifies);
 
   int32_t GetTransferCount() const {
     return transfer_count_.load(std::memory_order_acquire);
@@ -131,8 +115,8 @@ class Channel {
   void SetDisconnecting(bool value) {
     disconnect_flag_.store(value, std::memory_order_release);
   }
-  Status TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
-                                  aclrtStream stream, uint64_t timeout);
+  Status TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs, aclrtStream stream,
+                                  uint64_t timeout);
   std::string GetStatisticChannelId() const;
 
  private:
@@ -141,7 +125,6 @@ class Channel {
   Status PrepareHcclComm(const std::chrono::steady_clock::time_point &hccl_start);
   Status ClearResources();
   void ClearNotifyMessages();
-  void ClearImportedMem();
   ChannelInfo channel_info_;
   // mutex for fd
   std::mutex mutex_;
@@ -166,14 +149,11 @@ class Channel {
   // lock for push/fetch items from notify_messages_
   std::mutex notify_message_mutex_;
   std::vector<NotifyMsg> notify_messages_;
-  
+
   friend class ChannelManager;
   std::mutex transfer_reqs_mutex_;
   std::unordered_map<uint64_t, AsyncRecord> req_2_async_record_;
   StreamPool *stream_pool_ = nullptr;
-
-  hixl::FabricMemRemoteMemory fabric_mem_remote_memory_;
-  bool enable_use_fabric_mem_ = false;
 };
 using ChannelPtr = std::shared_ptr<Channel>;
 }  // namespace adxl

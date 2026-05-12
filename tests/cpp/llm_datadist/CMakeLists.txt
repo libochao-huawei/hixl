@@ -27,7 +27,6 @@ set(LLM_DATADIST_TEST_FILES
         segment_table_unittest.cc
         statistic_manager_unittest.cc
         buffer_transfer_service_unittest.cc
-        fabric_mem_transfer_service_unittest.cc
         virtual_memory_manager_unittest.cc
         control_msg_handler_unittest.cc
 )

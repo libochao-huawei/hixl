@@ -349,9 +349,6 @@ Status HixlEngine::DeregisterFabricMem(MemHandle mem_handle) {
 }
 
 Status HixlEngine::ConnectFabricMem(const AscendString &remote_engine, int32_t timeout_in_millis) {
-  HIXL_CHK_BOOL_RET_STATUS(strcmp(local_engine_.c_str(), remote_engine.GetString()) != 0, PARAM_INVALID,
-                           "[HixlEngine] FabricMem does not support connection with self, local_engine:%s.",
-                           local_engine_.c_str());
   std::lock_guard<std::mutex> lock(mutex_);
   const std::string remote = remote_engine.GetString();
   HIXL_CHK_BOOL_RET_STATUS(fabric_mem_remote_mems_.find(remote) == fabric_mem_remote_mems_.end(), ALREADY_CONNECTED,

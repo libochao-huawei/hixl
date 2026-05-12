@@ -14,11 +14,10 @@
 #include <string>
 #include "adxl/adxl_inner_engine.h"
 #include "base/err_msg.h"
-#include "adxl/fabric_mem_transfer_service.h"
 #include "adxl/adxl_checker.h"
-#include "adxl/statistic_manager.h"
 #include "engine/engine_factory.h"
 #include "engine/engine.h"
+#include "fabric_mem/fabric_mem_transfer_service.h"
 #include "hixl/hixl_types.h"
 
 namespace adxl {
@@ -50,19 +49,12 @@ hixl::NotifyDesc ToHixlNotifyDesc(const NotifyDesc &notify) {
   return hixl::NotifyDesc{notify.name, notify.notify_msg};
 }
 
-bool IsFabricMemEnabled(const std::map<AscendString, AscendString> &options) {
-  const auto it = options.find(hixl::OPTION_ENABLE_USE_FABRIC_MEM);
-  return it != options.end() && std::string(it->second.GetString()) == "1";
-}
-
 Status CheckTransferOpDescs(const std::vector<TransferOpDesc> &op_descs) {
   for (const auto &desc : op_descs) {
     auto local_addr = reinterpret_cast<void *>(desc.local_addr);
     auto remote_addr = reinterpret_cast<void *>(desc.remote_addr);
-    ADXL_CHK_BOOL_RET_STATUS(local_addr != nullptr,
-                             PARAM_INVALID, "local addr of desc can not be null.");
-    ADXL_CHK_BOOL_RET_STATUS(remote_addr != nullptr,
-                             PARAM_INVALID, "remote addr of desc can not be null.");
+    ADXL_CHK_BOOL_RET_STATUS(local_addr != nullptr, PARAM_INVALID, "local addr of desc can not be null.");
+    ADXL_CHK_BOOL_RET_STATUS(remote_addr != nullptr, PARAM_INVALID, "remote addr of desc can not be null.");
   }
   return SUCCESS;
 }
@@ -85,15 +77,11 @@ class AdxlEngine::AdxlEngineImpl {
 
   Status Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis = 1000);
 
-  Status TransferSync(const AscendString &remote_engine,
-                      TransferOp operation,
-                      const std::vector<TransferOpDesc> &op_descs,
-                      int32_t timeout_in_millis = 1000);
+  Status TransferSync(const AscendString &remote_engine, TransferOp operation,
+                      const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis = 1000);
 
-  Status TransferAsync(const AscendString &remote_engine,
-                       TransferOp operation,
-                       const std::vector<TransferOpDesc> &op_descs,
-                       const TransferArgs &optional_args,
+  Status TransferAsync(const AscendString &remote_engine, TransferOp operation,
+                       const std::vector<TransferOpDesc> &op_descs, const TransferArgs &optional_args,
                        TransferReq &req);
 
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
@@ -106,7 +94,6 @@ class AdxlEngine::AdxlEngineImpl {
   std::mutex mutex_;
   std::string local_engine_;
   std::unique_ptr<hixl::Engine> engine_;
-  bool enable_use_fabric_mem_ = false;
 };
 
 Status AdxlEngine::AdxlEngineImpl::Initialize(const std::map<AscendString, AscendString> &options) {
@@ -114,7 +101,6 @@ Status AdxlEngine::AdxlEngineImpl::Initialize(const std::map<AscendString, Ascen
   if (engine_ != nullptr) {
     ADXL_CHK_BOOL_RET_SPECIAL_STATUS(engine_->IsInitialized(), SUCCESS, "Already initialized");
   }
-  enable_use_fabric_mem_ = IsFabricMemEnabled(options);
   engine_ = hixl::EngineFactory::CreateEngine(local_engine_, options);
   ADXL_CHECK_NOTNULL(engine_, "Failed to create engine, local_engine:%s", local_engine_.c_str());
   ADXL_CHK_STATUS_RET(engine_->Initialize(options), "Failed to initialize AdxlEngine.");
@@ -129,8 +115,7 @@ void AdxlEngine::AdxlEngineImpl::Finalize() {
 
 Status AdxlEngine::AdxlEngineImpl::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
   ADXL_CHK_BOOL_RET_STATUS(engine_ != nullptr && engine_->IsInitialized(), FAILED, "AdxlEngine is not initialized");
-  ADXL_CHK_BOOL_RET_STATUS(reinterpret_cast<void *>(mem.addr) != nullptr,
-                           PARAM_INVALID, "mem.addr can not be null");
+  ADXL_CHK_BOOL_RET_STATUS(reinterpret_cast<void *>(mem.addr) != nullptr, PARAM_INVALID, "mem.addr can not be null");
   ADXL_CHK_STATUS_RET(engine_->RegisterMem(ToHixlMemDesc(mem), static_cast<hixl::MemType>(type), mem_handle),
                       "Failed to register mem");
   return SUCCESS;
@@ -145,18 +130,7 @@ Status AdxlEngine::AdxlEngineImpl::DeregisterMem(MemHandle mem_handle) {
 
 Status AdxlEngine::AdxlEngineImpl::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
   ADXL_CHK_BOOL_RET_STATUS(engine_ != nullptr && engine_->IsInitialized(), FAILED, "AdxlEngine is not initialized");
-  const auto start = std::chrono::steady_clock::now();
   ADXL_CHK_STATUS_RET(engine_->Connect(remote_engine, timeout_in_millis), "Failed to connect");
-  if (enable_use_fabric_mem_) {
-    const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - start).count();
-    StatisticManager::GetInstance().UpdateConnectTotalCost(
-        StatisticManager::GetClientStatisticChannelId(remote_engine.GetString()), cost);
-    StatisticManager::GetInstance().UpdateTcpConnectCost(
-        StatisticManager::GetClientStatisticChannelId(remote_engine.GetString()), cost);
-    StatisticManager::GetInstance().UpdateConnectTotalCost(
-        StatisticManager::GetServerStatisticChannelId(local_engine_), cost);
-  }
   return SUCCESS;
 }
 
@@ -166,23 +140,20 @@ Status AdxlEngine::AdxlEngineImpl::Disconnect(const AscendString &remote_engine,
   return SUCCESS;
 }
 
-Status AdxlEngine::AdxlEngineImpl::TransferSync(const AscendString &remote_engine,
-                                                TransferOp operation,
+Status AdxlEngine::AdxlEngineImpl::TransferSync(const AscendString &remote_engine, TransferOp operation,
                                                 const std::vector<TransferOpDesc> &op_descs,
                                                 int32_t timeout_in_millis) {
   ADXL_CHK_BOOL_RET_STATUS(engine_ != nullptr && engine_->IsInitialized(), FAILED, "AdxlEngine is not initialized");
   ADXL_CHK_STATUS_RET(CheckTransferOpDescs(op_descs), "Failed to check transfer op descs");
-  ADXL_CHK_STATUS_RET(engine_->TransferSync(remote_engine, ToHixlTransferOp(operation),
-                                            ToHixlTransferOpDescs(op_descs), timeout_in_millis),
+  ADXL_CHK_STATUS_RET(engine_->TransferSync(remote_engine, ToHixlTransferOp(operation), ToHixlTransferOpDescs(op_descs),
+                                            timeout_in_millis),
                       "Failed to transfer sync.");
   return SUCCESS;
 }
 
-Status AdxlEngine::AdxlEngineImpl::TransferAsync(const AscendString &remote_engine,
-                                                 TransferOp operation,
+Status AdxlEngine::AdxlEngineImpl::TransferAsync(const AscendString &remote_engine, TransferOp operation,
                                                  const std::vector<TransferOpDesc> &op_descs,
-                                                 const TransferArgs &optional_args,
-                                                 TransferReq &req) {
+                                                 const TransferArgs &optional_args, TransferReq &req) {
   ADXL_CHK_BOOL_RET_STATUS(engine_ != nullptr && engine_->IsInitialized(), FAILED, "AdxlEngine is not initialized.");
   ADXL_CHK_STATUS_RET(CheckTransferOpDescs(op_descs), "Failed to check transfer op descs.");
   hixl::TransferArgs hixl_args;
@@ -205,7 +176,8 @@ Status AdxlEngine::AdxlEngineImpl::GetTransferStatus(const TransferReq &req, Tra
   return SUCCESS;
 }
 
-Status AdxlEngine::AdxlEngineImpl::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis) {
+Status AdxlEngine::AdxlEngineImpl::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify,
+                                              int32_t timeout_in_millis) {
   ADXL_CHK_BOOL_RET_STATUS(engine_ != nullptr && engine_->IsInitialized(), FAILED, "AdxlEngine is not initialized");
   ADXL_CHK_STATUS_RET(engine_->SendNotify(remote_engine, ToHixlNotifyDesc(notify), timeout_in_millis),
                       "Failed to send notify to remote engine:%s", remote_engine.GetString());
@@ -249,15 +221,16 @@ void AdxlEngine::Finalize() {
 }
 
 Status AdxlEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
-  LLMLOGI("RegisterMem start, type:%d, addr:%p, size:%zu",
-         static_cast<int32_t>(type), reinterpret_cast<void *>(mem.addr), mem.len);
+  LLMLOGI("RegisterMem start, type:%d, addr:%p, size:%zu", static_cast<int32_t>(type),
+          reinterpret_cast<void *>(mem.addr), mem.len);
   ADXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check AdxlEngine init");
   const auto ret = impl_->RegisterMem(mem, type, mem_handle);
-  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to register mem, "
+  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
+                           "Failed to register mem, "
                            "type:%d, addr:%p, size:%lu",
                            static_cast<int32_t>(type), reinterpret_cast<void *>(mem.addr), mem.len);
-  LLMLOGI("RegisterMem success, type:%d, addr:%p, size:%zu, handle:%p",
-         static_cast<int32_t>(type), reinterpret_cast<void *>(mem.addr), mem.len, mem_handle);
+  LLMLOGI("RegisterMem success, type:%d, addr:%p, size:%zu, handle:%p", static_cast<int32_t>(type),
+          reinterpret_cast<void *>(mem.addr), mem.len, mem_handle);
   return SUCCESS;
 }
 
@@ -265,8 +238,7 @@ Status AdxlEngine::DeregisterMem(MemHandle mem_handle) {
   LLMLOGI("DeregisterMem start, mem_handle:%p", mem_handle);
   ADXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check AdxlEngine init");
   const auto ret = impl_->DeregisterMem(mem_handle);
-  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to deregister mem, mem_handle:%p",
-                           mem_handle);
+  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to deregister mem, mem_handle:%p", mem_handle);
   LLMLOGI("DeregisterMem success, mem_handle:%p", mem_handle);
   return SUCCESS;
 }
@@ -276,8 +248,7 @@ Status AdxlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in
   ADXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check AdxlEngine init");
   ADXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, PARAM_INVALID, "timeout_in_millis:%d must > 0", timeout_in_millis);
   const auto ret = impl_->Connect(remote_engine, timeout_in_millis);
-  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
-                           "Failed to connect, remote engine:%s, timeout:%d ms",
+  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to connect, remote engine:%s, timeout:%d ms",
                            remote_engine.GetString(), timeout_in_millis);
   LLMLOGI("Connect success, remote engine:%s, timeout:%d ms", remote_engine.GetString(), timeout_in_millis);
   return SUCCESS;
@@ -288,17 +259,14 @@ Status AdxlEngine::Disconnect(const AscendString &remote_engine, int32_t timeout
   ADXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check AdxlEngine init");
   ADXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, PARAM_INVALID, "timeout_in_millis:%d must > 0", timeout_in_millis);
   const auto ret = impl_->Disconnect(remote_engine, timeout_in_millis);
-  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
-                           "Failed to disconnect, remote engine:%s, timeout:%d ms",
+  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to disconnect, remote engine:%s, timeout:%d ms",
                            remote_engine.GetString(), timeout_in_millis);
   LLMLOGI("Disconnect success, remote engine:%s, timeout:%d ms", remote_engine.GetString(), timeout_in_millis);
   return SUCCESS;
 }
 
-Status AdxlEngine::TransferSync(const AscendString &remote_engine,
-                                TransferOp operation,
-                                const std::vector<TransferOpDesc> &op_descs,
-                                int32_t timeout_in_millis) {
+Status AdxlEngine::TransferSync(const AscendString &remote_engine, TransferOp operation,
+                                const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis) {
   auto start = std::chrono::steady_clock::now();
   LLMLOGI("TransferSync start, remote_engine:%s, operation:%s, op_descs size:%zu, timeout:%d ms",
           remote_engine.GetString(), hixl::TransferOpToString(static_cast<hixl::TransferOp>(operation)).c_str(),
@@ -316,10 +284,8 @@ Status AdxlEngine::TransferSync(const AscendString &remote_engine,
           std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
   return SUCCESS;
 }
-Status AdxlEngine::TransferAsync(const AscendString &remote_engine,
-                                 TransferOp operation,
-                                 const std::vector<TransferOpDesc> &op_descs,
-                                 const TransferArgs &optional_args,
+Status AdxlEngine::TransferAsync(const AscendString &remote_engine, TransferOp operation,
+                                 const std::vector<TransferOpDesc> &op_descs, const TransferArgs &optional_args,
                                  TransferReq &req) {
   ADXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "Impl is nullptr, check Hixl init.");
   ADXL_CHK_STATUS_RET(impl_->TransferAsync(remote_engine, operation, op_descs, optional_args, req),
@@ -333,8 +299,7 @@ Status AdxlEngine::TransferAsync(const AscendString &remote_engine,
 
 Status AdxlEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
   ADXL_CHK_BOOL_RET_STATUS(req != nullptr, FAILED, "Req is nullptr, check req.");
-  ADXL_CHK_STATUS_RET(impl_->GetTransferStatus(req, status),
-                      "Failed to get transfer status, req:%llu.", 
+  ADXL_CHK_STATUS_RET(impl_->GetTransferStatus(req, status), "Failed to get transfer status, req:%llu.",
                       static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(req)));
   return SUCCESS;
 }
@@ -344,14 +309,15 @@ Status AdxlEngine::SendNotify(const AscendString &remote_engine, const NotifyDes
   ADXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check AdxlEngine init");
   constexpr uint32_t kMaxNotifyLength = 1024U;
   ADXL_CHK_BOOL_RET_STATUS(notify.name.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
-                           "notify.name length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.name.GetLength());
+                           "notify.name length exceed max limit: %u, current: %zu", kMaxNotifyLength,
+                           notify.name.GetLength());
   ADXL_CHK_BOOL_RET_STATUS(notify.notify_msg.GetLength() <= kMaxNotifyLength, PARAM_INVALID,
-                           "notify.notify_msg length exceed max limit: %u, current: %zu", kMaxNotifyLength, notify.notify_msg.GetLength());
+                           "notify.notify_msg length exceed max limit: %u, current: %zu", kMaxNotifyLength,
+                           notify.notify_msg.GetLength());
   ADXL_CHK_BOOL_RET_STATUS(timeout_in_millis > 0, PARAM_INVALID, "timeout_in_millis:%d must > 0", timeout_in_millis);
   const auto ret = impl_->SendNotify(remote_engine, notify, timeout_in_millis);
-  
-  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
-                           "Failed to send notify, remote engine:%s, notify name:%s",
+
+  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to send notify, remote engine:%s, notify name:%s",
                            remote_engine.GetString(), notify.name.GetString());
   LLMLOGI("SendNotify success, remote engine:%s, notify name:%s", remote_engine.GetString(), notify.name.GetString());
   return SUCCESS;
@@ -360,21 +326,20 @@ Status AdxlEngine::SendNotify(const AscendString &remote_engine, const NotifyDes
 Status AdxlEngine::GetNotifies(std::vector<NotifyDesc> &notifies) {
   LLMLOGI("GetNotifies start");
   ADXL_CHK_BOOL_RET_STATUS(impl_ != nullptr, FAILED, "impl is nullptr, check AdxlEngine init");
-  
+
   const auto ret = impl_->GetNotifies(notifies);
-  
-  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret,
-                           "Failed to get notifies");
+
+  ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to get notifies");
   LLMLOGI("GetNotifies success, got %zu notifies", notifies.size());
   return SUCCESS;
 }
 
 Status AdxlEngine::MallocMem(MemType type, size_t size, void **ptr) {
-  return FabricMemTransferService::MallocMem(type, size, ptr);
+  return hixl::FabricMemTransferService::MallocMem(static_cast<hixl::MemType>(type), size, ptr);
 }
 
 Status AdxlEngine::FreeMem(void *ptr) {
-  return FabricMemTransferService::FreeMem(ptr);
+  return hixl::FabricMemTransferService::FreeMem(ptr);
 }
 
-} // namespace adxl
+}  // namespace adxl

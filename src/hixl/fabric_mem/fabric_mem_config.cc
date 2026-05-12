@@ -27,8 +27,8 @@ constexpr const char *kMaxCapacityField = "max_capacity";
 constexpr const char *kStartAddressField = "start_address";
 constexpr const char *kTaskStreamNumField = "task_stream_num";
 constexpr size_t kMaxCapacityTB = 1024UL;
-constexpr size_t kMinStartAddressTB = 40UL;
-constexpr size_t kMaxStartAddressTB = 220UL;
+constexpr size_t kMinStartAddressTB = 0UL;
+constexpr size_t kMaxStartAddressTB = 1024UL;
 constexpr size_t kMinTaskStreamNum = 1U;
 constexpr size_t kMaxTaskStreamNum = 8U;
 

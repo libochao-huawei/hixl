@@ -18,9 +18,6 @@
 #include "common/llm_mem_pool.h"
 #include "buffer_transfer_service.h"
 #include "segment_table.h"
-#include "fabric_mem/fabric_mem_config.h"
-#include "fabric_mem/fabric_mem_statistic.h"
-#include "fabric_mem/fabric_mem_transfer_service.h"
 #include "common/hixl_inner_types.h"
 
 namespace adxl {
@@ -49,15 +46,11 @@ class AdxlInnerEngine {
 
   void Disconnect();
 
-  Status TransferSync(const AscendString &remote_engine,
-                      TransferOp operation,
-                      const std::vector<TransferOpDesc> &op_descs,
-                      int32_t timeout_in_millis);
+  Status TransferSync(const AscendString &remote_engine, TransferOp operation,
+                      const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis);
 
-  Status TransferAsync(const AscendString &remote_engine,
-                       TransferOp operation,
-                       const std::vector<TransferOpDesc> &op_descs,
-                       const TransferArgs &optional_args,
+  Status TransferAsync(const AscendString &remote_engine, TransferOp operation,
+                       const std::vector<TransferOpDesc> &op_descs, const TransferArgs &optional_args,
                        TransferReq &req);
 
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
@@ -67,15 +60,14 @@ class AdxlInnerEngine {
   Status GetNotifies(std::vector<NotifyDesc> &notifies);
 
   Status RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor);
-  
+
  private:
   Status GetTransferType(const ChannelPtr &channel, TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                          bool &need_buffer, TransferType &type) const;
   Status InitBufferTransferService(const std::map<ge::AscendString, ge::AscendString> &options);
-  static void ParseBufferPool(const std::map<AscendString, AscendString> &options,
-                              std::string &pool_config);
-  Status ParseWaterlineRatio(const std::map<AscendString, AscendString>& json_options, 
-                             const char* option_name, double& value) const;
+  static void ParseBufferPool(const std::map<AscendString, AscendString> &options, std::string &pool_config);
+  Status ParseWaterlineRatio(const std::map<AscendString, AscendString> &json_options, const char *option_name,
+                             double &value) const;
   Status LoadGlobalResourceConfig(const std::map<AscendString, AscendString> &options);
   Status ParseChannelPoolConfig(const std::map<AscendString, AscendString> &json_options);
   Status ConnectWhenTransfer(const AscendString &remote_engine, int32_t timeout_in_millis = 3000);
@@ -101,19 +93,14 @@ class AdxlInnerEngine {
   aclrtContext aclrt_context_{nullptr};
 
   std::mutex notify_mutex_;
-  std::unordered_map<uint64_t, bool> notify_ack_ready_;     // Map to indicate if ack status is ready
-  std::condition_variable notify_cv_;                       // Condition variable for waiting ack
+  std::unordered_map<uint64_t, bool> notify_ack_ready_;  // Map to indicate if ack status is ready
+  std::condition_variable notify_cv_;                    // Condition variable for waiting ack
   std::atomic<uint64_t> next_notify_id_{1};
   std::mutex req2channel_mutex_;
   std::map<uint64_t, hixl::TransferInfo> req_map_;
   std::atomic<uint64_t> next_req_id_{1};
   // Mutex to protect connection operations (Connect and ConnectWhenTransfer)
   std::mutex connection_mutex_;
-
-  bool enable_use_fabric_mem_ = false;
-  hixl::FabricMemConfig fabric_mem_config_;
-  hixl::FabricMemStatistic fabric_mem_statistic_;
-  std::unique_ptr<hixl::FabricMemTransferService> fabric_mem_transfer_service_ = nullptr;
 };
 }  // namespace adxl
 

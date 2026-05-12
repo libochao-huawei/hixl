@@ -79,10 +79,6 @@ StatisticManager::~StatisticManager() {
   }
 }
 
-void StatisticManager::SetEnableUseFabricMem(bool enable_use_fabric_mem) {
-  enable_use_fabric_mem_ = enable_use_fabric_mem;
-}
-
 void StatisticManager::RegisterChannel(const std::string &channel_id) {
   (void)GetOrCreateStatisticInfo(channel_id);
 }
@@ -192,7 +188,8 @@ void StatisticManager::UpdateServerCopyCost(const std::string &channel_id, uint6
 
 void StatisticManager::UpdateConnectTotalCost(const std::string &channel_id, uint64_t cost) {
   auto info = GetOrCreateStatisticInfo(channel_id);
-  UpdateCost(cost, info->connect_statistic_info.connect_total.times, info->connect_statistic_info.connect_total.max_cost,
+  UpdateCost(cost, info->connect_statistic_info.connect_total.times,
+             info->connect_statistic_info.connect_total.max_cost,
              info->connect_statistic_info.connect_total.total_cost);
 }
 
@@ -229,24 +226,8 @@ void StatisticManager::UpdateHcclCommPrepareCost(const std::string &channel_id, 
              info->connect_statistic_info.hccl_comm_prepare.total_cost);
 }
 
-void StatisticManager::UpdateFabricMemCosts(const std::string &channel_id, uint64_t transfer_cost,
-                                            uint64_t real_copy_cost, uint64_t total_bytes, uint64_t op_desc_count) {
-  auto info = GetOrCreateStatisticInfo(channel_id);
-  UpdateCost(transfer_cost, info->fabric_mem_transfer_statistic_info.transfer.times,
-             info->fabric_mem_transfer_statistic_info.transfer.max_cost,
-             info->fabric_mem_transfer_statistic_info.transfer.total_cost);
-  UpdateCost(real_copy_cost, info->fabric_mem_transfer_statistic_info.real_copy.times,
-             info->fabric_mem_transfer_statistic_info.real_copy.max_cost,
-             info->fabric_mem_transfer_statistic_info.real_copy.total_cost);
-  (void)info->fabric_mem_transfer_statistic_info.total_bytes.fetch_add(total_bytes, std::memory_order_relaxed);
-  (void)info->fabric_mem_transfer_statistic_info.total_op_desc_count.fetch_add(op_desc_count, std::memory_order_relaxed);
-  if (info->fabric_mem_transfer_statistic_info.transfer.times.load(std::memory_order_relaxed) > kResetTimes) {
-    info->fabric_mem_transfer_statistic_info.Reset();
-  }
-}
-
 void StatisticManager::UpdateDirectTransferCost(const std::string &channel_id, uint64_t cost, uint64_t total_bytes,
-                                                 uint64_t op_desc_count) {
+                                                uint64_t op_desc_count) {
   auto info = GetOrCreateStatisticInfo(channel_id);
   UpdateCost(cost, info->direct_transfer_statistic_info.transfer.times,
              info->direct_transfer_statistic_info.transfer.max_cost,
@@ -275,12 +256,6 @@ StatisticInfoSnapshot StatisticManager::GetStatisticInfoSnapshot(const std::stri
       info->buffer_transfer_statistic_info.total_bytes.load(std::memory_order_relaxed);
   snapshot.buffer_transfer_statistic_info.total_op_desc_count =
       info->buffer_transfer_statistic_info.total_op_desc_count.load(std::memory_order_relaxed);
-  snapshot.fabric_mem_transfer_statistic_info.transfer =
-      ToSnapshot(info->fabric_mem_transfer_statistic_info.transfer);
-  snapshot.fabric_mem_transfer_statistic_info.total_bytes =
-      info->fabric_mem_transfer_statistic_info.total_bytes.load(std::memory_order_relaxed);
-  snapshot.fabric_mem_transfer_statistic_info.total_op_desc_count =
-      info->fabric_mem_transfer_statistic_info.total_op_desc_count.load(std::memory_order_relaxed);
   snapshot.direct_transfer_statistic_info.transfer = ToSnapshot(info->direct_transfer_statistic_info.transfer);
   snapshot.direct_transfer_statistic_info.total_bytes =
       info->direct_transfer_statistic_info.total_bytes.load(std::memory_order_relaxed);
@@ -291,12 +266,8 @@ StatisticInfoSnapshot StatisticManager::GetStatisticInfoSnapshot(const std::stri
 
 void StatisticManager::Dump() {
   DumpConnectStatisticInfo();
-  if (enable_use_fabric_mem_) {
-    DumpFabricMemTransferStatisticInfo();
-  } else {
-    DumpBufferTransferStatisticInfo();
-    DumpDirectTransferStatisticInfo();
-  }
+  DumpBufferTransferStatisticInfo();
+  DumpDirectTransferStatisticInfo();
 }
 
 void StatisticManager::DumpConnectStatisticInfo() {
@@ -322,7 +293,8 @@ void StatisticManager::DumpConnectStatisticInfo() {
         connect_info.hccl_comm_init.max_cost.load(std::memory_order_relaxed), GetAvgCost(connect_info.hccl_comm_init),
         connect_info.hccl_comm_bind_mem.times.load(std::memory_order_relaxed),
         connect_info.hccl_comm_bind_mem.max_cost.load(std::memory_order_relaxed),
-        GetAvgCost(connect_info.hccl_comm_bind_mem), connect_info.hccl_comm_prepare.times.load(std::memory_order_relaxed),
+        GetAvgCost(connect_info.hccl_comm_bind_mem),
+        connect_info.hccl_comm_prepare.times.load(std::memory_order_relaxed),
         connect_info.hccl_comm_prepare.max_cost.load(std::memory_order_relaxed),
         GetAvgCost(connect_info.hccl_comm_prepare));
   }
@@ -353,29 +325,6 @@ void StatisticManager::DumpBufferTransferStatisticInfo() {
   }
 }
 
-void StatisticManager::DumpFabricMemTransferStatisticInfo() {
-  std::shared_lock<std::shared_mutex> lock(map_mutex_);
-  for (const auto &item : transfer_statistic_info_) {
-    const auto &stat_info = item.second->fabric_mem_transfer_statistic_info;
-    const auto transfer_times = stat_info.transfer.times.load(std::memory_order_relaxed);
-    if (transfer_times == 0U) {
-      continue;
-    }
-    const auto total_bytes = stat_info.total_bytes.load(std::memory_order_relaxed);
-    const auto total_op_desc_count = stat_info.total_op_desc_count.load(std::memory_order_relaxed);
-    LLMEVENT(
-        "Fabric mem transfer statistic info[channel:%s, transfer times:%lu, total size:%lu kBytes, avg size:%lu kBytes, "
-        "avg bandwidth:%.4f GB/s, max cost:%lu us, avg cost:%lu us, real copy times:%lu, max cost:%lu us, "
-        "avg cost:%lu us].",
-        item.first.c_str(), transfer_times, ToKBytes(total_bytes),
-        ToKBytes(GetAvgBytesPerOpDesc(total_bytes, total_op_desc_count)),
-        GetBandwidthGbps(total_bytes, stat_info.transfer.total_cost.load(std::memory_order_relaxed)),
-        stat_info.transfer.max_cost.load(std::memory_order_relaxed), GetAvgCost(stat_info.transfer),
-        stat_info.real_copy.times.load(std::memory_order_relaxed),
-        stat_info.real_copy.max_cost.load(std::memory_order_relaxed), GetAvgCost(stat_info.real_copy));
-  }
-}
-
 void StatisticManager::DumpDirectTransferStatisticInfo() {
   std::shared_lock<std::shared_mutex> lock(map_mutex_);
   for (const auto &item : transfer_statistic_info_) {
@@ -386,12 +335,13 @@ void StatisticManager::DumpDirectTransferStatisticInfo() {
     }
     const auto total_bytes = stat_info.total_bytes.load(std::memory_order_relaxed);
     const auto total_op_desc_count = stat_info.total_op_desc_count.load(std::memory_order_relaxed);
-    LLMEVENT("Direct transfer statistic info[channel:%s, transfer times:%lu, total size:%lu kBytes, avg size:%lu kBytes, "
-             "avg bandwidth:%.4f GB/s, max cost:%lu us, avg cost:%lu us].",
-             item.first.c_str(), transfer_times, ToKBytes(total_bytes),
-             ToKBytes(GetAvgBytesPerOpDesc(total_bytes, total_op_desc_count)),
-             GetBandwidthGbps(total_bytes, stat_info.transfer.total_cost.load(std::memory_order_relaxed)),
-             stat_info.transfer.max_cost.load(std::memory_order_relaxed), GetAvgCost(stat_info.transfer));
+    LLMEVENT(
+        "Direct transfer statistic info[channel:%s, transfer times:%lu, total size:%lu kBytes, avg size:%lu kBytes, "
+        "avg bandwidth:%.4f GB/s, max cost:%lu us, avg cost:%lu us].",
+        item.first.c_str(), transfer_times, ToKBytes(total_bytes),
+        ToKBytes(GetAvgBytesPerOpDesc(total_bytes, total_op_desc_count)),
+        GetBandwidthGbps(total_bytes, stat_info.transfer.total_cost.load(std::memory_order_relaxed)),
+        stat_info.transfer.max_cost.load(std::memory_order_relaxed), GetAvgCost(stat_info.transfer));
   }
 }
 
