@@ -187,4 +187,50 @@ TEST_F(ChannelMsgHandlerUnitTest, ParseTcSlAcceptsValidBoundaryValues) {
   EXPECT_EQ(handler_->comm_config_.hcclRdmaTrafficClass, 252U);
   EXPECT_EQ(handler_->comm_config_.hcclRdmaServiceLevel, 7U);
 }
+
+// Test that ProcessServerEviction handles error response from client correctly
+// This covers the LLMLOGW line at channel_msg_handler.cc:941
+TEST_F(ChannelMsgHandlerUnitTest, ProcessServerEviction_WhenClientReturnsError_LogsWarning) {
+  // Set up channel with valid fd using socketpair
+  ChannelInfo channel_info{};
+  channel_info.channel_type = ChannelType::kServer;
+  channel_info.channel_id = kRemoteEngine;
+  auto channel = std::make_shared<Channel>(channel_info);
+
+  // Set up a socket pair to simulate the fd
+  int socket_pair[2];
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, socket_pair), 0);
+  int fd = socket_pair[0];
+  int peer_fd = socket_pair[1];
+
+  // Set fd on channel (using public method if available, or accessing internal)
+  // For this test, we need to set up the channel properly
+  channel->fd_ = fd;
+
+  // Pre-populate the pending request map to simulate a response from client
+  uint64_t req_id = 1;
+  auto pending_req = std::make_shared<PendingDisconnectRequest>();
+  pending_req->received = true;  // Simulate already received response
+  pending_req->resp.req_id = req_id;
+  pending_req->resp.channel_id = kRemoteEngine;
+  pending_req->resp.can_disconnect = false;
+  pending_req->resp.disconnected = false;
+  pending_req->resp.error_code = 123;  // Error code to trigger LLMLOGW
+  pending_req->resp.error_message = "Test error message";
+
+  handler_->pending_disconnect_requests_[req_id] = pending_req;
+
+  // Also set the next_req_id_ to avoid conflicts
+  handler_->next_req_id_.store(req_id + 1, std::memory_order_relaxed);
+
+  // Set disconnecting flag on channel
+  channel->SetDisconnecting(true);
+
+  // Call ProcessServerEviction which should hit the LLMLOGW line
+  EXPECT_EQ(handler_->ProcessServerEviction(kRemoteEngine, channel), SUCCESS);
+
+  // Cleanup
+  close(fd);
+  close(peer_fd);
+}
 }  // namespace adxl
