@@ -213,6 +213,24 @@ TEST_F(HixlCSTest, TestHixlCSServer) {
   EXPECT_GE(acl_stub_->get_current_context_call_count_, 1U);
 }
 
+TEST_F(HixlCSTest, TestHixlCSServerDeviceEndpointWithZeroDeviceCountRegistersDeviceFlagByPlacement) {
+  acl_stub_->device_count_ = 0;
+  HixlServerConfig config{};
+  HixlServerHandle server_handle = nullptr;
+  HixlServerDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = kPort;
+  desc.endpoint_list = &default_eps[0];
+  desc.endpoint_list_num = default_eps.size();
+
+  auto ret = HixlCSServerCreate(&desc, &config, &server_handle);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 1U);
+  ret = HixlCSServerDestroy(server_handle);
+  EXPECT_EQ(ret, SUCCESS);
+}
+
 TEST_F(HixlCSTest, TestHixlCSClient2Server) {
   HixlServerConfig config{};
   HixlServerHandle server_handle = nullptr;
@@ -309,7 +327,7 @@ TEST_F(HixlCSTest, TestStructSize) {
   EXPECT_EQ(sizeof(HixlServerDesc), 128) << "HixlServerDesc size should be 128 bytes";
 }
 
-TEST_F(HixlCSTest, HostOnlyServerInitializeSkipsAclContext) {
+TEST_F(HixlCSTest, HostOnlyServerInitializeWithDeviceCountCapturesAclContext) {
   std::vector<EndpointDesc> host_eps;
   EndpointDesc ep{};
   ep.loc.locType = ENDPOINT_LOC_TYPE_HOST;
@@ -327,7 +345,7 @@ TEST_F(HixlCSTest, HostOnlyServerInitializeSkipsAclContext) {
   desc.endpoint_list_num = static_cast<uint32_t>(host_eps.size());
   auto ret = HixlCSServerCreate(&desc, &config, &server_handle);
   EXPECT_EQ(ret, SUCCESS);
-  EXPECT_EQ(acl_stub_->get_current_context_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_current_context_call_count_, 1U);
   EXPECT_EQ(acl_stub_->set_current_context_call_count_, 0U);
   ret = HixlCSServerDestroy(server_handle);
   EXPECT_EQ(ret, SUCCESS);
