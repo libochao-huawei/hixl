@@ -92,7 +92,7 @@ ge::Status LinkMsgHandler::Serialize(const T &msg, std::string &msg_str) {
 template<typename T>
 ge::Status LinkMsgHandler::Deserialize(const std::vector<char> &msg_str, T &msg) {
    try {
-    auto j = nlohmann::json::parse(&msg_str[0]);
+    auto j = nlohmann::json::parse(msg_str.data(), msg_str.data() + msg_str.size());
     msg = j.get<T>();
   } catch (const nlohmann::json::exception &e) {
     LLMLOGE(ge::LLM_PARAM_INVALID, "Failed to load msg, exception:%s", e.what());
@@ -286,6 +286,10 @@ ge::Status LinkMsgHandler::SetEntityMemInfo(const LLMExchangeInfo &peer_exchange
 
 ge::Status LinkMsgHandler::ExchangeInfoProcess(const LLMExchangeInfo &peer_exchange_info, int32_t timeout,
                                                bool force_link, EntityMemInfoPtr &mem_info_ptr) {
+  LLM_CHK_BOOL_RET_STATUS(peer_exchange_info.cache_table_size <= kCacheAccessTableBufferSize,
+                          ge::LLM_PARAM_INVALID,
+                          "Remote cache_table_size %lu exceeds max %lu.",
+                          peer_exchange_info.cache_table_size, kCacheAccessTableBufferSize);
   auto rank_table_generator = RankTableGeneratorFactory::Create(local_comm_res_, peer_exchange_info.comm_res);
   LLM_CHK_BOOL_RET_STATUS(rank_table_generator != nullptr, ge::LLM_PARAM_INVALID,
                          "Failed to create rank table generator.");
