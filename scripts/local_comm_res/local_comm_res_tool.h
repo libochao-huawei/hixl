@@ -131,6 +131,14 @@ int32_t GetUBEntityList(int32_t phy_dev_id, UEList& ue_list);
  */
 int32_t GetMainboardId(int32_t phy_dev_id, unsigned int& mainboard_id);
 
+/**
+ * @brief 获取 CLOS 层 net_instance_id
+ * @param [in] phy_dev_id 物理设备 ID
+ * @param [out] net_instance_id 输出的 net_instance_id，格式为 "superpod_{super_pod_id}"
+ * @return 成功: SUCCESS, 失败: 其它错误码
+ */
+int32_t GetClosNetInstanceId(int32_t phy_dev_id, std::string& net_instance_id);
+
 // ============ 文件解析接口 ============
 
 /**

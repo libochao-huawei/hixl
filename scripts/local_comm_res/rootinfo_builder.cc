@@ -9,6 +9,7 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
 #include <dlfcn.h>
 #include <unistd.h>
 #include <cstring>
@@ -364,6 +365,7 @@ void CollectMeshPorts(const std::vector<UrmaDevice>& urma_devices,
                        int mesh_die_id,
                        NpuRootInfo& rootinfo);
 void CollectClosPgEids(const std::vector<UrmaDevice>& urma_devices,
+                        int mesh_die_id,
                         NpuRootInfo& rootinfo);
 void PrintEidDebugInfo(const std::string& eid, const EidByte6Info& info);
 void PrintRootInfo(const NpuRootInfo& rootinfo);
@@ -393,7 +395,7 @@ int32_t BuildNpuRootInfo(int32_t npu_id, bool is_server, NpuRootInfo& rootinfo,
     rootinfo.clos_pg_eids.clear();
 
     CollectMeshPorts(urma_devices, mesh_die_id, rootinfo);
-    CollectClosPgEids(urma_devices, rootinfo);
+    CollectClosPgEids(urma_devices, mesh_die_id, rootinfo);
     PrintRootInfo(rootinfo);
 
     return SUCCESS;
@@ -421,20 +423,75 @@ void CollectMeshPorts(const std::vector<UrmaDevice>& urma_devices,
 }
 
 void CollectClosPgEids(const std::vector<UrmaDevice>& urma_devices,
+                        int mesh_die_id,
                         NpuRootInfo& rootinfo) {
+    // 按 die_id 分组收集 URMA 组信息：PG EID、组的 EID 总数
+    struct UrmaGroupInfo {
+        std::string pg_eid;
+        int die_id;
+        size_t total_eids;
+    };
+    std::vector<UrmaGroupInfo> mesh_groups;     // mesh_die_id 上的组（排除 mesh 组本身）
+    std::vector<UrmaGroupInfo> non_mesh_groups; // 非 mesh_die_id 上的组
+
     for (const auto& urma_dev : urma_devices) {
         if (urma_dev.eid_list.empty()) continue;
 
+        // 找出该 URMA 组的 PG EID
+        std::string pg_eid;
+        int pg_die_id = -1;
         for (const auto& eid : urma_dev.eid_list) {
             EidByte6Info info = ParseEidByte6(eid);
-            if (!info.is_pg_eid) continue;
-
-            ClosPgEidInfo pg_info;
-            pg_info.eid = eid;
-            pg_info.die_id = info.die_id;
-            rootinfo.clos_pg_eids.push_back(pg_info);
-            std::cout << "[CollectClosPgEids]   Add PG EID: " << eid << " (die_id=" << info.die_id << ")" << std::endl;
+            if (info.is_pg_eid) {
+                pg_eid = eid;
+                pg_die_id = info.die_id;
+            }
         }
+        if (pg_eid.empty()) continue;
+
+        size_t total_eids = urma_dev.eid_list.size();
+
+        // mesh_die_id 上的 URMA 组：EID 总数为 8 说明是 mesh 组（7 个直连串口 + 1 个 PG），跳过
+        if (pg_die_id == mesh_die_id) {
+            if (total_eids == 8) {
+                std::cout << "[CollectClosPgEids]   Skip mesh URMA group: " << urma_dev.name
+                          << " (eid_count=" << total_eids << ")" << std::endl;
+                continue;
+            }
+            mesh_groups.push_back({pg_eid, pg_die_id, total_eids});
+            std::cout << "[CollectClosPgEids]   Mesh die PG candidate: " << pg_eid
+                      << " from " << urma_dev.name << " (eid_count=" << total_eids << ")" << std::endl;
+        } else {
+            non_mesh_groups.push_back({pg_eid, pg_die_id, total_eids});
+            std::cout << "[CollectClosPgEids]   Non-mesh die PG candidate: " << pg_eid
+                      << " from " << urma_dev.name << " (eid_count=" << total_eids << ")" << std::endl;
+        }
+    }
+
+    // 非 mesh_die_id：取 EID 数最多的组的 PG 作为 plane_pg_0
+    if (!non_mesh_groups.empty()) {
+        auto best = std::max_element(non_mesh_groups.begin(), non_mesh_groups.end(),
+            [](const UrmaGroupInfo& a, const UrmaGroupInfo& b) { return a.total_eids < b.total_eids; });
+        ClosPgEidInfo pg_info;
+        pg_info.eid = best->pg_eid;
+        pg_info.die_id = best->die_id;
+        rootinfo.clos_pg_eids.push_back(pg_info);
+        std::cout << "[CollectClosPgEids]   plane_pg_0: " << best->pg_eid
+                  << " (eid_count=" << best->total_eids << ")" << std::endl;
+    }
+
+    // mesh_die_id：只有一个 PG 说明没有 CLOS PG；多个 PG 取 EID 数第二多的作为 plane_pg_1
+    if (mesh_groups.size() >= 2) {
+        // 按 EID 数降序排列
+        std::sort(mesh_groups.begin(), mesh_groups.end(),
+            [](const UrmaGroupInfo& a, const UrmaGroupInfo& b) { return a.total_eids > b.total_eids; });
+        const auto& second = mesh_groups[1];
+        ClosPgEidInfo pg_info;
+        pg_info.eid = second.pg_eid;
+        pg_info.die_id = second.die_id;
+        rootinfo.clos_pg_eids.push_back(pg_info);
+        std::cout << "[CollectClosPgEids]   plane_pg_1: " << second.pg_eid
+                  << " (eid_count=" << second.total_eids << ")" << std::endl;
     }
 }
 

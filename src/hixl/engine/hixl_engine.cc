@@ -380,25 +380,11 @@ Status HixlEngine::GenerateLocalCommResFallback(const std::map<AscendString, Asc
   HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED,
                            "[HixlEngine] GenerateLocalCommRes failed, ret=%d", ret);
 
-  // 4. 提取 net_instance_id（从 local_engine_ 获取 host IP）
-  std::string net_instance_id;
-  std::string host_ip;
-  int32_t host_port = 0;
-  Status parse_ret = ParseListenInfo(local_engine_, host_ip, host_port);
-  if (parse_ret == SUCCESS && !host_ip.empty()) {
-    net_instance_id = host_ip;
-  }
-
-  // 5. 设置 net_instance_id 并赋值给 endpoint_list_
-  endpoint_list_.clear();
-  endpoint_list_.reserve(gen_res.endpoint_list.size());
-  for (auto &ep : gen_res.endpoint_list) {
-    ep.net_instance_id = net_instance_id;
-    endpoint_list_.emplace_back(std::move(ep));
-  }
+  // 4. GenerateLocalCommRes 已通过 DCMI 设置 net_instance_id，直接赋值
+  endpoint_list_ = std::move(gen_res.endpoint_list);
 
   HIXL_LOGI("[HixlEngine] GenerateLocalCommResFallback: generated %zu endpoints, net_instance_id=%s",
-            endpoint_list_.size(), net_instance_id.c_str());
+            endpoint_list_.size(), gen_res.net_instance_id.c_str());
   return SUCCESS;
 }
 }  // namespace hixl

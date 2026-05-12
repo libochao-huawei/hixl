@@ -40,6 +40,26 @@ constexpr uint32_t kMainboardIdServerMax2 = 0x46;
 
 namespace {
 
+// DCMI SPOD 信息结构体
+struct DcmiSpodInfo {
+    unsigned int sdid;
+    unsigned int super_pod_size;
+    unsigned int super_pod_id;
+    unsigned int server_index;
+    unsigned int chassis_id;
+    unsigned int super_pod_type;
+    unsigned int reserve[6];
+};
+
+// DCMI 主命令和子命令
+enum DcmiMainCmd {
+    DCMI_MAIN_CMD_CHIP_INF = 12,
+};
+
+enum DcmiChipInfoSubCmd {
+    DCMI_CHIP_INFO_SUB_CMD_SPOD_INFO = 1,
+};
+
 // DCMI 接口函数指针类型
 typedef int (*dcmi_init_func)();
 typedef int (*dcmi_get_urma_device_cnt_func)(int npu_id, unsigned int* dev_cnt);
@@ -47,6 +67,8 @@ typedef int (*dcmi_get_eid_list_func)(int npu_id, int urma_dev_index,
                                        dcmi_urma_eid_info_t* eid_list, int* eid_cnt);
 typedef int (*dcmi_get_mainboard_id_func)(int npu_id, unsigned int* mainboard_id);
 typedef int (*dcmi_get_logicid_from_phyid_func)(unsigned int phy_id, unsigned int* logic_id);
+typedef int (*dcmi_get_device_info_func)(int npu_id, int main_cmd,
+                                          unsigned int sub_cmd, void* buf, unsigned int* size);
 
 // DCMI 接口函数指针（全局）
 dcmi_init_func g_dcmi_init = nullptr;
@@ -54,6 +76,7 @@ dcmi_get_urma_device_cnt_func g_dcmi_get_urma_device_cnt = nullptr;
 dcmi_get_eid_list_func g_dcmi_get_eid_list = nullptr;
 dcmi_get_mainboard_id_func g_dcmi_get_mainboard_id = nullptr;
 dcmi_get_logicid_from_phyid_func g_dcmi_get_logicid_from_phyid = nullptr;
+dcmi_get_device_info_func g_dcmi_get_device_info = nullptr;
 
 // DCMI 库句柄
 void* g_dcmi_handle = nullptr;
@@ -84,11 +107,15 @@ int TryLoadDcmiSymbols() {
             dlsym(g_dcmi_handle, "dcmiv2_get_dev_id_from_chip_phyid"));
     }
 
+    g_dcmi_get_device_info = reinterpret_cast<dcmi_get_device_info_func>(
+        dlsym(g_dcmi_handle, "dcmiv2_get_device_info"));
+
     if (g_dcmi_init == nullptr ||
         g_dcmi_get_urma_device_cnt == nullptr ||
         g_dcmi_get_eid_list == nullptr ||
         g_dcmi_get_mainboard_id == nullptr ||
-        g_dcmi_get_logicid_from_phyid == nullptr) {
+        g_dcmi_get_logicid_from_phyid == nullptr ||
+        g_dcmi_get_device_info == nullptr) {
         std::cerr << "[TryLoadDcmiSymbols] Failed to load DCMI function symbols" << std::endl;
         dlclose(g_dcmi_handle);
         g_dcmi_handle = nullptr;
@@ -373,6 +400,35 @@ int32_t GetMainboardId(int32_t phy_dev_id, unsigned int& mainboard_id) {
     return SUCCESS;
 }
 
+int32_t GetClosNetInstanceId(int32_t phy_dev_id, std::string& net_instance_id) {
+    if (LoadDcmi() != 0) {
+        std::cerr << "[GetClosNetInstanceId] DCMI not loaded" << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
+
+    unsigned int logic_id = 0;
+    if (GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
+        std::cerr << "[GetClosNetInstanceId] Failed to get logic id from phy id: " << phy_dev_id << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
+
+    DcmiSpodInfo spod_info;
+    memset(&spod_info, 0, sizeof(spod_info));
+    unsigned int buf_size = sizeof(DcmiSpodInfo);
+    int ret = g_dcmi_get_device_info(logic_id, DCMI_MAIN_CMD_CHIP_INF,
+                                     DCMI_CHIP_INFO_SUB_CMD_SPOD_INFO, &spod_info, &buf_size);
+    if (ret != 0) {
+        std::cerr << "[GetClosNetInstanceId] Failed to get device info, ret=" << ret << std::endl;
+        return ERROR_DCMI_INTERFACE_FAILED;
+    }
+
+    net_instance_id = "superpod_" + std::to_string(spod_info.super_pod_id);
+    std::cout << "[GetClosNetInstanceId] phy_dev_id=" << phy_dev_id
+              << ", super_pod_id=" << spod_info.super_pod_id
+              << ", net_instance_id=" << net_instance_id << std::endl;
+    return SUCCESS;
+}
+
 // ============ 文件解析实现 ============
 
 int32_t ParseTopoFile(const std::string& topo_path, TopoData& topo_data) {
@@ -648,12 +704,13 @@ void CollectClosPgEids(const std::map<int32_t, NpuRootInfo>& npu_rootinfos,
     auto self_it = npu_rootinfos.find(phy_dev_id);
     if (self_it == npu_rootinfos.end()) return;
 
-    for (const auto& pg : self_it->second.clos_pg_eids) {
-        if (pg.die_id != mesh_die_id) {
-            if (plane_pg_0_eid.empty()) plane_pg_0_eid = pg.eid;
-        } else {
-            if (plane_pg_1_eid.empty()) plane_pg_1_eid = pg.eid;
-        }
+    // rootinfo_builder 已按正确逻辑过滤：clos_pg_eids[0]=plane_pg_0, [1]=plane_pg_1
+    const auto& pg_eids = self_it->second.clos_pg_eids;
+    if (pg_eids.size() >= 1) {
+        plane_pg_0_eid = pg_eids[0].eid;
+    }
+    if (pg_eids.size() >= 2) {
+        plane_pg_1_eid = pg_eids[1].eid;
     }
     std::cout << "[CollectClosPgEids] Mesh die_id=" << mesh_die_id << std::endl;
     std::cout << "[CollectClosPgEids] plane_pg_0_eid=" << (plane_pg_0_eid.empty() ? "(none)" : plane_pg_0_eid) << std::endl;
@@ -805,7 +862,15 @@ int32_t GenerateLocalCommRes(
     std::cout << "[GenerateLocalCommRes] H2U edges=" << h2u_edges.size() << std::endl;
 
     local_comm_res.version = "1.3";
-    local_comm_res.net_instance_id = "";
+
+    // 通过 DCMI SPOD 信息获取 net_instance_id
+    std::string net_instance_id;
+    int32_t net_ret = GetClosNetInstanceId(phy_dev_id, net_instance_id);
+    if (net_ret != SUCCESS) {
+        std::cerr << "[GenerateLocalCommRes] WARNING: GetClosNetInstanceId failed, "
+                     "net_instance_id will be empty" << std::endl;
+    }
+    local_comm_res.net_instance_id = net_instance_id;
     local_comm_res.endpoint_list = all_edges;
 
     // 为每个 endpoint 设置 net_instance_id
