@@ -160,6 +160,28 @@ Status AdxlInnerEngine::LoadGlobalResourceConfig(const std::map<AscendString, As
   return SUCCESS;
 }
 
+Status AdxlInnerEngine::InitFabricMemTransferService() {
+  if (!enable_use_fabric_mem_) {
+    return SUCCESS;
+  }
+  if (fabric_mem_config_.has_capacity_tb) {
+    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().SetVirtualMemoryCapacity(fabric_mem_config_.capacity_tb),
+                        "Failed to set fabric memory capacity.");
+  }
+  if (fabric_mem_config_.has_start_address_tb) {
+    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().SetGlobalStartAddress(fabric_mem_config_.start_address_tb),
+                        "Failed to set fabric memory start address.");
+  }
+  ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().Initialize(), "Failed to initialize virtual memory manager.");
+  fabric_mem_transfer_service_ = llm::MakeUnique<hixl::FabricMemTransferService>();
+  ADXL_CHK_STATUS_RET(fabric_mem_transfer_service_->Initialize(fabric_mem_config_.max_stream_num,
+                                                               fabric_mem_config_.task_stream_num,
+                                                               &fabric_mem_statistic_),
+                      "Failed to initialize fabric mem transfer service.");
+  ADXL_CHK_STATUS_RET(fabric_mem_statistic_.StartPeriodicDump(), "Failed to start fabric mem statistic dump.");
+  return SUCCESS;
+}
+
 Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &options) {
   std::lock_guard<std::mutex> lk(mutex_);
 
@@ -177,24 +199,7 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
     (void) aclrtDestroyContext(aclrt_context_);
     aclrt_context_ = nullptr;
   }));
-  if (enable_use_fabric_mem_) {
-    if (fabric_mem_config_.has_capacity_tb) {
-      ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().SetVirtualMemoryCapacity(fabric_mem_config_.capacity_tb),
-                          "Failed to set fabric memory capacity.");
-    }
-    if (fabric_mem_config_.has_start_address_tb) {
-      ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().SetGlobalStartAddress(
-                              fabric_mem_config_.start_address_tb),
-                          "Failed to set fabric memory start address.");
-    }
-    ADXL_CHK_STATUS_RET(VirtualMemoryManager::GetInstance().Initialize(), "Failed to initialize virtual memory manager.");
-    fabric_mem_transfer_service_ = llm::MakeUnique<hixl::FabricMemTransferService>();
-    ADXL_CHK_STATUS_RET(fabric_mem_transfer_service_->Initialize(fabric_mem_config_.max_stream_num,
-                                                                 fabric_mem_config_.task_stream_num,
-                                                                 &fabric_mem_statistic_),
-                        "Failed to initialize fabric mem transfer service.");
-    ADXL_CHK_STATUS_RET(fabric_mem_statistic_.StartPeriodicDump(), "Failed to start fabric mem statistic dump.");
-  }
+  ADXL_CHK_STATUS_RET(InitFabricMemTransferService(), "Failed to initialize fabric mem transfer service.");
   segment_table_ = llm::MakeUnique<SegmentTable>();
   stream_pool_ = llm::MakeUnique<StreamPool>(kMaxStreams);
   ADXL_CHK_STATUS_RET(msg_handler_.Initialize(options, segment_table_.get(), fabric_mem_transfer_service_.get()),
@@ -495,11 +500,12 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
   }));
 
   if (fabric_mem_transfer_service_ != nullptr) {
-    std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
+    std::unique_lock<std::mutex> transfer_lock(channel->GetTransferMutex());
     auto context = BuildFabricMemContext(channel);
     auto hixl_op_descs = ToHixlTransferOpDescs(op_descs);
     auto ret = fabric_mem_transfer_service_->Transfer(context, static_cast<hixl::TransferOp>(operation),
                                                       hixl_op_descs, timeout_in_millis);
+    transfer_lock.unlock();
     ADXL_CHK_BOOL_RET_STATUS(ret != ACL_ERROR_RT_SUSPECT_REMOTE_ERROR, ACL_ERROR_RT_SUSPECT_REMOTE_ERROR,
                              "Probably caused by temporary sdma error, please try again.");
     if (ret != SUCCESS) {
@@ -529,8 +535,9 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
       return ret;
     }
   }
-  std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
+  std::unique_lock<std::mutex> transfer_lock(channel->GetTransferMutex());
   Status ret = channel->TransferSync(operation, op_descs, timeout_in_millis);
+  transfer_lock.unlock();
   if (ret != SUCCESS) {
     LLMLOGE(ret, "Failed to transfer sync, remote_engine:%s", remote_engine.GetString());
     ADXL_CHK_STATUS_RET(DisconnectOnError(remote_engine.GetString(), timeout_in_millis),
@@ -554,7 +561,7 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
                            "Failed to get channel, remote_engine:%s", remote_engine.GetString());
   auto id = next_req_id_.fetch_add(1);
   req = reinterpret_cast<void *>(static_cast<uintptr_t>(id));
-  std::lock_guard<std::mutex> transfer_lock(channel->GetTransferMutex());
+  std::unique_lock<std::mutex> transfer_lock(channel->GetTransferMutex());
   if (user_config_channel_pool_) {
     channel->SetHasTransferred(true);
     channel->IncrementTransferCount();
@@ -573,6 +580,7 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine,
   } else {
     trans_status = channel->TransferAsync(operation, op_descs, optional_args, req);
   }
+  transfer_lock.unlock();
   if (trans_status != SUCCESS) {
     LLMLOGE(trans_status, "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
     ADXL_CHK_STATUS_RET(DisconnectOnError(remote_engine.GetString(), kConnectWhenTransferTimeout),

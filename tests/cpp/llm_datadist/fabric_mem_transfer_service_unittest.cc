@@ -110,15 +110,28 @@ void *GetBackingRemotePtr(const ChannelPtr &channel, uint64_t remote_addr) {
   return nullptr;
 }
 
-MemHandle RegisterLocalDeviceMem(const std::shared_ptr<FabricMemTransferService> &service,
-                                 const std::vector<uint8_t> &buf) {
-  MemDesc mem_desc{};
-  mem_desc.addr = llm::PtrToValue(buf.data());
-  mem_desc.len = buf.size();
-  MemHandle handle = nullptr;
-  EXPECT_EQ(service->RegisterMem(mem_desc, MemType::MEM_DEVICE, handle), SUCCESS);
-  return handle;
-}
+class HostPointerCaptureRuntimeMock : public llm::AclRuntimeStub {
+ public:
+  aclError aclrtPointerGetAttributes(const void *ptr, aclrtPtrAttributes *attributes) override {
+    (void)ptr;
+    attributes->location.type = ACL_MEM_LOCATION_TYPE_HOST;
+    return ACL_ERROR_NONE;
+  }
+
+  aclError aclrtMemcpyAsync(void *dst, size_t dest_max, const void *src, size_t src_count, aclrtMemcpyKind kind,
+                            aclrtStream stream) override {
+    (void)dest_max;
+    (void)src_count;
+    (void)kind;
+    (void)stream;
+    last_dst = dst;
+    last_src = src;
+    return ACL_ERROR_NONE;
+  }
+
+  void *last_dst = nullptr;
+  const void *last_src = nullptr;
+};
 }  // namespace
 
 class FabricMemTransferServiceUTest : public ::testing::Test {
@@ -176,7 +189,6 @@ TEST_F(FabricMemTransferServiceUTest, TestTransfer) {
   ASSERT_NE(backing_remote_ptr, nullptr);
 
   std::vector<uint8_t> local_buf(kMemLen);
-  auto local_handle = RegisterLocalDeviceMem(service_, local_buf);
   std::vector<TransferOpDesc> op_descs;
   TransferOpDesc desc;
   desc.local_addr = (uintptr_t)local_buf.data();
@@ -200,7 +212,40 @@ TEST_F(FabricMemTransferServiceUTest, TestTransfer) {
     EXPECT_EQ(local_buf[i], kPatternA) << "Read verification failed at index " << i;
   }
 
-  EXPECT_EQ(service_->DeregisterMem(local_handle), SUCCESS);
+  channel->Finalize();
+}
+
+TEST_F(FabricMemTransferServiceUTest, TestTransferHostLocalAddrUsesImportedVa) {
+  auto runtime = std::make_shared<HostPointerCaptureRuntimeMock>();
+  ScopedRuntimeMock runtime_mock(runtime);
+  ASSERT_EQ(service_->Initialize(kStreamMax, kDefaultTaskStreamNum), SUCCESS);
+
+  auto channel = CreateInitializedChannel();
+  ShareHandleInfo share_info;
+  share_info.va_addr = kRemoteAddr;
+  share_info.len = kMemLen;
+  EXPECT_EQ(channel->ImportMem({share_info}, kDeviceId), SUCCESS);
+
+  std::vector<uint8_t> local_buf(kMemLen);
+  MemDesc mem_desc{};
+  mem_desc.addr = llm::PtrToValue(local_buf.data());
+  mem_desc.len = local_buf.size();
+  MemHandle handle = nullptr;
+  ASSERT_EQ(service_->RegisterMem(mem_desc, MemType::MEM_HOST, handle), SUCCESS);
+  auto handles = service_->GetShareHandles();
+  ASSERT_EQ(handles.size(), 1U);
+  ASSERT_NE(handles[0].imported_va, 0U);
+
+  TransferOpDesc desc{};
+  desc.local_addr = llm::PtrToValue(local_buf.data());
+  desc.remote_addr = kRemoteAddr;
+  desc.len = kTransferLen;
+  EXPECT_EQ(service_->Transfer(channel, TransferOp::WRITE, {desc}, kTimeout), SUCCESS);
+
+  EXPECT_EQ(runtime->last_src, llm::ValueToPtr(handles[0].imported_va));
+  EXPECT_NE(runtime->last_src, local_buf.data());
+
+  EXPECT_EQ(service_->DeregisterMem(handle), SUCCESS);
   channel->Finalize();
 }
 
@@ -209,7 +254,6 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync) {
   auto channel = CreateInitializedChannel();
 
   std::vector<uint8_t> local_buf(kMemLen);
-  auto local_handle = RegisterLocalDeviceMem(service_, local_buf);
   std::vector<TransferOpDesc> op_descs;
   TransferOpDesc desc;
   desc.local_addr = (uintptr_t)local_buf.data();
@@ -265,7 +309,6 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync) {
   for (size_t i = 0; i < kTransferLen; ++i) {
     EXPECT_EQ(local_buf[i], kPatternA) << "Async Read verification failed at index " << i;
   }
-  EXPECT_EQ(service_->DeregisterMem(local_handle), SUCCESS);
   channel->Finalize();
 }
 
@@ -298,7 +341,6 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_RemoteAddrNotFound) {
   EXPECT_EQ(channel->ImportMem({share_info}, kDeviceId), SUCCESS);
 
   std::vector<uint8_t> local_buf(kMemLen, 0);
-  auto local_handle = RegisterLocalDeviceMem(service_, local_buf);
   TransferOpDesc desc{};
   desc.local_addr = llm::PtrToValue(local_buf.data());
   desc.remote_addr = kRemoteAddr + kMemLen + 1;
@@ -309,7 +351,6 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_RemoteAddrNotFound) {
 
   TransferStatus status = TransferStatus::WAITING;
   EXPECT_EQ(service_->GetTransferStatus(channel, req, status), FAILED);
-  EXPECT_EQ(service_->DeregisterMem(local_handle), SUCCESS);
   channel->Finalize();
 }
 
@@ -322,7 +363,6 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_RemoteAddrOutOfRange) {
   EXPECT_EQ(channel->ImportMem({share_info}, kDeviceId), SUCCESS);
 
   std::vector<uint8_t> local_buf(kMemLen, 0);
-  auto local_handle = RegisterLocalDeviceMem(service_, local_buf);
   TransferOpDesc desc{};
   desc.local_addr = llm::PtrToValue(local_buf.data());
   desc.remote_addr = kRemoteAddr + kMemLen - 1;
@@ -333,7 +373,6 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_RemoteAddrOutOfRange) {
 
   TransferStatus status = TransferStatus::WAITING;
   EXPECT_EQ(service_->GetTransferStatus(channel, req, status), FAILED);
-  EXPECT_EQ(service_->DeregisterMem(local_handle), SUCCESS);
   channel->Finalize();
 }
 
@@ -346,7 +385,6 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_EventCreateFail_CleanupO
   EXPECT_EQ(channel->ImportMem({share_info}, kDeviceId), SUCCESS);
 
   std::vector<uint8_t> local_buf(kMemLen);
-  auto local_handle = RegisterLocalDeviceMem(service_, local_buf);
   TransferOpDesc desc{};
   desc.local_addr = llm::PtrToValue(local_buf.data());
   desc.remote_addr = kRemoteAddr;
@@ -377,7 +415,6 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_EventCreateFail_CleanupO
   for (size_t i = 0; i < kTransferLen; ++i) {
     EXPECT_EQ(((uint8_t *)backing_remote_ptr)[i], kPatternA) << "Write verification failed at index " << i;
   }
-  EXPECT_EQ(service_->DeregisterMem(local_handle), SUCCESS);
   channel->Finalize();
 }
 
@@ -390,7 +427,6 @@ TEST_F(FabricMemTransferServiceUTest, TestGetTransferStatus_QueryStatusFail_Clea
   EXPECT_EQ(channel->ImportMem({share_info_test}, kDeviceId), SUCCESS);
 
   std::vector<uint8_t> test_local_buf(kMemLen, 0);
-  auto local_handle = RegisterLocalDeviceMem(service_, test_local_buf);
   TransferOpDesc desc{};
   desc.remote_addr = kRemoteAddr;
   desc.len = kTransferLen;
@@ -416,7 +452,6 @@ TEST_F(FabricMemTransferServiceUTest, TestGetTransferStatus_QueryStatusFail_Clea
   // Ensure record is erased and no crash.
   status = TransferStatus::WAITING;
   EXPECT_EQ(service_->GetTransferStatus(channel, req, status), FAILED);
-  EXPECT_EQ(service_->DeregisterMem(local_handle), SUCCESS);
   channel->Finalize();
 }
 
@@ -429,7 +464,6 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_StreamPoolFull) {
   EXPECT_EQ(channel->ImportMem({share_info}, kDeviceId), SUCCESS);
 
   std::vector<uint8_t> local_buf(kMemLen, 0);
-  auto local_handle = RegisterLocalDeviceMem(service_, local_buf);
   TransferOpDesc desc{};
   desc.local_addr = llm::PtrToValue(local_buf.data());
   desc.remote_addr = kRemoteAddr;
@@ -455,7 +489,6 @@ TEST_F(FabricMemTransferServiceUTest, TestTransferAsync_StreamPoolFull) {
     EXPECT_EQ(service_->GetTransferStatus(channel, req, status), SUCCESS);
   }
   EXPECT_EQ(status, TransferStatus::COMPLETED);
-  EXPECT_EQ(service_->DeregisterMem(local_handle), SUCCESS);
   channel->Finalize();
 }
 

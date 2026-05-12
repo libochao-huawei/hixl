@@ -10,7 +10,6 @@
 
 #include "fabric_mem/fabric_mem_control.h"
 
-#include <cstring>
 #include <poll.h>
 #include <utility>
 #include <unistd.h>
@@ -22,6 +21,7 @@
 #include "common/hixl_utils.h"
 #include "common/scope_guard.h"
 #include "nlohmann/json.hpp"
+#include "securec.h"
 
 namespace hixl {
 namespace {
@@ -76,7 +76,9 @@ Status RecvTypedMsg(int32_t fd, int32_t timeout_ms, CtrlMsgType &msg_type, std::
   std::vector<char> body(header.body_size);
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, body.data(), body.size(), timeout_ms),
                       "Recv fabric mem msg body failed.");
-  std::memcpy(&msg_type, body.data(), sizeof(msg_type));
+  const errno_t rc = memcpy_s(&msg_type, sizeof(msg_type), body.data(), sizeof(msg_type));
+  HIXL_CHK_BOOL_RET_STATUS(rc == EOK, FAILED, "memcpy_s fabric mem msg type failed, rc=%d",
+                           static_cast<int32_t>(rc));
   payload.assign(body.data() + sizeof(CtrlMsgType), body.data() + body.size());
   return SUCCESS;
 }
