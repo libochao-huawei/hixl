@@ -62,6 +62,11 @@ class FabricMemTransferService {
                                              const AsyncRecord &async_record, TransferStatus &status);
   static Status IsTransferDone(const std::vector<AsyncResource> &async_resources, uint64_t req_id,
                                TransferStatus &status, bool &completed);
+  Status ReuseStreamsLocked(std::vector<aclrtStream> &streams, size_t stream_num);
+  Status CreateStreamLocked(std::vector<aclrtStream> &streams, std::vector<aclrtStream> &new_streams);
+  Status RollbackStreamsLocked(std::vector<aclrtStream> &streams, const std::vector<aclrtStream> &new_streams);
+  void ReturnStreamsLocked(const std::vector<aclrtStream> &streams);
+  static void DestroyStreams(const std::vector<aclrtStream> &streams);
   Status TryGetStreamOnce(std::vector<aclrtStream> &streams, size_t stream_num);
   Status TryGetStream(std::vector<aclrtStream> &streams, uint64_t timeout_us);
   static Status ProcessCopyWithAsync(const std::vector<aclrtStream> &streams, TransferOp operation,
@@ -76,8 +81,8 @@ class FabricMemTransferService {
                                 TransferStatus &status);
   static Status TransOpAddr(uintptr_t old_addr, size_t len,
                             const std::unordered_map<uintptr_t, VaInfo> &new_va_to_old_va, uintptr_t &new_addr);
-  Status TransLocalOpAddr(uintptr_t old_addr, size_t len, uintptr_t &new_addr);
-  bool FindLocalRegisteredAddrLocked(uintptr_t old_addr, size_t len, uintptr_t &new_addr) const;
+  Status TransLocalHostOpAddr(uintptr_t old_addr, size_t len, uintptr_t &new_addr);
+  bool FindLocalHostRegisteredAddrLocked(uintptr_t old_addr, size_t len, uintptr_t &new_addr) const;
   void UpdateStats(const FabricMemTransferContext &context, uint64_t transfer_cost, uint64_t real_copy_cost,
                    uint64_t transfer_bytes, uint64_t op_desc_count);
 
