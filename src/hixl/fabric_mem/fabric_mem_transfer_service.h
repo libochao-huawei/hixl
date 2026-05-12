@@ -62,6 +62,11 @@ class FabricMemTransferService {
                                              const AsyncRecord &async_record, TransferStatus &status);
   static Status IsTransferDone(const std::vector<AsyncResource> &async_resources, uint64_t req_id,
                                TransferStatus &status, bool &completed);
+  Status ReuseStreamsLocked(std::vector<aclrtStream> &streams, size_t stream_num);
+  Status CreateStreamLocked(std::vector<aclrtStream> &streams, std::vector<aclrtStream> &new_streams);
+  Status RollbackStreamsLocked(std::vector<aclrtStream> &streams, const std::vector<aclrtStream> &new_streams);
+  void ReturnStreamsLocked(const std::vector<aclrtStream> &streams);
+  static void DestroyStreams(const std::vector<aclrtStream> &streams);
   Status TryGetStreamOnce(std::vector<aclrtStream> &streams, size_t stream_num);
   Status TryGetStream(std::vector<aclrtStream> &streams, uint64_t timeout_us);
   static Status ProcessCopyWithAsync(const std::vector<aclrtStream> &streams, TransferOp operation,

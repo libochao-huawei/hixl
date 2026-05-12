@@ -442,10 +442,7 @@ Status FabricMemTransferService::TryGetStream(std::vector<aclrtStream> &streams,
   }
 }
 
-Status FabricMemTransferService::TryGetStreamOnce(std::vector<aclrtStream> &streams, size_t stream_num) {
-  std::lock_guard<std::mutex> lock(stream_pool_mutex_);
-  streams.clear();
-  std::vector<aclrtStream> new_streams;
+Status FabricMemTransferService::ReuseStreamsLocked(std::vector<aclrtStream> &streams, size_t stream_num) {
   for (auto &stream_stat : stream_pool_) {
     if (!stream_stat.second) {
       continue;
@@ -456,26 +453,62 @@ Status FabricMemTransferService::TryGetStreamOnce(std::vector<aclrtStream> &stre
       return SUCCESS;
     }
   }
+  return FAILED;
+}
+
+Status FabricMemTransferService::CreateStreamLocked(std::vector<aclrtStream> &streams,
+                                                    std::vector<aclrtStream> &new_streams) {
+  aclrtStream stream = nullptr;
+  HIXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&stream, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC),
+                   "Create fabric mem stream failed.");
+  streams.emplace_back(stream);
+  new_streams.emplace_back(stream);
+  return SUCCESS;
+}
+
+void FabricMemTransferService::ReturnStreamsLocked(const std::vector<aclrtStream> &streams) {
+  for (auto &stream : streams) {
+    const auto it = stream_pool_.find(stream);
+    if (it == stream_pool_.end()) {
+      continue;
+    }
+    it->second = true;
+  }
+}
+
+void FabricMemTransferService::DestroyStreams(const std::vector<aclrtStream> &streams) {
+  for (auto &stream : streams) {
+    HIXL_CHK_ACL(aclrtDestroyStream(stream), "Destroy newly created fabric mem stream failed.");
+  }
+}
+
+Status FabricMemTransferService::RollbackStreamsLocked(std::vector<aclrtStream> &streams,
+                                                       const std::vector<aclrtStream> &new_streams) {
+  HIXL_EVENT("Fabric mem stream pool is full, current size:%zu.", stream_pool_.size());
+  ReturnStreamsLocked(streams);
+  DestroyStreams(new_streams);
+  streams.clear();
+  return FAILED;
+}
+
+Status FabricMemTransferService::TryGetStreamOnce(std::vector<aclrtStream> &streams, size_t stream_num) {
+  std::lock_guard<std::mutex> lock(stream_pool_mutex_);
+  streams.clear();
+  std::vector<aclrtStream> new_streams;
+  if (ReuseStreamsLocked(streams, stream_num) == SUCCESS) {
+    return SUCCESS;
+  }
   while (streams.size() < stream_num) {
     if (stream_pool_.size() + new_streams.size() >= max_stream_num_) {
-      HIXL_EVENT("Fabric mem stream pool is full, current size:%zu.", stream_pool_.size());
-      for (auto &stream : streams) {
-        const auto it = stream_pool_.find(stream);
-        if (it != stream_pool_.end()) {
-          it->second = true;
-        }
-      }
-      for (auto &stream : new_streams) {
-        HIXL_CHK_ACL(aclrtDestroyStream(stream), "Destroy newly created fabric mem stream failed.");
-      }
-      streams.clear();
-      return FAILED;
+      return RollbackStreamsLocked(streams, new_streams);
     }
-    aclrtStream stream = nullptr;
-    HIXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&stream, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC),
-                     "Create fabric mem stream failed.");
-    streams.emplace_back(stream);
-    new_streams.emplace_back(stream);
+    const Status status = CreateStreamLocked(streams, new_streams);
+    if (status != SUCCESS) {
+      ReturnStreamsLocked(streams);
+      DestroyStreams(new_streams);
+      streams.clear();
+      return status;
+    }
   }
   for (const auto &stream : streams) {
     stream_pool_[stream] = false;
