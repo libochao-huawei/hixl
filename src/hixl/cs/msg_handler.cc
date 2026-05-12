@@ -13,8 +13,10 @@
 #include "common/ctrl_msg.h"
 
 namespace hixl {
-Status OptionalAclContext::CaptureIfNeeded(bool need_device_context) {
-  enabled_ = need_device_context;
+Status OptionalAclContext::CaptureIfNeeded() {
+  uint32_t device_count = 0U;
+  HIXL_CHK_ACL_RET(aclrtGetDeviceCount(&device_count), "aclrtGetDeviceCount failed");
+  enabled_ = (device_count > 0U);
   ctx_ = nullptr;
   if (!enabled_) {
     return SUCCESS;
@@ -41,13 +43,13 @@ void MsgHandler::SubmitMsg(int32_t fd, const CtrlMsgPtr &msg) {
   req_cv_.notify_one();
 }
 
-Status MsgHandler::Initialize(bool need_device_context) {
+Status MsgHandler::Initialize() {
   constexpr uint32_t kMinThreadPoolSize = 4U;
   constexpr uint32_t kMaxThreadPoolSize = 1024U;
   thread_pool_ = MakeUnique<ThreadPool>("cs_server", kMinThreadPoolSize, kMaxThreadPoolSize);
   HIXL_CHECK_NOTNULL(thread_pool_);
   running_ = true;
-  HIXL_CHK_STATUS_RET(acl_context_.CaptureIfNeeded(need_device_context), "Failed to capture acl context");
+  HIXL_CHK_STATUS_RET(acl_context_.CaptureIfNeeded(), "Failed to capture acl context");
   listener_ = std::thread([this]() {
     HandleMsg();
   });

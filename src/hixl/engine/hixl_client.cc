@@ -503,7 +503,7 @@ Status HixlClient::Connect(uint32_t timeout_ms) {
   ThreadPool thread_pool("hixl_client_connect", client_handles_.size());
   std::vector<std::future<Status>> connect_futures;
   OptionalAclContext acl_context;
-  HIXL_CHK_STATUS_RET(acl_context.CaptureIfNeeded(has_local_device_client_), "Failed to capture acl context");
+  HIXL_CHK_STATUS_RET(acl_context.CaptureIfNeeded(), "Failed to capture acl context");
   for (const auto &pair : client_handles_) {
     auto type = pair.first;
     auto handle = pair.second;
