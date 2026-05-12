@@ -29,6 +29,8 @@ set(ACL_INCLUDE_DIR "${ASCEND_ROOT}/${ACL_ARCH_DIR}/include/")
 # 头文件路径
 set(INCLUDE_PATHS
     ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/../../src/hixl/common/
+    ${CMAKE_SOURCE_DIR}/../../include/
     ${ACL_INCLUDE_DIR}
 )
 

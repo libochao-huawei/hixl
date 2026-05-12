@@ -607,13 +607,15 @@ bool IsProductServer(uint32_t mainboard_id) {
 }
 
 std::set<int32_t> CollectRelatedNpuIds(int32_t phy_dev_id, const TopoData& topo_data) {
+    (void)topo_data;
+    // NPU 按 8 个一组划分，找出 phy_dev_id 所在组的所有 NPU
+    int32_t group_start = (phy_dev_id / 8) * 8;
     std::set<int32_t> related_npu_ids;
-    related_npu_ids.insert(phy_dev_id);
-    for (const auto& link : topo_data.links) {
-        related_npu_ids.insert(link.local_a);
-        related_npu_ids.insert(link.local_b);
+    for (int32_t i = 0; i < 8; ++i) {
+        related_npu_ids.insert(group_start + i);
     }
-    std::cout << "[CollectRelatedNpuIds] Related NPU IDs: ";
+    std::cout << "[CollectRelatedNpuIds] phy_dev_id=" << phy_dev_id
+              << ", group_start=" << group_start << ", Related NPU IDs: ";
     for (int id : related_npu_ids) std::cout << id << " ";
     std::cout << std::endl;
     return related_npu_ids;
@@ -805,6 +807,11 @@ int32_t GenerateLocalCommRes(
     local_comm_res.version = "1.3";
     local_comm_res.net_instance_id = "";
     local_comm_res.endpoint_list = all_edges;
+
+    // 为每个 endpoint 设置 net_instance_id
+    for (auto& ep : local_comm_res.endpoint_list) {
+        ep.net_instance_id = local_comm_res.net_instance_id;
+    }
 
     std::cout << "[GenerateLocalCommRes] Total endpoints=" << all_edges.size() << ", Done" << std::endl;
     return SUCCESS;

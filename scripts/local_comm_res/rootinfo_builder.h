@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include "hixl/hixl_types.h"
 
 namespace hixl {
 
@@ -41,7 +42,7 @@ typedef struct dcmi_urma_eid_info {
 } dcmi_urma_eid_info_t;
 
 // ============ 错误码定义 ============
-const int32_t SUCCESS = 0;
+// SUCCESS 已通过 hixl_types.h 定义
 const int32_t ERROR_INVALID_PARAM = 1001;
 const int32_t ERROR_FILE_NOT_FOUND = 1002;
 const int32_t ERROR_FILE_PARSE_FAILED = 1003;

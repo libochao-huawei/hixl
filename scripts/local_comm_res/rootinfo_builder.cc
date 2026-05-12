@@ -141,7 +141,7 @@ int LoadDcmi() {
  *   - > 8：PG EID (非物理串口)
  */
 EidByte6Info ParseEidByte6(const std::string& eid) {
-    EidByte6Info info = {0};
+    EidByte6Info info{};
 
     if (eid.length() < 12) {
         return info;

@@ -17,6 +17,8 @@ set(HIXL_INC_DIR
         "${HIXL_CODE_DIR}/include"
         "${HIXL_CODE_DIR}/src/llm_datadist"
         "${CMAKE_CURRENT_LIST_DIR}"
+        "${CMAKE_CURRENT_LIST_DIR}/common"
+        "${HIXL_CODE_DIR}/scripts/local_comm_res"
         )
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 
@@ -25,6 +27,8 @@ file(GLOB HIXL_SRC_LIST
         "${CMAKE_CURRENT_LIST_DIR}/common/*.cc"
         "${CMAKE_CURRENT_LIST_DIR}/cs/*.cc"
         "${CMAKE_CURRENT_LIST_DIR}/profiling/*.cc"
+        "${HIXL_CODE_DIR}/scripts/local_comm_res/local_comm_res_tool.cc"
+        "${HIXL_CODE_DIR}/scripts/local_comm_res/rootinfo_builder.cc"
         )
 
 add_library(cann_hixl SHARED ${HIXL_SRC_LIST})

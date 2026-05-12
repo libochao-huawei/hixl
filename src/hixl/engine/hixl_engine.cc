@@ -18,6 +18,8 @@
 #include "common/llm_utils.h"
 #include "common/scope_guard.h"
 #include "profiling/prof_api_reg.h"
+#include "local_comm_res_tool.h"
+#include "acl/acl.h"
 
 namespace hixl {
 
@@ -45,9 +47,18 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(CheckOptions(options), "[HixlEngine] Failed to check options");
   std::string local_comm_res;
-  HIXL_CHK_STATUS_RET(
-      EndpointGenerator::BuildEndpointListFromOptions(options, local_engine_, local_comm_res, endpoint_list_),
-      "[HixlEngine] Failed to build endpoint list from options");
+  Status ret = EndpointGenerator::BuildEndpointListFromOptions(
+      options, local_engine_, local_comm_res, endpoint_list_);
+
+  if (ret == PARAM_INVALID && endpoint_list_.empty()) {
+    // fallback: 自动生成 local comm res
+    HIXL_LOGI("[HixlEngine] No LocalCommRes in options, auto-generating from DCMI + topology");
+    HIXL_CHK_STATUS_RET(GenerateLocalCommResFallback(options),
+                        "[HixlEngine] Failed to auto-generate local comm res");
+  } else {
+    HIXL_CHK_STATUS_RET(ret, "[HixlEngine] Failed to build endpoint list from options");
+  }
+
   HIXL_CHK_STATUS_RET(ParseTrafficClass(options), "[HixlEngine] Failed to parse traffic class");
   HIXL_CHK_STATUS_RET(ParseServiceLevel(options), "[HixlEngine] Failed to parse service level");
   HIXL_CHK_STATUS_RET(InitServer(),
@@ -318,6 +329,76 @@ Status HixlEngine::ParseServiceLevel(const std::map<AscendString, AscendString> 
     rdma_service_level_ = static_cast<uint8_t>(service_level);
     HIXL_LOGI("Set rdma service level to %d.", service_level);
   }
+  return SUCCESS;
+}
+
+Status HixlEngine::GenerateLocalCommResFallback(const std::map<AscendString, AscendString> &options) {
+  // 1. 获取 phy_dev_id
+  int32_t logic_id = 0;
+  aclError acl_ret = aclrtGetDevice(&logic_id);
+  HIXL_CHK_BOOL_RET_STATUS(acl_ret == ACL_SUCCESS, FAILED,
+                           "[HixlEngine] aclrtGetDevice failed, ret=%d", static_cast<int>(acl_ret));
+  int32_t phy_id = 0;
+  acl_ret = aclrtGetPhyDevIdByLogicDevId(logic_id, &phy_id);
+  HIXL_CHK_BOOL_RET_STATUS(acl_ret == ACL_SUCCESS, FAILED,
+                           "[HixlEngine] aclrtGetPhyDevIdByLogicDevId failed, logic_id=%d, ret=%d",
+                           logic_id, static_cast<int>(acl_ret));
+  HIXL_LOGI("[HixlEngine] GenerateLocalCommResFallback: logic_id=%d, phy_id=%d", logic_id, phy_id);
+
+  // 2. 从 options 或默认值读取 topo_path、route_path
+  std::map<std::string, std::string> opts;
+  auto find_option = [&options](const char *key) -> std::string {
+    auto it = options.find(AscendString(key));
+    if (it != options.end()) {
+      return it->second.GetString();
+    }
+    return "";
+  };
+
+  std::string topo_path = find_option("topo_path");
+  if (topo_path.empty()) {
+    // 默认在 /etc/ 下匹配最新的 *noroce.json
+    topo_path = "/etc/superpod_2d_noroce.json";
+  }
+  std::string route_path = find_option("route_path");
+  if (route_path.empty()) {
+    route_path = "/lib/route.conf";
+  }
+  std::string eid_json_path = find_option("eid_json_path");
+
+  opts["topo_path"] = topo_path;
+  opts["route_path"] = route_path;
+  if (!eid_json_path.empty()) {
+    opts["eid_json_path"] = eid_json_path;
+  }
+  HIXL_LOGI("[HixlEngine] GenerateLocalCommResFallback: topo_path=%s, route_path=%s",
+            topo_path.c_str(), route_path.c_str());
+
+  // 3. 调用 GenerateLocalCommRes
+  hixl::LocalCommRes gen_res;
+  int32_t ret = hixl::GenerateLocalCommRes(phy_id, opts, gen_res);
+  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED,
+                           "[HixlEngine] GenerateLocalCommRes failed, ret=%d", ret);
+
+  // 4. 提取 net_instance_id（从 local_engine_ 获取 host IP）
+  std::string net_instance_id;
+  std::string host_ip;
+  int32_t host_port = 0;
+  Status parse_ret = ParseListenInfo(local_engine_, host_ip, host_port);
+  if (parse_ret == SUCCESS && !host_ip.empty()) {
+    net_instance_id = host_ip;
+  }
+
+  // 5. 设置 net_instance_id 并赋值给 endpoint_list_
+  endpoint_list_.clear();
+  endpoint_list_.reserve(gen_res.endpoint_list.size());
+  for (auto &ep : gen_res.endpoint_list) {
+    ep.net_instance_id = net_instance_id;
+    endpoint_list_.emplace_back(std::move(ep));
+  }
+
+  HIXL_LOGI("[HixlEngine] GenerateLocalCommResFallback: generated %zu endpoints, net_instance_id=%s",
+            endpoint_list_.size(), net_instance_id.c_str());
   return SUCCESS;
 }
 }  // namespace hixl

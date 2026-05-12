@@ -18,6 +18,8 @@
 
 // 引入 rootinfo_builder 的数据结构
 #include "rootinfo_builder.h"
+// 引入统一的 EndpointConfig 定义
+#include "endpoint_config.h"
 
 namespace hixl {
 
@@ -47,17 +49,7 @@ typedef struct {
 } UEList;
 
 // ============ 端点配置结构 ============
-
-/**
- * @brief 端点配置结构
- */
-struct EndpointConfig {
-    std::string protocol;       // "ub_ctp", "ub_tp", "roce"
-    std::string comm_id;        // EID 地址
-    std::string placement;      // "device" 或 "host"
-    std::string plane;          // plane_id（可选）
-    std::string dst_eid;        // 目标 EID（用于直连场景）
-};
+// EndpointConfig 已通过 endpoint_config.h 统一定义
 
 /**
  * @brief LocalCommRes 结构体（替代 JSON 输出）
