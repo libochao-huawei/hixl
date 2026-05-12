@@ -43,23 +43,13 @@ volatile int g_dcmi_init_status = -1;
 
 // ============ DCMI 接口动态加载 ============
 
-int LoadDcmi() {
-    if (g_dcmi_loaded) {
-        return g_dcmi_init_status;
-    }
-
-    const int max_wait_time = 10;
-
-    // 打开 DCMI 库
+int TryLoadDcmiSymbols() {
     g_dcmi_handle = dlopen("libdcmi.so", RTLD_LAZY);
     if (g_dcmi_handle == nullptr) {
-        std::cerr << "[LoadDcmi] Failed to dlopen libdcmi.so: " << dlerror() << std::endl;
-        g_dcmi_init_status = -1;
-        g_dcmi_loaded = true;
-        return g_dcmi_init_status;
+        std::cerr << "[TryLoadDcmiSymbols] Failed to dlopen libdcmi.so: " << dlerror() << std::endl;
+        return -1;
     }
 
-    // 加载函数符号
     g_dcmi_init = reinterpret_cast<dcmi_init_func>(dlsym(g_dcmi_handle, "dcmiv2_init"));
     g_dcmi_get_urma_device_cnt = reinterpret_cast<dcmi_get_urma_device_cnt_func>(
         dlsym(g_dcmi_handle, "dcmiv2_get_urma_device_cnt"));
@@ -70,27 +60,28 @@ int LoadDcmi() {
     g_dcmi_get_logicid_from_phyid = reinterpret_cast<dcmi_get_logicid_from_phyid_func>(
         dlsym(g_dcmi_handle, "dcmiv2_get_dev_id_by_chip_phy_id"));
 
-    // 尝试备用符号名
     if (g_dcmi_get_logicid_from_phyid == nullptr) {
         g_dcmi_get_logicid_from_phyid = reinterpret_cast<dcmi_get_logicid_from_phyid_func>(
             dlsym(g_dcmi_handle, "dcmiv2_get_dev_id_from_chip_phyid"));
     }
 
-    // 检查必要函数
     if (g_dcmi_init == nullptr ||
         g_dcmi_get_urma_device_cnt == nullptr ||
         g_dcmi_get_eid_list == nullptr ||
         g_dcmi_get_mainboard_id == nullptr ||
         g_dcmi_get_logicid_from_phyid == nullptr) {
-        std::cerr << "[LoadDcmi] Failed to load DCMI function symbols" << std::endl;
+        std::cerr << "[TryLoadDcmiSymbols] Failed to load DCMI function symbols" << std::endl;
         dlclose(g_dcmi_handle);
         g_dcmi_handle = nullptr;
-        g_dcmi_init_status = -1;
-        g_dcmi_loaded = true;
-        return g_dcmi_init_status;
+        return -1;
     }
 
-    // 初始化 DCMI
+    return 0;
+}
+
+int InitDcmiWithRetry() {
+    const int max_wait_time = 10;
+
     for (int i = 0; i < max_wait_time; ++i) {
         g_dcmi_init_status = g_dcmi_init();
         if (g_dcmi_init_status == 0) {
@@ -100,9 +91,28 @@ int LoadDcmi() {
     }
 
     if (g_dcmi_init_status != 0) {
-        std::cerr << "[LoadDcmi] DCMI init failed after " << max_wait_time << " retries" << std::endl;
+        std::cerr << "[InitDcmiWithRetry] DCMI init failed after " << max_wait_time << " retries" << std::endl;
         dlclose(g_dcmi_handle);
         g_dcmi_handle = nullptr;
+        g_dcmi_init_status = -1;
+        return g_dcmi_init_status;
+    }
+
+    return 0;
+}
+
+int LoadDcmi() {
+    if (g_dcmi_loaded) {
+        return g_dcmi_init_status;
+    }
+
+    if (TryLoadDcmiSymbols() != 0) {
+        g_dcmi_init_status = -1;
+        g_dcmi_loaded = true;
+        return g_dcmi_init_status;
+    }
+
+    if (InitDcmiWithRetry() != 0) {
         g_dcmi_init_status = -1;
         g_dcmi_loaded = true;
         return g_dcmi_init_status;
@@ -158,126 +168,137 @@ EidByte6Info ParseEidByte6(const std::string& eid) {
 
 // ============ URMA Device 获取实现 ============
 
+int32_t LoadUrmaDevicesFromJson(int32_t npu_id, const std::string& json_path,
+                                 std::vector<UrmaDevice>& urma_devices);
+int32_t ParseUrmaDevicesFromJsonSection(const std::string& npu_section,
+                                        std::vector<UrmaDevice>& urma_devices);
+void ExtractEidsFromArray(const std::string& eid_array, std::vector<std::string>& eid_list);
+int32_t LoadUrmaDevicesFromDcmi(int32_t npu_id, std::vector<UrmaDevice>& urma_devices);
+std::string ConvertEidToString(const unsigned char* raw);
+
 int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices,
                           const std::string& json_path) {
-    // 如果提供了 json_path，从文件加载
+    urma_devices.clear();
+
     if (!json_path.empty()) {
-        std::cout << "[GetUrmaDeviceList] Loading from JSON file: " << json_path << std::endl;
+        return LoadUrmaDevicesFromJson(npu_id, json_path, urma_devices);
+    }
+    return LoadUrmaDevicesFromDcmi(npu_id, urma_devices);
+}
 
-        std::ifstream file(json_path);
-        if (!file.is_open()) {
-            std::cerr << "[GetUrmaDeviceList] Failed to open JSON file: " << json_path << std::endl;
-            return ERROR_FILE_NOT_FOUND;
-        }
+int32_t LoadUrmaDevicesFromJson(int32_t npu_id, const std::string& json_path,
+                                 std::vector<UrmaDevice>& urma_devices) {
+    std::cout << "[LoadUrmaDevicesFromJson] Loading from JSON file: " << json_path << std::endl;
 
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        std::string json_content = buffer.str();
-
-        urma_devices.clear();
-
-        // 构建 npu 名称
-        std::string npu_name = "npu" + std::to_string(npu_id);
-
-        // 查找 npu section
-        size_t npu_pos = json_content.find("\"" + npu_name + "\"");
-        if (npu_pos == std::string::npos) {
-            std::cerr << "[GetUrmaDeviceList] npu section not found: " << npu_name << std::endl;
-            return ERROR_FILE_PARSE_FAILED;
-        }
-
-        // 找到 npu section 的开始位置（跳过 "npuX": ）
-        size_t npu_start = json_content.find(":", npu_pos);
-        if (npu_start == std::string::npos) {
-            return ERROR_FILE_PARSE_FAILED;
-        }
-        npu_start = json_content.find("{", npu_start);
-        if (npu_start == std::string::npos) {
-            return ERROR_FILE_PARSE_FAILED;
-        }
-
-        // 找到对应的结束括号（简单匹配）
-        size_t npu_end = npu_start + 1;
-        int brace_count = 1;
-        while (brace_count > 0 && npu_end < json_content.size()) {
-            if (json_content[npu_end] == '{') brace_count++;
-            else if (json_content[npu_end] == '}') brace_count--;
-            npu_end++;
-        }
-
-        std::string npu_section = json_content.substr(npu_start + 1, npu_end - npu_start - 2);
-
-        // 解析 npu section 中的 udma 设备
-        size_t pos = 0;
-        while ((pos = npu_section.find("\"udma", pos)) != std::string::npos) {
-            // 找到设备名称
-            size_t name_start = pos + 1;
-            size_t name_end = npu_section.find("\"", name_start);
-            if (name_end == std::string::npos) break;
-            std::string dev_name = npu_section.substr(name_start, name_end - name_start);
-
-            // 找到 EID 数组
-            size_t array_start = npu_section.find("[", name_end);
-            size_t array_end = npu_section.find("]", array_start);
-            if (array_start == std::string::npos || array_end == std::string::npos) {
-                pos = name_end;
-                continue;
-            }
-            std::string eid_array = npu_section.substr(array_start + 1, array_end - array_start - 1);
-
-            UrmaDevice urma_dev;
-            urma_dev.name = dev_name;
-
-            // 提取每个 EID
-            size_t eid_pos = 0;
-            while ((eid_pos = eid_array.find("\"", eid_pos)) != std::string::npos) {
-                size_t eid_start = eid_pos + 1;
-                size_t eid_end = eid_array.find("\"", eid_start);
-                if (eid_end == std::string::npos) break;
-                std::string eid = eid_array.substr(eid_start, eid_end - eid_start);
-                if (!eid.empty()) {
-                    urma_dev.eid_list.push_back(eid);
-                }
-                eid_pos = eid_end + 1;
-            }
-
-            if (!urma_dev.eid_list.empty()) {
-                urma_devices.push_back(urma_dev);
-                std::cout << "[GetUrmaDeviceList]   Loaded " << dev_name << " with " << urma_dev.eid_list.size() << " EIDs" << std::endl;
-            }
-
-            pos = array_end + 1;
-        }
-
-        if (urma_devices.empty()) {
-            std::cerr << "[GetUrmaDeviceList] No devices found in JSON for " << npu_name << std::endl;
-            return ERROR_FILE_PARSE_FAILED;
-        }
-
-        std::cout << "[GetUrmaDeviceList] Loaded " << urma_devices.size() << " device(s) from JSON for " << npu_name << std::endl;
-        return SUCCESS;
+    std::ifstream file(json_path);
+    if (!file.is_open()) {
+        std::cerr << "[LoadUrmaDevicesFromJson] Failed to open JSON file: " << json_path << std::endl;
+        return ERROR_FILE_NOT_FOUND;
     }
 
-    // 正常 DCMI 调用
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string json_content = buffer.str();
+
+    std::string npu_name = "npu" + std::to_string(npu_id);
+    size_t npu_pos = json_content.find("\"" + npu_name + "\"");
+    if (npu_pos == std::string::npos) {
+        std::cerr << "[LoadUrmaDevicesFromJson] npu section not found: " << npu_name << std::endl;
+        return ERROR_FILE_PARSE_FAILED;
+    }
+
+    size_t npu_start = json_content.find(":", npu_pos);
+    if (npu_start == std::string::npos) {
+        return ERROR_FILE_PARSE_FAILED;
+    }
+    npu_start = json_content.find("{", npu_start);
+    if (npu_start == std::string::npos) {
+        return ERROR_FILE_PARSE_FAILED;
+    }
+
+    size_t npu_end = npu_start + 1;
+    int brace_count = 1;
+    while (brace_count > 0 && npu_end < json_content.size()) {
+        if (json_content[npu_end] == '{') brace_count++;
+        else if (json_content[npu_end] == '}') brace_count--;
+        npu_end++;
+    }
+
+    std::string npu_section = json_content.substr(npu_start + 1, npu_end - npu_start - 2);
+    return ParseUrmaDevicesFromJsonSection(npu_section, urma_devices);
+}
+
+int32_t ParseUrmaDevicesFromJsonSection(const std::string& npu_section,
+                                         std::vector<UrmaDevice>& urma_devices) {
+    size_t pos = 0;
+    while ((pos = npu_section.find("\"udma", pos)) != std::string::npos) {
+        size_t name_start = pos + 1;
+        size_t name_end = npu_section.find("\"", name_start);
+        if (name_end == std::string::npos) break;
+        std::string dev_name = npu_section.substr(name_start, name_end - name_start);
+
+        size_t array_start = npu_section.find("[", name_end);
+        size_t array_end = npu_section.find("]", array_start);
+        if (array_start == std::string::npos || array_end == std::string::npos) {
+            pos = name_end;
+            continue;
+        }
+        std::string eid_array = npu_section.substr(array_start + 1, array_end - array_start - 1);
+
+        UrmaDevice urma_dev;
+        urma_dev.name = dev_name;
+        ExtractEidsFromArray(eid_array, urma_dev.eid_list);
+
+        if (!urma_dev.eid_list.empty()) {
+            urma_devices.push_back(urma_dev);
+            std::cout << "[ParseUrmaDevicesFromJsonSection]   Loaded " << dev_name
+                      << " with " << urma_dev.eid_list.size() << " EIDs" << std::endl;
+        }
+        pos = array_end + 1;
+    }
+
+    if (urma_devices.empty()) {
+        std::cerr << "[ParseUrmaDevicesFromJsonSection] No devices found in JSON" << std::endl;
+        return ERROR_FILE_PARSE_FAILED;
+    }
+
+    std::cout << "[ParseUrmaDevicesFromJsonSection] Loaded " << urma_devices.size() << " device(s)" << std::endl;
+    return SUCCESS;
+}
+
+void ExtractEidsFromArray(const std::string& eid_array, std::vector<std::string>& eid_list) {
+    size_t eid_pos = 0;
+    while ((eid_pos = eid_array.find("\"", eid_pos)) != std::string::npos) {
+        size_t eid_start = eid_pos + 1;
+        size_t eid_end = eid_array.find("\"", eid_start);
+        if (eid_end == std::string::npos) break;
+        std::string eid = eid_array.substr(eid_start, eid_end - eid_start);
+        if (!eid.empty()) {
+            eid_list.push_back(eid);
+        }
+        eid_pos = eid_end + 1;
+    }
+}
+
+int32_t LoadUrmaDevicesFromDcmi(int32_t npu_id, std::vector<UrmaDevice>& urma_devices) {
     if (LoadDcmi() != 0) {
-        std::cerr << "[GetUrmaDeviceList] DCMI not loaded" << std::endl;
+        std::cerr << "[LoadUrmaDevicesFromDcmi] DCMI not loaded" << std::endl;
         return ERROR_DCMI_INTERFACE_FAILED;
     }
 
     unsigned int logic_id = 0;
     if (g_dcmi_get_logicid_from_phyid(npu_id, &logic_id) != 0) {
-        std::cerr << "[GetUrmaDeviceList] Failed to get logic id from npu id: " << npu_id << std::endl;
+        std::cerr << "[LoadUrmaDevicesFromDcmi] Failed to get logic id from npu id: " << npu_id << std::endl;
         return ERROR_DCMI_INTERFACE_FAILED;
     }
 
     unsigned int dev_cnt = 0;
     int ret = g_dcmi_get_urma_device_cnt(logic_id, &dev_cnt);
     if (ret != 0) {
-        std::cerr << "[GetUrmaDeviceList] Failed to get urma device count, ret=" << ret << std::endl;
+        std::cerr << "[LoadUrmaDevicesFromDcmi] Failed to get urma device count, ret=" << ret << std::endl;
         return ERROR_DCMI_INTERFACE_FAILED;
     }
 
-    urma_devices.clear();
     for (size_t i = 0; i < dev_cnt; ++i) {
         UrmaDevice urma_dev;
         urma_dev.name = "udma" + std::to_string(i);
@@ -290,30 +311,27 @@ int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices,
         }
 
         for (int j = 0; j < eid_cnt; ++j) {
-            // 直接将 raw[16] 字节数组转换为十六进制字符串（已经是正确顺序）
-            std::ostringstream oss;
-            for (int k = 0; k < 16; ++k) {
-                oss << std::hex << std::setfill('0') << std::setw(2)
-                    << static_cast<int>(eid_buf[j].eid.raw[k]);
+            std::string eid_str = ConvertEidToString(eid_buf[j].eid.raw);
+            if (!eid_str.empty() && eid_str != "00000000000000000000000000000000") {
+                urma_dev.eid_list.push_back(eid_str);
             }
-            std::string eid_str = oss.str();
-
-            // 跳过空 EID
-            if (eid_str.empty() || eid_str == "00000000000000000000000000000000") {
-                continue;
-            }
-            urma_dev.eid_list.push_back(eid_str);
         }
 
-        // 跳过空设备（UBOE 设备在未配置 EID 之前是空的）
-        if (urma_dev.eid_list.empty()) {
-            continue;
+        if (!urma_dev.eid_list.empty()) {
+            urma_devices.push_back(urma_dev);
         }
-
-        urma_devices.push_back(urma_dev);
     }
 
     return SUCCESS;
+}
+
+std::string ConvertEidToString(const unsigned char* raw) {
+    std::ostringstream oss;
+    for (int k = 0; k < 16; ++k) {
+        oss << std::hex << std::setfill('0') << std::setw(2)
+            << static_cast<int>(raw[k]);
+    }
+    return oss.str();
 }
 
 // ============ RootInfo 构建实现 ============
@@ -342,11 +360,18 @@ int GetMeshDieId(int32_t npu_id, bool is_server) {
     }
 }
 
+void CollectMeshPorts(const std::vector<UrmaDevice>& urma_devices,
+                       int mesh_die_id,
+                       NpuRootInfo& rootinfo);
+void CollectClosPgEids(const std::vector<UrmaDevice>& urma_devices,
+                        NpuRootInfo& rootinfo);
+void PrintEidDebugInfo(const std::string& eid, const EidByte6Info& info);
+void PrintRootInfo(const NpuRootInfo& rootinfo);
+
 int32_t BuildNpuRootInfo(int32_t npu_id, bool is_server, NpuRootInfo& rootinfo,
                          const std::string& json_path) {
     std::cout << "[BuildNpuRootInfo] npu_id=" << npu_id << ", is_server=" << is_server << std::endl;
 
-    // 获取 URMA Device 列表
     std::vector<UrmaDevice> urma_devices;
     int32_t ret = GetUrmaDeviceList(npu_id, urma_devices, json_path);
     if (ret != SUCCESS) {
@@ -361,57 +386,69 @@ int32_t BuildNpuRootInfo(int32_t npu_id, bool is_server, NpuRootInfo& rootinfo,
 
     std::cout << "[BuildNpuRootInfo] Got " << urma_devices.size() << " urma device(s)" << std::endl;
 
-    // 确定 Mesh 层的 die_id
     int mesh_die_id = GetMeshDieId(npu_id, is_server);
     std::cout << "[BuildNpuRootInfo] Mesh die_id=" << mesh_die_id << std::endl;
 
-    // 清空 rootinfo
     rootinfo.port_to_eid.clear();
     rootinfo.clos_pg_eids.clear();
 
-    // 遍历 URMA Device 构建 rootinfo
-    for (const auto& urma_dev : urma_devices) {
-        if (urma_dev.eid_list.empty()) {
-            continue;
-        }
+    CollectMeshPorts(urma_devices, mesh_die_id, rootinfo);
+    CollectClosPgEids(urma_devices, rootinfo);
+    PrintRootInfo(rootinfo);
 
-        // 遍历该 urma_device 下的所有 EID
+    return SUCCESS;
+}
+
+void CollectMeshPorts(const std::vector<UrmaDevice>& urma_devices,
+                      int mesh_die_id,
+                      NpuRootInfo& rootinfo) {
+    for (const auto& urma_dev : urma_devices) {
+        if (urma_dev.eid_list.empty()) continue;
+
         for (const auto& eid : urma_dev.eid_list) {
             EidByte6Info info = ParseEidByte6(eid);
+            PrintEidDebugInfo(eid, info);
 
-            // 调试打印
-            std::cout << "[BuildNpuRootInfo]   EID: " << eid
-                      << ", byte6=0x" << std::hex << info.byte6 << std::dec
-                      << ", high=0x" << std::hex << info.high_nibble << std::dec
-                      << ", low=0x" << std::hex << info.low_nibble << std::dec
-                      << ", die_id=" << info.die_id
-                      << ", is_pg=" << (info.is_pg_eid ? "true" : "false")
-                      << ", port=" << info.port << std::endl;
+            if (info.is_pg_eid) continue;
 
-            // 处理 PG EID (串口组 EID)
-            if (info.is_pg_eid) {
-                // 收集所有 PG EID，并根据 die_id 区分
-                // plane_pg_0: 与 Mesh 相反 die 上的 PG EID
-                // plane_pg_1: 与 Mesh 相同 die 上的 PG EID
-                ClosPgEidInfo pg_info;
-                pg_info.eid = eid;
-                pg_info.die_id = info.die_id;
-                rootinfo.clos_pg_eids.push_back(pg_info);
-                std::cout << "[BuildNpuRootInfo]   Add PG EID: " << eid << " (die_id=" << info.die_id << ")" << std::endl;
-                continue;
-            }
-
-            // 处理物理串口 EID（只记录 Mesh 层的）
             if (info.port >= 0 && info.port <= 8 && info.die_id == mesh_die_id) {
-                // Mesh 层串口: port 值直接使用
                 std::string port_key = std::to_string(info.die_id) + "/" + std::to_string(info.port);
                 rootinfo.port_to_eid[port_key] = eid;
-                std::cout << "[BuildNpuRootInfo]   Add Mesh port: " << port_key << std::endl;
+                std::cout << "[CollectMeshPorts]   Add Mesh port: " << port_key << std::endl;
             }
-            // CLOS 层的物理串口不需要记录，port > 8 的也不是物理串口
         }
     }
+}
 
+void CollectClosPgEids(const std::vector<UrmaDevice>& urma_devices,
+                        NpuRootInfo& rootinfo) {
+    for (const auto& urma_dev : urma_devices) {
+        if (urma_dev.eid_list.empty()) continue;
+
+        for (const auto& eid : urma_dev.eid_list) {
+            EidByte6Info info = ParseEidByte6(eid);
+            if (!info.is_pg_eid) continue;
+
+            ClosPgEidInfo pg_info;
+            pg_info.eid = eid;
+            pg_info.die_id = info.die_id;
+            rootinfo.clos_pg_eids.push_back(pg_info);
+            std::cout << "[CollectClosPgEids]   Add PG EID: " << eid << " (die_id=" << info.die_id << ")" << std::endl;
+        }
+    }
+}
+
+void PrintEidDebugInfo(const std::string& eid, const EidByte6Info& info) {
+    std::cout << "[BuildNpuRootInfo]   EID: " << eid
+              << ", byte6=0x" << std::hex << info.byte6 << std::dec
+              << ", high=0x" << std::hex << info.high_nibble << std::dec
+              << ", low=0x" << std::hex << info.low_nibble << std::dec
+              << ", die_id=" << info.die_id
+              << ", is_pg=" << (info.is_pg_eid ? "true" : "false")
+              << ", port=" << info.port << std::endl;
+}
+
+void PrintRootInfo(const NpuRootInfo& rootinfo) {
     std::cout << "[BuildNpuRootInfo] Built " << rootinfo.port_to_eid.size()
               << " port->eid mappings, clos_pg_eids=" << rootinfo.clos_pg_eids.size() << std::endl;
     for (const auto& kv : rootinfo.port_to_eid) {
@@ -420,8 +457,6 @@ int32_t BuildNpuRootInfo(int32_t npu_id, bool is_server, NpuRootInfo& rootinfo,
     for (const auto& pg : rootinfo.clos_pg_eids) {
         std::cout << "[BuildNpuRootInfo]   CLOS PG EID: " << pg.eid << std::endl;
     }
-
-    return SUCCESS;
 }
 
 }  // namespace hixl
