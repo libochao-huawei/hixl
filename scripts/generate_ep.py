@@ -454,9 +454,9 @@ if __name__ == "__main__":
                 "placement": "host",
                 "dst_eid": h2d_device_eid
             }
-            # Insert host endpoint at the end
-            endpoint_list.append(ub_host_endpoint_d)
-            endpoint_list.append(ub_host_endpoint)
+            # Insert host endpoint at the end, disabled for server PD disaggregation
+            # endpoint_list.append(ub_host_endpoint_d)
+            # endpoint_list.append(ub_host_endpoint)
 
         net_instance_id = next(
             (item.get('net_instance_id')
