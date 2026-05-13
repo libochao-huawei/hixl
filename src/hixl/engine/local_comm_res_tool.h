@@ -1,4 +1,14 @@
 /**
+* Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/**
  * @file local_comm_res_tool.h
  * @brief LocalCommRes 生成工具头文件
  *
@@ -8,8 +18,8 @@
  * DCMI 接口通过 dlopen 方式动态加载 libdcmi.so，避免直接依赖 hal.h
  */
 
-#ifndef HIXL_LOCAL_COMM_RES_TOOL_H_
-#define HIXL_LOCAL_COMM_RES_TOOL_H_
+#ifndef CANN_HIXL_SRC_HIXL_ENGINE_HIXL_LOCAL_COMM_RES_TOOL_H
+#define CANN_HIXL_SRC_HIXL_ENGINE_HIXL_LOCAL_COMM_RES_TOOL_H
 
 #include <string>
 #include <vector>
@@ -234,4 +244,4 @@ int GetClosPgPortCount(const TopoData& topo_data, int32_t phy_id, const std::str
 
 }  // namespace hixl
 
-#endif  // HIXL_LOCAL_COMM_RES_TOOL_H_
+#endif  // CANN_HIXL_SRC_HIXL_ENGINE_HIXL_LOCAL_COMM_RES_TOOL_H
