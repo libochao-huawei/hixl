@@ -1,4 +1,14 @@
 /**
+* Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/**
  * @file rootinfo_builder.h
  * @brief RootInfo 构建模块
  *
@@ -7,8 +17,8 @@
  * - 根据产品形态构建 port 到 EID 的映射
  */
 
-#ifndef HIXL_ROOTINFO_BUILDER_H_
-#define HIXL_ROOTINFO_BUILDER_H_
+#ifndef CANN_HIXL_SRC_HIXL_ENGINE_HIXL_ROOTINFO_BUILDER_H
+#define CANN_HIXL_SRC_HIXL_ENGINE_HIXL_ROOTINFO_BUILDER_H
 
 #include <string>
 #include <vector>
@@ -144,6 +154,26 @@ int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices,
  */
 int GetMeshDieId(int32_t npu_id, bool is_server);
 
+// ============ DCMI 加载接口（共享） ============
+
+typedef int (*dcmi_init_func)();
+typedef int (*dcmi_get_urma_device_cnt_func)(int npu_id, unsigned int* dev_cnt);
+typedef int (*dcmi_get_eid_list_func)(int npu_id, int urma_dev_index,
+                                       dcmi_urma_eid_info_t* eid_list, int* eid_cnt);
+typedef int (*dcmi_get_mainboard_id_func)(int npu_id, unsigned int* mainboard_id);
+typedef int (*dcmi_get_logicid_from_phyid_func)(unsigned int phy_id, unsigned int* logic_id);
+typedef int (*dcmi_get_device_info_func)(int npu_id, int main_cmd,
+                                          unsigned int sub_cmd, void* buf, unsigned int* size);
+
+extern dcmi_init_func g_dcmi_init;
+extern dcmi_get_urma_device_cnt_func g_dcmi_get_urma_device_cnt;
+extern dcmi_get_eid_list_func g_dcmi_get_eid_list;
+extern dcmi_get_mainboard_id_func g_dcmi_get_mainboard_id;
+extern dcmi_get_logicid_from_phyid_func g_dcmi_get_logicid_from_phyid;
+extern dcmi_get_device_info_func g_dcmi_get_device_info;
+
+int LoadDcmi();
+
 }  // namespace hixl
 
-#endif  // HIXL_ROOTINFO_BUILDER_H_
+#endif  // CANN_HIXL_SRC_HIXL_ENGINE_HIXL_ROOTINFO_BUILDER_H

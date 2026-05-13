@@ -1,4 +1,14 @@
 /**
+* Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/**
  * @file rootinfo_builder.cc
  * @brief RootInfo 构建模块实现
  *
@@ -17,30 +27,19 @@
 
 namespace hixl {
 
-// ============ DCMI 接口函数指针类型 ============
-
-namespace {
-
-typedef int (*dcmi_init_func)();
-typedef int (*dcmi_get_urma_device_cnt_func)(int npu_id, unsigned int* dev_cnt);
-typedef int (*dcmi_get_eid_list_func)(int npu_id, int urma_dev_index,
-                                       dcmi_urma_eid_info_t* eid_list, int* eid_cnt);
-typedef int (*dcmi_get_mainboard_id_func)(int npu_id, unsigned int* mainboard_id);
-typedef int (*dcmi_get_logicid_from_phyid_func)(unsigned int phy_id, unsigned int* logic_id);
-
-// DCMI 接口函数指针（全局）
+// ============ DCMI 接口函数指针（共享） ============
 dcmi_init_func g_dcmi_init = nullptr;
 dcmi_get_urma_device_cnt_func g_dcmi_get_urma_device_cnt = nullptr;
 dcmi_get_eid_list_func g_dcmi_get_eid_list = nullptr;
 dcmi_get_mainboard_id_func g_dcmi_get_mainboard_id = nullptr;
 dcmi_get_logicid_from_phyid_func g_dcmi_get_logicid_from_phyid = nullptr;
+dcmi_get_device_info_func g_dcmi_get_device_info = nullptr;
 
-// DCMI 库句柄
+namespace {
 void* g_dcmi_handle = nullptr;
-
-// 加载状态
 volatile bool g_dcmi_loaded = false;
 volatile int g_dcmi_init_status = -1;
+}  // anonymous namespace
 
 // ============ DCMI 接口动态加载 ============
 
@@ -66,11 +65,15 @@ int TryLoadDcmiSymbols() {
             dlsym(g_dcmi_handle, "dcmiv2_get_dev_id_from_chip_phyid"));
     }
 
+    g_dcmi_get_device_info = reinterpret_cast<dcmi_get_device_info_func>(
+        dlsym(g_dcmi_handle, "dcmiv2_get_device_info"));
+
     if (g_dcmi_init == nullptr ||
         g_dcmi_get_urma_device_cnt == nullptr ||
         g_dcmi_get_eid_list == nullptr ||
         g_dcmi_get_mainboard_id == nullptr ||
-        g_dcmi_get_logicid_from_phyid == nullptr) {
+        g_dcmi_get_logicid_from_phyid == nullptr ||
+        g_dcmi_get_device_info == nullptr) {
         std::cerr << "[TryLoadDcmiSymbols] Failed to load DCMI function symbols" << std::endl;
         dlclose(g_dcmi_handle);
         g_dcmi_handle = nullptr;
@@ -123,24 +126,8 @@ int LoadDcmi() {
     return g_dcmi_init_status;
 }
 
-}  // anonymous namespace
-
 // ============ EID 解析实现 ============
 
-/**
- * @brief 解析 EID 的第6字节
- * @param eid 32字符的 EID 字符串
- * @return EidByte6Info 解析结果
- *
- * 第6字节格式：
- * - 高4位：die_id 和是否串口组
- *   - >= 4 (即 bit3=1) → die_id = 1
- *   - < 4 (即 bit3=0) → die_id = 0
- *   - == 3 或 7 → 串口组 EID (PG EID)
- * - 低4位：port 值 (0-15)
- *   - 0-8：物理串口 port
- *   - > 8：PG EID (非物理串口)
- */
 EidByte6Info ParseEidByte6(const std::string& eid) {
     EidByte6Info info{};
 
@@ -148,44 +135,26 @@ EidByte6Info ParseEidByte6(const std::string& eid) {
         return info;
     }
 
-    // 第6字节是 raw[5]，对应 EID 字符串中位置 10-11 (0-indexed)
-    // 或者说是倒数第6和第5个字节
     std::string byte_str = eid.substr(10, 2);
     info.byte6 = std::stoi(byte_str, nullptr, 16);
     info.high_nibble = (info.byte6 >> 4) & 0xF;
     info.low_nibble = info.byte6 & 0xF;
-
-    // 判断 die_id：高4位 bit3
     info.die_id = (info.high_nibble & 0x4) ? 1 : 0;
-
-    // 判断是否 PG EID：高4位为 3 或 7
     info.is_pg_eid = (info.high_nibble == 0x3 || info.high_nibble == 0x7);
-
-    // port 取低4位
     info.port = info.low_nibble;
 
     return info;
 }
 
-// ============ URMA Device 获取实现 ============
+// ============ URMA Device 获取实现（内部函数） ============
 
-int32_t LoadUrmaDevicesFromJson(int32_t npu_id, const std::string& json_path,
-                                 std::vector<UrmaDevice>& urma_devices);
+namespace {
+
+// 前向声明（函数之间存在调用依赖，需要声明在前）
 int32_t ParseUrmaDevicesFromJsonSection(const std::string& npu_section,
-                                        std::vector<UrmaDevice>& urma_devices);
+                                         std::vector<UrmaDevice>& urma_devices);
 void ExtractEidsFromArray(const std::string& eid_array, std::vector<std::string>& eid_list);
-int32_t LoadUrmaDevicesFromDcmi(int32_t npu_id, std::vector<UrmaDevice>& urma_devices);
 std::string ConvertEidToString(const unsigned char* raw);
-
-int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices,
-                          const std::string& json_path) {
-    urma_devices.clear();
-
-    if (!json_path.empty()) {
-        return LoadUrmaDevicesFromJson(npu_id, json_path, urma_devices);
-    }
-    return LoadUrmaDevicesFromDcmi(npu_id, urma_devices);
-}
 
 int32_t LoadUrmaDevicesFromJson(int32_t npu_id, const std::string& json_path,
                                  std::vector<UrmaDevice>& urma_devices) {
@@ -337,6 +306,17 @@ std::string ConvertEidToString(const unsigned char* raw) {
 
 // ============ RootInfo 构建实现 ============
 
+}  // anonymous namespace
+
+int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices,
+                          const std::string& json_path) {
+    urma_devices.clear();
+    if (!json_path.empty()) {
+        return LoadUrmaDevicesFromJson(npu_id, json_path, urma_devices);
+    }
+    return LoadUrmaDevicesFromDcmi(npu_id, urma_devices);
+}
+
 /**
  * @brief 确定 Mesh 层的 die_id
  * @param npu_id NPU ID
@@ -425,19 +405,17 @@ void CollectMeshPorts(const std::vector<UrmaDevice>& urma_devices,
 void CollectClosPgEids(const std::vector<UrmaDevice>& urma_devices,
                         int mesh_die_id,
                         NpuRootInfo& rootinfo) {
-    // 按 die_id 分组收集 URMA 组信息：PG EID、组的 EID 总数
     struct UrmaGroupInfo {
         std::string pg_eid;
         int die_id;
         size_t total_eids;
     };
-    std::vector<UrmaGroupInfo> mesh_groups;     // mesh_die_id 上的组（排除 mesh 组本身）
-    std::vector<UrmaGroupInfo> non_mesh_groups; // 非 mesh_die_id 上的组
+    std::vector<UrmaGroupInfo> mesh_groups;
+    std::vector<UrmaGroupInfo> non_mesh_groups;
 
     for (const auto& urma_dev : urma_devices) {
         if (urma_dev.eid_list.empty()) continue;
 
-        // 找出该 URMA 组的 PG EID
         std::string pg_eid;
         int pg_die_id = -1;
         for (const auto& eid : urma_dev.eid_list) {
@@ -450,21 +428,15 @@ void CollectClosPgEids(const std::vector<UrmaDevice>& urma_devices,
         if (pg_eid.empty()) continue;
 
         size_t total_eids = urma_dev.eid_list.size();
+        // mesh 组（7 直连串口 + 1 PG = 8 EID）跳过
+        if (pg_die_id == mesh_die_id && total_eids == 8) {
+            continue;
+        }
 
-        // mesh_die_id 上的 URMA 组：EID 总数为 8 说明是 mesh 组（7 个直连串口 + 1 个 PG），跳过
         if (pg_die_id == mesh_die_id) {
-            if (total_eids == 8) {
-                std::cout << "[CollectClosPgEids]   Skip mesh URMA group: " << urma_dev.name
-                          << " (eid_count=" << total_eids << ")" << std::endl;
-                continue;
-            }
             mesh_groups.push_back({pg_eid, pg_die_id, total_eids});
-            std::cout << "[CollectClosPgEids]   Mesh die PG candidate: " << pg_eid
-                      << " from " << urma_dev.name << " (eid_count=" << total_eids << ")" << std::endl;
         } else {
             non_mesh_groups.push_back({pg_eid, pg_die_id, total_eids});
-            std::cout << "[CollectClosPgEids]   Non-mesh die PG candidate: " << pg_eid
-                      << " from " << urma_dev.name << " (eid_count=" << total_eids << ")" << std::endl;
         }
     }
 
@@ -472,26 +444,14 @@ void CollectClosPgEids(const std::vector<UrmaDevice>& urma_devices,
     if (!non_mesh_groups.empty()) {
         auto best = std::max_element(non_mesh_groups.begin(), non_mesh_groups.end(),
             [](const UrmaGroupInfo& a, const UrmaGroupInfo& b) { return a.total_eids < b.total_eids; });
-        ClosPgEidInfo pg_info;
-        pg_info.eid = best->pg_eid;
-        pg_info.die_id = best->die_id;
-        rootinfo.clos_pg_eids.push_back(pg_info);
-        std::cout << "[CollectClosPgEids]   plane_pg_0: " << best->pg_eid
-                  << " (eid_count=" << best->total_eids << ")" << std::endl;
+        rootinfo.clos_pg_eids.push_back({best->pg_eid, best->die_id});
     }
 
-    // mesh_die_id：只有一个 PG 说明没有 CLOS PG；多个 PG 取 EID 数第二多的作为 plane_pg_1
+    // mesh_die_id：多个 PG 取 EID 数第二多的作为 plane_pg_1
     if (mesh_groups.size() >= 2) {
-        // 按 EID 数降序排列
         std::sort(mesh_groups.begin(), mesh_groups.end(),
             [](const UrmaGroupInfo& a, const UrmaGroupInfo& b) { return a.total_eids > b.total_eids; });
-        const auto& second = mesh_groups[1];
-        ClosPgEidInfo pg_info;
-        pg_info.eid = second.pg_eid;
-        pg_info.die_id = second.die_id;
-        rootinfo.clos_pg_eids.push_back(pg_info);
-        std::cout << "[CollectClosPgEids]   plane_pg_1: " << second.pg_eid
-                  << " (eid_count=" << second.total_eids << ")" << std::endl;
+        rootinfo.clos_pg_eids.push_back({mesh_groups[1].pg_eid, mesh_groups[1].die_id});
     }
 }
 

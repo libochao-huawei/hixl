@@ -1,4 +1,14 @@
 /**
+* Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/**
  * @file local_comm_res_tool.cc
  * @brief LocalCommRes 生成工具实现文件
  *
@@ -21,8 +31,6 @@
 #include <set>
 #include <dirent.h>
 #include <sys/stat.h>
-#include <dlfcn.h>
-#include <unistd.h>
 
 namespace hixl {
 
@@ -61,115 +69,6 @@ enum DcmiMainCmd {
 enum DcmiChipInfoSubCmd {
     DCMI_CHIP_INFO_SUB_CMD_SPOD_INFO = 1,
 };
-
-// DCMI 接口函数指针类型
-typedef int (*dcmi_init_func)();
-typedef int (*dcmi_get_urma_device_cnt_func)(int npu_id, unsigned int* dev_cnt);
-typedef int (*dcmi_get_eid_list_func)(int npu_id, int urma_dev_index,
-                                       dcmi_urma_eid_info_t* eid_list, int* eid_cnt);
-typedef int (*dcmi_get_mainboard_id_func)(int npu_id, unsigned int* mainboard_id);
-typedef int (*dcmi_get_logicid_from_phyid_func)(unsigned int phy_id, unsigned int* logic_id);
-typedef int (*dcmi_get_device_info_func)(int npu_id, int main_cmd,
-                                          unsigned int sub_cmd, void* buf, unsigned int* size);
-
-// DCMI 接口函数指针（全局）
-dcmi_init_func g_dcmi_init = nullptr;
-dcmi_get_urma_device_cnt_func g_dcmi_get_urma_device_cnt = nullptr;
-dcmi_get_eid_list_func g_dcmi_get_eid_list = nullptr;
-dcmi_get_mainboard_id_func g_dcmi_get_mainboard_id = nullptr;
-dcmi_get_logicid_from_phyid_func g_dcmi_get_logicid_from_phyid = nullptr;
-dcmi_get_device_info_func g_dcmi_get_device_info = nullptr;
-
-// DCMI 库句柄
-void* g_dcmi_handle = nullptr;
-
-// 加载状态
-volatile bool g_dcmi_loaded = false;
-volatile int g_dcmi_init_status = -1;
-
-int TryLoadDcmiSymbols() {
-    g_dcmi_handle = dlopen("libdcmi.so", RTLD_LAZY);
-    if (g_dcmi_handle == nullptr) {
-        std::cerr << "[TryLoadDcmiSymbols] Failed to dlopen libdcmi.so: " << dlerror() << std::endl;
-        return -1;
-    }
-
-    g_dcmi_init = reinterpret_cast<dcmi_init_func>(dlsym(g_dcmi_handle, "dcmiv2_init"));
-    g_dcmi_get_urma_device_cnt = reinterpret_cast<dcmi_get_urma_device_cnt_func>(
-        dlsym(g_dcmi_handle, "dcmiv2_get_urma_device_cnt"));
-    g_dcmi_get_eid_list = reinterpret_cast<dcmi_get_eid_list_func>(
-        dlsym(g_dcmi_handle, "dcmiv2_get_eid_list_by_urma_dev_index"));
-    g_dcmi_get_mainboard_id = reinterpret_cast<dcmi_get_mainboard_id_func>(
-        dlsym(g_dcmi_handle, "dcmiv2_get_mainboard_id"));
-    g_dcmi_get_logicid_from_phyid = reinterpret_cast<dcmi_get_logicid_from_phyid_func>(
-        dlsym(g_dcmi_handle, "dcmiv2_get_dev_id_by_chip_phy_id"));
-
-    if (g_dcmi_get_logicid_from_phyid == nullptr) {
-        g_dcmi_get_logicid_from_phyid = reinterpret_cast<dcmi_get_logicid_from_phyid_func>(
-            dlsym(g_dcmi_handle, "dcmiv2_get_dev_id_from_chip_phyid"));
-    }
-
-    g_dcmi_get_device_info = reinterpret_cast<dcmi_get_device_info_func>(
-        dlsym(g_dcmi_handle, "dcmiv2_get_device_info"));
-
-    if (g_dcmi_init == nullptr ||
-        g_dcmi_get_urma_device_cnt == nullptr ||
-        g_dcmi_get_eid_list == nullptr ||
-        g_dcmi_get_mainboard_id == nullptr ||
-        g_dcmi_get_logicid_from_phyid == nullptr ||
-        g_dcmi_get_device_info == nullptr) {
-        std::cerr << "[TryLoadDcmiSymbols] Failed to load DCMI function symbols" << std::endl;
-        dlclose(g_dcmi_handle);
-        g_dcmi_handle = nullptr;
-        return -1;
-    }
-
-    return 0;
-}
-
-int InitDcmiWithRetry() {
-    const int max_wait_time = 10;
-
-    for (int i = 0; i < max_wait_time; ++i) {
-        g_dcmi_init_status = g_dcmi_init();
-        if (g_dcmi_init_status == 0) {
-            break;
-        }
-        sleep(1);
-    }
-
-    if (g_dcmi_init_status != 0) {
-        std::cerr << "[InitDcmiWithRetry] DCMI init failed after " << max_wait_time << " retries" << std::endl;
-        dlclose(g_dcmi_handle);
-        g_dcmi_handle = nullptr;
-        g_dcmi_init_status = -1;
-        return g_dcmi_init_status;
-    }
-
-    return 0;
-}
-
-int LoadDcmi() {
-    if (g_dcmi_loaded) {
-        return g_dcmi_init_status;
-    }
-
-    if (TryLoadDcmiSymbols() != 0) {
-        g_dcmi_init_status = -1;
-        g_dcmi_loaded = true;
-        return g_dcmi_init_status;
-    }
-
-    if (InitDcmiWithRetry() != 0) {
-        g_dcmi_init_status = -1;
-        g_dcmi_loaded = true;
-        return g_dcmi_init_status;
-    }
-
-    g_dcmi_loaded = true;
-    std::cout << "[LoadDcmi] DCMI loaded successfully" << std::endl;
-    return g_dcmi_init_status;
-}
 
 /**
  * @brief 获取 logic ID 从 phy ID
@@ -390,7 +289,7 @@ int32_t GetUBEntityList(int32_t phy_dev_id, UEList& ue_list) {
         return ERROR_DCMI_INTERFACE_FAILED;
     }
 
-    memset(&ue_list, 0, sizeof(UEList));
+    ue_list = {};
 
     unsigned int logic_id = 0;
     if (GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
@@ -449,8 +348,7 @@ int32_t GetClosNetInstanceId(int32_t phy_dev_id, std::string& net_instance_id) {
         return ERROR_DCMI_INTERFACE_FAILED;
     }
 
-    DcmiSpodInfo spod_info;
-    memset(&spod_info, 0, sizeof(spod_info));
+    DcmiSpodInfo spod_info = {};
     unsigned int buf_size = sizeof(DcmiSpodInfo);
     int ret = g_dcmi_get_device_info(logic_id, DCMI_MAIN_CMD_CHIP_INF,
                                      DCMI_CHIP_INFO_SUB_CMD_SPOD_INFO, &spod_info, &buf_size);
@@ -797,18 +695,39 @@ void GenerateH2UEdges(const std::string& plane_pg_0_eid,
     }
 }
 
-int32_t GenerateLocalCommRes(
-    int32_t phy_dev_id,
-    const std::map<std::string, std::string>& options,
-    LocalCommRes& local_comm_res) {
+void CollectAllEdges(const TopoData& topo_data,
+                     const RouteData& route_data,
+                     const std::map<int32_t, NpuRootInfo>& npu_rootinfos,
+                     int32_t phy_dev_id,
+                     const std::string& plane_pg_0_eid,
+                     const std::string& plane_pg_1_eid,
+                     std::vector<EndpointConfig>& all_edges) {
+    if (!topo_data.links.empty() && !npu_rootinfos.empty()) {
+        std::vector<EndpointConfig> edges;
+        GenerateD2DEdges(topo_data, npu_rootinfos, phy_dev_id, edges);
+        all_edges.insert(all_edges.end(), edges.begin(), edges.end());
+    }
+    if (!plane_pg_0_eid.empty() || !plane_pg_1_eid.empty()) {
+        std::vector<EndpointConfig> edges;
+        GenerateD2UEdges(plane_pg_0_eid, plane_pg_1_eid, edges);
+        all_edges.insert(all_edges.end(), edges.begin(), edges.end());
+        edges.clear();
+        GenerateH2UEdges(plane_pg_0_eid, plane_pg_1_eid, edges);
+        all_edges.insert(all_edges.end(), edges.begin(), edges.end());
+    }
+    if (!route_data.entries.empty()) {
+        std::vector<EndpointConfig> edges;
+        GenerateH2DEdges(route_data, edges);
+        all_edges.insert(all_edges.end(), edges.begin(), edges.end());
+        edges.clear();
+        GenerateD2HEdges(route_data, edges);
+        all_edges.insert(all_edges.end(), edges.begin(), edges.end());
+    }
+}
 
-    std::cout << "[GenerateLocalCommRes] ===== Start =====" << std::endl;
-    std::cout << "[GenerateLocalCommRes] phy_dev_id=" << phy_dev_id << std::endl;
-
-    std::string topo_path;
-    std::string route_path;
-    std::string eid_json_path;
-
+int32_t ResolveCommResPaths(const std::map<std::string, std::string>& options,
+                             std::string& topo_path, std::string& route_path,
+                             std::string& eid_json_path) {
     auto it = options.find("topo_path");
     if (it != options.end()) topo_path = it->second;
     it = options.find("route_path");
@@ -816,136 +735,67 @@ int32_t GenerateLocalCommRes(
     it = options.find("eid_json_path");
     if (it != options.end()) eid_json_path = it->second;
 
-    // 1. 默认路径查找逻辑
     if (topo_path.empty()) {
         topo_path = FindLatestTopoFile();
         if (topo_path.empty()) {
-            std::cerr << "[GenerateLocalCommRes] No topo file specified and none found in /etc/" << std::endl;
+            std::cerr << "[ResolveCommResPaths] No topo file found" << std::endl;
             return ERROR_FILE_NOT_FOUND;
         }
-        std::cout << "[GenerateLocalCommRes] Using default topo_path=" << topo_path << std::endl;
     }
     if (route_path.empty()) {
         route_path = "/lib/route.conf";
-        std::cout << "[GenerateLocalCommRes] Using default route_path=" << route_path << std::endl;
     }
+    return SUCCESS;
+}
 
-    std::cout << "[GenerateLocalCommRes] topo_path=" << topo_path << std::endl;
-    std::cout << "[GenerateLocalCommRes] route_path=" << route_path << std::endl;
-    std::cout << "[GenerateLocalCommRes] eid_json_path=" << eid_json_path << std::endl;
-
-    // 2. GetMainboardId 失败 → 终止
+int32_t GenerateLocalCommRes(
+    int32_t phy_dev_id,
+    const std::map<std::string, std::string>& options,
+    LocalCommRes& local_comm_res) {
+    // 1. 解析选项与默认路径
+    std::string topo_path, route_path, eid_json_path;
+    int32_t ret = ResolveCommResPaths(options, topo_path, route_path, eid_json_path);
+    if (ret != SUCCESS) return ret;
+    // 2. 获取产品信息
     unsigned int mainboard_id = 0;
-    int32_t ret = GetMainboardId(phy_dev_id, mainboard_id);
-    if (ret != SUCCESS) {
-        std::cerr << "[GenerateLocalCommRes] Failed to get mainboard id: " << ret << std::endl;
-        return ret;
-    }
-    std::cout << "[GenerateLocalCommRes] mainboard_id=0x" << std::hex << mainboard_id << std::dec << std::endl;
-
-    bool is_pod = IsProductPod(mainboard_id);
+    ret = GetMainboardId(phy_dev_id, mainboard_id);
+    if (ret != SUCCESS) return ret;
     bool is_server = IsProductServer(mainboard_id);
-    if (is_pod) {
-        std::cout << "[GenerateLocalCommRes] Product type: Pod" << std::endl;
-    } else if (is_server) {
-        std::cout << "[GenerateLocalCommRes] Product type: Server" << std::endl;
-    } else {
-        std::cout << "[GenerateLocalCommRes] Product type: Unknown/default" << std::endl;
-    }
-
-    // 3. topo 文件解析失败 → 终止
+    // 3. 解析文件
     TopoData topo_data;
     ret = ParseTopoFile(topo_path, topo_data);
-    if (ret != SUCCESS) {
-        std::cerr << "[GenerateLocalCommRes] Failed to parse topo file: " << ret << std::endl;
-        return ret;
-    }
-    std::cout << "[GenerateLocalCommRes] ParseTopoFile ok" << std::endl;
-
-    // 4. route 文件解析失败 → 终止
+    if (ret != SUCCESS) return ret;
     RouteData route_data;
     ret = ParseRouteFile(route_path, route_data);
-    if (ret != SUCCESS) {
-        std::cerr << "[GenerateLocalCommRes] Failed to parse route file: " << ret << std::endl;
-        return ret;
-    }
-    std::cout << "[GenerateLocalCommRes] ParseRouteFile ok" << std::endl;
+    if (ret != SUCCESS) return ret;
 
-    // 5. BuildNpuRootinfos 任何 NPU 失败 → 终止
+    // 4. 构建 NpuRootInfo
     std::set<int32_t> related_npu_ids = CollectRelatedNpuIds(phy_dev_id, topo_data);
     std::map<int32_t, NpuRootInfo> npu_rootinfos;
     ret = BuildNpuRootinfos(related_npu_ids, is_server, eid_json_path, npu_rootinfos);
-    if (ret != SUCCESS) {
-        std::cerr << "[GenerateLocalCommRes] BuildNpuRootinfos failed: " << ret << std::endl;
-        return ret;
-    }
+    if (ret != SUCCESS) return ret;
 
-    std::string plane_pg_0_eid;
-    std::string plane_pg_1_eid;
+    std::string plane_pg_0_eid, plane_pg_1_eid;
     int mesh_die_id = 0;
     CollectClosPgEids(npu_rootinfos, phy_dev_id, is_server, plane_pg_0_eid, plane_pg_1_eid, mesh_die_id);
 
+    // 5. 生成所有边
     std::vector<EndpointConfig> all_edges;
+    CollectAllEdges(topo_data, route_data, npu_rootinfos, phy_dev_id,
+                    plane_pg_0_eid, plane_pg_1_eid, all_edges);
+    if (all_edges.empty()) return ERROR_FILE_NOT_FOUND;
 
-    std::vector<EndpointConfig> d2d_edges;
-    if (!topo_data.links.empty() && !npu_rootinfos.empty()) {
-        GenerateD2DEdges(topo_data, npu_rootinfos, phy_dev_id, d2d_edges);
-    }
-    all_edges.insert(all_edges.end(), d2d_edges.begin(), d2d_edges.end());
-    std::cout << "[GenerateLocalCommRes] D2D edges=" << d2d_edges.size() << std::endl;
-
-    std::vector<EndpointConfig> d2u_edges;
-    if (!plane_pg_0_eid.empty() || !plane_pg_1_eid.empty()) {
-        GenerateD2UEdges(plane_pg_0_eid, plane_pg_1_eid, d2u_edges);
-    }
-    all_edges.insert(all_edges.end(), d2u_edges.begin(), d2u_edges.end());
-    std::cout << "[GenerateLocalCommRes] D2U edges=" << d2u_edges.size() << std::endl;
-
-    std::vector<EndpointConfig> h2d_edges;
-    if (!route_data.entries.empty()) {
-        GenerateH2DEdges(route_data, h2d_edges);
-    }
-    all_edges.insert(all_edges.end(), h2d_edges.begin(), h2d_edges.end());
-    std::cout << "[GenerateLocalCommRes] H2D edges=" << h2d_edges.size() << std::endl;
-
-    std::vector<EndpointConfig> d2h_edges;
-    if (!route_data.entries.empty()) {
-        GenerateD2HEdges(route_data, d2h_edges);
-    }
-    all_edges.insert(all_edges.end(), d2h_edges.begin(), d2h_edges.end());
-    std::cout << "[GenerateLocalCommRes] D2H edges=" << d2h_edges.size() << std::endl;
-
-    std::vector<EndpointConfig> h2u_edges;
-    if (!plane_pg_0_eid.empty() || !plane_pg_1_eid.empty()) {
-        GenerateH2UEdges(plane_pg_0_eid, plane_pg_1_eid, h2u_edges);
-    }
-    all_edges.insert(all_edges.end(), h2u_edges.begin(), h2u_edges.end());
-    std::cout << "[GenerateLocalCommRes] H2U edges=" << h2u_edges.size() << std::endl;
-
-    // 7. all_edges 为空 → 终止
-    if (all_edges.empty()) {
-        std::cerr << "[GenerateLocalCommRes] No edges generated, aborting" << std::endl;
-        return ERROR_FILE_NOT_FOUND;
-    }
+    // 6. 获取 net_instance_id 并组装结果
+    std::string net_instance_id;
+    ret = GetClosNetInstanceId(phy_dev_id, net_instance_id);
+    if (ret != SUCCESS) return ret;
 
     local_comm_res.version = "1.3";
-
-    // 6. GetClosNetInstanceId 失败 → 终止
-    std::string net_instance_id;
-    int32_t net_ret = GetClosNetInstanceId(phy_dev_id, net_instance_id);
-    if (net_ret != SUCCESS) {
-        std::cerr << "[GenerateLocalCommRes] GetClosNetInstanceId failed: " << net_ret << std::endl;
-        return net_ret;
-    }
     local_comm_res.net_instance_id = net_instance_id;
-    local_comm_res.endpoint_list = all_edges;
-
-    // 为每个 endpoint 设置 net_instance_id
+    local_comm_res.endpoint_list = std::move(all_edges);
     for (auto& ep : local_comm_res.endpoint_list) {
-        ep.net_instance_id = local_comm_res.net_instance_id;
+        ep.net_instance_id = net_instance_id;
     }
-
-    std::cout << "[GenerateLocalCommRes] Total endpoints=" << all_edges.size() << ", Done" << std::endl;
     return SUCCESS;
 }
 
