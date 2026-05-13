@@ -17,6 +17,7 @@ set(HIXL_INC_DIR
         "${HIXL_CODE_DIR}/include"
         "${HIXL_CODE_DIR}/src/llm_datadist"
         "${CMAKE_CURRENT_LIST_DIR}"
+        "${CMAKE_CURRENT_LIST_DIR}/common"
         )
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 
