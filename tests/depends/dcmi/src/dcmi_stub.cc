@@ -6,7 +6,7 @@
  * 通过 dlopen("libdcmi.so") 加载的 DCMI 接口在测试环境下可调用。
  */
 
-#include <cstring>
+#include <algorithm>
 
 #ifdef __cplusplus
 extern "C" {
@@ -82,18 +82,20 @@ int dcmiv2_get_urma_device_cnt(int npu_id, unsigned int *dev_cnt) {
     return 0;
 }
 
-// 默认返回的 EID 数据（16字节/个）
+// 构建默认 EID 数据（16字节/个）
 // EID 格式参考 route.conf: 0x000000000000008000100000dfdf00f2
 // byte6[0xf2]: high=0xf(>4 → die_id=1), low=0x2 (port=2)
-static const unsigned char g_default_eid_0[16] = {
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
-    0x00, 0x10, 0x00, 0x00, 0xdf, 0xdf, 0x00, 0xf2
-};
 // byte6[0x72]: high=0x7(>=4 → die_id=1, ==7 → PG EID), low=0x2
-static const unsigned char g_default_eid_1[16] = {
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80,
-    0x00, 0x10, 0x00, 0x00, 0xdf, 0xdf, 0x00, 0x72
-};
+static void BuildDefaultEid(unsigned char *eid, unsigned char byte15) {
+    for (int i = 0; i < 16; ++i) {
+        eid[i] = 0x00;
+    }
+    eid[7] = 0x80;
+    eid[9] = 0x10;
+    eid[12] = 0xdf;
+    eid[13] = 0xdf;
+    eid[15] = byte15;
+}
 
 int dcmiv2_get_eid_list_by_urma_dev_index(int npu_id, int urma_dev_index,
                                            void *eid_list, int *eid_cnt) {
@@ -111,11 +113,11 @@ int dcmiv2_get_eid_list_by_urma_dev_index(int npu_id, int urma_dev_index,
     };
     auto *infos = static_cast<EidInfoRaw *>(eid_list);
     if (g_eid_count >= 1 && *eid_cnt >= 1) {
-        memcpy(infos[0].eid, g_default_eid_0, 16);
+        BuildDefaultEid(infos[0].eid, 0xf2);
         infos[0].eid_index = 0;
     }
     if (g_eid_count >= 2 && *eid_cnt >= 2) {
-        memcpy(infos[1].eid, g_default_eid_1, 16);
+        BuildDefaultEid(infos[1].eid, 0x72);
         infos[1].eid_index = 1;
     }
     *eid_cnt = (g_eid_count < 2) ? g_eid_count : 2;
@@ -136,8 +138,10 @@ int dcmiv2_get_device_info(int npu_id, int main_cmd, unsigned int sub_cmd,
     // 填充 SPOD 信息（DcmiSpodInfo 结构体）
     // 结构体布局: sdid, super_pod_size, super_pod_id, server_index, chassis_id, super_pod_type, reserve[6]
     if (*size >= 10 * sizeof(unsigned int)) {
-        memset(buf, 0, *size);
-        unsigned int *fields = (unsigned int *)buf;
+        auto *fields = static_cast<unsigned int *>(buf);
+        for (unsigned int i = 0; i < *size / sizeof(unsigned int); ++i) {
+            fields[i] = 0;
+        }
         fields[2] = g_super_pod_id;  // super_pod_id
     }
     return 0;
