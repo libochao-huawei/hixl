@@ -16,6 +16,7 @@
 #include "common/ctrl_msg.h"
 #include "common/scope_guard.h"
 #include "common/ctrl_msg_plugin.h"
+#include "proxy/hcomm_proxy.h"
 #include "transfer_pool.h"
 
 static inline void to_json(nlohmann::json &j, const CommMem &m) {
@@ -301,8 +302,13 @@ Status HixlCSServer::MatchEndpointMsg(int32_t fd, const char *msg, uint64_t msg_
     HIXL_DISMISS_GUARD(failed);
     return SUCCESS;
   }
+  //获取监听端口
+  uint32_t listen_port = 0;
+  HIXL_CHK_HCCL_RET(HcommProxy::EndpointGetListenPort(handle, &listen_port));
+  ep->SetListenPort(listen_port);
   resp.result = SUCCESS;
   resp.dst_ep_handle = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(handle));
+  resp.port = listen_port;
   HIXL_CHK_STATUS_RET(SendMatchEndpointResp(fd, resp), "Failed to send match endpoint resp");
   HIXL_DISMISS_GUARD(failed);
   HIXL_LOGI("SendMatchEndpointResp success");
