@@ -164,6 +164,7 @@ Status Endpoint::CreateChannel(const ChannelDesc &channel_desc, ChannelHandle &c
     ch_desc.roceAttr.sl = static_cast<uint32_t>(channel_desc.sl);
     HIXL_LOGI("[channel] ROCE attributes set, tc=%u, sl=%u", ch_desc.roceAttr.tc, ch_desc.roceAttr.sl);
   }
+  ch_desc.port = listen_port_;
   ChannelPtr channel = MakeShared<Channel>();
   HIXL_CHECK_NOTNULL(channel);
   Status ret = channel->Create(handle_, ch_desc, engine);
@@ -208,6 +209,16 @@ Status Endpoint::GetMemDesc(MemHandle mem_handle, HixlMemDesc &desc) {
     return SUCCESS;
   }
   return PARAM_INVALID;
+}
+
+void Endpoint::SetListenPort(uint32_t port) {
+  listen_port_ = port;
+  HIXL_LOGI("set listen port success, endpoint handle:%p, port:%u", handle_, listen_port_);
+}
+
+uint32_t Endpoint::GetListenPort() const {
+  HIXL_LOGI("get listen port success, endpoint handle:%p, port:%u", handle_, listen_port_);
+  return listen_port_;
 }
 
 }  // namespace hixl

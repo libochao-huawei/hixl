@@ -83,6 +83,12 @@ HcommResult HcommEndpointDestroy(EndpointHandle endPointHandle) {
   return static_cast<HcommResult>(HCCL_SUCCESS);
 }
 
+HcommResult HcommEndpointGetListenPort(EndpointHandle endpointHandle, uint32_t *port) {
+  (void)endpointHandle;
+  *port = 8080;
+  return static_cast<HcommResult>(HCCL_SUCCESS);
+}
+
 HcommResult HcommMemImport(EndpointHandle endpointHandle, const void *memDesc, uint32_t descLen, CommMem *outMem) {
   (void)endpointHandle;
   if (memDesc == nullptr || outMem == nullptr || descLen == 0) {
