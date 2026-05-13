@@ -27,6 +27,7 @@ set(HIXL_TEST_FILES
         engine/endpoint_generator_ut.cc
         engine/hixl_profiling_unittest.cc
         engine/hixl_engine_uboe_unittest.cc
+        engine/local_comm_res_ut.cc
         ../ops/hixl_kernel/hixl_kernel_basic_unittest.cc
 )
 
@@ -71,10 +72,15 @@ target_compile_options(hixl_test PRIVATE
         -Wall -Wfloat-equal
         )
 
+target_compile_definitions(hixl_test PRIVATE
+        HIXL_TEST_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        )
+
 target_include_directories(hixl_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${HIXL_CODE_DIR}/include
         ${HIXL_CODE_DIR}/src/hixl
+        ${HIXL_CODE_DIR}/src/hixl/common
         ${HIXL_CODE_DIR}/src/hixl/proxy
         ${HIXL_CODE_DIR}/src/llm_datadist
         ${HIXL_CODE_DIR}/src/hixl/cs
@@ -104,12 +110,18 @@ target_link_libraries(hixl_test
         ascendcl_stub
         runtime_stub
         msprof_headers
+        dcmi_stub
         GTest::gtest GTest::gtest_main
         GTest::gmock
         -Wl,--no-as-needed
         hccl_stub
         error_manager_stub
         -Wl,--as-needed)
+
+# 让 dlopen("libdcmi.so") 能找到测试桩
+set_target_properties(hixl_test PROPERTIES
+        BUILD_RPATH "${CMAKE_BINARY_DIR}/tests/depends/dcmi"
+)
 
 include(CTest)
 enable_testing()

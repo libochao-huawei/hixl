@@ -146,6 +146,7 @@ class HixlEngine : public hixl::Engine {
   Status InitServer();
   Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
   Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
+  Status GenerateLocalCommResFallback(const std::map<AscendString, AscendString> &options);
 
   std::mutex mutex_;
 
