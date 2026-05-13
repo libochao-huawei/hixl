@@ -19,6 +19,8 @@
 #include <cstring>
 #include <iomanip>
 #include <set>
+#include <dirent.h>
+#include <sys/stat.h>
 #include <dlfcn.h>
 #include <unistd.h>
 
@@ -268,6 +270,41 @@ std::vector<std::string> ExtractJsonObjects(const std::string& json, const std::
         ++pos;
     }
     return objects;
+}
+
+// 在 /etc/ 目录下模糊匹配以 noroce.json 结尾的文件，返回修改时间最新的一个
+std::string FindLatestTopoFile() {
+    const char* dir_path = "/etc/";
+    const char* suffix = "noroce.json";
+    DIR* dir = opendir(dir_path);
+    if (!dir) {
+        std::cerr << "[FindLatestTopoFile] Failed to open /etc/ for topo file scan" << std::endl;
+        return "";
+    }
+
+    std::string latest_file;
+    time_t latest_mtime = 0;
+    struct dirent* entry = nullptr;
+    while ((entry = readdir(dir)) != nullptr) {
+        std::string name(entry->d_name);
+        if (name.size() < std::strlen(suffix)) {
+            continue;
+        }
+        if (name.compare(name.size() - std::strlen(suffix), std::strlen(suffix), suffix) != 0) {
+            continue;
+        }
+
+        std::string full_path = std::string(dir_path) + name;
+        struct stat st;
+        if (stat(full_path.c_str(), &st) == 0) {
+            if (st.st_mtime > latest_mtime) {
+                latest_mtime = st.st_mtime;
+                latest_file = full_path;
+            }
+        }
+    }
+    closedir(dir);
+    return latest_file;
 }
 
 }  // anonymous namespace
@@ -677,21 +714,22 @@ std::set<int32_t> CollectRelatedNpuIds(int32_t phy_dev_id, const TopoData& topo_
     return related_npu_ids;
 }
 
-std::map<int32_t, NpuRootInfo> BuildNpuRootinfos(const std::set<int32_t>& related_npu_ids,
-                                                  bool is_server,
-                                                  const std::string& eid_json_path) {
-    std::map<int32_t, NpuRootInfo> npu_rootinfos;
+int32_t BuildNpuRootinfos(const std::set<int32_t>& related_npu_ids,
+                          bool is_server,
+                          const std::string& eid_json_path,
+                          std::map<int32_t, NpuRootInfo>& npu_rootinfos) {
+    npu_rootinfos.clear();
     for (int32_t npu_id : related_npu_ids) {
         NpuRootInfo rootinfo;
         int32_t build_ret = BuildNpuRootInfo(npu_id, is_server, rootinfo, eid_json_path);
         if (build_ret != SUCCESS) {
             std::cerr << "[BuildNpuRootinfos] Failed to build rootinfo for npu_id=" << npu_id << ", ret=" << build_ret << std::endl;
-            continue;
+            return build_ret;
         }
         npu_rootinfos[npu_id] = rootinfo;
     }
     std::cout << "[BuildNpuRootinfos] Built rootinfo for " << npu_rootinfos.size() << " NPU(s)" << std::endl;
-    return npu_rootinfos;
+    return SUCCESS;
 }
 
 void CollectClosPgEids(const std::map<int32_t, NpuRootInfo>& npu_rootinfos,
@@ -778,17 +816,32 @@ int32_t GenerateLocalCommRes(
     it = options.find("eid_json_path");
     if (it != options.end()) eid_json_path = it->second;
 
+    // 1. 默认路径查找逻辑
+    if (topo_path.empty()) {
+        topo_path = FindLatestTopoFile();
+        if (topo_path.empty()) {
+            std::cerr << "[GenerateLocalCommRes] No topo file specified and none found in /etc/" << std::endl;
+            return ERROR_FILE_NOT_FOUND;
+        }
+        std::cout << "[GenerateLocalCommRes] Using default topo_path=" << topo_path << std::endl;
+    }
+    if (route_path.empty()) {
+        route_path = "/lib/route.conf";
+        std::cout << "[GenerateLocalCommRes] Using default route_path=" << route_path << std::endl;
+    }
+
     std::cout << "[GenerateLocalCommRes] topo_path=" << topo_path << std::endl;
     std::cout << "[GenerateLocalCommRes] route_path=" << route_path << std::endl;
     std::cout << "[GenerateLocalCommRes] eid_json_path=" << eid_json_path << std::endl;
 
+    // 2. GetMainboardId 失败 → 终止
     unsigned int mainboard_id = 0;
     int32_t ret = GetMainboardId(phy_dev_id, mainboard_id);
     if (ret != SUCCESS) {
         std::cerr << "[GenerateLocalCommRes] Failed to get mainboard id: " << ret << std::endl;
-    } else {
-        std::cout << "[GenerateLocalCommRes] mainboard_id=0x" << std::hex << mainboard_id << std::dec << std::endl;
+        return ret;
     }
+    std::cout << "[GenerateLocalCommRes] mainboard_id=0x" << std::hex << mainboard_id << std::dec << std::endl;
 
     bool is_pod = IsProductPod(mainboard_id);
     bool is_server = IsProductServer(mainboard_id);
@@ -800,24 +853,32 @@ int32_t GenerateLocalCommRes(
         std::cout << "[GenerateLocalCommRes] Product type: Unknown/default" << std::endl;
     }
 
+    // 3. topo 文件解析失败 → 终止
     TopoData topo_data;
     ret = ParseTopoFile(topo_path, topo_data);
-    if (ret != SUCCESS && ret != ERROR_FILE_NOT_FOUND) {
+    if (ret != SUCCESS) {
         std::cerr << "[GenerateLocalCommRes] Failed to parse topo file: " << ret << std::endl;
-    } else {
-        std::cout << "[GenerateLocalCommRes] ParseTopoFile " << (ret == SUCCESS ? "ok" : "not found") << std::endl;
+        return ret;
     }
+    std::cout << "[GenerateLocalCommRes] ParseTopoFile ok" << std::endl;
 
+    // 4. route 文件解析失败 → 终止
     RouteData route_data;
     ret = ParseRouteFile(route_path, route_data);
-    if (ret != SUCCESS && ret != ERROR_FILE_NOT_FOUND) {
+    if (ret != SUCCESS) {
         std::cerr << "[GenerateLocalCommRes] Failed to parse route file: " << ret << std::endl;
-    } else {
-        std::cout << "[GenerateLocalCommRes] ParseRouteFile " << (ret == SUCCESS ? "ok" : "not found") << std::endl;
+        return ret;
     }
+    std::cout << "[GenerateLocalCommRes] ParseRouteFile ok" << std::endl;
 
+    // 5. BuildNpuRootinfos 任何 NPU 失败 → 终止
     std::set<int32_t> related_npu_ids = CollectRelatedNpuIds(phy_dev_id, topo_data);
-    std::map<int32_t, NpuRootInfo> npu_rootinfos = BuildNpuRootinfos(related_npu_ids, is_server, eid_json_path);
+    std::map<int32_t, NpuRootInfo> npu_rootinfos;
+    ret = BuildNpuRootinfos(related_npu_ids, is_server, eid_json_path, npu_rootinfos);
+    if (ret != SUCCESS) {
+        std::cerr << "[GenerateLocalCommRes] BuildNpuRootinfos failed: " << ret << std::endl;
+        return ret;
+    }
 
     std::string plane_pg_0_eid;
     std::string plane_pg_1_eid;
@@ -861,14 +922,20 @@ int32_t GenerateLocalCommRes(
     all_edges.insert(all_edges.end(), h2u_edges.begin(), h2u_edges.end());
     std::cout << "[GenerateLocalCommRes] H2U edges=" << h2u_edges.size() << std::endl;
 
+    // 7. all_edges 为空 → 终止
+    if (all_edges.empty()) {
+        std::cerr << "[GenerateLocalCommRes] No edges generated, aborting" << std::endl;
+        return ERROR_FILE_NOT_FOUND;
+    }
+
     local_comm_res.version = "1.3";
 
-    // 通过 DCMI SPOD 信息获取 net_instance_id
+    // 6. GetClosNetInstanceId 失败 → 终止
     std::string net_instance_id;
     int32_t net_ret = GetClosNetInstanceId(phy_dev_id, net_instance_id);
     if (net_ret != SUCCESS) {
-        std::cerr << "[GenerateLocalCommRes] WARNING: GetClosNetInstanceId failed, "
-                     "net_instance_id will be empty" << std::endl;
+        std::cerr << "[GenerateLocalCommRes] GetClosNetInstanceId failed: " << net_ret << std::endl;
+        return net_ret;
     }
     local_comm_res.net_instance_id = net_instance_id;
     local_comm_res.endpoint_list = all_edges;
