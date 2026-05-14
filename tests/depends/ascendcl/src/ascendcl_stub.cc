@@ -504,6 +504,11 @@ aclError AclRuntimeStub::aclrtUnmapMem(void* devPtr) {
 }
 
 aclError AclRuntimeStub::aclrtMemRetainAllocationHandle(void *devPtr, aclrtDrvMemHandle *handle) {
+  (void)devPtr;
+  if (__FUNCTION__ == g_acl_stub_mock) {
+    return ACL_ERROR_RT_INTERNAL_ERROR;
+  }
+  *handle = (aclrtDrvMemHandle) new uint8_t[8];
   return ACL_ERROR_NONE;
 }
 
