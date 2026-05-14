@@ -26,6 +26,7 @@
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
+#include "engine/local_comm_res_tool.h"
 
 namespace hixl {
 namespace {
@@ -280,10 +281,22 @@ Status EndpointGenerator::BuildEndpointListFromLocalCommRes(const nlohmann::json
   SocType soc_type = SocType::kOther;
   HIXL_CHK_STATUS_RET(GetSocType(soc_type), "GetSocType failed");
   const bool auto_generate =
-      (soc_type == SocType::kV2 || soc_type == SocType::kV3) && config.is_object() && !has_endpoint_list;
+      (soc_type == SocType::kV2 || soc_type == SocType::kV3 || soc_type == SocType::kA5) &&
+      config.is_object() && !has_endpoint_list;
 
   endpoint_list.clear();
-  if (auto_generate) {
+  if (auto_generate && soc_type == SocType::kA5) {
+    int32_t device_id = 0;
+    HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
+    int32_t phy_id = 0;
+    HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(device_id, &phy_id));
+    HIXL_LOGI("[BuildEndpointListFromLocalCommRes] kA5 auto-generate: logic_id=%d, phy_id=%d", device_id, phy_id);
+    hixl::LocalCommRes local_comm_res;
+    HIXL_CHK_STATUS_RET(hixl::GenerateLocalCommRes(phy_id, local_comm_res),
+                        "[BuildEndpointListFromLocalCommRes] GenerateLocalCommRes failed");
+    endpoint_list = std::move(local_comm_res.endpoint_list);
+    HIXL_LOGI("[BuildEndpointListFromLocalCommRes] kA5 generated %zu endpoints", endpoint_list.size());
+  } else if (auto_generate) {
     int32_t device_id = 0;
     HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
     LocCommResInfo loc_comm_res_info{};
@@ -444,6 +457,10 @@ EndpointGenerator::SocType EndpointGenerator::GetSocTypeByName(const std::string
 
   if (kSocV3.find(soc_name) != kSocV3.end()) {
     return SocType::kV3;
+  }
+
+  if (soc_name.find("Ascend950") != std::string::npos) {
+    return SocType::kA5;
   }
 
   return SocType::kOther;

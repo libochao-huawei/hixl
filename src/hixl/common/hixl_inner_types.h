@@ -15,9 +15,48 @@
 #include <sstream>
 #include "hixl/hixl_types.h"
 #include "adxl/adxl_types.h"
-#include "endpoint_config.h"
 
 namespace hixl {
+
+struct DeviceInfoConfig {
+  int32_t phy_device_id = -1;
+  int64_t super_device_id = -1;
+  int64_t super_pod_id = -1;
+
+  std::string ToString() const {
+    std::ostringstream oss;
+    oss << "DeviceInfoConfig{";
+    oss << "phy_device_id: " << phy_device_id << ", ";
+    oss << "super_device_id: " << super_device_id << ", ";
+    oss << "super_pod_id: " << super_pod_id;
+    oss << "}";
+    return oss.str();
+  }
+};
+
+struct EndpointConfig {
+  std::string protocol;
+  std::string comm_id;
+  std::string placement;
+  std::string plane;
+  std::string dst_eid;
+  std::string net_instance_id;
+  DeviceInfoConfig device_info;
+
+  std::string ToString() const {
+    std::ostringstream oss;
+    oss << "EndpointConfig{";
+    oss << "protocol: " << protocol << ", ";
+    oss << "comm_id: " << comm_id << ", ";
+    oss << "placement: " << placement << ", ";
+    oss << "plane: " << plane << ", ";
+    oss << "dst_eid: " << dst_eid << ", ";
+    oss << "net_instance_id: " << net_instance_id << ", ";
+    oss << "device_info: " << device_info.ToString();
+    oss << "}";
+    return oss.str();
+  }
+};
 constexpr const char *kProtocolRoce = "roce";
 constexpr const char *kProtocolUbCtp = "ub_ctp";
 constexpr const char *kProtocolUbTp = "ub_tp";
