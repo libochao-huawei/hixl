@@ -24,42 +24,16 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <tuple>
 
 // 引入 rootinfo_builder 的数据结构
 #include "rootinfo_builder.h"
-// 引入统一的 EndpointConfig 定义
-#include "endpoint_config.h"
+// 引入 EndpointConfig 定义
+#include "common/hixl_inner_types.h"
 
 namespace hixl {
 
-// ============ DCMI 相关数据结构（从 hal.h 复制，避免直接引用） ============
-
-// 注意：DCMI_URMA_EID_SIZE, MAX_EID_PER_UE, dcmi_urma_eid_t, dcmi_urma_eid_info_t
-// 已通过 rootinfo_builder.h 引入
-
-const int32_t MAX_EID_NUM = 32;
-const int32_t MAX_NPU_COUNT = 64;
-const int32_t MAX_UE_PER_NPU = 8;
-
-/**
- * @brief UB 实体结构
- */
-typedef struct {
-    dcmi_urma_eid_info_t eidList[MAX_EID_PER_UE];
-    unsigned int eidNum;
-} UBEntity;
-
-/**
- * @brief UE 列表结构
- */
-typedef struct {
-    UBEntity ueList[MAX_UE_PER_NPU];
-    unsigned int ueNum;
-} UEList;
-
 // ============ 端点配置结构 ============
-// EndpointConfig 已通过 endpoint_config.h 统一定义
+// EndpointConfig 已通过 hixl_inner_types.h 引入
 
 /**
  * @brief LocalCommRes 结构体（替代 JSON 输出）
@@ -109,29 +83,32 @@ struct RouteData {
 // ============ 核心接口 ============
 
 /**
- * @brief 生成 LocalCommRes 结构体
+ * @brief 生成 LocalCommRes 结构体（生产接口，使用默认路径）
  * @param [in] phy_dev_id 物理设备 ID，通过 aclrtGetPhyDevIdByLogicDevId 获取
- * @param [in] options 生成选项，包含输入文件路径等
- *        - "topo_path": topology 文件路径
- *        - "route_path": route.conf 路径
  * @param [out] local_comm_res 输出的 LocalCommRes 结构体
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
 int32_t GenerateLocalCommRes(
     int32_t phy_dev_id,
-    const std::map<std::string, std::string>& options,
+    LocalCommRes& local_comm_res
+);
+
+/**
+ * @brief 生成 LocalCommRes 结构体（测试用重载，允许注入路径）
+ * @param [in] phy_dev_id 物理设备 ID
+ * @param [in] topo_path topology 文件路径
+ * @param [in] route_path route.conf 文件路径
+ * @param [out] local_comm_res 输出的 LocalCommRes 结构体
+ * @return 成功: SUCCESS, 失败: 其它错误码
+ */
+int32_t GenerateLocalCommRes(
+    int32_t phy_dev_id,
+    const std::string& topo_path,
+    const std::string& route_path,
     LocalCommRes& local_comm_res
 );
 
 // ============ DCMI 接口封装 ============
-
-/**
- * @brief 获取 UB 实体列表
- * @param [in] phy_dev_id 物理设备 ID
- * @param [out] ue_list UB 实体列表
- * @return 成功: SUCCESS, 失败: 其它错误码
- */
-int32_t GetUBEntityList(int32_t phy_dev_id, UEList& ue_list);
 
 /**
  * @brief 获取主板 ID

@@ -104,7 +104,7 @@ TEST_F(LocalCommResParseTest, ParseTopoFileSuccess) {
 TEST_F(LocalCommResParseTest, ParseTopoFileNotFound) {
     TopoData topo_data;
     int32_t ret = ParseTopoFile("/nonexistent/path/topo.json", topo_data);
-    EXPECT_EQ(ret, ERROR_FILE_NOT_FOUND);
+    EXPECT_EQ(ret, PARAM_INVALID);
 }
 
 TEST_F(LocalCommResParseTest, ParseTopoFileInvalidJson) {
@@ -123,17 +123,17 @@ TEST_F(LocalCommResParseTest, ParseTopoFileEmptyEdgeList) {
     TopoData topo_data;
     int32_t ret = ParseTopoFile(tmp, topo_data);
     // ParseTopoFile 将空 edge_list 视为解析失败
-    EXPECT_EQ(ret, ERROR_FILE_PARSE_FAILED);
+    EXPECT_EQ(ret, FAILED);
     unlink(tmp.c_str());
 }
 
 TEST_F(LocalCommResParseTest, ParseTopoFileEmptyContent) {
-    // 空文件内容 → ERROR_FILE_PARSE_FAILED
+    // 空文件内容 → FAILED
     std::string tmp = CreateTempFileWithContent("/tmp/topo_ut_XXXXXX", "");
     ASSERT_FALSE(tmp.empty());
     TopoData topo_data;
     int32_t ret = ParseTopoFile(tmp, topo_data);
-    EXPECT_EQ(ret, ERROR_FILE_PARSE_FAILED);
+    EXPECT_EQ(ret, FAILED);
     unlink(tmp.c_str());
 }
 
@@ -166,7 +166,7 @@ TEST_F(LocalCommResParseTest, ParseRouteFileSuccess) {
 TEST_F(LocalCommResParseTest, ParseRouteFileNotFound) {
     RouteData route_data;
     int32_t ret = ParseRouteFile("/nonexistent/path/route.conf", route_data);
-    EXPECT_EQ(ret, ERROR_FILE_NOT_FOUND);
+    EXPECT_EQ(ret, PARAM_INVALID);
 }
 
 TEST_F(LocalCommResParseTest, ParseRouteFileMalformed) {
@@ -284,12 +284,11 @@ protected:
 };
 
 TEST_F(LocalCommResGenerateTest, GenerateSuccess) {
-    std::map<std::string, std::string> options;
-    options["topo_path"] = data_dir_ + "server_8p_noroce.json";
-    options["route_path"] = data_dir_ + "route.conf";
+    std::string topo_path = data_dir_ + "server_8p_noroce.json";
+    std::string route_path = data_dir_ + "route.conf";
 
     LocalCommRes res;
-    int32_t ret = GenerateLocalCommRes(0, options, res);
+    int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
     EXPECT_EQ(ret, SUCCESS);
     EXPECT_EQ(res.version, "1.3");
     EXPECT_FALSE(res.endpoint_list.empty());
@@ -300,71 +299,53 @@ TEST_F(LocalCommResGenerateTest, GenerateSuccess) {
 }
 
 TEST_F(LocalCommResGenerateTest, GenerateTopoNotFound) {
-    std::map<std::string, std::string> options;
-    options["topo_path"] = "/nonexistent/topo.json";
-    options["route_path"] = data_dir_ + "route.conf";
+    std::string topo_path = "/nonexistent/topo.json";
+    std::string route_path = data_dir_ + "route.conf";
 
     LocalCommRes res;
-    int32_t ret = GenerateLocalCommRes(0, options, res);
-    EXPECT_EQ(ret, ERROR_FILE_NOT_FOUND);
+    int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
+    EXPECT_EQ(ret, PARAM_INVALID);
 }
 
 TEST_F(LocalCommResGenerateTest, GenerateRouteNotFound) {
-    std::map<std::string, std::string> options;
-    options["topo_path"] = data_dir_ + "server_8p_noroce.json";
-    options["route_path"] = "/nonexistent/route.conf";
+    std::string topo_path = data_dir_ + "server_8p_noroce.json";
+    std::string route_path = "/nonexistent/route.conf";
 
     LocalCommRes res;
-    int32_t ret = GenerateLocalCommRes(0, options, res);
-    EXPECT_EQ(ret, ERROR_FILE_NOT_FOUND);
+    int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
+    EXPECT_EQ(ret, PARAM_INVALID);
 }
 
 TEST_F(LocalCommResGenerateTest, GenerateGetMainboardIdFailed) {
     DcmiStubSetMainboardId(0, -1);  // 模拟失败
 
-    std::map<std::string, std::string> options;
-    options["topo_path"] = data_dir_ + "server_8p_noroce.json";
-    options["route_path"] = data_dir_ + "route.conf";
+    std::string topo_path = data_dir_ + "server_8p_noroce.json";
+    std::string route_path = data_dir_ + "route.conf";
 
     LocalCommRes res;
-    int32_t ret = GenerateLocalCommRes(0, options, res);
+    int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
     EXPECT_NE(ret, SUCCESS);
 }
 
 TEST_F(LocalCommResGenerateTest, GenerateGetClosNetInstanceIdFailed) {
     DcmiStubSetSuperPodId(0, -1);  // 模拟 SPOD 查询失败
 
-    std::map<std::string, std::string> options;
-    options["topo_path"] = data_dir_ + "server_8p_noroce.json";
-    options["route_path"] = data_dir_ + "route.conf";
+    std::string topo_path = data_dir_ + "server_8p_noroce.json";
+    std::string route_path = data_dir_ + "route.conf";
 
     LocalCommRes res;
-    int32_t ret = GenerateLocalCommRes(0, options, res);
+    int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
     EXPECT_NE(ret, SUCCESS);
-}
-
-TEST_F(LocalCommResGenerateTest, GenerateDefaultTopoPathNotFound) {
-    // 不指定 topo_path，且 /etc/ 下无 noroce.json → 应返回 ERROR_FILE_NOT_FOUND
-    // 注意：如果测试环境恰好有 /etc/*noroce.json，此测试可能失败
-    std::map<std::string, std::string> options;
-    options["topo_path"] = "/tmp/nonexistent_dir_for_test_xxxx/no_match.json";
-    options["route_path"] = data_dir_ + "route.conf";
-
-    // 直接指定一个不存在的路径来模拟默认路径找不到的情况
-    LocalCommRes res;
-    int32_t ret = GenerateLocalCommRes(0, options, res);
-    EXPECT_EQ(ret, ERROR_FILE_NOT_FOUND);
 }
 
 TEST_F(LocalCommResGenerateTest, GeneratePodMainboardId) {
     DcmiStubSetMainboardId(0x3, 0);  // Pod1
 
-    std::map<std::string, std::string> options;
-    options["topo_path"] = data_dir_ + "server_8p_noroce.json";
-    options["route_path"] = data_dir_ + "route.conf";
+    std::string topo_path = data_dir_ + "server_8p_noroce.json";
+    std::string route_path = data_dir_ + "route.conf";
 
     LocalCommRes res;
-    int32_t ret = GenerateLocalCommRes(0, options, res);
+    int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
     EXPECT_EQ(ret, SUCCESS);
     EXPECT_FALSE(res.endpoint_list.empty());
 }
@@ -372,26 +353,24 @@ TEST_F(LocalCommResGenerateTest, GeneratePodMainboardId) {
 TEST_F(LocalCommResGenerateTest, GenerateServerMainboardId) {
     DcmiStubSetMainboardId(0x21, 0);  // Server
 
-    std::map<std::string, std::string> options;
-    options["topo_path"] = data_dir_ + "server_8p_noroce.json";
-    options["route_path"] = data_dir_ + "route.conf";
+    std::string topo_path = data_dir_ + "server_8p_noroce.json";
+    std::string route_path = data_dir_ + "route.conf";
 
     LocalCommRes res;
-    int32_t ret = GenerateLocalCommRes(0, options, res);
+    int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
     EXPECT_EQ(ret, SUCCESS);
 }
 
 TEST_F(LocalCommResGenerateTest, GenerateBuildNpuRootinfosFailed) {
-    // URMA 设备数为 0 → BuildNpuRootInfo 返回 ERROR_NO_EID_FOUND → BuildNpuRootinfos 失败
+    // URMA 设备数为 0 → BuildNpuRootInfo 返回 FAILED → BuildNpuRootinfos 失败
     DcmiStubSetUrmaDeviceCnt(0, 0);
 
-    std::map<std::string, std::string> options;
-    options["topo_path"] = data_dir_ + "server_8p_noroce.json";
-    options["route_path"] = data_dir_ + "route.conf";
+    std::string topo_path = data_dir_ + "server_8p_noroce.json";
+    std::string route_path = data_dir_ + "route.conf";
 
     LocalCommRes res;
-    int32_t ret = GenerateLocalCommRes(0, options, res);
-    EXPECT_EQ(ret, ERROR_NO_EID_FOUND);
+    int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
+    EXPECT_EQ(ret, FAILED);
 }
 
 TEST_F(LocalCommResGenerateTest, GenerateEmptyAllEdges) {
@@ -405,13 +384,9 @@ TEST_F(LocalCommResGenerateTest, GenerateEmptyAllEdges) {
     std::string tmp_route = CreateTempFileWithContent("/tmp/route_ut_XXXXXX", "pair_device_num=0\n");
     ASSERT_FALSE(tmp_route.empty());
 
-    std::map<std::string, std::string> options;
-    options["topo_path"] = tmp_topo;
-    options["route_path"] = tmp_route;
-
     LocalCommRes res;
-    int32_t ret = GenerateLocalCommRes(0, options, res);
-    EXPECT_EQ(ret, ERROR_FILE_NOT_FOUND);
+    int32_t ret = GenerateLocalCommRes(0, tmp_topo, tmp_route, res);
+    EXPECT_EQ(ret, PARAM_INVALID);
 
     unlink(tmp_topo.c_str());
     unlink(tmp_route.c_str());
