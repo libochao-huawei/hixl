@@ -35,6 +35,8 @@ enum class CtrlMsgType : int32_t {
   kMatchEndpointReq = 9,
   kMatchEndpointResp = 10,
   kDestroyChannelReq = 11,
+  kGetFabricMemInfoReq = 12,
+  kGetFabricMemInfoResp = 13,
   kEnd
 };
 

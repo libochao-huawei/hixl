@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -8,86 +8,91 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CANN_GRAPH_ENGINE_HCCS_TRANSFER_SERVICE_H
-#define CANN_GRAPH_ENGINE_HCCS_TRANSFER_SERVICE_H
+#ifndef CANN_HIXL_SRC_HIXL_FABRIC_MEM_FABRIC_MEM_TRANSFER_SERVICE_H_
+#define CANN_HIXL_SRC_HIXL_FABRIC_MEM_FABRIC_MEM_TRANSFER_SERVICE_H_
 
 #include <chrono>
-#include <future>
-#include <utility>
+#include <mutex>
+#include <set>
+#include <unordered_map>
 #include <vector>
-#include "adxl/adxl_types.h"
-#include "channel.h"
-#include "control_msg_handler.h"
-#include "adxl/acl_compat.h"
 
-namespace adxl {
+#include "fabric_mem/fabric_mem_statistic.h"
+#include "fabric_mem/fabric_mem_types.h"
+#include "hixl/hixl_types.h"
+
+namespace hixl {
 class FabricMemTransferService {
  public:
   FabricMemTransferService() = default;
+  ~FabricMemTransferService();
+  FabricMemTransferService(const FabricMemTransferService &) = delete;
+  FabricMemTransferService &operator=(const FabricMemTransferService &) = delete;
+  FabricMemTransferService(FabricMemTransferService &&) = delete;
+  FabricMemTransferService &operator=(FabricMemTransferService &&) = delete;
 
-  Status Initialize(size_t max_stream_num, size_t task_stream_num);
-
+  Status Initialize(size_t max_stream_num, size_t task_stream_num, FabricMemStatistic *statistic);
   void Finalize();
 
   Status RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle);
-
   Status DeregisterMem(MemHandle mem_handle);
 
-  Status Transfer(const ChannelPtr &channel, TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
-                  int32_t timeout_in_millis);
-
-  Status TransferAsync(const ChannelPtr &channel, TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
-                       TransferReq &req);
-
-  Status GetTransferStatus(const ChannelPtr &channel, const TransferReq &req, TransferStatus &status);
+  Status Transfer(const FabricMemTransferContext &context, TransferOp operation,
+                  const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis);
+  Status TransferAsync(const FabricMemTransferContext &context, TransferOp operation,
+                       const std::vector<TransferOpDesc> &op_descs, TransferReq &req);
+  Status GetTransferStatus(const FabricMemTransferContext &context, const TransferReq &req, TransferStatus &status);
 
   std::vector<ShareHandleInfo> GetShareHandles();
-
   void RemoveChannel(const std::string &channel_id);
 
   static Status MallocMem(MemType type, size_t size, void **ptr);
-
   static Status FreeMem(void *ptr);
 
  private:
   Status RecordCopyStreamEvents(aclrtStream record_stream, const std::vector<aclrtStream> &copy_streams,
-                                std::vector<AsyncResource> &async_resources);
-  void RegisterAsyncTransferRecord(const ChannelPtr &channel, TransferReq &req,
+                                std::vector<AsyncResource> &async_resources) const;
+  void RegisterAsyncTransferRecord(const FabricMemTransferContext &context, TransferReq &req,
                                    std::vector<AsyncResource> &&async_resources,
                                    const std::chrono::steady_clock::time_point &transfer_start,
                                    const std::chrono::steady_clock::time_point &real_copy_start,
                                    uint64_t transfer_bytes, uint64_t op_desc_count);
-  Status CompleteAsyncTransferAndUpdateStats(const ChannelPtr &channel, uint64_t req_id,
+  Status CompleteAsyncTransferAndUpdateStats(const FabricMemTransferContext &context, uint64_t req_id,
                                              const std::vector<AsyncResource> &async_resources,
                                              const AsyncRecord &async_record, TransferStatus &status);
   static Status IsTransferDone(const std::vector<AsyncResource> &async_resources, uint64_t req_id,
                                TransferStatus &status, bool &completed);
+  Status ReuseStreamsLocked(std::vector<aclrtStream> &streams, size_t stream_num);
+  Status CreateStreamLocked(std::vector<aclrtStream> &streams, std::vector<aclrtStream> &new_streams);
+  Status RollbackStreamsLocked(std::vector<aclrtStream> &streams, const std::vector<aclrtStream> &new_streams);
+  void ReturnStreamsLocked(const std::vector<aclrtStream> &streams);
+  static void DestroyStreams(const std::vector<aclrtStream> &streams);
   Status TryGetStreamOnce(std::vector<aclrtStream> &streams, size_t stream_num);
-  Status TryGetStream(std::vector<aclrtStream> &streams, uint64_t timeout);
+  Status TryGetStream(std::vector<aclrtStream> &streams, uint64_t timeout_us);
   static Status ProcessCopyWithAsync(const std::vector<aclrtStream> &streams, TransferOp operation,
                                      const std::vector<TransferOpDesc> &op_descs);
-  Status DoTransfer(const std::vector<aclrtStream> &streams, const ChannelPtr &channel, TransferOp operation,
-                    const std::vector<TransferOpDesc> &op_descs, std::chrono::steady_clock::time_point &start);
+  Status DoTransfer(const std::vector<aclrtStream> &streams, const FabricMemTransferContext &context,
+                    TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
+                    std::chrono::steady_clock::time_point &start);
   void ReleaseStreams(std::vector<aclrtStream> &streams);
   void DestroyAsyncResources(const std::vector<AsyncResource> &async_resources);
   void RemoveChannelReqRelation(const std::string &channel_id, uint64_t req_id);
   static void SynchronizeStream(const std::vector<AsyncResource> &async_resources, uint64_t req_id,
                                 TransferStatus &status);
   static Status TransOpAddr(uintptr_t old_addr, size_t len,
-                            std::unordered_map<uintptr_t, VaInfo> &new_va_to_old_va, uintptr_t &new_addr);
-
-  // Static methods for fabric memory allocation and VA-PA mapping management
-  static Status AllocatePhysicalMemory(size_t total_size, aclrtDrvMemHandle &handle);
-  static Status GetPaHandleFromVa(uintptr_t va_addr, aclrtDrvMemHandle &pa_handle);
-  static void AddVaToPaMapping(uintptr_t va_addr, aclrtDrvMemHandle pa_handle);
-  static void RemoveVaToPaMapping(uintptr_t va_addr);
+                            const std::unordered_map<uintptr_t, VaInfo> &new_va_to_old_va, uintptr_t &new_addr);
+  Status TransLocalHostOpAddr(uintptr_t old_addr, size_t len, uintptr_t &new_addr);
+  bool FindLocalHostRegisteredAddrLocked(uintptr_t old_addr, size_t len, uintptr_t &new_addr) const;
+  void UpdateStats(const FabricMemTransferContext &context, uint64_t transfer_cost, uint64_t real_copy_cost,
+                   uint64_t transfer_bytes, uint64_t op_desc_count);
 
   std::mutex share_handle_mutex_;
   std::unordered_map<aclrtDrvMemHandle, ShareHandleInfo> share_handles_;
   int32_t device_id_{-1};
   size_t max_stream_num_{0};
-  size_t task_stream_num_{};
-  size_t async_task_stream_num_{};
+  size_t task_stream_num_{0};
+  size_t async_task_stream_num_{0};
+  FabricMemStatistic *statistic_{nullptr};
 
   std::mutex stream_pool_mutex_;
   std::unordered_map<aclrtStream, bool> stream_pool_;
@@ -97,11 +102,7 @@ class FabricMemTransferService {
 
   std::mutex channel_2_req_mutex_;
   std::unordered_map<std::string, std::set<uint64_t>> channel_2_req_;
-
-  // mutex for local va map and pa handlers
-  std::mutex local_va_map_mutex_;
-  std::unordered_map<uintptr_t, VaInfo> local_va_to_old_va_;
 };
-}  // namespace adxl
+}  // namespace hixl
 
-#endif  // CANN_GRAPH_ENGINE_HCCS_TRANSFER_SERVICE_H
+#endif  // CANN_HIXL_SRC_HIXL_FABRIC_MEM_FABRIC_MEM_TRANSFER_SERVICE_H_
