@@ -15,11 +15,26 @@
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
-#include "common/llm_utils.h"
 #include "common/scope_guard.h"
 #include "profiling/prof_api_reg.h"
 
 namespace hixl {
+namespace {
+Status CheckFabricMemDisabled(const std::map<AscendString, AscendString> &options) {
+  const auto it = options.find(hixl::OPTION_ENABLE_USE_FABRIC_MEM);
+  if (it == options.end() || std::string(it->second.GetString()).empty()) {
+    return SUCCESS;
+  }
+  uint32_t enabled = 0U;
+  HIXL_CHK_STATUS_RET(ToNumber(std::string(it->second.GetString()), enabled), "%s is invalid, value = %s",
+                      hixl::OPTION_ENABLE_USE_FABRIC_MEM, it->second.GetString());
+  HIXL_CHK_BOOL_RET_STATUS(enabled == 0U || enabled == 1U, PARAM_INVALID, "%s is invalid, should be zero or one.",
+                           hixl::OPTION_ENABLE_USE_FABRIC_MEM);
+  HIXL_CHK_BOOL_RET_STATUS(enabled == 0U, PARAM_INVALID,
+                           "[HixlEngine] EnableUseFabricMem is only supported by FabricMemEngine.");
+  return SUCCESS;
+}
+}  // namespace
 
 bool HixlEngine::IsInitialized() const {
   return is_initialized_.load(std::memory_order::memory_order_relaxed);
@@ -35,8 +50,7 @@ Status HixlEngine::InitServer() {
                       "current local_engine:%s",
                       local_engine_.c_str());
   HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_),
-                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s",
-                      local_engine_.c_str());
+                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s", local_engine_.c_str());
   return SUCCESS;
 }
 
@@ -44,14 +58,14 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
   HIXL_LOGI("[HixlEngine] Initialization started, local_engine:%s", local_engine_.c_str());
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(CheckOptions(options), "[HixlEngine] Failed to check options");
+  HIXL_CHK_STATUS_RET(CheckFabricMemDisabled(options), "[HixlEngine] FabricMem option is invalid.");
   std::string local_comm_res;
   HIXL_CHK_STATUS_RET(
       EndpointGenerator::BuildEndpointListFromOptions(options, local_engine_, local_comm_res, endpoint_list_),
       "[HixlEngine] Failed to build endpoint list from options");
   HIXL_CHK_STATUS_RET(ParseTrafficClass(options), "[HixlEngine] Failed to parse traffic class");
   HIXL_CHK_STATUS_RET(ParseServiceLevel(options), "[HixlEngine] Failed to parse service level");
-  HIXL_CHK_STATUS_RET(InitServer(),
-                      "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
+  HIXL_CHK_STATUS_RET(InitServer(), "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
                       local_engine_.c_str(), local_comm_res.c_str());
   is_initialized_ = true;
   HIXL_LOGI("[HixlEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
@@ -217,9 +231,9 @@ Status HixlEngine::GetTransferStatus(const TransferReq &req, TransferStatus &sta
   HIXL_CHECK_NOTNULL(client,
                      "[HixlEngine] Failed to get client through remote engine, local_engine:%s, remote_engine:%s",
                      local_engine_.c_str(), remote_engine.GetString());
-  HIXL_CHK_STATUS_RET(client->GetTransferStatus(req, status), 
-                      "[HixlEngine] Failed to get status through client, req:%p, status:%d", 
-                      req, static_cast<int>(status));
+  HIXL_CHK_STATUS_RET(client->GetTransferStatus(req, status),
+                      "[HixlEngine] Failed to get status through client, req:%p, status:%d", req,
+                      static_cast<int>(status));
   if (status == TransferStatus::COMPLETED) {
     auto op_type = it->second.op_type;
     auto start_time = it->second.start_time;
@@ -313,8 +327,7 @@ Status HixlEngine::ParseServiceLevel(const std::map<AscendString, AscendString> 
     HIXL_CHK_STATUS_RET(ToNumber(service_level_str, service_level), "Service level is invalid, value = %s",
                         service_level_str.c_str());
     HIXL_CHK_BOOL_RET_STATUS(service_level >= 0 && service_level <= 7, PARAM_INVALID,
-                             "service_level must be in [0, 7], value = %d",
-                             service_level);
+                             "service_level must be in [0, 7], value = %d", service_level);
     rdma_service_level_ = static_cast<uint8_t>(service_level);
     HIXL_LOGI("Set rdma service level to %d.", service_level);
   }

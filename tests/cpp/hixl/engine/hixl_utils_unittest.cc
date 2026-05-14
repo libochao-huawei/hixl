@@ -13,7 +13,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <string>
 #include <sys/stat.h>
+#include <vector>
 #include "common/hixl_utils.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 
@@ -121,6 +124,32 @@ TEST_F(HixlUtilsUTest, EndpointConfigToStringContainsDeviceInfoTest) {
   EXPECT_THAT(text, HasSubstr("phy_device_id: 3"));
   EXPECT_THAT(text, HasSubstr("super_device_id: 7"));
   EXPECT_THAT(text, HasSubstr("super_pod_id: 9"));
+}
+
+TEST_F(HixlUtilsUTest, ParseConfigProtocolDescMissingFieldSuccessTest) {
+  std::map<AscendString, AscendString> options;
+  options[OPTION_GLOBAL_RESOURCE_CONFIG] = R"({
+    "fabric_memory": {
+      "max_capacity": "128",
+      "task_stream_num": "4"
+    }
+  })";
+
+  std::vector<std::string> protocol_desc{"placeholder"};
+  EXPECT_EQ(ParseConfigProtocolDesc(options, protocol_desc), SUCCESS);
+  EXPECT_TRUE(protocol_desc.empty());
+}
+
+TEST_F(HixlUtilsUTest, ParseConfigProtocolDescSuccessTest) {
+  std::map<AscendString, AscendString> options;
+  options[OPTION_GLOBAL_RESOURCE_CONFIG] = R"({
+    "comm_resource_config.protocol_desc": ["uboe:device"]
+  })";
+
+  std::vector<std::string> protocol_desc;
+  EXPECT_EQ(ParseConfigProtocolDesc(options, protocol_desc), SUCCESS);
+  ASSERT_EQ(protocol_desc.size(), 1U);
+  EXPECT_EQ(protocol_desc[0], "uboe:device");
 }
 
 TEST_F(HixlUtilsUTest, GetDeviceIpFromHccnConfSuccessTest) {

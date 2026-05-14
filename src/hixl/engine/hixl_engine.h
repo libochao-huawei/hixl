@@ -11,8 +11,9 @@
 #ifndef HIXL_SRC_HIXL_ENGINE_HIXL_ENGINE_H_
 #define HIXL_SRC_HIXL_ENGINE_HIXL_ENGINE_H_
 
-#include <mutex>
+#include <atomic>
 #include <map>
+#include <mutex>
 #include "engine.h"
 #include "client_manager.h"
 #include "hixl_server.h"
@@ -28,8 +29,7 @@ class HixlEngine : public hixl::Engine {
    * 如果是ipv6格式为[host_ip]:host_port或[host_ip],
    * 当设置host_port且host_port > 0时代表当前HixlEngine作为server端，需要对配置端口进行监听
    */
-  explicit HixlEngine(const AscendString &local_engine)
-      : Engine(local_engine), is_initialized_(false) {};
+  explicit HixlEngine(const AscendString &local_engine) : Engine(local_engine), is_initialized_(false){};
 
   /**
    * @brief 判断HixlEngine是否初始化
