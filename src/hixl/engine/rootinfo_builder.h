@@ -24,41 +24,15 @@
 #include <vector>
 #include <map>
 #include "hixl/hixl_types.h"
+#include "proxy/hcomm/dcmi_proxy.h"
 
 namespace hixl {
 
-// ============ DCMI 相关数据结构 ============
-
-const int32_t DCMI_URMA_EID_SIZE = 16;
-const int32_t MAX_EID_PER_UE = 32;
-
-/**
- * @brief DCMI URMA EID 结构
- */
-typedef union dcmi_urma_eid {
-    unsigned char raw[DCMI_URMA_EID_SIZE];
-    struct {
-        unsigned long subnet_prefix;
-        unsigned long interface_id;
-    } in6;
-} dcmi_urma_eid_t;
-
-/**
- * @brief DCMI URMA EID 信息结构
- */
-typedef struct dcmi_urma_eid_info {
-    dcmi_urma_eid_t eid;
-    unsigned int eid_index;
-} dcmi_urma_eid_info_t;
-
 // ============ 错误码定义 ============
-// SUCCESS 已通过 hixl_types.h 定义
-const int32_t ERROR_INVALID_PARAM = 1001;
-const int32_t ERROR_FILE_NOT_FOUND = 1002;
-const int32_t ERROR_FILE_PARSE_FAILED = 1003;
-const int32_t ERROR_DCMI_INTERFACE_FAILED = 1004;
-const int32_t ERROR_NO_EID_FOUND = 1005;
-const int32_t ERROR_NO_CLOS_EID_FOUND = 1006;
+// 使用 hixl_types.h 中定义的全局状态码：
+//   SUCCESS              — 成功
+//   PARAM_INVALID        — 参数无效（文件未找到、JSON 解析失败等）
+//   FAILED               — 内部失败（DCMI 接口失败、无 EID 等）
 
 // ============ URMA Device 数据结构 ============
 
@@ -119,7 +93,6 @@ EidByte6Info ParseEidByte6(const std::string& eid);
  * @param [in] npu_id NPU ID
  * @param [in] is_server 是否为 Server 产品形态
  * @param [out] rootinfo 输出的 RootInfo 结构
- * @param [in] json_path 如果不为空，则从指定 JSON 文件加载 EID 列表
  * @return 成功: SUCCESS, 失败: 其它错误码
  *
  * 该函数内部调用 DCMI 接口获取 URMA 设备信息，
@@ -130,18 +103,15 @@ EidByte6Info ParseEidByte6(const std::string& eid);
  *   - 如果 die_id == 0，跳过该 urma_device 下的所有 EID
  *   - 否则遍历其 eid_list 构建 rootinfo
  */
-int32_t BuildNpuRootInfo(int32_t npu_id, bool is_server, NpuRootInfo& rootinfo,
-                         const std::string& json_path = "");
+int32_t BuildNpuRootInfo(int32_t npu_id, bool is_server, NpuRootInfo& rootinfo);
 
 /**
  * @brief 获取 URMA Device 列表
  * @param [in] npu_id NPU ID
  * @param [out] urma_devices URMA Device 列表
- * @param [in] json_path 如果不为空，则从指定 JSON 文件加载（跳过 DCMI 调用）
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices,
-                          const std::string& json_path = "");
+int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices);
 
 /**
  * @brief 确定 Mesh 层的 die_id
@@ -153,26 +123,6 @@ int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices,
  * Pod: 根据 npu_id % 8 判断，0-3 在 0die，4-7 在 1die
  */
 int GetMeshDieId(int32_t npu_id, bool is_server);
-
-// ============ DCMI 加载接口（共享） ============
-
-typedef int (*dcmi_init_func)();
-typedef int (*dcmi_get_urma_device_cnt_func)(int npu_id, unsigned int* dev_cnt);
-typedef int (*dcmi_get_eid_list_func)(int npu_id, int urma_dev_index,
-                                       dcmi_urma_eid_info_t* eid_list, int* eid_cnt);
-typedef int (*dcmi_get_mainboard_id_func)(int npu_id, unsigned int* mainboard_id);
-typedef int (*dcmi_get_logicid_from_phyid_func)(unsigned int phy_id, unsigned int* logic_id);
-typedef int (*dcmi_get_device_info_func)(int npu_id, int main_cmd,
-                                          unsigned int sub_cmd, void* buf, unsigned int* size);
-
-extern dcmi_init_func g_dcmi_init;
-extern dcmi_get_urma_device_cnt_func g_dcmi_get_urma_device_cnt;
-extern dcmi_get_eid_list_func g_dcmi_get_eid_list;
-extern dcmi_get_mainboard_id_func g_dcmi_get_mainboard_id;
-extern dcmi_get_logicid_from_phyid_func g_dcmi_get_logicid_from_phyid;
-extern dcmi_get_device_info_func g_dcmi_get_device_info;
-
-int LoadDcmi();
 
 }  // namespace hixl
 
