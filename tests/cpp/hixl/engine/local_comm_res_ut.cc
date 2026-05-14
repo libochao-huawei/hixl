@@ -232,11 +232,16 @@ TEST_F(LocalCommResEdgeTest, GenerateD2HEdgesSuccess) {
     e1.local_eid = "0xaa";
     e1.remote_eid = "0xbb";
     route_data.entries.push_back(e1);
+    RouteEntry e2;
+    e2.device_id = 1;
+    e2.local_eid = "0xcc";
+    e2.remote_eid = "0xdd";
+    route_data.entries.push_back(e2);
 
     std::vector<EndpointConfig> edges;
-    int32_t ret = GenerateD2HEdges(route_data, edges);
+    int32_t ret = GenerateD2HEdges(route_data, 0, edges);
     EXPECT_EQ(ret, SUCCESS);
-    ASSERT_EQ(edges.size(), 1U);
+    ASSERT_EQ(edges.size(), 1U);  // 只取 device_id=0 的条目
     EXPECT_EQ(edges[0].protocol, "ub_ctp");
     EXPECT_EQ(edges[0].comm_id, "0xbb");   // D2H: comm_id = remote_eid
     EXPECT_EQ(edges[0].placement, "device");
@@ -246,7 +251,7 @@ TEST_F(LocalCommResEdgeTest, GenerateD2HEdgesSuccess) {
 TEST_F(LocalCommResEdgeTest, GenerateD2HEdgesEmptyRoute) {
     RouteData route_data;
     std::vector<EndpointConfig> edges;
-    int32_t ret = GenerateD2HEdges(route_data, edges);
+    int32_t ret = GenerateD2HEdges(route_data, 0, edges);
     EXPECT_EQ(ret, SUCCESS);
     EXPECT_TRUE(edges.empty());
 }
