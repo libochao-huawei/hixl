@@ -284,6 +284,13 @@ void AddRouteEntriesForDevice(const std::map<std::string, std::string>& kv_map,
             entry.device_id = device_id;
             entry.local_eid = local_it->second;
             entry.remote_eid = remote_it->second;
+            // 去掉 "0x" 前缀
+            if (entry.local_eid.size() >= 2 && entry.local_eid[0] == '0' && entry.local_eid[1] == 'x') {
+                entry.local_eid = entry.local_eid.substr(2);
+            }
+            if (entry.remote_eid.size() >= 2 && entry.remote_eid[0] == '0' && entry.remote_eid[1] == 'x') {
+                entry.remote_eid = entry.remote_eid.substr(2);
+            }
             route_data.entries.push_back(entry);
         }
     }
@@ -570,13 +577,17 @@ int32_t GenerateH2DEdges(
 
 int32_t GenerateD2HEdges(
     const RouteData& route_data,
+    int32_t phy_dev_id,
     std::vector<EndpointConfig>& edges) {
 
     edges.clear();
 
-    HIXL_LOGI("D2H: route_entries=%zu", route_data.entries.size());
+    HIXL_LOGI("D2H: route_entries=%zu, phy_dev_id=%d", route_data.entries.size(), phy_dev_id);
 
     for (const auto& entry : route_data.entries) {
+        if (entry.device_id != (phy_dev_id%8)){
+            continue;
+        }
         EndpointConfig edge;
         edge.protocol = "ub_ctp";
         edge.comm_id = entry.remote_eid;
@@ -728,7 +739,7 @@ void CollectAllEdges(const TopoData& topo_data,
         GenerateH2DEdges(route_data, edges);
         all_edges.insert(all_edges.end(), edges.begin(), edges.end());
         edges.clear();
-        GenerateD2HEdges(route_data, edges);
+        GenerateD2HEdges(route_data, phy_dev_id, edges);
         all_edges.insert(all_edges.end(), edges.begin(), edges.end());
     }
 }
@@ -802,6 +813,16 @@ int32_t GenerateLocalCommRes(
     local_comm_res.endpoint_list = std::move(all_edges);
     for (auto& ep : local_comm_res.endpoint_list) {
         ep.net_instance_id = net_instance_id;
+    }
+
+    HIXL_LOGI("GenerateLocalCommRes result: version=%s, net_instance_id=%s, endpoints=%zu",
+              local_comm_res.version.c_str(), local_comm_res.net_instance_id.c_str(),
+              local_comm_res.endpoint_list.size());
+    for (size_t i = 0; i < local_comm_res.endpoint_list.size(); ++i) {
+        const auto& ep = local_comm_res.endpoint_list[i];
+        HIXL_LOGI("  [%zu] protocol=%s, comm_id=%s, placement=%s, plane=%s, dst_eid=%s, net_instance_id=%s",
+                  i, ep.protocol.c_str(), ep.comm_id.c_str(), ep.placement.c_str(),
+                  ep.plane.c_str(), ep.dst_eid.c_str(), ep.net_instance_id.c_str());
     }
     return SUCCESS;
 }
