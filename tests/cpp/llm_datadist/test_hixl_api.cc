@@ -460,13 +460,24 @@ TEST_F(HixlSTest, TestHixlFabricMem) {
   std::vector<uint8_t> src(size, kDataPattern);
   std::vector<uint8_t> dst(size, kInitPattern);
 
-  // Register remote mem
+  hixl::MemDesc src_mem{};
+  src_mem.addr = reinterpret_cast<uintptr_t>(src.data());
+  src_mem.len = size;
+  MemHandle src_handle = nullptr;
+  EXPECT_EQ(engine1.RegisterMem(src_mem, MEM_DEVICE, src_handle), SUCCESS);
+
+  hixl::MemDesc dst_mem{};
+  dst_mem.addr = reinterpret_cast<uintptr_t>(dst.data());
+  dst_mem.len = size;
+  MemHandle dst_handle = nullptr;
+  EXPECT_EQ(engine1.RegisterMem(dst_mem, MEM_DEVICE, dst_handle), SUCCESS);
+
   std::vector<uint8_t> remote_buf(size, kInitPattern);
   hixl::MemDesc remote_mem{};
   remote_mem.addr = reinterpret_cast<uintptr_t>(remote_buf.data());
   remote_mem.len = size;
-  MemHandle handle2 = nullptr;
-  EXPECT_EQ(engine2.RegisterMem(remote_mem, MEM_DEVICE, handle2), SUCCESS);
+  MemHandle remote_handle = nullptr;
+  EXPECT_EQ(engine2.RegisterMem(remote_mem, MEM_DEVICE, remote_handle), SUCCESS);
 
   EXPECT_EQ(engine1.Connect(kEngine2Ip.c_str()), SUCCESS);
 
@@ -476,7 +487,8 @@ TEST_F(HixlSTest, TestHixlFabricMem) {
   EXPECT_EQ(engine1.TransferSync(kEngine2Ip.c_str(), WRITE, {desc}), SUCCESS);
 
   // Read back from remote
-  TransferOpDesc read_desc{reinterpret_cast<uintptr_t>(dst.data()), reinterpret_cast<uintptr_t>(remote_buf.data()), size};
+  TransferOpDesc read_desc{
+      reinterpret_cast<uintptr_t>(dst.data()), reinterpret_cast<uintptr_t>(remote_buf.data()), size};
   EXPECT_EQ(engine1.TransferSync(kEngine2Ip.c_str(), READ, {read_desc}), SUCCESS);
 
   // Verify read back data matches written data
@@ -485,6 +497,9 @@ TEST_F(HixlSTest, TestHixlFabricMem) {
   }
 
   EXPECT_EQ(engine1.Disconnect(kEngine2Ip.c_str()), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(src_handle), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(dst_handle), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(remote_handle), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
 }
