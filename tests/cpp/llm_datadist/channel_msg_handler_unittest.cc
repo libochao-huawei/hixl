@@ -213,8 +213,6 @@ TEST_F(ChannelMsgHandlerUnitTest, ProcessServerEviction_WhenClientReturnsError_L
   // Create a thread that will simulate receiving a disconnect response with error
   // This needs to happen AFTER ProcessServerEviction sends the request
   std::thread response_thread([this, req_id]() {
-    // Wait a bit for the main thread to reach the wait condition
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     // Now inject the response
     std::lock_guard<std::mutex> lock(handler_->pending_req_mutex_);
