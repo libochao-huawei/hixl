@@ -81,7 +81,7 @@ int GetLogicIdFromPhyId(unsigned int phy_id, unsigned int* logic_id) {
 
 // ============ JSON 解析辅助函数 ============
 
-bool ParseJsonFieldInt(const std::string& obj, const std::string& key, int32_t& value) {
+bool FindJsonColon(const std::string& obj, const std::string& key, size_t& value_pos) {
     std::string pattern = "\"" + key + "\"";
     size_t pos = obj.find(pattern);
     if (pos == std::string::npos) {
@@ -94,6 +94,15 @@ bool ParseJsonFieldInt(const std::string& obj, const std::string& key, int32_t& 
     ++pos;
     while (pos < obj.length() && std::isspace(static_cast<unsigned char>(obj[pos]))) {
         ++pos;
+    }
+    value_pos = pos;
+    return true;
+}
+
+bool ParseJsonFieldInt(const std::string& obj, const std::string& key, int32_t& value) {
+    size_t pos = 0;
+    if (!FindJsonColon(obj, key, pos)) {
+        return false;
     }
     size_t end = pos;
     while (end < obj.length() && (std::isdigit(static_cast<unsigned char>(obj[end])) || obj[end] == '-')) {
@@ -107,18 +116,9 @@ bool ParseJsonFieldInt(const std::string& obj, const std::string& key, int32_t& 
 }
 
 bool ParseJsonFieldString(const std::string& obj, const std::string& key, std::string& value) {
-    std::string pattern = "\"" + key + "\"";
-    size_t pos = obj.find(pattern);
-    if (pos == std::string::npos) {
+    size_t pos = 0;
+    if (!FindJsonColon(obj, key, pos)) {
         return false;
-    }
-    pos = obj.find(':', pos + pattern.length());
-    if (pos == std::string::npos) {
-        return false;
-    }
-    ++pos;
-    while (pos < obj.length() && std::isspace(static_cast<unsigned char>(obj[pos]))) {
-        ++pos;
     }
     if (pos >= obj.length() || obj[pos] != '"') {
         return false;
@@ -440,6 +440,22 @@ int32_t ParseRouteFile(const std::string& route_path, RouteData& route_data) {
 
 // ============ 边生成实现 ============
 
+bool ShouldSkipD2DLink(const TopoLink& link, size_t skip_reason[4]) {
+    if (link.net_layer != 0) {
+        ++skip_reason[0];
+        return true;
+    }
+    if (link.link_type != "PEER2PEER") {
+        ++skip_reason[1];
+        return true;
+    }
+    if (link.topo_type != "1DMESH") {
+        ++skip_reason[2];
+        return true;
+    }
+    return false;
+}
+
 void AddD2DEdgesFromLink(const NpuRootInfo& self_rootinfo,
                          const NpuRootInfo& peer_rootinfo,
                          int peer_id,
@@ -502,16 +518,7 @@ int32_t GenerateD2DEdges(
     size_t no_port_match_peer = 0;
 
     for (const auto& link : topo_data.links) {
-        if (link.net_layer != 0) {
-            ++skip_reason[0];
-            continue;
-        }
-        if (link.link_type != "PEER2PEER") {
-            ++skip_reason[1];
-            continue;
-        }
-        if (link.topo_type != "1DMESH") {
-            ++skip_reason[2];
+        if (ShouldSkipD2DLink(link, skip_reason)) {
             continue;
         }
 
@@ -603,6 +610,15 @@ int32_t GenerateD2HEdges(
 }
 
 // ============ 核心接口实现 ============
+
+void LogEndpointList(const std::vector<EndpointConfig>& endpoint_list) {
+    for (size_t i = 0; i < endpoint_list.size(); ++i) {
+        const auto& ep = endpoint_list[i];
+        HIXL_LOGI("  [%zu] protocol=%s, comm_id=%s, placement=%s, plane=%s, dst_eid=%s, net_instance_id=%s",
+                  i, ep.protocol.c_str(), ep.comm_id.c_str(), ep.placement.c_str(),
+                  ep.plane.c_str(), ep.dst_eid.c_str(), ep.net_instance_id.c_str());
+    }
+}
 
 bool IsProductPod(uint32_t mainboard_id) {
     return (mainboard_id == kMainboardIdPod1 || mainboard_id == kMainboardIdPod2 || mainboard_id == kMainboardIdPod3);
@@ -818,12 +834,7 @@ int32_t GenerateLocalCommRes(
     HIXL_LOGI("GenerateLocalCommRes result: version=%s, net_instance_id=%s, endpoints=%zu",
               local_comm_res.version.c_str(), local_comm_res.net_instance_id.c_str(),
               local_comm_res.endpoint_list.size());
-    for (size_t i = 0; i < local_comm_res.endpoint_list.size(); ++i) {
-        const auto& ep = local_comm_res.endpoint_list[i];
-        HIXL_LOGI("  [%zu] protocol=%s, comm_id=%s, placement=%s, plane=%s, dst_eid=%s, net_instance_id=%s",
-                  i, ep.protocol.c_str(), ep.comm_id.c_str(), ep.placement.c_str(),
-                  ep.plane.c_str(), ep.dst_eid.c_str(), ep.net_instance_id.c_str());
-    }
+    LogEndpointList(local_comm_res.endpoint_list);
     return SUCCESS;
 }
 
