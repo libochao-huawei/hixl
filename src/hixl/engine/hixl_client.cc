@@ -33,6 +33,11 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
     HIXL_LOGE(PARAM_INVALID, "The input local_endpoint_list is empty");
     return PARAM_INVALID;
   }
+  // 对local_endpoint_list排序，dst_eid不为空的元素排在dst_eid为空的元素前面
+  auto sorted_local_endpoint_list = local_endpoint_list;
+  std::sort(sorted_local_endpoint_list.begin(), sorted_local_endpoint_list.end(),
+            [](const EndpointConfig &a, const EndpointConfig &b) { return !a.dst_eid.empty() && b.dst_eid.empty(); });
+  // 创建socket，与server建链，发送请求，获取remote_endpoint_list
   std::vector<EndpointConfig> remote_endpoint_list;
   CtrlMsgPlugin::Initialize();
   {
@@ -58,7 +63,7 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
   }
   std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
   HandlerCreateArgs::HandlerType handler_type;
-  HIXL_CHK_STATUS_RET(EndpointMatcher::MatchEndpoints(local_endpoint_list, remote_endpoint_list,
+  HIXL_CHK_STATUS_RET(EndpointMatcher::MatchEndpoints(sorted_local_endpoint_list, remote_endpoint_list,
                                                       matched_pairs, handler_type),
                       "EndpointMatcher::MatchEndpoints failed");
   HandlerCreateArgs args{server_ip_, server_port_, rdma_tc_, rdma_sl_, handler_type, std::move(matched_pairs)};
