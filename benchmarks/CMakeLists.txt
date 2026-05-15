@@ -45,7 +45,7 @@ target_link_libraries(benchmark PRIVATE
     -lpthread
     -lrt
 )
-target_link_ascend_hal(benchmark)
+target_link_libraries(benchmark PRIVATE ascend_hal)
 
 if(NOT TARGET fabric_mem_kv_benchmark)
     add_executable(fabric_mem_kv_benchmark fabric_mem_kv_benchmark.cpp)
@@ -73,5 +73,5 @@ if(NOT TARGET fabric_mem_kv_benchmark)
         -lpthread
         -lrt
     )
-    target_link_ascend_hal(fabric_mem_kv_benchmark)
+    target_link_libraries(fabric_mem_kv_benchmark PRIVATE ascend_hal)
 endif()
