@@ -15,7 +15,7 @@
 
 #include "adxl/adxl_engine.h"
 #include "adxl/channel_manager.h"
-#include "adxl/virtual_memory_manager.h"
+#include "fabric_mem/virtual_memory_manager.h"
 #include "dlog_pub.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
 #include "hixl/hixl_types.h"
@@ -304,11 +304,12 @@ TEST_F(AdxlEngineSTest, TestAdxlDisableBufferPoolD2D) {
 }
 
 TEST_F(AdxlEngineSTest, TestAdxlEngineFabricMemWithStartAddress) {
-  VirtualMemoryManager::GetInstance().Finalize();
+  hixl::VirtualMemoryManager::GetInstance().Finalize();
 
   constexpr size_t kCustomStartAddrTB = 100UL;
   std::string json_config = R"({
-    "fabric_memory.start_address": ")" + std::to_string(kCustomStartAddrTB) + R"("
+    "fabric_memory.start_address": ")" +
+                            std::to_string(kCustomStartAddrTB) + R"("
   })";
 
   llm::AutoCommResRuntimeMock::SetDevice(0);
@@ -331,9 +332,9 @@ TEST_F(AdxlEngineSTest, TestAdxlEngineFabricMemWithStartAddress) {
 
   constexpr size_t k1GB = 1024UL * 1024UL * 1024UL;
   uintptr_t addr = 0;
-  EXPECT_EQ(VirtualMemoryManager::GetInstance().ReserveMemory(k1GB, addr), SUCCESS);
+  EXPECT_EQ(hixl::VirtualMemoryManager::GetInstance().ReserveMemory(k1GB, addr), SUCCESS);
   EXPECT_NE(addr, 0);
-  EXPECT_EQ(VirtualMemoryManager::GetInstance().ReleaseMemory(addr), SUCCESS);
+  EXPECT_EQ(hixl::VirtualMemoryManager::GetInstance().ReleaseMemory(addr), SUCCESS);
 
   engine1.Finalize();
   engine2.Finalize();
@@ -341,7 +342,7 @@ TEST_F(AdxlEngineSTest, TestAdxlEngineFabricMemWithStartAddress) {
 
 TEST_F(AdxlEngineSTest, TestHeartbeat) {
   ChannelManager::SetHeartbeatWaitTime(10);  // 10ms
-  Channel::SetHeartbeatTimeout(50);  // 50ms
+  Channel::SetHeartbeatTimeout(50);          // 50ms
   AdxlEngine engine1;
   llm::AutoCommResRuntimeMock::SetDevice(0);
   std::map<AscendString, AscendString> options1;
