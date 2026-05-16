@@ -1,5 +1,5 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -39,9 +39,9 @@ namespace hixl {
  * @brief LocalCommRes 结构体（替代 JSON 输出）
  */
 struct LocalCommRes {
-    std::string version;                        // 版本号，默认 "1.3"
-    std::string net_instance_id;                // 网络实例 ID
-    std::vector<EndpointConfig> endpoint_list;  // 端点列表
+  std::string version;                        // 版本号，默认 "1.3"
+  std::string net_instance_id;                // 网络实例 ID
+  std::vector<EndpointConfig> endpoint_list;  // 端点列表
 };
 
 // ============ Topology 数据结构 ============
@@ -50,19 +50,19 @@ struct LocalCommRes {
  * @brief Topology 链路结构
  */
 struct TopoLink {
-    int32_t net_layer;          // 网络层级 (0: Mesh, 1: CLOS)
-    std::string link_type;     // 连接类型: PEER2PEER, PEER2NET
-    std::string topo_type;     // 拓扑类型: 1DMESH, CLOS
-    int32_t local_a;          // 本地节点 A
-    int32_t local_b;          // 本地节点 B
-    int32_t remote_a;         // 远端节点 A
-    int32_t remote_b;         // 远端节点 B
-    std::vector<std::string> local_a_ports;  // 本地 A 端口列表（串口标识，如 "die_id/port"）
-    std::vector<std::string> local_b_ports;  // 本地 B 端口列表
+  int32_t net_layer;                       // 网络层级 (0: Mesh, 1: CLOS)
+  std::string link_type;                   // 连接类型: PEER2PEER, PEER2NET
+  std::string topo_type;                   // 拓扑类型: 1DMESH, CLOS
+  int32_t local_a;                         // 本地节点 A
+  int32_t local_b;                         // 本地节点 B
+  int32_t remote_a;                        // 远端节点 A
+  int32_t remote_b;                        // 远端节点 B
+  std::vector<std::string> local_a_ports;  // 本地 A 端口列表（串口标识，如 "die_id/port"）
+  std::vector<std::string> local_b_ports;  // 本地 B 端口列表
 };
 
 struct TopoData {
-    std::vector<TopoLink> links;
+  std::vector<TopoLink> links;
 };
 
 // ============ Route 数据结构 ============
@@ -71,13 +71,13 @@ struct TopoData {
  * @brief Route 条目结构
  */
 struct RouteEntry {
-    int32_t device_id;          // 设备 ID
-    std::string local_eid;     // 本地 EID
-    std::string remote_eid;    // 远端 EID
+  int32_t device_id;       // 设备 ID
+  std::string local_eid;   // 本地 EID
+  std::string remote_eid;  // 远端 EID
 };
 
 struct RouteData {
-    std::vector<RouteEntry> entries;
+  std::vector<RouteEntry> entries;
 };
 
 // ============ 核心接口 ============
@@ -88,10 +88,7 @@ struct RouteData {
  * @param [out] local_comm_res 输出的 LocalCommRes 结构体
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GenerateLocalCommRes(
-    int32_t phy_dev_id,
-    LocalCommRes& local_comm_res
-);
+int32_t GenerateLocalCommRes(int32_t phy_dev_id, LocalCommRes &local_comm_res);
 
 /**
  * @brief 生成 LocalCommRes 结构体（测试用重载，允许注入路径）
@@ -101,12 +98,8 @@ int32_t GenerateLocalCommRes(
  * @param [out] local_comm_res 输出的 LocalCommRes 结构体
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GenerateLocalCommRes(
-    int32_t phy_dev_id,
-    const std::string& topo_path,
-    const std::string& route_path,
-    LocalCommRes& local_comm_res
-);
+int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, const std::string &route_path,
+                             LocalCommRes &local_comm_res);
 
 // ============ DCMI 接口封装 ============
 
@@ -116,7 +109,7 @@ int32_t GenerateLocalCommRes(
  * @param [out] mainboard_id 主板 ID
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GetMainboardId(int32_t phy_dev_id, unsigned int& mainboard_id);
+int32_t GetMainboardId(int32_t phy_dev_id, unsigned int &mainboard_id);
 
 /**
  * @brief 获取 CLOS 层 net_instance_id
@@ -124,7 +117,7 @@ int32_t GetMainboardId(int32_t phy_dev_id, unsigned int& mainboard_id);
  * @param [out] net_instance_id 输出的 net_instance_id，格式为 "superpod_{super_pod_id}"
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GetClosNetInstanceId(int32_t phy_dev_id, std::string& net_instance_id);
+int32_t GetClosNetInstanceId(int32_t phy_dev_id, std::string &net_instance_id);
 
 // ============ 文件解析接口 ============
 
@@ -134,7 +127,7 @@ int32_t GetClosNetInstanceId(int32_t phy_dev_id, std::string& net_instance_id);
  * @param [out] topo_data 解析后的 topology 数据
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t ParseTopoFile(const std::string& topo_path, TopoData& topo_data);
+int32_t ParseTopoFile(const std::string &topo_path, TopoData &topo_data);
 
 /**
  * @brief 解析 route.conf 文件
@@ -142,7 +135,7 @@ int32_t ParseTopoFile(const std::string& topo_path, TopoData& topo_data);
  * @param [out] route_data 解析后的 route 数据
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t ParseRouteFile(const std::string& route_path, RouteData& route_data);
+int32_t ParseRouteFile(const std::string &route_path, RouteData &route_data);
 
 // ============ 边生成接口 ============
 
@@ -154,11 +147,8 @@ int32_t ParseRouteFile(const std::string& route_path, RouteData& route_data);
  * @param [out] edges 生成的边列表
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GenerateD2DEdges(
-    const TopoData& topo_data,
-    const std::map<int32_t, NpuRootInfo>& npu_rootinfos,
-    int32_t phy_id,
-    std::vector<EndpointConfig>& edges);
+int32_t GenerateD2DEdges(const TopoData &topo_data, const std::map<int32_t, NpuRootInfo> &npu_rootinfos, int32_t phy_id,
+                         std::vector<EndpointConfig> &edges);
 
 /**
  * @brief 生成 D2U 非直连边（Device to UB Gateway）
@@ -169,12 +159,9 @@ int32_t GenerateD2DEdges(
  * @param [out] edges 生成的边列表
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GenerateD2UEdges(
-    const TopoData& topo_data,
-    const std::map<int32_t, NpuRootInfo>& npu_rootinfos,
-    const std::vector<std::string>& clos_plane_ids,
-    int32_t phy_id,
-    std::vector<EndpointConfig>& edges);
+int32_t GenerateD2UEdges(const TopoData &topo_data, const std::map<int32_t, NpuRootInfo> &npu_rootinfos,
+                         const std::vector<std::string> &clos_plane_ids, int32_t phy_id,
+                         std::vector<EndpointConfig> &edges);
 
 /**
  * @brief 生成 H2D 直连边（Host to Device）
@@ -182,9 +169,7 @@ int32_t GenerateD2UEdges(
  * @param [out] edges 生成的边列表
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GenerateH2DEdges(
-    const RouteData& route_data,
-    std::vector<EndpointConfig>& edges);
+int32_t GenerateH2DEdges(const RouteData &route_data, std::vector<EndpointConfig> &edges);
 
 /**
  * @brief 生成 D2H 直连边（Device to Host）
@@ -193,10 +178,7 @@ int32_t GenerateH2DEdges(
  * @param [out] edges 生成的边列表
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GenerateD2HEdges(
-    const RouteData& route_data,
-    int32_t phy_dev_id,
-    std::vector<EndpointConfig>& edges);
+int32_t GenerateD2HEdges(const RouteData &route_data, int32_t phy_dev_id, std::vector<EndpointConfig> &edges);
 
 /**
  * @brief 生成 H2U 非直连边（Host to UB Gateway）
@@ -206,11 +188,8 @@ int32_t GenerateD2HEdges(
  * @param [out] edges 生成的边列表
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GenerateH2UEdges(
-    const RouteData& route_data,
-    const std::vector<std::string>& clos_plane_ids,
-    int32_t phy_id,
-    std::vector<EndpointConfig>& edges);
+int32_t GenerateH2UEdges(const RouteData &route_data, const std::vector<std::string> &clos_plane_ids, int32_t phy_id,
+                         std::vector<EndpointConfig> &edges);
 
 /**
  * @brief 根据 topo 数据获取某个 NPU 的 CLOS PG EID 对应的 port 数量
@@ -219,7 +198,7 @@ int32_t GenerateH2UEdges(
  * @param [in] clos_pg_eid CLOS PG EID
  * @return port 数量，失败返回 -1
  */
-int GetClosPgPortCount(const TopoData& topo_data, int32_t phy_id, const std::string& clos_pg_eid);
+int GetClosPgPortCount(const TopoData &topo_data, int32_t phy_id, const std::string &clos_pg_eid);
 
 }  // namespace hixl
 
