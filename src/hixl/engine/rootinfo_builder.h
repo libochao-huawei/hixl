@@ -53,7 +53,7 @@ struct UrmaDevice {
  */
 struct ClosPgEidInfo {
   std::string eid;  // CLOS PG EID
-  int die_id;       // 该 PG EID 对应的 die_id
+  int32_t die_id;   // 该 PG EID 对应的 die_id
 };
 
 /**
@@ -75,7 +75,7 @@ struct EidByte6Info {
   uint8_t low_nibble;   // 低4位
   uint8_t die_id;       // die_id (0 或 1)
   bool is_pg_eid;       // 是否为 PG EID (串口组)
-  int port;             // port 值 (0-15)
+  int32_t port;         // port 值 (0-15)
 };
 
 // ============ EID 解析辅助函数 ============
@@ -98,11 +98,6 @@ EidByte6Info ParseEidByte6(const std::string &eid);
  *
  * 该函数内部调用 DCMI 接口获取 URMA 设备信息，
  * 并根据产品形态构建 port 到 EID 的映射。
- *
- * 构建规则（参考 Python 的 process_level0 逻辑）:
- *   - 先获取 urma_device 的 die_id（从第一个 EID）
- *   - 如果 die_id == 0，跳过该 urma_device 下的所有 EID
- *   - 否则遍历其 eid_list 构建 rootinfo
  */
 int32_t BuildNpuRootInfo(int32_t npu_id, bool is_server, NpuRootInfo &rootinfo);
 
@@ -123,7 +118,7 @@ int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice> &urma_devices)
  * Server: Mesh 在 1die
  * Pod: 根据 npu_id % 8 判断，0-3 在 0die，4-7 在 1die
  */
-int GetMeshDieId(int32_t npu_id, bool is_server);
+int32_t GetMeshDieId(int32_t npu_id, bool is_server);
 
 }  // namespace hixl
 

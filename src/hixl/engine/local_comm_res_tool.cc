@@ -30,6 +30,8 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include "common/hixl_log.h"
+#include "common/hixl_utils.h"
+#include <nlohmann/json.hpp>
 
 namespace hixl {
 
@@ -71,124 +73,24 @@ enum DcmiChipInfoSubCmd {
   DCMI_CHIP_INFO_SUB_CMD_SPOD_INFO = 1,
 };
 
-// ============ JSON 解析辅助函数 ============
+// D2D 边匹配输入参数封装（入参过多，合并为结构体）
+struct D2DEdgeMatchInput {
+  const NpuRootInfo &self_rootinfo;
+  const NpuRootInfo &peer_rootinfo;
+  int32_t peer_id;
+  const std::vector<std::string> &local_ports;
+  const std::vector<std::string> &peer_ports;
+};
 
-bool FindJsonColon(const std::string &obj, const std::string &key, size_t &value_pos) {
-  std::string pattern = "\"" + key + "\"";
-  size_t pos = obj.find(pattern);
-  if (pos == std::string::npos) {
-    return false;
-  }
-  pos = obj.find(':', pos + pattern.length());
-  if (pos == std::string::npos) {
-    return false;
-  }
-  ++pos;
-  while (pos < obj.length() && std::isspace(static_cast<unsigned char>(obj[pos]))) {
-    ++pos;
-  }
-  value_pos = pos;
-  return true;
-}
-
-bool ParseJsonFieldInt(const std::string &obj, const std::string &key, int32_t &value) {
-  size_t pos = 0;
-  if (!FindJsonColon(obj, key, pos)) {
-    return false;
-  }
-  size_t end = pos;
-  while (end < obj.length() && (std::isdigit(static_cast<unsigned char>(obj[end])) || obj[end] == '-')) {
-    ++end;
-  }
-  if (end == pos) {
-    return false;
-  }
-  value = std::stoi(obj.substr(pos, end - pos));
-  return true;
-}
-
-bool ParseJsonFieldString(const std::string &obj, const std::string &key, std::string &value) {
-  size_t pos = 0;
-  if (!FindJsonColon(obj, key, pos)) {
-    return false;
-  }
-  if (pos >= obj.length() || obj[pos] != '"') {
-    return false;
-  }
-  ++pos;
-  size_t end = obj.find('"', pos);
-  if (end == std::string::npos) {
-    return false;
-  }
-  value = obj.substr(pos, end - pos);
-  return true;
-}
-
-bool ParseJsonFieldStringArray(const std::string &obj, const std::string &key, std::vector<std::string> &values) {
-  std::string pattern = "\"" + key + "\"";
-  size_t pos = obj.find(pattern);
-  if (pos == std::string::npos) {
-    return false;
-  }
-  pos = obj.find('[', pos + pattern.length());
-  if (pos == std::string::npos) {
-    return false;
-  }
-  ++pos;
-  values.clear();
-  int bracket_depth = 1;
-  std::string current_str;
-  bool in_string = false;
-  while (pos < obj.length() && bracket_depth > 0) {
-    if (obj[pos] == '[') {
-      ++bracket_depth;
-    } else if (obj[pos] == ']') {
-      --bracket_depth;
-      if (bracket_depth == 0) break;
-    } else if (obj[pos] == '"' && !in_string) {
-      in_string = true;
-    } else if (obj[pos] == '"' && in_string) {
-      values.push_back(current_str);
-      current_str.clear();
-      in_string = false;
-    } else if (in_string) {
-      current_str += obj[pos];
-    }
-    ++pos;
-  }
-  return true;
-}
-
-std::vector<std::string> ExtractJsonObjects(const std::string &json, const std::string &array_key) {
-  std::vector<std::string> objects;
-  size_t array_pos = json.find("\"" + array_key + "\"");
-  if (array_pos == std::string::npos) {
-    return objects;
-  }
-  size_t bracket_pos = json.find('[', array_pos);
-  if (bracket_pos == std::string::npos) {
-    return objects;
-  }
-  size_t pos = bracket_pos + 1;
-  int brace_depth = 0;
-  size_t obj_start = std::string::npos;
-  while (pos < json.length()) {
-    if (json[pos] == '{') {
-      if (brace_depth == 0) {
-        obj_start = pos;
-      }
-      ++brace_depth;
-    } else if (json[pos] == '}') {
-      --brace_depth;
-      if (brace_depth == 0 && obj_start != std::string::npos) {
-        objects.push_back(json.substr(obj_start, pos - obj_start + 1));
-        obj_start = std::string::npos;
-      }
-    }
-    ++pos;
-  }
-  return objects;
-}
+// 边收集输入参数封装（入参过多，合并为结构体）
+struct EdgeCollectInput {
+  const TopoData &topo_data;
+  const RouteData &route_data;
+  const std::map<int32_t, NpuRootInfo> &npu_rootinfos;
+  int32_t phy_dev_id;
+  const std::string &plane_pg_0_eid;
+  const std::string &plane_pg_1_eid;
+};
 
 // 在 /etc/ 目录下模糊匹配以 noroce.json 结尾的文件，返回修改时间最新的一个
 std::string FindLatestTopoFile() {
@@ -252,16 +154,20 @@ bool LoadRouteKvMap(std::ifstream &file, std::map<std::string, std::string> &kv_
   return true;
 }
 
-void AddRouteEntriesForDevice(const std::map<std::string, std::string> &kv_map, int device_idx, int device_id,
+void AddRouteEntriesForDevice(const std::map<std::string, std::string> &kv_map, int32_t device_idx, int32_t device_id,
                               RouteData &route_data) {
   std::string chan_num_key = "pair" + std::to_string(device_idx) + "_chan_num";
-  int chan_num = 1;
+  int32_t chan_num = 1;
   auto chan_num_it = kv_map.find(chan_num_key);
   if (chan_num_it != kv_map.end()) {
-    chan_num = std::stoi(chan_num_it->second);
+    try {
+      chan_num = std::stoi(chan_num_it->second);
+    } catch (...) {
+      chan_num = 1;
+    }
   }
 
-  for (int j = 0; j < chan_num; ++j) {
+  for (int32_t j = 0; j < chan_num; ++j) {
     std::string local_key = "pair" + std::to_string(device_idx) + "_chan" + std::to_string(j) + "_local_eid";
     std::string remote_key = "pair" + std::to_string(device_idx) + "_chan" + std::to_string(j) + "_remote_eid";
 
@@ -292,15 +198,25 @@ int32_t BuildRouteEntries(const std::map<std::string, std::string> &kv_map, Rout
     return FAILED;
   }
 
-  int pair_device_num = std::stoi(it->second);
-  for (int i = 0; i < pair_device_num; ++i) {
+  int32_t pair_device_num = 0;
+  try {
+    pair_device_num = std::stoi(it->second);
+  } catch (...) {
+    HIXL_LOGE(FAILED, "Invalid pair_device_num value: %s", it->second.c_str());
+    return FAILED;
+  }
+  for (int32_t i = 0; i < pair_device_num; ++i) {
     std::string dev_id_key = "pair" + std::to_string(i) + "_dev_id";
     auto dev_it = kv_map.find(dev_id_key);
-    if (dev_it == kv_map.end()) {
+    if (dev_it == kv_map.end()) continue;
+
+    int32_t device_id = 0;
+    try {
+      device_id = std::stoi(dev_it->second);
+    } catch (...) {
+      HIXL_LOGW("Invalid dev_id value: %s", dev_it->second.c_str());
       continue;
     }
-
-    int device_id = std::stoi(dev_it->second);
     AddRouteEntriesForDevice(kv_map, i, device_id, route_data);
   }
 
@@ -316,13 +232,13 @@ int32_t GetMainboardId(int32_t phy_dev_id, unsigned int &mainboard_id) {
     return FAILED;
   }
 
-  unsigned int logic_id = 0;
+  uint32_t logic_id = 0;
   if (DcmiGetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
     HIXL_LOGE(FAILED, "Failed to get logic id from phy id: %d", phy_dev_id);
     return FAILED;
   }
 
-  int ret = DcmiGetMainboardId(logic_id, &mainboard_id);
+  int32_t ret = DcmiGetMainboardId(logic_id, &mainboard_id);
   if (ret != 0) {
     HIXL_LOGE(FAILED, "Failed to get mainboard id, ret=%d", ret);
     return FAILED;
@@ -337,15 +253,15 @@ int32_t GetClosNetInstanceId(int32_t phy_dev_id, std::string &net_instance_id) {
     return FAILED;
   }
 
-  unsigned int logic_id = 0;
+  uint32_t logic_id = 0;
   if (DcmiGetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
     HIXL_LOGE(FAILED, "Failed to get logic id from phy id: %d", phy_dev_id);
     return FAILED;
   }
 
   DcmiSpodInfo spod_info = {};
-  unsigned int buf_size = sizeof(DcmiSpodInfo);
-  int ret =
+  uint32_t buf_size = sizeof(DcmiSpodInfo);
+  int32_t ret =
       DcmiGetDeviceInfo(logic_id, DCMI_MAIN_CMD_CHIP_INF, DCMI_CHIP_INFO_SUB_CMD_SPOD_INFO, &spod_info, &buf_size);
   if (ret != 0) {
     HIXL_LOGE(FAILED, "Failed to get device info, ret=%d", ret);
@@ -368,39 +284,51 @@ int32_t ParseTopoFile(const std::string &topo_path, TopoData &topo_data) {
     return PARAM_INVALID;
   }
 
-  std::stringstream buffer;
-  buffer << file.rdbuf();
-  std::string content = buffer.str();
+  nlohmann::json j;
+  try {
+    file >> j;
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(FAILED, "Failed to parse topo file JSON: %s", e.what());
+    return FAILED;
+  }
   file.close();
 
-  if (content.empty()) {
-    HIXL_LOGE(FAILED, "Topo file is empty: %s", topo_path.c_str());
+  if (!j.contains("edge_list") || !j["edge_list"].is_array() || j["edge_list"].empty()) {
+    HIXL_LOGE(FAILED, "No or empty edge_list found in: %s", topo_path.c_str());
     return FAILED;
   }
 
-  std::vector<std::string> edge_objects = ExtractJsonObjects(content, "edge_list");
-  if (edge_objects.empty()) {
-    HIXL_LOGE(FAILED, "No edge_list found in: %s", topo_path.c_str());
-    return FAILED;
-  }
-
-  for (const auto &obj : edge_objects) {
+  for (const auto &edge : j["edge_list"]) {
     TopoLink link;
     link.remote_a = -1;
     link.remote_b = -1;
 
-    if (!ParseJsonFieldInt(obj, "net_layer", link.net_layer)) {
+    if (!edge.contains("net_layer")) {
       HIXL_LOGW("Missing net_layer in edge object, skipping");
       continue;
     }
-    ParseJsonFieldString(obj, "link_type", link.link_type);
-    ParseJsonFieldString(obj, "topo_type", link.topo_type);
-    ParseJsonFieldInt(obj, "local_a", link.local_a);
-    ParseJsonFieldInt(obj, "local_b", link.local_b);
-    ParseJsonFieldInt(obj, "remote_a", link.remote_a);
-    ParseJsonFieldInt(obj, "remote_b", link.remote_b);
-    ParseJsonFieldStringArray(obj, "local_a_ports", link.local_a_ports);
-    ParseJsonFieldStringArray(obj, "local_b_ports", link.local_b_ports);
+    link.net_layer = edge.value("net_layer", 0);
+    link.link_type = edge.value("link_type", "");
+    link.topo_type = edge.value("topo_type", "");
+    link.local_a = edge.value("local_a", 0);
+    link.local_b = edge.value("local_b", 0);
+    link.remote_a = edge.value("remote_a", -1);
+    link.remote_b = edge.value("remote_b", -1);
+
+    if (edge.contains("local_a_ports") && edge["local_a_ports"].is_array()) {
+      for (const auto &port : edge["local_a_ports"]) {
+        if (port.is_string()) {
+          link.local_a_ports.push_back(port.get<std::string>());
+        }
+      }
+    }
+    if (edge.contains("local_b_ports") && edge["local_b_ports"].is_array()) {
+      for (const auto &port : edge["local_b_ports"]) {
+        if (port.is_string()) {
+          link.local_b_ports.push_back(port.get<std::string>());
+        }
+      }
+    }
 
     topo_data.links.push_back(link);
   }
@@ -445,30 +373,29 @@ bool ShouldSkipD2DLink(const TopoLink &link, size_t skip_reason[4]) {
   return false;
 }
 
-void AddD2DEdgesFromLink(const NpuRootInfo &self_rootinfo, const NpuRootInfo &peer_rootinfo, int peer_id,
-                         const std::vector<std::string> &local_ports, const std::vector<std::string> &peer_ports,
-                         std::vector<EndpointConfig> &edges, size_t &no_port_match_local, size_t &no_port_match_peer) {
-  for (size_t i = 0; i < local_ports.size() && i < peer_ports.size(); ++i) {
-    const std::string &local_port = local_ports[i];
-    const std::string &peer_port = peer_ports[i];
+void AddD2DEdgesFromLink(const D2DEdgeMatchInput &input, std::vector<EndpointConfig> &edges,
+                         size_t &no_port_match_local, size_t &no_port_match_peer) {
+  for (size_t i = 0; i < input.local_ports.size() && i < input.peer_ports.size(); ++i) {
+    const std::string &local_port = input.local_ports[i];
+    const std::string &peer_port = input.peer_ports[i];
 
-    auto local_eid_it = self_rootinfo.port_to_eid.find(local_port);
-    if (local_eid_it == self_rootinfo.port_to_eid.end()) {
+    auto local_eid_it = input.self_rootinfo.port_to_eid.find(local_port);
+    if (local_eid_it == input.self_rootinfo.port_to_eid.end()) {
       ++no_port_match_local;
       HIXL_LOGD("No EID for local port '%s'", local_port.c_str());
       continue;
     }
-    std::string comm_id = local_eid_it->second;
+    const std::string &comm_id = local_eid_it->second;
 
-    auto peer_eid_it = peer_rootinfo.port_to_eid.find(peer_port);
-    if (peer_eid_it == peer_rootinfo.port_to_eid.end()) {
+    auto peer_eid_it = input.peer_rootinfo.port_to_eid.find(peer_port);
+    if (peer_eid_it == input.peer_rootinfo.port_to_eid.end()) {
       ++no_port_match_peer;
-      HIXL_LOGD("No EID for peer port '%s' on npu_id=%d", peer_port.c_str(), peer_id);
+      HIXL_LOGD("No EID for peer port '%s' on npu_id=%d", peer_port.c_str(), input.peer_id);
       continue;
     }
-    std::string dst_eid = peer_eid_it->second;
+    const std::string &dst_eid = peer_eid_it->second;
 
-    EndpointConfig edge;
+    EndpointConfig edge{};
     edge.protocol = kProtocolUbCtp;
     edge.comm_id = comm_id;
     edge.placement = kPlacementDevice;
@@ -509,7 +436,7 @@ int32_t GenerateD2DEdges(const TopoData &topo_data, const std::map<int32_t, NpuR
       continue;
     }
 
-    int peer_id = is_local_a_side ? link.local_b : link.local_a;
+    int32_t peer_id = is_local_a_side ? link.local_b : link.local_a;
     const std::vector<std::string> &local_ports = is_local_a_side ? link.local_a_ports : link.local_b_ports;
     const std::vector<std::string> &peer_ports = is_local_a_side ? link.local_b_ports : link.local_a_ports;
 
@@ -526,7 +453,7 @@ int32_t GenerateD2DEdges(const TopoData &topo_data, const std::map<int32_t, NpuR
     }
     const auto &peer_rootinfo = peer_it->second;
 
-    AddD2DEdgesFromLink(self_rootinfo, peer_rootinfo, peer_id, local_ports, peer_ports, edges, no_port_match_local,
+    AddD2DEdgesFromLink({self_rootinfo, peer_rootinfo, peer_id, local_ports, peer_ports}, edges, no_port_match_local,
                         no_port_match_peer);
   }
 
@@ -603,19 +530,15 @@ bool IsProductServer(uint32_t mainboard_id) {
       (mainboard_id >= kMainboardIdServerMin2 && mainboard_id <= kMainboardIdServerMax2 && (mainboard_id % 2 == 0)));
 }
 
-std::set<int32_t> CollectRelatedNpuIds(int32_t phy_dev_id, const TopoData &topo_data) {
-  (void)topo_data;
+std::set<int32_t> CollectRelatedNpuIds(int32_t phy_dev_id) {
   // NPU 按 8 个一组划分，找出 phy_dev_id 所在组的所有 NPU
   int32_t group_start = (phy_dev_id / 8) * 8;
   std::set<int32_t> related_npu_ids;
   for (int32_t i = 0; i < 8; ++i) {
     related_npu_ids.insert(group_start + i);
   }
-  std::string npu_ids_str;
-  for (int id : related_npu_ids) {
-    npu_ids_str += std::to_string(id) + " ";
-  }
-  HIXL_LOGI("phy_dev_id=%d, group_start=%d, Related NPU IDs: %s", phy_dev_id, group_start, npu_ids_str.c_str());
+  HIXL_LOGI("phy_dev_id=%d, group_start=%d, Related NPU IDs: %s", phy_dev_id, group_start,
+            ToString(related_npu_ids).c_str());
   return related_npu_ids;
 }
 
@@ -636,7 +559,7 @@ int32_t BuildNpuRootinfos(const std::set<int32_t> &related_npu_ids, bool is_serv
 }
 
 void CollectClosPgEids(const std::map<int32_t, NpuRootInfo> &npu_rootinfos, int32_t phy_dev_id, bool is_server,
-                       std::string &plane_pg_0_eid, std::string &plane_pg_1_eid, int &mesh_die_id) {
+                       std::string &plane_pg_0_eid, std::string &plane_pg_1_eid, int32_t &mesh_die_id) {
   mesh_die_id = GetMeshDieId(phy_dev_id, is_server);
   auto self_it = npu_rootinfos.find(phy_dev_id);
   if (self_it == npu_rootinfos.end()) {
@@ -696,29 +619,26 @@ void GenerateH2UEdges(const std::string &plane_pg_0_eid, const std::string &plan
   }
 }
 
-void CollectAllEdges(const TopoData &topo_data, const RouteData &route_data,
-                     const std::map<int32_t, NpuRootInfo> &npu_rootinfos, int32_t phy_dev_id,
-                     const std::string &plane_pg_0_eid, const std::string &plane_pg_1_eid,
-                     std::vector<EndpointConfig> &all_edges) {
-  if (!topo_data.links.empty() && !npu_rootinfos.empty()) {
+void CollectAllEdges(const EdgeCollectInput &input, std::vector<EndpointConfig> &all_edges) {
+  if (!input.topo_data.links.empty() && !input.npu_rootinfos.empty()) {
     std::vector<EndpointConfig> edges;
-    GenerateD2DEdges(topo_data, npu_rootinfos, phy_dev_id, edges);
+    GenerateD2DEdges(input.topo_data, input.npu_rootinfos, input.phy_dev_id, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
   }
-  if (!plane_pg_0_eid.empty() || !plane_pg_1_eid.empty()) {
+  if (!input.plane_pg_0_eid.empty() || !input.plane_pg_1_eid.empty()) {
     std::vector<EndpointConfig> edges;
-    GenerateD2UEdges(plane_pg_0_eid, plane_pg_1_eid, edges);
+    GenerateD2UEdges(input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
     edges.clear();
-    GenerateH2UEdges(plane_pg_0_eid, plane_pg_1_eid, edges);
+    GenerateH2UEdges(input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
   }
-  if (!route_data.entries.empty()) {
+  if (!input.route_data.entries.empty()) {
     std::vector<EndpointConfig> edges;
-    GenerateH2DEdges(route_data, edges);
+    GenerateH2DEdges(input.route_data, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
     edges.clear();
-    GenerateD2HEdges(route_data, phy_dev_id, edges);
+    GenerateD2HEdges(input.route_data, input.phy_dev_id, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
   }
 }
@@ -737,7 +657,7 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, LocalCommRes &local_comm_res) {
 int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, const std::string &route_path,
                              LocalCommRes &local_comm_res) {
   // 1. 获取产品信息
-  unsigned int mainboard_id = 0;
+  uint32_t mainboard_id = 0;
   int32_t ret = GetMainboardId(phy_dev_id, mainboard_id);
   if (ret != SUCCESS) {
     return ret;
@@ -756,7 +676,7 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
   }
 
   // 4. 构建 NpuRootInfo
-  std::set<int32_t> related_npu_ids = CollectRelatedNpuIds(phy_dev_id, topo_data);
+  std::set<int32_t> related_npu_ids = CollectRelatedNpuIds(phy_dev_id);
   std::map<int32_t, NpuRootInfo> npu_rootinfos;
   ret = BuildNpuRootinfos(related_npu_ids, is_server, npu_rootinfos);
   if (ret != SUCCESS) {
@@ -764,12 +684,12 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
   }
 
   std::string plane_pg_0_eid, plane_pg_1_eid;
-  int mesh_die_id = 0;
+  int32_t mesh_die_id = 0;
   CollectClosPgEids(npu_rootinfos, phy_dev_id, is_server, plane_pg_0_eid, plane_pg_1_eid, mesh_die_id);
 
   // 5. 生成所有边
   std::vector<EndpointConfig> all_edges;
-  CollectAllEdges(topo_data, route_data, npu_rootinfos, phy_dev_id, plane_pg_0_eid, plane_pg_1_eid, all_edges);
+  CollectAllEdges({topo_data, route_data, npu_rootinfos, phy_dev_id, plane_pg_0_eid, plane_pg_1_eid}, all_edges);
   if (all_edges.empty()) {
     return PARAM_INVALID;
   }
