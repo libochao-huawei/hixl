@@ -1,5 +1,5 @@
 /**
-* Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -41,8 +41,8 @@ namespace hixl {
  * 每个 URMA Device 包含多个 EID，die_id 从第一个 EID 获取
  */
 struct UrmaDevice {
-    std::string name;                      // 设备名称，如 "udma0"
-    std::vector<std::string> eid_list;    // 该设备下的所有 EID 列表
+  std::string name;                   // 设备名称，如 "udma0"
+  std::vector<std::string> eid_list;  // 该设备下的所有 EID 列表
 };
 
 // ============ RootInfo 数据结构 ============
@@ -51,8 +51,8 @@ struct UrmaDevice {
  * @brief CLOS PG EID 信息
  */
 struct ClosPgEidInfo {
-    std::string eid;       // CLOS PG EID
-    int die_id;           // 该 PG EID 对应的 die_id
+  std::string eid;  // CLOS PG EID
+  int die_id;       // 该 PG EID 对应的 die_id
 };
 
 /**
@@ -61,20 +61,20 @@ struct ClosPgEidInfo {
  * value: 对应的 EID 字符串
  */
 struct NpuRootInfo {
-    std::map<std::string, std::string> port_to_eid;  // Mesh 层串口到 EID 映射
-    std::vector<ClosPgEidInfo> clos_pg_eids;          // CLOS 层 PG EID 列表（可能有多个）
+  std::map<std::string, std::string> port_to_eid;  // Mesh 层串口到 EID 映射
+  std::vector<ClosPgEidInfo> clos_pg_eids;         // CLOS 层 PG EID 列表（可能有多个）
 };
 
 /**
  * @brief EID 第6字节解析结果
  */
 struct EidByte6Info {
-    int byte6;           // 原始第6字节值
-    int high_nibble;    // 高4位
-    int low_nibble;     // 低4位
-    int die_id;         // die_id (0 或 1)
-    bool is_pg_eid;     // 是否为 PG EID (串口组)
-    int port;           // port 值 (0-15)
+  int byte6;        // 原始第6字节值
+  int high_nibble;  // 高4位
+  int low_nibble;   // 低4位
+  int die_id;       // die_id (0 或 1)
+  bool is_pg_eid;   // 是否为 PG EID (串口组)
+  int port;         // port 值 (0-15)
 };
 
 // ============ EID 解析辅助函数 ============
@@ -84,7 +84,7 @@ struct EidByte6Info {
  * @param [in] eid 字符串格式 EID
  * @return EidByte6Info 解析结果
  */
-EidByte6Info ParseEidByte6(const std::string& eid);
+EidByte6Info ParseEidByte6(const std::string &eid);
 
 // ============ RootInfo 构建接口 ============
 
@@ -103,7 +103,7 @@ EidByte6Info ParseEidByte6(const std::string& eid);
  *   - 如果 die_id == 0，跳过该 urma_device 下的所有 EID
  *   - 否则遍历其 eid_list 构建 rootinfo
  */
-int32_t BuildNpuRootInfo(int32_t npu_id, bool is_server, NpuRootInfo& rootinfo);
+int32_t BuildNpuRootInfo(int32_t npu_id, bool is_server, NpuRootInfo &rootinfo);
 
 /**
  * @brief 获取 URMA Device 列表
@@ -111,7 +111,7 @@ int32_t BuildNpuRootInfo(int32_t npu_id, bool is_server, NpuRootInfo& rootinfo);
  * @param [out] urma_devices URMA Device 列表
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice>& urma_devices);
+int32_t GetUrmaDeviceList(int32_t npu_id, std::vector<UrmaDevice> &urma_devices);
 
 /**
  * @brief 确定 Mesh 层的 die_id
