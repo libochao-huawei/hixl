@@ -12,8 +12,7 @@
  * @file dcmi_proxy.h
  * @brief DCMI 接口代理模块
  *
- * 封装 DCMI 接口的动态加载（通过 dlopen），提供函数指针和初始化接口，
- * 供 rootinfo_builder 和 local_comm_res_tool 等模块共享使用。
+ * 封装 DCMI 接口的动态加载（通过 dlopen），对外暴露高层代理函数接口。
  */
 
 #ifndef CANN_HIXL_SRC_HIXL_PROXY_HCOMM_DCM_PROXY_H
@@ -47,7 +46,22 @@ typedef struct dcmi_urma_eid_info {
     unsigned int eid_index;
 } dcmi_urma_eid_info_t;
 
-// ============ DCMI 函数指针类型 ============
+// ============ DCMI SPOD 信息结构 ============
+
+/**
+ * @brief DCMI SPOD 信息结构体
+ */
+struct DcmiSpodInfo {
+  unsigned int sdid;
+  unsigned int super_pod_size;
+  unsigned int super_pod_id;
+  unsigned int server_index;
+  unsigned int chassis_id;
+  unsigned int super_pod_type;
+  unsigned int reserve[6];
+};
+
+// ============ DCMI 函数指针类型（内部实现使用） ============
 
 typedef int (*dcmi_init_func)();
 typedef int (*dcmi_get_urma_device_cnt_func)(int npu_id, unsigned int* dev_cnt);
@@ -58,14 +72,15 @@ typedef int (*dcmi_get_logicid_from_phyid_func)(unsigned int phy_id, unsigned in
 typedef int (*dcmi_get_device_info_func)(int npu_id, int main_cmd,
                                           unsigned int sub_cmd, void* buf, unsigned int* size);
 
-// ============ DCMI 函数指针实例（共享） ============
+// ============ DCMI 高层代理接口 ============
 
-extern dcmi_init_func g_dcmi_init;
-extern dcmi_get_urma_device_cnt_func g_dcmi_get_urma_device_cnt;
-extern dcmi_get_eid_list_func g_dcmi_get_eid_list;
-extern dcmi_get_mainboard_id_func g_dcmi_get_mainboard_id;
-extern dcmi_get_logicid_from_phyid_func g_dcmi_get_logicid_from_phyid;
-extern dcmi_get_device_info_func g_dcmi_get_device_info;
+int32_t DcmiGetLogicIdFromPhyId(unsigned int phy_id, unsigned int *logic_id);
+int32_t DcmiGetUrmaDeviceCnt(unsigned int logic_id, unsigned int *dev_cnt);
+int32_t DcmiGetEidList(unsigned int logic_id, int urma_dev_index,
+                       dcmi_urma_eid_info_t *eid_list, int *eid_cnt);
+int32_t DcmiGetMainboardId(unsigned int logic_id, unsigned int *mainboard_id);
+int32_t DcmiGetDeviceInfo(unsigned int logic_id, int main_cmd,
+                          unsigned int sub_cmd, void *buf, unsigned int *size);
 
 /**
  * @brief 加载 DCMI 动态库并初始化
