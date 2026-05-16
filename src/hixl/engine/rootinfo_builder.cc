@@ -19,123 +19,36 @@
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
-#include <dlfcn.h>
-#include <unistd.h>
 #include "common/hixl_log.h"
 
 namespace hixl {
 
-// ============ DCMI 接口函数指针（共享） ============
-dcmi_init_func g_dcmi_init = nullptr;
-dcmi_get_urma_device_cnt_func g_dcmi_get_urma_device_cnt = nullptr;
-dcmi_get_eid_list_func g_dcmi_get_eid_list = nullptr;
-dcmi_get_mainboard_id_func g_dcmi_get_mainboard_id = nullptr;
-dcmi_get_logicid_from_phyid_func g_dcmi_get_logicid_from_phyid = nullptr;
-dcmi_get_device_info_func g_dcmi_get_device_info = nullptr;
-
-namespace {
-void *g_dcmi_handle = nullptr;
-volatile bool g_dcmi_loaded = false;
-volatile int g_dcmi_init_status = -1;
-}  // anonymous namespace
-
-// ============ DCMI 接口动态加载 ============
-
-int TryLoadDcmiSymbols() {
-  g_dcmi_handle = dlopen("libdcmi.so", RTLD_LAZY);
-  if (g_dcmi_handle == nullptr) {
-    HIXL_LOGE(FAILED, "Failed to dlopen libdcmi.so: %s", dlerror());
-    return -1;
-  }
-
-  g_dcmi_init = reinterpret_cast<dcmi_init_func>(dlsym(g_dcmi_handle, "dcmiv2_init"));
-  g_dcmi_get_urma_device_cnt =
-      reinterpret_cast<dcmi_get_urma_device_cnt_func>(dlsym(g_dcmi_handle, "dcmiv2_get_urma_device_cnt"));
-  g_dcmi_get_eid_list =
-      reinterpret_cast<dcmi_get_eid_list_func>(dlsym(g_dcmi_handle, "dcmiv2_get_eid_list_by_urma_dev_index"));
-  g_dcmi_get_mainboard_id =
-      reinterpret_cast<dcmi_get_mainboard_id_func>(dlsym(g_dcmi_handle, "dcmiv2_get_mainboard_id"));
-  g_dcmi_get_logicid_from_phyid =
-      reinterpret_cast<dcmi_get_logicid_from_phyid_func>(dlsym(g_dcmi_handle, "dcmiv2_get_dev_id_by_chip_phy_id"));
-
-  if (g_dcmi_get_logicid_from_phyid == nullptr) {
-    g_dcmi_get_logicid_from_phyid =
-        reinterpret_cast<dcmi_get_logicid_from_phyid_func>(dlsym(g_dcmi_handle, "dcmiv2_get_dev_id_from_chip_phyid"));
-  }
-
-  g_dcmi_get_device_info = reinterpret_cast<dcmi_get_device_info_func>(dlsym(g_dcmi_handle, "dcmiv2_get_device_info"));
-
-  if (g_dcmi_init == nullptr || g_dcmi_get_urma_device_cnt == nullptr || g_dcmi_get_eid_list == nullptr ||
-      g_dcmi_get_mainboard_id == nullptr || g_dcmi_get_logicid_from_phyid == nullptr ||
-      g_dcmi_get_device_info == nullptr) {
-    HIXL_LOGE(FAILED, "Failed to load DCMI function symbols");
-    dlclose(g_dcmi_handle);
-    g_dcmi_handle = nullptr;
-    return -1;
-  }
-
-  return 0;
-}
-
-int InitDcmiWithRetry() {
-  const int max_wait_time = 10;
-
-  for (int i = 0; i < max_wait_time; ++i) {
-    g_dcmi_init_status = g_dcmi_init();
-    if (g_dcmi_init_status == 0) {
-      break;
-    }
-    sleep(1);
-  }
-
-  if (g_dcmi_init_status != 0) {
-    HIXL_LOGE(FAILED, "DCMI init failed after %d retries", max_wait_time);
-    dlclose(g_dcmi_handle);
-    g_dcmi_handle = nullptr;
-    g_dcmi_init_status = -1;
-    return g_dcmi_init_status;
-  }
-
-  return 0;
-}
-
-int LoadDcmi() {
-  if (g_dcmi_loaded) {
-    return g_dcmi_init_status;
-  }
-
-  if (TryLoadDcmiSymbols() != 0) {
-    g_dcmi_init_status = -1;
-    g_dcmi_loaded = true;
-    return g_dcmi_init_status;
-  }
-
-  if (InitDcmiWithRetry() != 0) {
-    g_dcmi_init_status = -1;
-    g_dcmi_loaded = true;
-    return g_dcmi_init_status;
-  }
-
-  g_dcmi_loaded = true;
-  return g_dcmi_init_status;
-}
-
 // ============ EID 解析实现 ============
 
 EidByte6Info ParseEidByte6(const std::string &eid) {
+  constexpr size_t kEidMinStrLen = 12U;
+  constexpr size_t kByte6StrOffset = 10U;
+  constexpr size_t kByteStrLen = 2U;
+  constexpr int kHexBase = 16;
+  constexpr int kNibbleShift = 4;
+  constexpr uint8_t kNibbleMask = 0xFU;
+  constexpr uint8_t kDieIdBit = 0x4U;
+  constexpr uint8_t kPgEidValue1 = 0x3U;
+  constexpr uint8_t kPgEidValue2 = 0x7U;
+
   EidByte6Info info{};
 
-  if (eid.length() < 12) {
+  if (eid.length() < kEidMinStrLen) {
     return info;
   }
 
-  std::string byte_str = eid.substr(10, 2);
-  info.byte6 = std::stoi(byte_str, nullptr, 16);
-  info.high_nibble = (info.byte6 >> 4) & 0xF;
-  info.low_nibble = info.byte6 & 0xF;
-  info.die_id = (info.high_nibble & 0x4) ? 1 : 0;
-  info.is_pg_eid = (info.high_nibble == 0x3 || info.high_nibble == 0x7);
-  info.port = info.low_nibble;
+  std::string byte_str = eid.substr(kByte6StrOffset, kByteStrLen);
+  info.byte6 = static_cast<uint8_t>(std::stoi(byte_str, nullptr, kHexBase));
+  info.high_nibble = static_cast<uint8_t>((info.byte6 >> kNibbleShift) & kNibbleMask);
+  info.low_nibble = static_cast<uint8_t>(info.byte6 & kNibbleMask);
+  info.die_id = (info.high_nibble & kDieIdBit) ? 1U : 0U;
+  info.is_pg_eid = (info.high_nibble == kPgEidValue1 || info.high_nibble == kPgEidValue2);
+  info.port = static_cast<int>(info.low_nibble);
 
   return info;
 }
@@ -153,13 +66,13 @@ int32_t LoadUrmaDevicesFromDcmi(int32_t npu_id, std::vector<UrmaDevice> &urma_de
   }
 
   unsigned int logic_id = 0;
-  if (g_dcmi_get_logicid_from_phyid(npu_id, &logic_id) != 0) {
+  if (DcmiGetLogicIdFromPhyId(npu_id, &logic_id) != 0) {
     HIXL_LOGE(FAILED, "Failed to get logic id from npu id: %d", npu_id);
     return FAILED;
   }
 
   unsigned int dev_cnt = 0;
-  int ret = g_dcmi_get_urma_device_cnt(logic_id, &dev_cnt);
+  int ret = DcmiGetUrmaDeviceCnt(logic_id, &dev_cnt);
   if (ret != 0) {
     HIXL_LOGE(FAILED, "Failed to get urma device count, ret=%d", ret);
     return FAILED;
@@ -171,7 +84,7 @@ int32_t LoadUrmaDevicesFromDcmi(int32_t npu_id, std::vector<UrmaDevice> &urma_de
 
     dcmi_urma_eid_info_t eid_buf[MAX_EID_PER_UE];
     int eid_cnt = MAX_EID_PER_UE;
-    ret = g_dcmi_get_eid_list(logic_id, i, eid_buf, &eid_cnt);
+    ret = DcmiGetEidList(logic_id, i, eid_buf, &eid_cnt);
     if (ret != 0) {
       continue;
     }
