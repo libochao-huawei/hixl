@@ -71,6 +71,7 @@ Status HixlCSServer::InitTransFinishedFlag() {
 Status HixlCSServer::RegisterHostTransFinishedFlag() {
   void *host_flag = malloc(sizeof(int64_t));
   HIXL_CHK_BOOL_RET_STATUS(host_flag != nullptr, FAILED, "HOST trans finished flag malloc failed.");
+  HIXL_DISMISSABLE_GUARD(host_flag_guard, ([host_flag]() { free(host_flag); }));
   *static_cast<int64_t *>(host_flag) = 1;
   CommMem mem{};
   mem.type = COMM_MEM_TYPE_HOST;
@@ -80,12 +81,14 @@ Status HixlCSServer::RegisterHostTransFinishedFlag() {
   HIXL_CHK_STATUS_RET(RegisterMem(kTransFlagNameHost, &mem, &handle), "Failed to reg HOST trans finished flag");
   host_trans_flag_ = host_flag;
   host_trans_flag_handle_ = handle;
+  HIXL_DISMISS_GUARD(host_flag_guard);
   return SUCCESS;
 }
 
 Status HixlCSServer::RegisterDeviceTransFinishedFlag() {
   int32_t dev_id = 0;
   HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_id), "Failed to aclrtGetDevice for CS server TransferPool");
+  hixl::TemporaryRtContext with_context(nullptr);  // 创建context会切换当前context, 因此需要在析构时恢复原用户context
   HIXL_CHK_STATUS_RET(TransferPool::GetInstance(dev_id).Initialize(kDeviceTransferPoolSize),
                       "Failed to init TransferPool for CS server, dev_id:%d", dev_id);
   HIXL_DISMISSABLE_GUARD(pool_rollback, ([dev_id]() { TransferPool::GetInstance(dev_id).Finalize(); }));
@@ -108,8 +111,6 @@ Status HixlCSServer::RegisterDeviceTransFinishedFlag() {
 }
 
 Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config) {
-  auto ctx_guard = GetContextGuard();
-  (void)ctx_guard;
   HIXL_CHECK_NOTNULL(endpoint_list);
   HIXL_CHECK_NOTNULL(config);
   HIXL_CHK_BOOL_RET_STATUS(list_num > 0, PARAM_INVALID, "endpoint list num:%u is invalid, must > 0", list_num);

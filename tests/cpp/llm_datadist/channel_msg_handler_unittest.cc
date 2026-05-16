@@ -16,6 +16,8 @@
 #include <thread>
 #include <vector>
 
+#include "nlohmann/json.hpp"
+
 #define private public
 #include "adxl/channel_msg_handler.h"
 #undef private
@@ -28,18 +30,15 @@ constexpr char kListenInfo[] = "127.0.0.1:26000";
 constexpr char kRemoteEngine[] = "127.0.0.1:26001";
 constexpr char kRemoteCommRes[] = "remote_comm_res";
 constexpr int32_t kTimeoutMs = 1000;
-constexpr size_t kShareHandleDataSize = sizeof(aclrtMemFabricHandle{}.data);
-constexpr size_t kOverflowBytes = sizeof(aclrtDrvMemHandle) + sizeof(uintptr_t);
-constexpr uint64_t kSerializeTestVaAddr = 0x1234U;
-constexpr uint64_t kSerializeTestLen = 0x5678U;
-constexpr char kNonArrayShareHandleJsonValue[] = "invalid_share_handle";
+constexpr uintptr_t kRemoteAddrStart = 0x1234U;
+constexpr uintptr_t kRemoteAddrEnd = 0x5678U;
 
-std::vector<uint8_t> CreateShareHandleBytes(size_t size) {
-  std::vector<uint8_t> share_handle_bytes(size, 0U);
-  for (size_t i = 0; i < size; ++i) {
-    share_handle_bytes[i] = static_cast<uint8_t>(i);
-  }
-  return share_handle_bytes;
+nlohmann::json BuildAddrInfoJson() {
+  return {
+      {"mem_type", MEM_HOST},
+      {"start_addr", kRemoteAddrStart},
+      {"end_addr", kRemoteAddrEnd},
+  };
 }
 }  // namespace
 
@@ -60,22 +59,12 @@ class ChannelMsgHandlerUnitTest : public ::testing::Test {
     }
   }
 
-  nlohmann::json BuildConnectInfoJson(const std::vector<uint8_t> &share_handle_bytes) const {
-    return BuildConnectInfoJsonWithShareHandleJson(share_handle_bytes);
-  }
-
-  nlohmann::json BuildConnectInfoJsonWithShareHandleJson(const nlohmann::json &share_handle_json) const {
-    nlohmann::json share_handle_info = {
-        {"va_addr", 0},
-        {"len", 0},
-        {"share_handle", share_handle_json},
-    };
+  nlohmann::json BuildConnectInfoJson() const {
     return {
         {"channel_id", kRemoteEngine},
         {"comm_res", kRemoteCommRes},
         {"timeout", kTimeoutMs},
-        {"addrs", nlohmann::json::array()},
-        {"share_handles", nlohmann::json::array({share_handle_info})},
+        {"addrs", nlohmann::json::array({BuildAddrInfoJson()})},
     };
   }
 
@@ -85,9 +74,9 @@ class ChannelMsgHandlerUnitTest : public ::testing::Test {
       std::vector<char> msg;
       EXPECT_EQ(llm::MsgHandlerPlugin::RecvMsg(sockets_[1], msg_type, msg), SUCCESS);
       EXPECT_EQ(msg_type, static_cast<int32_t>(ChannelMsgType::kConnect));
-      EXPECT_EQ(
-          llm::MsgHandlerPlugin::SendMsg(sockets_[1], static_cast<int32_t>(ChannelMsgType::kConnect), response_json.dump()),
-          SUCCESS);
+      EXPECT_EQ(llm::MsgHandlerPlugin::SendMsg(sockets_[1], static_cast<int32_t>(ChannelMsgType::kConnect),
+                                               response_json.dump()),
+                SUCCESS);
     });
   }
 
@@ -96,69 +85,41 @@ class ChannelMsgHandlerUnitTest : public ::testing::Test {
   std::unique_ptr<ChannelMsgHandler> handler_;
 };
 
-TEST_F(ChannelMsgHandlerUnitTest, ExchangeConnectInfoAcceptsFixedSizeShareHandleArray) {
-  const auto share_handle_bytes = CreateShareHandleBytes(kShareHandleDataSize);
-  auto peer_thread = StartPeerExchangeThread(BuildConnectInfoJson(share_handle_bytes));
+TEST_F(ChannelMsgHandlerUnitTest, ExchangeConnectInfoAcceptsAdxlConnectInfo) {
+  auto peer_thread = StartPeerExchangeThread(BuildConnectInfoJson());
 
   ChannelConnectInfo peer_connect_info{};
   EXPECT_EQ(handler_->ExchangeConnectInfo(sockets_[0], kTimeoutMs, peer_connect_info), SUCCESS);
-  ASSERT_EQ(peer_connect_info.share_handles.size(), 1U);
   EXPECT_EQ(peer_connect_info.channel_id, kRemoteEngine);
   EXPECT_EQ(peer_connect_info.comm_res, kRemoteCommRes);
   EXPECT_EQ(peer_connect_info.timeout, kTimeoutMs);
-  EXPECT_EQ(peer_connect_info.share_handles[0].imported_handle, nullptr);
-  EXPECT_EQ(peer_connect_info.share_handles[0].imported_va, 0U);
-  EXPECT_FALSE(peer_connect_info.share_handles[0].is_retained);
-  for (size_t i = 0; i < kShareHandleDataSize; ++i) {
-    EXPECT_EQ(peer_connect_info.share_handles[0].share_handle.data[i], share_handle_bytes[i]);
-  }
+  ASSERT_EQ(peer_connect_info.addrs.size(), 1U);
+  EXPECT_EQ(peer_connect_info.addrs[0].mem_type, MEM_HOST);
+  EXPECT_EQ(peer_connect_info.addrs[0].start_addr, kRemoteAddrStart);
+  EXPECT_EQ(peer_connect_info.addrs[0].end_addr, kRemoteAddrEnd);
 
   peer_thread.join();
 }
 
-TEST_F(ChannelMsgHandlerUnitTest, ExchangeConnectInfoRejectsOversizedShareHandleArray) {
-  const auto share_handle_bytes = CreateShareHandleBytes(kShareHandleDataSize + kOverflowBytes);
-  auto peer_thread = StartPeerExchangeThread(BuildConnectInfoJson(share_handle_bytes));
-
-  ChannelConnectInfo peer_connect_info{};
-  EXPECT_EQ(handler_->ExchangeConnectInfo(sockets_[0], kTimeoutMs, peer_connect_info), PARAM_INVALID);
-
-  peer_thread.join();
-}
-
-TEST_F(ChannelMsgHandlerUnitTest, ExchangeConnectInfoRejectsNonArrayShareHandle) {
-  auto peer_thread = StartPeerExchangeThread(BuildConnectInfoJsonWithShareHandleJson(kNonArrayShareHandleJsonValue));
-
-  ChannelConnectInfo peer_connect_info{};
-  EXPECT_EQ(handler_->ExchangeConnectInfo(sockets_[0], kTimeoutMs, peer_connect_info), PARAM_INVALID);
-
-  peer_thread.join();
-}
-
-TEST_F(ChannelMsgHandlerUnitTest, SerializeConnectInfoWritesFixedSizeShareHandleArray) {
-  const auto share_handle_bytes = CreateShareHandleBytes(kShareHandleDataSize);
+TEST_F(ChannelMsgHandlerUnitTest, SerializeConnectInfoWritesAdxlConnectInfo) {
   ChannelConnectInfo connect_info{};
   connect_info.channel_id = kListenInfo;
   connect_info.comm_res = kRemoteCommRes;
   connect_info.timeout = kTimeoutMs;
-  connect_info.share_handles.resize(1);
-  connect_info.share_handles[0].va_addr = kSerializeTestVaAddr;
-  connect_info.share_handles[0].len = kSerializeTestLen;
-  for (size_t i = 0; i < kShareHandleDataSize; ++i) {
-    connect_info.share_handles[0].share_handle.data[i] = share_handle_bytes[i];
-  }
+  connect_info.addrs.emplace_back(AddrInfo{kRemoteAddrStart, kRemoteAddrEnd, MEM_HOST});
 
   std::string serialized;
   ASSERT_EQ(ChannelMsgHandler::Serialize(connect_info, serialized), SUCCESS);
 
   const auto json = nlohmann::json::parse(serialized);
-  ASSERT_EQ(json.at("share_handles").size(), 1U);
-  const auto &share_handle_json = json.at("share_handles").at(0).at("share_handle");
-  ASSERT_TRUE(share_handle_json.is_array());
-  ASSERT_EQ(share_handle_json.size(), kShareHandleDataSize);
-  for (size_t i = 0; i < kShareHandleDataSize; ++i) {
-    EXPECT_EQ(share_handle_json.at(i).get<uint8_t>(), share_handle_bytes[i]);
-  }
+  ASSERT_EQ(json.size(), 4U);
+  EXPECT_EQ(json.at("channel_id").get<std::string>(), kListenInfo);
+  EXPECT_EQ(json.at("comm_res").get<std::string>(), kRemoteCommRes);
+  EXPECT_EQ(json.at("timeout").get<int32_t>(), kTimeoutMs);
+  ASSERT_EQ(json.at("addrs").size(), 1U);
+  EXPECT_EQ(json.at("addrs").at(0).at("mem_type").get<int32_t>(), static_cast<int32_t>(MEM_HOST));
+  EXPECT_EQ(json.at("addrs").at(0).at("start_addr").get<uintptr_t>(), kRemoteAddrStart);
+  EXPECT_EQ(json.at("addrs").at(0).at("end_addr").get<uintptr_t>(), kRemoteAddrEnd);
 }
 
 TEST_F(ChannelMsgHandlerUnitTest, ParseTcSlRejectsOutOfRangeValues) {
@@ -186,5 +147,63 @@ TEST_F(ChannelMsgHandlerUnitTest, ParseTcSlAcceptsValidBoundaryValues) {
   EXPECT_EQ(handler_->ParseServiceLevel(options), SUCCESS);
   EXPECT_EQ(handler_->comm_config_.hcclRdmaTrafficClass, 252U);
   EXPECT_EQ(handler_->comm_config_.hcclRdmaServiceLevel, 7U);
+}
+
+// Test that ProcessServerEviction handles error response from client correctly
+// This covers the LLMLOGW line at channel_msg_handler.cc:941
+TEST_F(ChannelMsgHandlerUnitTest, ProcessServerEviction_WhenClientReturnsError_LogsWarning) {
+  // Create a mock channel that will return a valid fd
+  ChannelInfo channel_info{};
+  channel_info.channel_type = ChannelType::kServer;
+  channel_info.channel_id = kRemoteEngine;
+  auto channel = std::make_shared<Channel>(channel_info);
+
+  // Create a socket pair for communication
+  int socket_pair[2];
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, socket_pair), 0);
+  int fd = socket_pair[0];
+  int peer_fd = socket_pair[1];
+
+  // Set the fd on the channel (accessing private member)
+  channel->fd_ = fd;
+
+  // Pre-set the next_req_id to a known value
+  uint64_t req_id = 100;
+  handler_->next_req_id_.store(req_id, std::memory_order_relaxed);
+
+  // Create a thread that will simulate receiving a disconnect response with error
+  // This needs to happen AFTER ProcessServerEviction sends the request
+  std::thread response_thread([this, req_id]() {
+
+    // Now inject the response
+    std::lock_guard<std::mutex> lock(handler_->pending_req_mutex_);
+    auto it = handler_->pending_disconnect_requests_.find(req_id);
+    if (it != handler_->pending_disconnect_requests_.end()) {
+      it->second->received = true;
+      it->second->resp.req_id = req_id;
+      it->second->resp.channel_id = kRemoteEngine;
+      it->second->resp.can_disconnect = false;
+      it->second->resp.disconnected = false;
+      it->second->resp.error_code = 123;  // Error code to trigger LLMLOGW
+      it->second->resp.error_message = "Test error message";
+      it->second->cv.notify_one();
+    }
+  });
+
+  // Set disconnecting flag on channel
+  channel->SetDisconnecting(true);
+
+  // Call ProcessServerEviction which should hit the LLMLOGW line
+  Status result = handler_->ProcessServerEviction(kRemoteEngine, channel);
+
+  // Wait for the response thread to finish
+  response_thread.join();
+
+  // The function should return SUCCESS even when client returns error
+  EXPECT_EQ(result, SUCCESS);
+
+  // Cleanup
+  close(fd);
+  close(peer_fd);
 }
 }  // namespace adxl

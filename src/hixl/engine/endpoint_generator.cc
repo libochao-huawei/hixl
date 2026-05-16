@@ -55,12 +55,16 @@ bool IsUboeProtocolDescEnabled(const std::vector<std::string> &protocol_desc) {
 }
 
 Status GetUboeIp(std::string &ip) {
-  int32_t dev_logic_id = 0;
-  int32_t dev_phy_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
-  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
-  HIXL_LOGI("current dev_logic_id=%d, dev_phy_id=%d", dev_logic_id, dev_phy_id);
-  return GetBondIpAddress(dev_phy_id, ip);
+  int32_t dev_id = 0;
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_id));
+
+  int32_t dev_logic_id = dev_id;
+  HIXL_CHK_ACL_RET(aclrtGetLogicDevIdByUserDevId(dev_id, &dev_logic_id));
+  HIXL_LOGI("current dev_id=%d, dev_logic_id=%d", dev_logic_id, dev_logic_id);
+
+  // change to get slot id later
+  int32_t slot_id = dev_logic_id;
+  return GetBondIpAddress(dev_logic_id, slot_id, ip);
 }
 
 Status GenDefaultUboeEndpointConfig(EndpointConfig &endpoint_config) {
@@ -178,7 +182,8 @@ Status FillDeviceLocInfo(const EndpointConfig &endpoint_config, EndpointDesc &en
   endpoint.loc.device.devPhyId = (endpoint_config.device_info.phy_device_id >= 0)
                                      ? static_cast<uint32_t>(endpoint_config.device_info.phy_device_id)
                                      : dev_phy_id;
-  endpoint.loc.device.superDevId = 0U;
+  // for hccs, superDevId is invalid only when it's 0xFFFFFFFF
+  endpoint.loc.device.superDevId = (endpoint.protocol == COMM_PROTOCOL_HCCS) ? static_cast<uint32_t>(-1) : 0;
   endpoint.loc.device.superPodIdx = 0U;
   endpoint.loc.device.serverIdx = 0U;
   if (endpoint_config.device_info.super_device_id >= 0) {
