@@ -33,9 +33,11 @@
 
 namespace hixl {
 
-// ============ 产品形态常量 ============
+// ============ 文件内私有常量与辅助定义 ============
 
 namespace {
+
+// 产品形态常量
 constexpr uint32_t kMainboardIdPod1 = 0x3;
 constexpr uint32_t kMainboardIdPod2 = 0x5;
 constexpr uint32_t kMainboardIdPod3 = 0x7;
@@ -59,22 +61,6 @@ constexpr const char *kNetInstancePrefix = "superpod_";
 constexpr const char *kDefaultTopoDir = "/etc/";
 constexpr const char *kDefaultTopoSuffix = "noroce.json";
 constexpr const char *kDefaultRoutePath = "/lib/route.conf";
-}  // anonymous namespace
-
-// ============ DCMI 接口动态加载 ============
-
-namespace {
-
-// DCMI SPOD 信息结构体
-struct DcmiSpodInfo {
-  unsigned int sdid;
-  unsigned int super_pod_size;
-  unsigned int super_pod_id;
-  unsigned int server_index;
-  unsigned int chassis_id;
-  unsigned int super_pod_type;
-  unsigned int reserve[6];
-};
 
 // DCMI 主命令和子命令
 enum DcmiMainCmd {
@@ -84,16 +70,6 @@ enum DcmiMainCmd {
 enum DcmiChipInfoSubCmd {
   DCMI_CHIP_INFO_SUB_CMD_SPOD_INFO = 1,
 };
-
-/**
- * @brief 获取 logic ID 从 phy ID
- */
-int GetLogicIdFromPhyId(unsigned int phy_id, unsigned int *logic_id) {
-  if (LoadDcmi() != 0) {
-    return -1;
-  }
-  return g_dcmi_get_logicid_from_phyid(phy_id, logic_id);
-}
 
 // ============ JSON 解析辅助函数 ============
 
@@ -341,12 +317,12 @@ int32_t GetMainboardId(int32_t phy_dev_id, unsigned int &mainboard_id) {
   }
 
   unsigned int logic_id = 0;
-  if (GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
+  if (DcmiGetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
     HIXL_LOGE(FAILED, "Failed to get logic id from phy id: %d", phy_dev_id);
     return FAILED;
   }
 
-  int ret = g_dcmi_get_mainboard_id(logic_id, &mainboard_id);
+  int ret = DcmiGetMainboardId(logic_id, &mainboard_id);
   if (ret != 0) {
     HIXL_LOGE(FAILED, "Failed to get mainboard id, ret=%d", ret);
     return FAILED;
@@ -362,7 +338,7 @@ int32_t GetClosNetInstanceId(int32_t phy_dev_id, std::string &net_instance_id) {
   }
 
   unsigned int logic_id = 0;
-  if (GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
+  if (DcmiGetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
     HIXL_LOGE(FAILED, "Failed to get logic id from phy id: %d", phy_dev_id);
     return FAILED;
   }
@@ -370,7 +346,7 @@ int32_t GetClosNetInstanceId(int32_t phy_dev_id, std::string &net_instance_id) {
   DcmiSpodInfo spod_info = {};
   unsigned int buf_size = sizeof(DcmiSpodInfo);
   int ret =
-      g_dcmi_get_device_info(logic_id, DCMI_MAIN_CMD_CHIP_INF, DCMI_CHIP_INFO_SUB_CMD_SPOD_INFO, &spod_info, &buf_size);
+      DcmiGetDeviceInfo(logic_id, DCMI_MAIN_CMD_CHIP_INF, DCMI_CHIP_INFO_SUB_CMD_SPOD_INFO, &spod_info, &buf_size);
   if (ret != 0) {
     HIXL_LOGE(FAILED, "Failed to get device info, ret=%d", ret);
     return FAILED;

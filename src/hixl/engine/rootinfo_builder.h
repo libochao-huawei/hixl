@@ -20,6 +20,7 @@
 #ifndef CANN_HIXL_SRC_HIXL_ENGINE_HIXL_ROOTINFO_BUILDER_H
 #define CANN_HIXL_SRC_HIXL_ENGINE_HIXL_ROOTINFO_BUILDER_H
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <map>
@@ -69,12 +70,12 @@ struct NpuRootInfo {
  * @brief EID 第6字节解析结果
  */
 struct EidByte6Info {
-  int byte6;        // 原始第6字节值
-  int high_nibble;  // 高4位
-  int low_nibble;   // 低4位
-  int die_id;       // die_id (0 或 1)
-  bool is_pg_eid;   // 是否为 PG EID (串口组)
-  int port;         // port 值 (0-15)
+  uint8_t byte6;        // 原始第6字节值
+  uint8_t high_nibble;  // 高4位
+  uint8_t low_nibble;   // 低4位
+  uint8_t die_id;       // die_id (0 或 1)
+  bool is_pg_eid;       // 是否为 PG EID (串口组)
+  int port;             // port 值 (0-15)
 };
 
 // ============ EID 解析辅助函数 ============
