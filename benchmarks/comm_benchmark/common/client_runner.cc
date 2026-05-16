@@ -14,12 +14,17 @@
 #include <chrono>
 #include <cinttypes>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <mutex>
 #include <string>
 #include <vector>
 
 #include "acl/acl.h"
+#include <unistd.h>
+
+#include "adxl/fabric_mem_transfer_service.h"
 
 using hixl::AscendString;
 using hixl::Hixl;
@@ -58,7 +63,7 @@ int32_t InitializeHixl(const std::string &local_engine, const BenchmarkConfig &c
 }
 
 void ReleaseHixlResources(Hixl &hixl_engine, bool need_register, bool is_host, const std::vector<MemHandle> &handles,
-                          const std::vector<void *> &buffers) {
+                          const std::vector<void *> &buffers, const std::string &transport = "") {
   if (need_register) {
     for (const auto &element : handles) {
       if (element == nullptr) {
@@ -75,7 +80,11 @@ void ReleaseHixlResources(Hixl &hixl_engine, bool need_register, bool is_host, c
   if (is_host) {
     for (const auto &element : buffers) {
       if (element != nullptr) {
-        (void)aclrtFreeHost(element);
+        if (transport == "fabric_mem") {
+          (void)adxl::FabricMemTransferService::FreeMem(element);
+        } else {
+          (void)aclrtFreeHost(element);
+        }
       }
     }
   } else {
@@ -89,17 +98,26 @@ void ReleaseHixlResources(Hixl &hixl_engine, bool need_register, bool is_host, c
 }
 
 int32_t AllocLocalBuffer(const BenchmarkConfig &cfg, bool *is_host, void **out_src, size_t alloc_size) {
-  *is_host = (cfg.transfer_mode == "h2d" || cfg.transfer_mode == "h2h");
+  *is_host = (cfg.initiator_memory_type == "host");
   void *tmp = nullptr;
-  aclError er = ACL_ERROR_NONE;
-  if (*is_host) {
-    er = aclrtMallocHost(&tmp, alloc_size);
+  if (*is_host && cfg.transport == "fabric_mem") {
+    auto status = adxl::FabricMemTransferService::MallocMem(adxl::MEM_HOST, alloc_size, &tmp);
+    if (status != SUCCESS) {
+      std::fprintf(stderr, "[ERROR] client fabric_mem alloc failed status=%d\n", static_cast<int>(status));
+      return -1;
+    }
+  } else if (*is_host) {
+    aclError er = aclrtMallocHost(&tmp, alloc_size);
+    if (er != ACL_ERROR_NONE) {
+      std::fprintf(stderr, "[ERROR] client alloc host failed aclError=%d\n", static_cast<int>(er));
+      return -1;
+    }
   } else {
-    er = aclrtMalloc(&tmp, alloc_size, ACL_MEM_MALLOC_HUGE_ONLY);
-  }
-  if (er != ACL_ERROR_NONE) {
-    std::fprintf(stderr, "[ERROR] client alloc failed aclError=%d\n", static_cast<int>(er));
-    return -1;
+    aclError er = aclrtMalloc(&tmp, alloc_size, ACL_MEM_MALLOC_HUGE_ONLY);
+    if (er != ACL_ERROR_NONE) {
+      std::fprintf(stderr, "[ERROR] client alloc device failed aclError=%d\n", static_cast<int>(er));
+      return -1;
+    }
   }
   *out_src = tmp;
   return 0;
@@ -216,6 +234,51 @@ void PrintBenchRecords(const std::vector<TransferBenchRecord> &recs) {
   }
 }
 
+std::string CommResultBasePath(const BenchmarkConfig &cfg) {
+  return cfg.output_dir + "/comm_result_" + std::to_string(static_cast<long long>(getpid()));
+}
+
+void AppendCommResult(const BenchmarkConfig &cfg, const TransferBenchRecord &record) {
+  static std::mutex result_mu;
+  std::lock_guard<std::mutex> lock(result_mu);
+  std::error_code ec;
+  std::filesystem::create_directories(cfg.output_dir, ec);
+  const std::string csv_path = CommResultBasePath(cfg) + ".csv";
+  const bool need_header = !std::ifstream(csv_path).good();
+  std::ofstream csv(csv_path, std::ios::app);
+  if (!csv.good()) {
+    return;
+  }
+  if (need_header) {
+    csv << "benchmark,pattern,model,token_length,block_size,batch_size,threads,transport,direction,initiator_memory,"
+           "target_memory,bandwidth_gbps,ops_per_sec,avg_latency_us,p99_us,error_count,consistency\n";
+  }
+  const double avg_us = record.trans_num == 0U ? 0.0 : static_cast<double>(record.time_us) / record.trans_num;
+  const double ops = record.time_us == 0 ? 0.0 : static_cast<double>(record.trans_num) * 1000000.0 / record.time_us;
+  csv << "hixl_comm_bench," << cfg.benchmark_group << ",,," << record.block_size << ','
+      << (record.async_batch_num == 0U ? cfg.start_batch_size : record.async_batch_num) << ','
+      << cfg.start_threads << ',' << cfg.transport << ','
+      << BenchmarkConfig::ComputeDirection(cfg.initiator_memory_type, cfg.target_memory_type, cfg.transfer_op) << ','
+      << cfg.initiator_memory_type << ',' << cfg.target_memory_type << ','
+      << record.throughput_gbps << ','
+      << ops << ',' << avg_us << ',' << avg_us << ",0," << (cfg.check_consistency ? "true" : "not_checked")
+      << '\n';
+
+  std::ofstream json(CommResultBasePath(cfg) + ".jsonl", std::ios::app);
+  if (json.good()) {
+    json << "{\"benchmark\":\"hixl_comm_bench\",\"pattern\":\"" << cfg.benchmark_group
+         << "\",\"block_size\":" << record.block_size << ",\"batch_size\":"
+         << (record.async_batch_num == 0U ? cfg.start_batch_size : record.async_batch_num)
+         << ",\"threads\":" << cfg.start_threads << ",\"transport\":\"" << cfg.transport
+         << "\",\"direction\":\""
+         << BenchmarkConfig::ComputeDirection(cfg.initiator_memory_type, cfg.target_memory_type, cfg.transfer_op)
+         << "\",\"initiator_memory\":\"" << cfg.initiator_memory_type
+         << "\",\"target_memory\":\"" << cfg.target_memory_type
+         << "\",\"bandwidth_gbps\":" << record.throughput_gbps
+         << ",\"p99_us\":" << avg_us << "}\n";
+  }
+}
+
 struct TransferBlockStepCtx {
   uintptr_t base = 0;
   const char *remote_engine = nullptr;
@@ -269,8 +332,18 @@ int32_t TransferOneBlockStep(Hixl &hixl_engine, const TransferBlockStepCtx &ctx)
     rec.trans_num = trans_num;
     rec.time_us = time_cost;
     rec.throughput_gbps = throughput;
+    AppendCommResult(*ctx.cfg, rec);
     ctx.bench_records->push_back(rec);
   } else {
+    TransferBenchRecord rec{};
+    rec.loop_plus_one = ctx.loop + 1U;
+    rec.loops_total = ctx.cfg->loops;
+    rec.step_index = ctx.step_index;
+    rec.block_size = block_size;
+    rec.trans_num = trans_num;
+    rec.time_us = time_cost;
+    rec.throughput_gbps = throughput;
+    AppendCommResult(*ctx.cfg, rec);
     std::printf(
         "[INFO] Transfer success, loop %u/%u, step %u, block size: %u Bytes, transfer num: %u, time cost: %ld us, "
         "throughput: %.3lf GB/s\n",
@@ -382,8 +455,21 @@ void RecordAsyncBenchResult(const TransferBlockStepCtx &ctx, uint32_t block_size
     rec.submit_time_us = submit_us;
     rec.wait_time_us = wait_us;
     rec.throughput_gbps = throughput;
+    AppendCommResult(*ctx.cfg, rec);
     ctx.bench_records->push_back(rec);
   } else {
+    TransferBenchRecord rec{};
+    rec.loop_plus_one = ctx.loop + 1U;
+    rec.loops_total = ctx.cfg->loops;
+    rec.step_index = ctx.step_index;
+    rec.block_size = block_size;
+    rec.trans_num = total_trans_num;
+    rec.async_batch_num = ctx.cfg->async_batch_num;
+    rec.time_us = total_us;
+    rec.submit_time_us = submit_us;
+    rec.wait_time_us = wait_us;
+    rec.throughput_gbps = throughput;
+    AppendCommResult(*ctx.cfg, rec);
     std::printf("[INFO] Async transfer success, loop %u/%u, step %u, block: %u, trans_num: %u, batch_num: %u, "
                 "total: %ld us (submit: %ld, wait: %ld), %.3lf GB/s\n",
                 ctx.loop + 1U, ctx.cfg->loops, ctx.step_index, block_size, total_trans_num, ctx.cfg->async_batch_num,
@@ -415,14 +501,12 @@ int32_t TransferOneBlockStepAsync(Hixl &hixl_engine, const TransferBlockStepCtx 
 int32_t RunTransfer(Hixl &hixl_engine, void *src_base, const char *remote_engine, uint64_t dst_addr,
                     const BenchmarkConfig &cfg, std::vector<TransferBenchRecord> *bench_records = nullptr,
                     BenchWorkerTag bench_worker_tag = BenchWorkerTag::kSingle, std::size_t bench_worker_index = 0) {
-  const TransferOp transfer_op = (cfg.transfer_op == "read") ? TransferOp::READ : TransferOp::WRITE;
   const uintptr_t base = reinterpret_cast<uintptr_t>(src_base);
   TransferBlockStepCtx step_ctx{};
   step_ctx.base = base;
   step_ctx.remote_engine = remote_engine;
   step_ctx.dst_addr = dst_addr;
   step_ctx.cfg = &cfg;
-  step_ctx.transfer_op = transfer_op;
   step_ctx.bench_records = bench_records;
   step_ctx.bench_worker_tag = bench_worker_tag;
   step_ctx.bench_worker_index = bench_worker_index;
@@ -432,6 +516,11 @@ int32_t RunTransfer(Hixl &hixl_engine, void *src_base, const char *remote_engine
     for (uint32_t i = 0; i < cfg.block_steps; ++i) {
       step_ctx.step_index = i;
       step_ctx.block_size_u = cfg.block_size << i;
+      if (cfg.transfer_op == "mix") {
+        step_ctx.transfer_op = ((loop + i) % 2U == 0U) ? TransferOp::READ : TransferOp::WRITE;
+      } else {
+        step_ctx.transfer_op = (cfg.transfer_op == "read") ? TransferOp::READ : TransferOp::WRITE;
+      }
       int32_t step_ret = 0;
       if (cfg.use_async) {
         step_ret = TransferOneBlockStepAsync(hixl_engine, step_ctx);
@@ -525,9 +614,9 @@ void FinalizeLaneState(LaneState *p, const std::string &remote_engine) {
   }
   if (p->hixl_initialized) {
     if (p->buffer != nullptr) {
-      ReleaseHixlResources(p->hixl, p->need_register, p->is_host, {p->mem_handle}, {p->buffer});
+      ReleaseHixlResources(p->hixl, p->need_register, p->is_host, {p->mem_handle}, {p->buffer}, p->transport);
     } else {
-      ReleaseHixlResources(p->hixl, p->need_register, p->is_host, {p->mem_handle}, {});
+      ReleaseHixlResources(p->hixl, p->need_register, p->is_host, {p->mem_handle}, {}, p->transport);
     }
     p->hixl_initialized = false;
     p->buffer = nullptr;
@@ -563,7 +652,7 @@ bool LaneWorkerAllocAndRegisterMem(LaneState *p, const BenchmarkConfig &cfg, std
     MarkFirstFail(first_fail, fail_mu);
     return false;
   }
-  p->need_register = !(p->is_host && cfg.use_buffer_pool);
+  p->need_register = true;
   if (RegisterLocalMem(p->hixl, cfg, p->buffer, p->is_host, p->need_register, alloc_size, &p->mem_handle) != 0) {
     MarkFirstFail(first_fail, fail_mu);
     return false;
@@ -605,6 +694,7 @@ void LaneWorkerEntry(size_t idx, LaneState *p, const BenchmarkConfig &cfg, std::
   const int32_t dev = cfg.expanded_device_ids[idx];
   const std::string &local = cfg.expanded_local_engines[idx];
   const std::string &remote = cfg.expanded_remote_engines[idx];
+  p->transport = cfg.transport;
   std::printf("[INFO] [lane %zu] start device=%d\n", idx, static_cast<int>(dev));
 
   if (!LaneWorkerSetDevice(idx, dev, first_fail, fail_mu)) {
@@ -702,9 +792,10 @@ void ClientRunner::ReleaseLaneResources() {
   }
 
   if (lane_buffer_ != nullptr) {
-    ReleaseHixlResources(lane_hixl_, lane_need_register_, lane_is_host_, {lane_mem_handle_}, {lane_buffer_});
+    ReleaseHixlResources(lane_hixl_, lane_need_register_, lane_is_host_, {lane_mem_handle_}, {lane_buffer_},
+                         cfg_.transport);
   } else {
-    ReleaseHixlResources(lane_hixl_, lane_need_register_, lane_is_host_, {lane_mem_handle_}, {});
+    ReleaseHixlResources(lane_hixl_, lane_need_register_, lane_is_host_, {lane_mem_handle_}, {}, cfg_.transport);
   }
   lane_hixl_initialized_ = false;
   lane_buffer_ = nullptr;
@@ -737,7 +828,7 @@ void ClientRunner::Shutdown() {
 int ClientRunner::RunOnePair(const std::string &remote, void *src_slice, size_t register_len) {
   std::printf("[INFO] client start remote=%s\n", remote.c_str());
 
-  lane_need_register_ = !(lane_is_host_ && cfg_.use_buffer_pool);
+  lane_need_register_ = true;
   if (RegisterLocalMem(lane_hixl_, cfg_, src_slice, lane_is_host_, lane_need_register_, register_len,
                        &lane_mem_handle_) != 0) {
     return -1;
@@ -824,7 +915,7 @@ int ClientRunner::RunSharedMultiRemote() {
   std::printf("[DEBUG] RunSharedMultiRemote: allocated lane_buffer_=0x%" PRIxPTR ", alloc_size=%zu, n=%zu\n",
               reinterpret_cast<uintptr_t>(lane_buffer_), alloc_size, n);
 
-  lane_need_register_ = !(lane_is_host_ && cfg_.use_buffer_pool);
+  lane_need_register_ = true;
   if (RegisterLocalMem(lane_hixl_, cfg_, lane_buffer_, lane_is_host_, lane_need_register_, alloc_size,
                        &lane_mem_handle_) != 0) {
     return -1;

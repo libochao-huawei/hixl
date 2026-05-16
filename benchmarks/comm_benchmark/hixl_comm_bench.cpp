@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,14 +9,15 @@
  */
 
 #include <cinttypes>
+#include <cstdlib>
 #include <cstdio>
 #include <map>
 #include <string>
 
-#include "common/benchmark_config.h"
-#include "common/client_runner.h"
-#include "common/server_runner.h"
+#include "benchmark_config.h"
+#include "client_runner.h"
 #include "hixl/hixl.h"
+#include "server_runner.h"
 
 using hixl::AscendString;
 using hixl_benchmark::BenchmarkConfig;
@@ -37,15 +38,25 @@ int32_t main(int32_t argc, char **argv) {
   if (!BenchmarkConfigParser::Validate(&cfg)) {
     return -1;
   }
+  if (!BenchmarkConfigParser::ApplyTransportEnvironment(cfg)) {
+    return -1;
+  }
 
   std::printf(
-      "[INFO] role=%s device_id=%d local_engine=%s remote_engine=%s tcp_port=%u tcp_accept_wait_s=%" PRIu32
-      " tcp_client_count=%" PRIu32 " transfer_mode=%s transfer_op=%s "
-      "use_buffer_pool=%s total_size=%" PRIu64 " block_size=%" PRIu64 " block_steps=%u loops=%u\n",
-      cfg.role == BenchmarkRole::kClient ? "client" : "server", static_cast<int>(cfg.device_id), cfg.local_engine.c_str(),
-      cfg.remote_engine.c_str(), static_cast<unsigned>(cfg.tcp_port), cfg.tcp_accept_wait_sec, cfg.tcp_client_count,
-      cfg.transfer_mode.c_str(), cfg.transfer_op.c_str(), cfg.use_buffer_pool ? "true" : "false", cfg.total_size,
-      cfg.block_size, cfg.block_steps, cfg.loops);
+      "[INFO] role=%s metadata=%s group=%s transport=%s initiator_memory=%s target_memory=%s device_id=%d "
+      "local_engine=%s remote_engine=%s "
+      "tcp_port=%u tcp_accept_wait_s=%" PRIu32 " tcp_client_count=%" PRIu32 " transfer_op=%s direction=%s "
+      "total_size=%" PRIu64 " block_size=%" PRIu64 " block_steps=%u loops=%u\n",
+      cfg.role_name.empty() ? (cfg.role == BenchmarkRole::kClient ? "client" : "server") : cfg.role_name.c_str(),
+      cfg.metadata.c_str(), cfg.benchmark_group.c_str(), cfg.transport.c_str(),
+      cfg.initiator_memory_type.c_str(), cfg.target_memory_type.c_str(),
+      static_cast<int>(cfg.device_id), cfg.local_engine.c_str(), cfg.remote_engine.c_str(),
+      static_cast<unsigned>(cfg.tcp_port), cfg.tcp_accept_wait_sec, cfg.tcp_client_count,
+      cfg.transfer_op.c_str(),
+      BenchmarkConfig::ComputeDirection(cfg.initiator_memory_type, cfg.target_memory_type, cfg.transfer_op).c_str(),
+      cfg.total_size, cfg.block_size,
+      cfg.block_steps, cfg.loops);
+  std::printf("[INFO] HCCL_INTRA_ROCE_ENABLE=%s\n", std::getenv("HCCL_INTRA_ROCE_ENABLE"));
   BenchmarkConfigParser::LogExpandedEndpoints(stdout, cfg);
 
   if (cfg.loops == 1U) {
@@ -54,13 +65,13 @@ int32_t main(int32_t argc, char **argv) {
         "metrics or set loops>1 (--loops|-n).\n");
   }
   {
-    const std::map<AscendString, AscendString> eff = BenchmarkConfigParser::BuildInitializeOptions(cfg);
-    if (eff.empty()) {
+    const std::map<AscendString, AscendString> effective_options = BenchmarkConfigParser::BuildInitializeOptions(cfg);
+    if (effective_options.empty()) {
       std::printf("[INFO] hixl_init_options (effective): none\n");
     } else {
       std::printf("[INFO] hixl_init_options (effective):\n");
-      for (const auto &p : eff) {
-        std::printf("[INFO]   %s=%s\n", p.first.GetString(), p.second.GetString());
+      for (const auto &option : effective_options) {
+        std::printf("[INFO]   %s=%s\n", option.first.GetString(), option.second.GetString());
       }
     }
   }

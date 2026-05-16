@@ -311,7 +311,7 @@ bool TCPClient::ConnectToServer(const std::string &host, uint16_t port) {
 }
 
 bool TCPClient::SendUint64(uint64_t data) const {
-  // 将主机字节序转换为网络字节序
+  // Convert host byte order to network byte order.
   uint64_t network_data = htobe64(data);
   if (send(sock_, &network_data, sizeof(uint64_t), 0) < 0) {
     std::cerr << "[ERROR] Send uint64 to tcp peer failed" << std::endl;
@@ -356,7 +356,7 @@ bool TCPClient::SendTaskStatus() const {
 
 bool TCPClient::ReceiveTaskStatus() const {
   bool received = false;
-  // 接收数据
+  // Receive the task status flag.
   ssize_t bytes_received = recv(sock_, &received, sizeof(received), 0);
   if (bytes_received < 0) {
     std::cerr << "[ERROR] Received status failed" << std::endl;
@@ -395,7 +395,7 @@ bool TCPServer::StartServer(uint16_t port, int listen_backlog) {
     return false;
   }
 
-  // 设置socket选项
+  // Configure socket reuse options before bind.
   if (setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt_, sizeof(opt_))) {
     std::cerr << "[ERROR] Set socket option failed" << std::endl;
     return false;
@@ -405,7 +405,7 @@ bool TCPServer::StartServer(uint16_t port, int listen_backlog) {
   address_.sin_addr.s_addr = INADDR_ANY;
   address_.sin_port = htons(port);
 
-  // 绑定socket到端口
+  // Bind the socket to the requested port.
   if (bind(server_fd_, reinterpret_cast<sockaddr *>(&address_), sizeof(address_)) < 0) {
     std::cerr << "[ERROR] Bind port failed" << std::endl;
     return false;
@@ -477,7 +477,7 @@ bool TCPServer::AcceptConnection() {
 uint64_t TCPServer::ReceiveUint64() const {
   uint64_t received_data = 0;
 
-  // 接收uint64_t数据
+  // Receive one uint64_t payload from the connected client.
   ssize_t bytes_received = recv(client_socket_, &received_data, sizeof(uint64_t), 0);
   if (bytes_received < 0) {
     std::cerr << "[ERROR] Received data failed" << std::endl;
@@ -491,7 +491,7 @@ uint64_t TCPServer::ReceiveUint64() const {
     return 0;
   }
 
-  // 网络字节序转换为主机字节序
+  // Convert network byte order back to host byte order.
   received_data = be64toh(received_data);
   std::cout << "[INFO] Tcp server received uint64 data success" << std::endl;
   return received_data;
@@ -519,7 +519,7 @@ bool TCPServer::SendTaskStatus() const {
 
 bool TCPServer::ReceiveTaskStatus() const {
   bool received = false;
-  // 接收数据
+  // Receive the task status flag.
   ssize_t bytes_received = recv(client_socket_, &received, sizeof(received), 0);
   if (bytes_received < 0) {
     std::cerr << "[ERROR] Received status failed" << std::endl;

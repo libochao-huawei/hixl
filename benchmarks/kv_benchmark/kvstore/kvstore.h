@@ -1,0 +1,69 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+#ifndef HIXL_KV_BENCHMARK_KVSTORE_H
+#define HIXL_KV_BENCHMARK_KVSTORE_H
+
+#include <cstdint>
+#include <map>
+#include <random>
+#include <string>
+#include <vector>
+
+#include "segment_manager.h"
+
+namespace hixl_kv_benchmark {
+
+struct BufferView {
+  std::uintptr_t addr = 0U;
+  std::uint64_t size = 0U;
+};
+
+struct KeyPlacement {
+  std::string key;
+  std::uint32_t segment_id = 0U;
+  std::uint64_t offset = 0U;
+  std::uint64_t size = 0U;
+};
+
+struct TransferRequest {
+  std::string key;
+  std::string transfer_type;
+  BufferView local_buffer;
+  KeyPlacement placement;
+};
+
+class KvStore {
+ public:
+  KvStore(std::uint64_t seed, SegmentManager segment_manager);
+
+  bool batch_put_from_multi_buffers(const std::vector<std::string> &keys,
+                                    const std::vector<BufferView> &source_buffers);
+  bool batch_get_into_multi_buffers(const std::vector<std::string> &keys,
+                                    const std::vector<BufferView> &destination_buffers);
+  bool ensure_placements(const std::vector<std::string> &keys,
+                         const std::vector<BufferView> &buffers);
+
+  const std::vector<TransferRequest> &LastRequests() const { return last_requests_; }
+  const std::map<std::string, KeyPlacement> &Placements() const { return placements_; }
+
+ private:
+  bool CheckInput(const std::vector<std::string> &keys, const std::vector<BufferView> &buffers) const;
+  bool EnsurePlacement(const std::string &key, std::uint64_t size, KeyPlacement *placement);
+
+  SegmentManager segment_manager_;
+  std::mt19937_64 rng_;
+  std::map<std::string, KeyPlacement> placements_;
+  std::vector<TransferRequest> last_requests_;
+};
+
+}  // namespace hixl_kv_benchmark
+
+#endif  // HIXL_KV_BENCHMARK_KVSTORE_H
