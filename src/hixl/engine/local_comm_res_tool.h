@@ -46,19 +46,21 @@ struct LocalCommRes {
 
 // ============ Topology 数据结构 ============
 
+// ============ Topology 数据结构 ============
+
 /**
  * @brief Topology 链路结构
  */
 struct TopoLink {
-  int32_t net_layer;                       // 网络层级 (0: Mesh, 1: CLOS)
-  std::string link_type;                   // 连接类型: PEER2PEER, PEER2NET
-  std::string topo_type;                   // 拓扑类型: 1DMESH, CLOS
-  int32_t local_a;                         // 本地节点 A
-  int32_t local_b;                         // 本地节点 B
-  int32_t remote_a;                        // 远端节点 A
-  int32_t remote_b;                        // 远端节点 B
-  std::vector<std::string> local_a_ports;  // 本地 A 端口列表（串口标识，如 "die_id/port"）
-  std::vector<std::string> local_b_ports;  // 本地 B 端口列表
+  int32_t net_layer = 0;                       // 网络层级 (0: Mesh, 1: CLOS)
+  std::string link_type;                       // 连接类型: PEER2PEER, PEER2NET
+  std::string topo_type;                       // 拓扑类型: 1DMESH, CLOS
+  int32_t local_a = 0;                         // 本地节点 A
+  int32_t local_b = 0;                         // 本地节点 B
+  int32_t remote_a = -1;                       // 远端节点 A
+  int32_t remote_b = -1;                       // 远端节点 B
+  std::vector<std::string> local_a_ports;      // 本地 A 端口列表（串口标识，如 "die_id/port"）
+  std::vector<std::string> local_b_ports;      // 本地 B 端口列表
 };
 
 struct TopoData {
@@ -71,7 +73,7 @@ struct TopoData {
  * @brief Route 条目结构
  */
 struct RouteEntry {
-  int32_t device_id;       // 设备 ID
+  int32_t device_id = 0;   // 设备 ID
   std::string local_eid;   // 本地 EID
   std::string remote_eid;  // 远端 EID
 };
@@ -109,7 +111,7 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
  * @param [out] mainboard_id 主板 ID
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GetMainboardId(int32_t phy_dev_id, unsigned int &mainboard_id);
+int32_t GetMainboardId(int32_t phy_dev_id, uint32_t &mainboard_id);
 
 /**
  * @brief 获取 CLOS 层 net_instance_id
@@ -198,7 +200,7 @@ int32_t GenerateH2UEdges(const RouteData &route_data, const std::vector<std::str
  * @param [in] clos_pg_eid CLOS PG EID
  * @return port 数量，失败返回 -1
  */
-int GetClosPgPortCount(const TopoData &topo_data, int32_t phy_id, const std::string &clos_pg_eid);
+int32_t GetClosPgPortCount(const TopoData &topo_data, int32_t phy_id, const std::string &clos_pg_eid);
 
 }  // namespace hixl
 

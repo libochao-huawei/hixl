@@ -553,8 +553,9 @@ TEST_F(LocalCommResGenerateTest, GenerateBuildNpuRootinfosFailed) {
 }
 
 TEST_F(LocalCommResGenerateTest, GenerateEmptyAllEdges) {
-  // topo 中无匹配 link（net_layer=1），route entries 为空，DCMI 仅返回非 PG EID → 所有边为空
-  DcmiStubSetEidCount(1);  // 仅返回非 PG EID（byte6=0xf2），plane_pg EID 为空
+  // DCMI 仅返回非 PG EID（无 PG EID → clos_pg_eids 为空）
+  // BuildNpuRootInfo 因 clos_pg_eids 为空返回 FAILED
+  DcmiStubSetEidCount(1);  // 仅返回非 PG EID，plane_pg EID 为空
 
   std::string topo_json =
       R"({"version":"2.0","edge_list":[{"net_layer":1,"link_type":"PEER2PEER","topo_type":"1DMESH","local_a":0,"local_b":1}]})";
@@ -566,7 +567,7 @@ TEST_F(LocalCommResGenerateTest, GenerateEmptyAllEdges) {
 
   LocalCommRes res;
   int32_t ret = GenerateLocalCommRes(0, tmp_topo, tmp_route, res);
-  EXPECT_EQ(ret, PARAM_INVALID);
+  EXPECT_EQ(ret, FAILED);
 
   unlink(tmp_topo.c_str());
   unlink(tmp_route.c_str());

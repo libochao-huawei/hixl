@@ -62,7 +62,7 @@ int dcmiv2_get_dev_id_by_chip_phy_id(unsigned int phy_id, unsigned int *logic_id
     if (g_logicid_ret != 0) {
         return g_logicid_ret;
     }
-    *logic_id = g_logic_id;
+    *logic_id = phy_id;  // 返回 phy_id 作为 logic_id，使 EID 查询能拿到真实 NPU ID
     return 0;
 }
 
@@ -84,43 +84,62 @@ int dcmiv2_get_urma_device_cnt(int npu_id, unsigned int *dev_cnt) {
 
 // 构建默认 EID 数据（16字节/个）
 // EID 格式参考 route.conf: 0x000000000000008000100000dfdf00f2
-// byte6[0xf2]: high=0xf(>4 → die_id=1), low=0x2 (port=2)
-// byte6[0x72]: high=0x7(>=4 → die_id=1, ==7 → PG EID), low=0x2
-static void BuildDefaultEid(unsigned char *eid, unsigned char byte15) {
+// ParseEidByte6 取 eid.substr(10,2) 即 byte5（字符串索引10-11）
+// byte5[0xf2]: high=0xf(>4 → die_id=1), low=0x2 (port=2), 非PG
+// byte5[0x72]: high=0x7(>=4 → die_id=1, ==7 → PG EID), low=0x2
+static void BuildDefaultEid(unsigned char *eid, unsigned char byte5) {
     for (int i = 0; i < 16; ++i) {
         eid[i] = 0x00;
     }
+    eid[5] = byte5;
     eid[7] = 0x80;
     eid[9] = 0x10;
     eid[12] = 0xdf;
     eid[13] = 0xdf;
-    eid[15] = byte15;
 }
 
 int dcmiv2_get_eid_list_by_urma_dev_index(int npu_id, int urma_dev_index,
                                            void *eid_list, int *eid_cnt) {
-    (void)npu_id;
     (void)urma_dev_index;
     if (eid_list == nullptr || eid_cnt == nullptr) {
         return -1;
     }
-    // 返回 2 个测试 EID
-    // eid_list 是 dcmi_urma_eid_info_t 数组，每个包含 16字节 eid + 4字节 index
-    // 布局: [16字节 raw][4字节 eid_index]，总共 20 字节/元素
+    // 根据产品形态计算 mesh_die_id，使 EID die_id 与之匹配
+    bool is_server = ((g_mainboard_id >= 0x21 && g_mainboard_id <= 0x2B && (g_mainboard_id % 2 == 1)) ||
+                      (g_mainboard_id >= 0x40 && g_mainboard_id <= 0x46 && (g_mainboard_id % 2 == 0)));
+    int mesh_die_id = is_server ? 1 : ((npu_id % 8) < 4 ? 0 : 1);
+
+    // 必须与 dcmi_proxy.h 中的 dcmi_urma_eid_info_t 布局一致
+    // union 含 unsigned long，对齐为 8，总大小 24 字节（16 + 4 + 4padding）
+    typedef union {
+        unsigned char raw[16];
+        struct {
+            unsigned long subnet_prefix;
+            unsigned long interface_id;
+        } in6;
+    } dcmi_urma_eid_t;
+
     struct EidInfoRaw {
-        unsigned char eid[16];
+        dcmi_urma_eid_t eid;
         unsigned int eid_index;
     };
     auto *infos = static_cast<EidInfoRaw *>(eid_list);
+    int count = 0;
     if (g_eid_count >= 1 && *eid_cnt >= 1) {
-        BuildDefaultEid(infos[0].eid, 0xf2);
+        // 非 PG EID，die_id 匹配 mesh_die_id
+        unsigned char byte5 = (mesh_die_id == 0) ? 0x02 : 0x52;
+        BuildDefaultEid(infos[0].eid.raw, byte5);
         infos[0].eid_index = 0;
+        count++;
     }
     if (g_eid_count >= 2 && *eid_cnt >= 2) {
-        BuildDefaultEid(infos[1].eid, 0x72);
+        // PG EID，die_id 与 mesh_die_id 不同（作为 CLOS PG）
+        unsigned char byte5 = (mesh_die_id == 0) ? 0x72 : 0x32;
+        BuildDefaultEid(infos[1].eid.raw, byte5);
         infos[1].eid_index = 1;
+        count++;
     }
-    *eid_cnt = (g_eid_count < 2) ? g_eid_count : 2;
+    *eid_cnt = count;
     return 0;
 }
 
