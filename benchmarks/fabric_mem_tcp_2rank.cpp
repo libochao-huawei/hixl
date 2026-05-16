@@ -1,12 +1,12 @@
-// ----------------------------------------------------------------------------
-// Copyright (c) 2025 Huawei Technologies Co., Ltd.
-// This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-// CANN Open Software License Agreement Version 2.0 (the "License").
-// Please refer to the License for details. You may not use this file except in compliance with the License.
-// THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-// INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
-// See LICENSE in the root of the software repository for the full text of the License.
-// ----------------------------------------------------------------------------
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 // Two-rank FabricMem probe for A3 HIXL when shared filesystem barriers are unavailable.
 //
@@ -25,7 +25,9 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <sstream>
 #include <string>
@@ -53,13 +55,13 @@ constexpr size_t kMaxTotalBlocks = 64U;
 constexpr size_t kPoolBytes = kBytesPerGiB;
 constexpr int kControlRetries = 300;
 
-#define CHECK_ACL(x)                                                                 \
-  do {                                                                               \
-    aclError acl_ret = (x);                                                          \
-    if (acl_ret != ACL_ERROR_NONE) {                                                 \
+#define CHECK_ACL(x)                                                               \
+  do {                                                                             \
+    aclError acl_ret = (x);                                                        \
+    if (acl_ret != ACL_ERROR_NONE) {                                               \
       std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << acl_ret << "\n"; \
-      return false;                                                                  \
-    }                                                                                \
+      return false;                                                                \
+    }                                                                              \
   } while (0)
 
 struct ControlMsg {
@@ -167,7 +169,13 @@ int CreateControlSocket(int rank, const std::string &rank0_ip, int port) {
 }
 
 bool AllocateDeviceBuffer(int32_t device_id, size_t size, void *&va, aclrtDrvMemHandle &pa_handle) {
-  CHECK_ACL(aclrtReserveMemAddress(&va, size, 0, nullptr, 1));
+  void *reserved_va = nullptr;
+  aclrtDrvMemHandle physical_handle{};
+  aclError acl_ret = aclrtReserveMemAddress(&reserved_va, size, 0, nullptr, 1);
+  if (acl_ret != ACL_ERROR_NONE) {
+    std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << acl_ret << "\n";
+    return false;
+  }
   aclrtPhysicalMemProp prop{};
   prop.handleType = ACL_MEM_HANDLE_TYPE_NONE;
   prop.allocationType = ACL_MEM_ALLOCATION_TYPE_PINNED;
@@ -175,8 +183,21 @@ bool AllocateDeviceBuffer(int32_t device_id, size_t size, void *&va, aclrtDrvMem
   prop.memAttr = ACL_HBM_MEM_HUGE;
   prop.location.type = ACL_MEM_LOCATION_TYPE_DEVICE;
   prop.location.id = device_id;
-  CHECK_ACL(aclrtMallocPhysical(&pa_handle, size, &prop, 0));
-  CHECK_ACL(aclrtMapMem(va, size, 0, pa_handle, 0));
+  acl_ret = aclrtMallocPhysical(&physical_handle, size, &prop, 0);
+  if (acl_ret != ACL_ERROR_NONE) {
+    std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << acl_ret << "\n";
+    (void)aclrtReleaseMemAddress(reserved_va);
+    return false;
+  }
+  acl_ret = aclrtMapMem(reserved_va, size, 0, physical_handle, 0);
+  if (acl_ret != ACL_ERROR_NONE) {
+    std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << acl_ret << "\n";
+    (void)aclrtFreePhysical(physical_handle);
+    (void)aclrtReleaseMemAddress(reserved_va);
+    return false;
+  }
+  va = reserved_va;
+  pa_handle = physical_handle;
   return true;
 }
 
@@ -226,6 +247,26 @@ bool InitEngine(AdxlEngine &engine, const std::string &local_engine) {
   return true;
 }
 
+bool ParseInt32(const char *arg, const char *name, int32_t &value) {
+  try {
+    size_t pos = 0;
+    const long long parsed = std::stoll(arg, &pos);
+    if (arg[pos] != '\0') {
+      std::cerr << "[ERROR] invalid " << name << ": " << arg << "\n";
+      return false;
+    }
+    if (parsed < std::numeric_limits<int32_t>::min() || parsed > std::numeric_limits<int32_t>::max()) {
+      std::cerr << "[ERROR] " << name << " out of int32 range: " << arg << "\n";
+      return false;
+    }
+    value = static_cast<int32_t>(parsed);
+    return true;
+  } catch (const std::exception &e) {
+    std::cerr << "[ERROR] invalid " << name << ": " << arg << ", " << e.what() << "\n";
+    return false;
+  }
+}
+
 struct MemHostRuntime {
   AdxlEngine engine;
   void *host_raw = nullptr;
@@ -234,6 +275,11 @@ struct MemHostRuntime {
   MemHandle host_handle = nullptr;
   int control_fd = -1;
   uint64_t remote_host_va = 0;
+  bool acl_initialized = false;
+  bool device_set = false;
+  bool engine_initialized = false;
+  bool host_registered = false;
+  bool peer_connected = false;
 };
 
 uint8_t *HostPool(MemHostRuntime &runtime) {
@@ -273,10 +319,13 @@ bool ExchangeHostAddress(MemHostRuntime &runtime, int rank) {
 bool InitRuntime(MemHostRuntime &runtime, int rank, int32_t device_id, const std::string &local_engine,
                  const std::string &rank0_ip, int control_port) {
   CHECK_ACL(aclInit(nullptr));
+  runtime.acl_initialized = true;
   CHECK_ACL(aclrtSetDevice(device_id));
+  runtime.device_set = true;
   if (!InitEngine(runtime.engine, local_engine)) {
     return false;
   }
+  runtime.engine_initialized = true;
   if (AdxlEngine::MallocMem(MemType::MEM_HOST, kPoolBytes, &runtime.host_raw) != SUCCESS) {
     std::cerr << "[ERROR] AdxlEngine::MallocMem MEM_HOST failed\n";
     return false;
@@ -287,6 +336,7 @@ bool InitRuntime(MemHostRuntime &runtime, int rank, int32_t device_id, const std
   if (!RegisterHostPool(runtime)) {
     return false;
   }
+  runtime.host_registered = true;
   runtime.control_fd = CreateControlSocket(rank, rank0_ip, control_port);
   if (runtime.control_fd < 0) {
     return false;
@@ -319,7 +369,8 @@ bool RunD2rhWritePhase(MemHostRuntime &runtime, int rank, const std::string &rem
     FillPattern(HostPool(runtime), bytes, seed);
     CHECK_ACL(aclrtMemcpy(DevicePool(runtime), bytes, HostPool(runtime), bytes, ACL_MEMCPY_HOST_TO_DEVICE));
   }
-  if (!ControlBarrier(runtime.control_fd, peer_msg, 100 + static_cast<uint64_t>(blocks), "[ERROR] pre-write barrier failed")) {
+  if (!ControlBarrier(runtime.control_fd, peer_msg, 100 + static_cast<uint64_t>(blocks),
+                      "[ERROR] pre-write barrier failed")) {
     return false;
   }
   for (int it = 0; it < kWarmupIterations + kTimedIterations; ++it) {
@@ -339,7 +390,8 @@ bool RunD2rhWritePhase(MemHostRuntime &runtime, int rank, const std::string &rem
         write_us_sum += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
       }
     }
-    if (!ControlBarrier(runtime.control_fd, peer_msg, 200 + static_cast<uint64_t>(it), "[ERROR] post-write barrier failed")) {
+    if (!ControlBarrier(runtime.control_fd, peer_msg, 200 + static_cast<uint64_t>(it),
+                        "[ERROR] post-write barrier failed")) {
       return false;
     }
   }
@@ -367,7 +419,8 @@ bool RunRh2dReadPhase(MemHostRuntime &runtime, int rank, const std::string &remo
         read_us_sum += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
       }
     }
-    if (!ControlBarrier(runtime.control_fd, peer_msg, 300 + static_cast<uint64_t>(it), "[ERROR] post-read barrier failed")) {
+    if (!ControlBarrier(runtime.control_fd, peer_msg, 300 + static_cast<uint64_t>(it),
+                        "[ERROR] post-read barrier failed")) {
       return false;
     }
   }
@@ -400,33 +453,64 @@ bool RunBlock(MemHostRuntime &runtime, int rank, const std::string &remote_engin
   return true;
 }
 
-void Cleanup(MemHostRuntime &runtime, int32_t device_id, const std::string &remote_engine) {
-  if (std::getenv("FABRICMEM_SKIP_CLEANUP") != nullptr) {
+void Cleanup(MemHostRuntime &runtime, int32_t device_id, const std::string &remote_engine, bool allow_skip_cleanup) {
+  if (allow_skip_cleanup && std::getenv("FABRICMEM_SKIP_CLEANUP") != nullptr) {
+    if (runtime.control_fd >= 0) {
+      close(runtime.control_fd);
+      runtime.control_fd = -1;
+    }
     std::cout << "[INFO] FABRICMEM_SKIP_CLEANUP set; exiting after verified benchmark results\n";
     std::cout.flush();
     _exit(0);
   }
-  (void)runtime.engine.Disconnect(AscendString(remote_engine.c_str()), kConnectTimeoutMs);
-  (void)runtime.engine.DeregisterMem(runtime.host_handle);
+  if (runtime.peer_connected) {
+    (void)runtime.engine.Disconnect(AscendString(remote_engine.c_str()), kConnectTimeoutMs);
+    runtime.peer_connected = false;
+  }
+  if (runtime.host_registered) {
+    (void)runtime.engine.DeregisterMem(runtime.host_handle);
+    runtime.host_registered = false;
+  }
   FreeDeviceBuffer(runtime.dev_raw, runtime.dev_pa);
-  (void)AdxlEngine::FreeMem(runtime.host_raw);
-  runtime.engine.Finalize();
-  (void)aclrtResetDevice(device_id);
-  aclFinalize();
+  runtime.dev_raw = nullptr;
+  if (runtime.host_raw != nullptr) {
+    (void)AdxlEngine::FreeMem(runtime.host_raw);
+    runtime.host_raw = nullptr;
+  }
+  if (runtime.engine_initialized) {
+    runtime.engine.Finalize();
+    runtime.engine_initialized = false;
+  }
+  if (runtime.device_set) {
+    (void)aclrtResetDevice(device_id);
+    runtime.device_set = false;
+  }
+  if (runtime.acl_initialized) {
+    aclFinalize();
+    runtime.acl_initialized = false;
+  }
   if (runtime.control_fd >= 0) {
     close(runtime.control_fd);
+    runtime.control_fd = -1;
   }
+}
+
+bool CleanupAndReturn(MemHostRuntime &runtime, int32_t device_id, const std::string &remote_engine, bool result,
+                      bool allow_skip_cleanup = false) {
+  Cleanup(runtime, device_id, remote_engine, allow_skip_cleanup);
+  return result;
 }
 
 bool Run(int rank, int32_t device_id, const std::string &local_engine, const std::string &remote_engine,
          const std::string &rank0_ip, int control_port) {
   MemHostRuntime runtime;
   if (!InitRuntime(runtime, rank, device_id, local_engine, rank0_ip, control_port)) {
-    return false;
+    return CleanupAndReturn(runtime, device_id, remote_engine, false);
   }
   if (!ConnectPeer(runtime.engine, remote_engine)) {
-    return false;
+    return CleanupAndReturn(runtime, device_id, remote_engine, false);
   }
+  runtime.peer_connected = true;
   if (rank == 0) {
     std::cout << "[INFO] fabric_mem_tcp_2rank block_bytes=" << kBlockBytes
               << " pool_GiB=" << (static_cast<double>(kPoolBytes) / static_cast<double>(kBytesPerGiB))
@@ -435,11 +519,10 @@ bool Run(int rank, int32_t device_id, const std::string &local_engine, const std
 
   for (int blocks : kBlockCounts) {
     if (!RunBlock(runtime, rank, remote_engine, blocks)) {
-      return false;
+      return CleanupAndReturn(runtime, device_id, remote_engine, false);
     }
   }
-  Cleanup(runtime, device_id, remote_engine);
-  return true;
+  return CleanupAndReturn(runtime, device_id, remote_engine, true, true);
 }
 }  // namespace
 
@@ -449,15 +532,28 @@ int main(int argc, char **argv) {
               << " <rank> <device_id> <local_engine> <remote_engine> <rank0_ip> <control_port>\n";
     return 1;
   }
-  const int rank = std::stoi(argv[1]);
+  int32_t rank = 0;
+  if (!ParseInt32(argv[1], "rank", rank)) {
+    return 1;
+  }
   if (rank != 0 && rank != 1) {
     std::cerr << "[ERROR] rank must be 0 or 1\n";
     return 1;
   }
-  const int32_t device_id = std::stoi(argv[2]);
+  int32_t device_id = 0;
+  if (!ParseInt32(argv[2], "device_id", device_id)) {
+    return 1;
+  }
   const std::string local_engine = argv[3];
   const std::string remote_engine = argv[4];
   const std::string rank0_ip = argv[5];
-  const int control_port = std::stoi(argv[6]);
+  int32_t control_port = 0;
+  if (!ParseInt32(argv[6], "control_port", control_port)) {
+    return 1;
+  }
+  if (control_port <= 0 || control_port > 65535) {
+    std::cerr << "[ERROR] control_port must be in range 1..65535\n";
+    return 1;
+  }
   return Run(rank, device_id, local_engine, remote_engine, rank0_ip, control_port) ? 0 : 1;
 }
