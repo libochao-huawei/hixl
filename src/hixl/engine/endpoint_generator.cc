@@ -26,7 +26,7 @@
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
-#include "engine/local_comm_res_tool.h"
+#include "engine/local_comm_res_generator_v1.h"
 
 namespace hixl {
 namespace {

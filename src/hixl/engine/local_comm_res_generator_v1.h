@@ -26,7 +26,7 @@
 #include <map>
 
 // 引入 rootinfo_builder 的数据结构
-#include "rootinfo_builder.h"
+#include "rootinfo_builder_generator_v1.h"
 // 引入 EndpointConfig 定义
 #include "common/hixl_inner_types.h"
 

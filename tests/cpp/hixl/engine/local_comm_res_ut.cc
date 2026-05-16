@@ -24,7 +24,7 @@
 #include <vector>
 #include <map>
 
-#include "local_comm_res_tool.h"
+#include "local_comm_res_generator_v1.h"
 #include "test_mmpa_utils.h"
 
 // DCMI 桩函数控制接口（定义在 tests/depends/dcmi/src/dcmi_stub.cc）

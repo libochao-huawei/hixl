@@ -15,7 +15,7 @@
  * 实现根据 NPU ID 构建 RootInfo 的功能
  */
 
-#include "rootinfo_builder.h"
+#include "rootinfo_builder_generator_v1.h"
 #include <sstream>
 #include <iomanip>
 #include <algorithm>

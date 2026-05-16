@@ -21,7 +21,7 @@
  * RootInfo 构建功能已拆分到 rootinfo_builder 模块
  */
 
-#include "local_comm_res_tool.h"
+#include "local_comm_res_generator_v1.h"
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -276,15 +276,43 @@ int32_t GetClosNetInstanceId(int32_t phy_dev_id, std::string &net_instance_id) {
 
 // ============ 文件解析实现 ============
 
-int32_t ParseTopoFile(const std::string &topo_path, TopoData &topo_data) {
-  topo_data.links.clear();
+static bool ParsePortsFromJson(const nlohmann::json &edge, const char *key, std::vector<std::string> &ports) {
+  if (!edge.contains(key) || !edge[key].is_array()) {
+    return false;
+  }
+  for (const auto &port : edge[key]) {
+    if (port.is_string()) {
+      ports.push_back(port.get<std::string>());
+    }
+  }
+  return true;
+}
+
+static int32_t ParseSingleLink(const nlohmann::json &edge, TopoLink &link) {
+  if (!edge.contains("net_layer")) {
+    HIXL_LOGW("Missing net_layer in edge object, skipping");
+    return 1;  // 1 表示跳过
+  }
+  link.net_layer = edge.value("net_layer", 0);
+  link.link_type = edge.value("link_type", "");
+  link.topo_type = edge.value("topo_type", "");
+  link.local_a = edge.value("local_a", 0);
+  link.local_b = edge.value("local_b", 0);
+  link.remote_a = edge.value("remote_a", -1);
+  link.remote_b = edge.value("remote_b", -1);
+
+  ParsePortsFromJson(edge, "local_a_ports", link.local_a_ports);
+  ParsePortsFromJson(edge, "local_b_ports", link.local_b_ports);
+  return 0;  // 0 表示成功
+}
+
+static int32_t ParseTopoJson(const std::string &topo_path, nlohmann::json &j) {
   std::ifstream file(topo_path);
   if (!file.is_open()) {
     HIXL_LOGE(PARAM_INVALID, "Failed to open topo file: %s", topo_path.c_str());
     return PARAM_INVALID;
   }
 
-  nlohmann::json j;
   try {
     file >> j;
   } catch (const nlohmann::json::exception &e) {
@@ -297,39 +325,26 @@ int32_t ParseTopoFile(const std::string &topo_path, TopoData &topo_data) {
     HIXL_LOGE(FAILED, "No or empty edge_list found in: %s", topo_path.c_str());
     return FAILED;
   }
+  return SUCCESS;
+}
+
+int32_t ParseTopoFile(const std::string &topo_path, TopoData &topo_data) {
+  topo_data.links.clear();
+
+  nlohmann::json j;
+  int32_t ret = ParseTopoJson(topo_path, j);
+  if (ret != SUCCESS) {
+    return ret;
+  }
 
   for (const auto &edge : j["edge_list"]) {
     TopoLink link;
     link.remote_a = -1;
     link.remote_b = -1;
 
-    if (!edge.contains("net_layer")) {
-      HIXL_LOGW("Missing net_layer in edge object, skipping");
-      continue;
+    if (ParseSingleLink(edge, link) == 1) {
+      continue;  // 跳过该 edge
     }
-    link.net_layer = edge.value("net_layer", 0);
-    link.link_type = edge.value("link_type", "");
-    link.topo_type = edge.value("topo_type", "");
-    link.local_a = edge.value("local_a", 0);
-    link.local_b = edge.value("local_b", 0);
-    link.remote_a = edge.value("remote_a", -1);
-    link.remote_b = edge.value("remote_b", -1);
-
-    if (edge.contains("local_a_ports") && edge["local_a_ports"].is_array()) {
-      for (const auto &port : edge["local_a_ports"]) {
-        if (port.is_string()) {
-          link.local_a_ports.push_back(port.get<std::string>());
-        }
-      }
-    }
-    if (edge.contains("local_b_ports") && edge["local_b_ports"].is_array()) {
-      for (const auto &port : edge["local_b_ports"]) {
-        if (port.is_string()) {
-          link.local_b_ports.push_back(port.get<std::string>());
-        }
-      }
-    }
-
     topo_data.links.push_back(link);
   }
 
