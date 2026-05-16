@@ -281,11 +281,11 @@ Status EndpointGenerator::BuildEndpointListFromLocalCommRes(const nlohmann::json
   SocType soc_type = SocType::kOther;
   HIXL_CHK_STATUS_RET(GetSocType(soc_type), "GetSocType failed");
   const bool auto_generate =
-      (soc_type == SocType::kV2 || soc_type == SocType::kV3 || soc_type == SocType::kA5) &&
+      (soc_type == SocType::kV2 || soc_type == SocType::kV3 || soc_type == SocType::kV5) &&
       config.is_object() && !has_endpoint_list;
 
   endpoint_list.clear();
-  if (auto_generate && soc_type == SocType::kA5) {
+  if (auto_generate && soc_type == SocType::kV5) {
     int32_t device_id = 0;
     HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
     int32_t phy_id = 0;
@@ -460,7 +460,7 @@ EndpointGenerator::SocType EndpointGenerator::GetSocTypeByName(const std::string
   }
 
   if (soc_name.find("Ascend950") != std::string::npos) {
-    return SocType::kA5;
+    return SocType::kV5;
   }
 
   return SocType::kOther;

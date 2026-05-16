@@ -71,6 +71,12 @@ void ResetDcmiStub() {
     DcmiStubSetEidCount(2);               // 默认返回 2 个 EID
 }
 
+// 字符串常量（与 local_comm_res_tool.cc 匿名命名空间中的定义保持一致）
+constexpr const char* kLinkTypePeer2Peer = "PEER2PEER";
+constexpr const char* kLinkTypePeer2Net = "PEER2NET";
+constexpr const char* kTopoType1DMesh = "1DMESH";
+constexpr const char* kTopoTypeClos = "CLOS";
+
 }  // anonymous namespace
 
 // ============================================================================
@@ -95,8 +101,8 @@ TEST_F(LocalCommResParseTest, ParseTopoFileSuccess) {
     EXPECT_EQ(topo_data.links.size(), 52U);
     // 验证第一条 link
     EXPECT_EQ(topo_data.links[0].net_layer, 0);
-    EXPECT_EQ(topo_data.links[0].link_type, "PEER2PEER");
-    EXPECT_EQ(topo_data.links[0].topo_type, "1DMESH");
+    EXPECT_EQ(topo_data.links[0].link_type, kLinkTypePeer2Peer);
+    EXPECT_EQ(topo_data.links[0].topo_type, kTopoType1DMesh);
     EXPECT_EQ(topo_data.links[0].local_a, 0);
     EXPECT_EQ(topo_data.links[0].local_b, 1);
 }
@@ -215,6 +221,38 @@ RouteData MakeTwoEntryRouteData() {
     return route_data;
 }
 
+TopoLink MakeStandardTopoLink(int32_t net_layer, const std::string& link_type, const std::string& topo_type) {
+    TopoLink link;
+    link.net_layer = net_layer;
+    link.link_type = link_type;
+    link.topo_type = topo_type;
+    link.local_a = 0;
+    link.local_b = 1;
+    link.local_a_ports = {"0/1"};
+    link.local_b_ports = {"0/2"};
+    return link;
+}
+
+TopoData MakeSingleLinkTopoData(const TopoLink& link) {
+    TopoData topo_data;
+    topo_data.links.push_back(link);
+    return topo_data;
+}
+
+NpuRootInfo MakeRootInfo(const std::string& port, const std::string& eid) {
+    NpuRootInfo info;
+    info.port_to_eid[port] = eid;
+    return info;
+}
+
+std::map<int32_t, NpuRootInfo> MakeNpuRootinfos(int32_t id0, const NpuRootInfo& info0,
+                                                 int32_t id1, const NpuRootInfo& info1) {
+    std::map<int32_t, NpuRootInfo> m;
+    m[id0] = info0;
+    m[id1] = info1;
+    return m;
+}
+
 }  // anonymous namespace
 
 // --- GenerateH2DEdges ---
@@ -226,9 +264,9 @@ TEST_F(LocalCommResEdgeTest, GenerateH2DEdgesSuccess) {
     int32_t ret = GenerateH2DEdges(route_data, edges);
     EXPECT_EQ(ret, SUCCESS);
     ASSERT_EQ(edges.size(), 2U);
-    EXPECT_EQ(edges[0].protocol, "ub_ctp");
+    EXPECT_EQ(edges[0].protocol, kProtocolUbCtp);
     EXPECT_EQ(edges[0].comm_id, "0xaa");
-    EXPECT_EQ(edges[0].placement, "host");
+    EXPECT_EQ(edges[0].placement, kPlacementHost);
     EXPECT_EQ(edges[0].dst_eid, "0xbb");
     EXPECT_EQ(edges[1].comm_id, "0xcc");
     EXPECT_EQ(edges[1].dst_eid, "0xdd");
@@ -251,9 +289,9 @@ TEST_F(LocalCommResEdgeTest, GenerateD2HEdgesSuccess) {
     int32_t ret = GenerateD2HEdges(route_data, 0, edges);
     EXPECT_EQ(ret, SUCCESS);
     ASSERT_EQ(edges.size(), 1U);  // 只取 device_id=0 的条目
-    EXPECT_EQ(edges[0].protocol, "ub_ctp");
+    EXPECT_EQ(edges[0].protocol, kProtocolUbCtp);
     EXPECT_EQ(edges[0].comm_id, "0xbb");   // D2H: comm_id = remote_eid
-    EXPECT_EQ(edges[0].placement, "device");
+    EXPECT_EQ(edges[0].placement, kPlacementDevice);
     EXPECT_EQ(edges[0].dst_eid, "0xaa");   // D2H: dst_eid = local_eid
 }
 
@@ -323,19 +361,8 @@ TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesEmptyTopo) {
 
 TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesNoRootinfoForSelf) {
     // npu_rootinfos 中没有 phy_id=0 的条目 → 返回空
-    TopoData topo_data;
-    TopoLink link;
-    link.net_layer = 0;
-    link.link_type = "PEER2PEER";
-    link.topo_type = "1DMESH";
-    link.local_a = 0;
-    link.local_b = 1;
-    link.local_a_ports = {"0/1"};
-    link.local_b_ports = {"0/2"};
-    topo_data.links.push_back(link);
-
+    TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(0, kLinkTypePeer2Peer, kTopoType1DMesh));
     std::map<int32_t, NpuRootInfo> npu_rootinfos;
-    // 不插入 phy_id=0
     std::vector<EndpointConfig> edges;
     int32_t ret = GenerateD2DEdges(topo_data, npu_rootinfos, 0, edges);
     EXPECT_EQ(ret, SUCCESS);
@@ -344,25 +371,9 @@ TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesNoRootinfoForSelf) {
 
 TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipNetLayer1) {
     // net_layer=1 的 link 应被跳过
-    TopoData topo_data;
-    TopoLink link;
-    link.net_layer = 1;
-    link.link_type = "PEER2PEER";
-    link.topo_type = "1DMESH";
-    link.local_a = 0;
-    link.local_b = 1;
-    link.local_a_ports = {"0/1"};
-    link.local_b_ports = {"0/2"};
-    topo_data.links.push_back(link);
-
-    NpuRootInfo self_info;
-    self_info.port_to_eid["0/1"] = "eid_self";
-    NpuRootInfo peer_info;
-    peer_info.port_to_eid["0/2"] = "eid_peer";
-    std::map<int32_t, NpuRootInfo> npu_rootinfos;
-    npu_rootinfos[0] = self_info;
-    npu_rootinfos[1] = peer_info;
-
+    TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(1, kLinkTypePeer2Peer, kTopoType1DMesh));
+    auto npu_rootinfos = MakeNpuRootinfos(0, MakeRootInfo("0/1", "eid_self"),
+                                           1, MakeRootInfo("0/2", "eid_peer"));
     std::vector<EndpointConfig> edges;
     int32_t ret = GenerateD2DEdges(topo_data, npu_rootinfos, 0, edges);
     EXPECT_EQ(ret, SUCCESS);
@@ -371,23 +382,9 @@ TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipNetLayer1) {
 
 TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipNonPeer2Peer) {
     // link_type=PEER2NET 应被跳过
-    TopoData topo_data;
-    TopoLink link;
-    link.net_layer = 0;
-    link.link_type = "PEER2NET";
-    link.topo_type = "1DMESH";
-    link.local_a = 0;
-    link.local_b = 1;
-    link.local_a_ports = {"0/1"};
-    link.local_b_ports = {"0/2"};
-    topo_data.links.push_back(link);
-
-    NpuRootInfo self_info;
-    self_info.port_to_eid["0/1"] = "eid_self";
-    std::map<int32_t, NpuRootInfo> npu_rootinfos;
-    npu_rootinfos[0] = self_info;
-    npu_rootinfos[1] = self_info;
-
+    TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(0, kLinkTypePeer2Net, kTopoType1DMesh));
+    NpuRootInfo info = MakeRootInfo("0/1", "eid_self");
+    auto npu_rootinfos = MakeNpuRootinfos(0, info, 1, info);
     std::vector<EndpointConfig> edges;
     int32_t ret = GenerateD2DEdges(topo_data, npu_rootinfos, 0, edges);
     EXPECT_EQ(ret, SUCCESS);
@@ -396,23 +393,9 @@ TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipNonPeer2Peer) {
 
 TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipNon1DMESH) {
     // topo_type=CLOS 应被跳过
-    TopoData topo_data;
-    TopoLink link;
-    link.net_layer = 0;
-    link.link_type = "PEER2PEER";
-    link.topo_type = "CLOS";
-    link.local_a = 0;
-    link.local_b = 1;
-    link.local_a_ports = {"0/1"};
-    link.local_b_ports = {"0/2"};
-    topo_data.links.push_back(link);
-
-    NpuRootInfo self_info;
-    self_info.port_to_eid["0/1"] = "eid_self";
-    std::map<int32_t, NpuRootInfo> npu_rootinfos;
-    npu_rootinfos[0] = self_info;
-    npu_rootinfos[1] = self_info;
-
+    TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(0, kLinkTypePeer2Peer, kTopoTypeClos));
+    NpuRootInfo info = MakeRootInfo("0/1", "eid_self");
+    auto npu_rootinfos = MakeNpuRootinfos(0, info, 1, info);
     std::vector<EndpointConfig> edges;
     int32_t ret = GenerateD2DEdges(topo_data, npu_rootinfos, 0, edges);
     EXPECT_EQ(ret, SUCCESS);
@@ -421,19 +404,8 @@ TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipNon1DMESH) {
 
 TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipPhyIdNotInLink) {
     // phy_id=2 不在 link(local_a=0, local_b=1) 中 → 跳过
-    TopoData topo_data;
-    TopoLink link;
-    link.net_layer = 0;
-    link.link_type = "PEER2PEER";
-    link.topo_type = "1DMESH";
-    link.local_a = 0;
-    link.local_b = 1;
-    link.local_a_ports = {"0/1"};
-    link.local_b_ports = {"0/2"};
-    topo_data.links.push_back(link);
-
-    NpuRootInfo info;
-    info.port_to_eid["0/1"] = "eid_a";
+    TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(0, kLinkTypePeer2Peer, kTopoType1DMesh));
+    NpuRootInfo info = MakeRootInfo("0/1", "eid_a");
     std::map<int32_t, NpuRootInfo> npu_rootinfos;
     npu_rootinfos[0] = info;
     npu_rootinfos[1] = info;
@@ -447,23 +419,11 @@ TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipPhyIdNotInLink) {
 
 TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipEmptyPorts) {
     // local_a_ports 为空 → 跳过
-    TopoData topo_data;
-    TopoLink link;
-    link.net_layer = 0;
-    link.link_type = "PEER2PEER";
-    link.topo_type = "1DMESH";
-    link.local_a = 0;
-    link.local_b = 1;
+    TopoLink link = MakeStandardTopoLink(0, kLinkTypePeer2Peer, kTopoType1DMesh);
     link.local_a_ports = {};
-    link.local_b_ports = {"0/2"};
-    topo_data.links.push_back(link);
-
-    NpuRootInfo info;
-    info.port_to_eid["0/1"] = "eid";
-    std::map<int32_t, NpuRootInfo> npu_rootinfos;
-    npu_rootinfos[0] = info;
-    npu_rootinfos[1] = info;
-
+    TopoData topo_data = MakeSingleLinkTopoData(link);
+    NpuRootInfo info = MakeRootInfo("0/1", "eid");
+    auto npu_rootinfos = MakeNpuRootinfos(0, info, 1, info);
     std::vector<EndpointConfig> edges;
     int32_t ret = GenerateD2DEdges(topo_data, npu_rootinfos, 0, edges);
     EXPECT_EQ(ret, SUCCESS);
@@ -472,32 +432,17 @@ TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipEmptyPorts) {
 
 TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesMatchSuccess) {
     // 正常匹配：local_a=0 有 port 0/1 → eid_aaa，local_b=1 有 port 0/2 → eid_bbb
-    TopoData topo_data;
-    TopoLink link;
-    link.net_layer = 0;
-    link.link_type = "PEER2PEER";
-    link.topo_type = "1DMESH";
-    link.local_a = 0;
-    link.local_b = 1;
-    link.local_a_ports = {"0/1"};
-    link.local_b_ports = {"0/2"};
-    topo_data.links.push_back(link);
-
-    NpuRootInfo self_info;
-    self_info.port_to_eid["0/1"] = "eid_aaa";
-    NpuRootInfo peer_info;
-    peer_info.port_to_eid["0/2"] = "eid_bbb";
-    std::map<int32_t, NpuRootInfo> npu_rootinfos;
-    npu_rootinfos[0] = self_info;
-    npu_rootinfos[1] = peer_info;
+    TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(0, kLinkTypePeer2Peer, kTopoType1DMesh));
+    auto npu_rootinfos = MakeNpuRootinfos(0, MakeRootInfo("0/1", "eid_aaa"),
+                                           1, MakeRootInfo("0/2", "eid_bbb"));
 
     std::vector<EndpointConfig> edges;
     int32_t ret = GenerateD2DEdges(topo_data, npu_rootinfos, 0, edges);
     EXPECT_EQ(ret, SUCCESS);
     ASSERT_EQ(edges.size(), 1U);
-    EXPECT_EQ(edges[0].protocol, "ub_ctp");
+    EXPECT_EQ(edges[0].protocol, kProtocolUbCtp);
     EXPECT_EQ(edges[0].comm_id, "eid_aaa");
-    EXPECT_EQ(edges[0].placement, "device");
+    EXPECT_EQ(edges[0].placement, kPlacementDevice);
     EXPECT_EQ(edges[0].dst_eid, "eid_bbb");
 }
 
