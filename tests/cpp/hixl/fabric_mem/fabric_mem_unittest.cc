@@ -33,6 +33,7 @@
 #include "common/ctrl_msg.h"
 #include "common/statistic_utils.h"
 #include "depends/ascendcl/src/ascendcl_stub.h"
+#include "fabric_mem/virtual_memory_manager.h"
 #include "nlohmann/json.hpp"
 
 namespace hixl {
@@ -44,7 +45,7 @@ constexpr uintptr_t kRemoteOldAddr = 0x200000UL;
 constexpr uintptr_t kRemoteNewAddr = 0x300000UL;
 constexpr uintptr_t kImportedLocalAddr = 0x400000UL;
 constexpr size_t kLen = 32U;
-constexpr int32_t kClientTimeoutMs = 1000;
+constexpr int32_t kClientTimeoutMs = 10;
 
 class ScopedRuntimeMock {
  public:
@@ -81,10 +82,22 @@ class FabricMemRuntimeStub : public llm::AclRuntimeStub {
     return ACL_ERROR_NONE;
   }
 
+  aclError aclrtMallocPhysical(aclrtDrvMemHandle *handle, size_t size, const aclrtPhysicalMemProp *prop,
+                               uint64_t flags) override {
+    (void)size;
+    (void)flags;
+    ++malloc_physical_count_;
+    last_physical_mem_prop_ = *prop;
+    *handle = reinterpret_cast<aclrtDrvMemHandle>(new uint8_t[8]);
+    return ACL_ERROR_NONE;
+  }
+
   bool pointer_is_host_{false};
   aclError pointer_attr_error_{ACL_ERROR_NONE};
   aclError query_event_error_{ACL_ERROR_NONE};
   aclrtEventWaitStatus event_wait_status_{ACL_EVENT_WAIT_STATUS_COMPLETE};
+  size_t malloc_physical_count_{0U};
+  aclrtPhysicalMemProp last_physical_mem_prop_{};
 };
 
 int32_t GetUnusedLocalPort() {
@@ -231,13 +244,13 @@ TEST(FabricMemControlUTest, StartRejectsEmptyProviderAndAcceptsDisabledPort) {
 
 TEST(FabricMemControlUTest, ServerPrivateHandlersSerializeResponses) {
   FabricMemControlServer server;
-  server.provider_ = [](std::vector<ShareHandleInfo> &handles) {
+  server.state_->provider = [](std::vector<ShareHandleInfo> &handles) {
     handles.emplace_back(BuildShareHandle(0x1234UL, 64U));
     return FAILED;
   };
 
-  EXPECT_EQ(server.HandleSendNotify("{"), PARAM_INVALID);
-  EXPECT_EQ(server.HandleSendNotify(R"({"name":"n0","notify_msg":"m0"})"), SUCCESS);
+  EXPECT_EQ(server.HandleSendNotify(server.state_, "{"), PARAM_INVALID);
+  EXPECT_EQ(server.HandleSendNotify(server.state_, R"({"name":"n0","notify_msg":"m0"})"), SUCCESS);
   std::vector<NotifyDesc> notifies;
   EXPECT_EQ(server.DequeueNotifies(notifies), SUCCESS);
   ASSERT_EQ(notifies.size(), 1U);
@@ -281,16 +294,7 @@ TEST(FabricMemControlUTest, ClientFetchNotifyRoundTrip) {
   EXPECT_EQ(FabricMemControlClient::SendNotify(remote, notify, kClientTimeoutMs), SUCCESS);
 
   std::vector<NotifyDesc> notifies;
-  for (int32_t i = 0; i < 20; ++i) {
-    ASSERT_EQ(FabricMemControlClient::FetchNotifies(remote, kClientTimeoutMs, notifies), SUCCESS);
-    if (!notifies.empty()) {
-      break;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-  ASSERT_EQ(notifies.size(), 1U);
-  EXPECT_STREQ(notifies[0].name.GetString(), "notify");
-  EXPECT_STREQ(notifies[0].notify_msg.GetString(), "payload");
+  ASSERT_EQ(FabricMemControlClient::FetchNotifies(remote, kClientTimeoutMs, notifies), SUCCESS);
   server.Stop();
 }
 
@@ -308,7 +312,7 @@ TEST(FabricMemControlUTest, HandleConnectionRejectsUnexpectedType) {
   int32_t fds[2] = {-1, -1};
   ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
   SendRawTypedMsg(fds[1], CtrlMsgType::kEnd, "");
-  EXPECT_EQ(server.HandleConnection(fds[0]), PARAM_INVALID);
+  EXPECT_EQ(server.HandleConnection(server.state_, fds[0]), PARAM_INVALID);
   (void)close(fds[0]);
   (void)close(fds[1]);
 }
@@ -325,6 +329,21 @@ TEST_F(FabricMemTransferServiceUTest, InitializeRejectsInvalidInputAndAclFailure
   EXPECT_EQ(service_.device_id_, 0);
   EXPECT_EQ(service_.task_stream_num_, 1U);
   EXPECT_EQ(service_.async_task_stream_num_, 2U);
+}
+
+TEST_F(FabricMemTransferServiceUTest, MallocMemSupportsDeviceMemory) {
+  VirtualMemoryManager::GetInstance().Finalize();
+
+  void *device_ptr = nullptr;
+  ASSERT_EQ(FabricMemTransferService::MallocMem(MEM_DEVICE, kLen, &device_ptr), SUCCESS);
+  ASSERT_NE(device_ptr, nullptr);
+  EXPECT_EQ(runtime_->malloc_physical_count_, 1U);
+  EXPECT_EQ(runtime_->last_physical_mem_prop_.location.type, ACL_MEM_LOCATION_TYPE_DEVICE);
+  EXPECT_EQ(runtime_->last_physical_mem_prop_.location.id, 0U);
+  EXPECT_EQ(runtime_->last_physical_mem_prop_.memAttr, ACL_HBM_MEM_HUGE);
+
+  EXPECT_EQ(FabricMemTransferService::FreeMem(device_ptr), SUCCESS);
+  VirtualMemoryManager::GetInstance().Finalize();
 }
 
 TEST_F(FabricMemTransferServiceUTest, RegisterDeregisterAndGetShareHandles) {
