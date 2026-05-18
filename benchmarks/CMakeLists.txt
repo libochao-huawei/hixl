@@ -11,7 +11,10 @@
 cmake_minimum_required(VERSION 3.16.0)
 project(hixl_benchmarks)
 set(CMAKE_SKIP_RPATH TRUE)
-set(HIXL_INC_DIR "${HIXL_CODE_DIR}/include")
+set(HIXL_INC_DIR
+    "${HIXL_CODE_DIR}/include"
+    "${HIXL_CODE_DIR}/src/hixl"
+)
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 
 add_subdirectory(comm_benchmark)

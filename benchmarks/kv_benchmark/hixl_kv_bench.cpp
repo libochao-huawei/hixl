@@ -27,7 +27,7 @@
 #include <vector>
 
 #include "acl/acl.h"
-#include "adxl/fabric_mem_transfer_service.h"
+#include "fabric_mem/fabric_mem_transfer_service.h"
 #include "hixl/hixl.h"
 #include "kvstore.h"
 #include "model_config.h"
