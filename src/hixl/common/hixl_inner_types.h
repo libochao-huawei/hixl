@@ -21,6 +21,7 @@ struct HixlOneSideOpParam {
   ThreadHandle thread;
   ChannelHandle channel;
   uint32_t list_num;
+  uint64_t op_desc_list_addr;
   uint64_t remote_flag_addr;
   uint64_t local_flag_addr;
   uint32_t flag_size;

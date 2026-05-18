@@ -40,6 +40,7 @@ struct DeviceCompleteHandle {
   uint32_t reserved;
   std::shared_ptr<TransferPool::SlotHandle> shared_slot;
   void *host_flag;
+  void *dev_op_desc_buf;
 };
 
 struct Buffers {
@@ -118,17 +119,16 @@ class HixlCSClient {
   Status ClearRemoteMemInfo();
   Status ValidateDeviceInputs(uint32_t list_num, const HixlOneSideOpDesc *desc_list, void *&query_handle) const;
   Status PrepareDeviceRemoteFlagAndKernel(void *&remote_flag) const;
-  Status BuildDeviceOpParam(const DeviceCompleteHandle &handle, uint32_t list_num,
+  Status BuildDeviceOpParam(DeviceCompleteHandle &handle, uint32_t list_num,
+                            const HixlOneSideOpDesc *desc_list,
                             HixlOneSideOpParam &param, void *&remote_flag);
   Status ResolveNotifyDeviceAddress(aclrtNotify notify, uint64_t &notify_addr, uint32_t &notify_len);
   Status RegisterNotifyMemForAllSlots(const std::vector<TransferPool::SlotHandle> &slots);
   Status LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handle,
                            const HixlOneSideOpParam &param,
-                           uint32_t list_num, const HixlOneSideOpDesc *desc_list,
                            const void *remote_flag);
   Status LaunchDeviceKernelAsync(bool is_get, DeviceCompleteHandle &handle,
                                 const HixlOneSideOpParam &param,
-                                uint32_t list_num, const HixlOneSideOpDesc *desc_list,
                                 const void *remote_flag);
   void ReleaseLegacyHandlesLocked();
   void AbortAllPendingDeviceHandlesLocked();

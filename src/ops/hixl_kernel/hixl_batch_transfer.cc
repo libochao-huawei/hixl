@@ -19,7 +19,8 @@ namespace hixl {
 namespace {
 constexpr uint32_t kMaxBatchSize = 1000;
 
-int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
+int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param) {
+  auto *op_list = reinterpret_cast<HixlOneSideOpDesc *>(static_cast<uintptr_t>(param->op_desc_list_addr));
   std::vector<HcommBatchTransferDesc> descs(param->list_num);
   for (uint32_t i = 0; i < param->list_num; i++) {
     descs[i].transType = is_read ? HCOMM_TRANSFER_TYPE_READ : HCOMM_TRANSFER_TYPE_WRITE;
@@ -53,7 +54,8 @@ int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param, HixlOneSideOp
   return ret;
 }
 
-uint32_t TransferWithSingle(bool is_read, HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
+uint32_t TransferWithSingle(bool is_read, HixlOneSideOpParam *param) {
+  auto *op_list = reinterpret_cast<HixlOneSideOpDesc *>(static_cast<uintptr_t>(param->op_desc_list_addr));
   if (is_read) {
     for (uint32_t i = 0; i < param->list_num; i++) {
       HIXL_LOGI(
@@ -92,11 +94,11 @@ uint32_t TransferWithSingle(bool is_read, HixlOneSideOpParam *param, HixlOneSide
   return SUCCESS;
 }
 
-uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
-  int32_t batch_ret = TransferWithBatch(is_read, param, op_list);
+uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param) {
+  int32_t batch_ret = TransferWithBatch(is_read, param);
   if (batch_ret == HCCL_E_NOT_SUPPORT) {
     HIXL_LOGI("[HixlBatchTransfer] HcommBatchTransferOnThread not supported, fallback to single calls");
-    return TransferWithSingle(is_read, param, op_list);
+    return TransferWithSingle(is_read, param);
   }
   if (batch_ret != 0) {
     HIXL_LOGE(FAILED, "HcommBatchTransferOnThread failed, ret=%d", batch_ret);
@@ -106,17 +108,10 @@ uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param, HixlOneS
   return SUCCESS;
 }
 
-uint32_t HixlBatchTransfer(bool is_read, void *transfer_param) {
-  HixlOneSideOpParam *param = static_cast<HixlOneSideOpParam *>(transfer_param);
-  HixlOneSideOpDesc *op_list = reinterpret_cast<HixlOneSideOpDesc*>(param + 1);
+uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
   HIXL_LOGI("[HixlBatchPutAndGet] HixlBatchTransfer %s start.", is_read ? "read" : "write");
   if (param == nullptr) {
     HIXL_LOGE(PARAM_INVALID, "[HixlBatchPutAndGet] param is nullptr");
-    return PARAM_INVALID;
-  }
-
-  if (op_list == nullptr) {
-    HIXL_LOGE(PARAM_INVALID, "[HixlBatchPutAndGet] op_list is nullptr");
     return PARAM_INVALID;
   }
 
@@ -124,7 +119,7 @@ uint32_t HixlBatchTransfer(bool is_read, void *transfer_param) {
   int32_t ret = HcommProxy::BatchModeStart(kBatchTag);
   HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommBatchModeStart failed, ret is %d", ret);
 
-  ret = HixlBatchTransferTask(is_read, param, op_list);
+  ret = HixlBatchTransferTask(is_read, param);
   HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HixlBatchTransferTask failed, ret is %d", ret);
 
   ret = HcommProxy::ChannelFenceOnThread(param->thread, param->channel);
@@ -159,7 +154,7 @@ uint32_t HixlBatchTransfer(bool is_read, void *transfer_param) {
 }  // namespace
 }  // namespace hixl
 extern "C" {
-uint32_t HixlBatchPut(void *param) {
+uint32_t HixlBatchPut(HixlOneSideOpParam *param) {
   uint32_t ret = hixl::HixlBatchTransfer(false, param);
   if (ret != 0) {
     HIXL_LOGE(hixl::FAILED, "[HixlBatchPut] HixlBatchPut failed, ret is %u", ret);
@@ -168,7 +163,7 @@ uint32_t HixlBatchPut(void *param) {
   return ret;
 }
 
-uint32_t HixlBatchGet(void *param) {
+uint32_t HixlBatchGet(HixlOneSideOpParam *param) {
   uint32_t ret = hixl::HixlBatchTransfer(true, param);
   if (ret != 0) {
     HIXL_LOGE(hixl::FAILED, "[HixlBatchGet] HixlBatchGet failed, ret is %u", ret);

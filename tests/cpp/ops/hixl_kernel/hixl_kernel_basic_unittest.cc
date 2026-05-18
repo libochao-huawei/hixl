@@ -35,29 +35,35 @@ extern "C" int32_t HcommBatchTransferOnThread(ThreadHandle thread, ChannelHandle
 
 namespace {
 template <size_t kN>
-std::pair<HixlOneSideOpParam, std::array<HixlOneSideOpDesc, kN>> CreateTestParamFixed(
+struct TestArgs {
+  HixlOneSideOpParam param;
+  std::array<HixlOneSideOpDesc, kN> ops;
+};
+
+template <size_t kN>
+TestArgs<kN> CreateTestArgs(
     std::array<std::array<uint8_t, 8>, kN> &src_buffers,
     std::array<std::array<uint8_t, 8>, kN> &dst_buffers,
     std::array<uint64_t, kN> &lens_storage, uint64_t remote_flag_addr,
     uint64_t local_flag_addr, ThreadHandle thread = 0ULL,
     ChannelHandle channel = 0ULL) {
-  HixlOneSideOpParam param{};
-  param.thread = thread;
-  param.channel = channel;
-  param.list_num = static_cast<uint32_t>(kN);
-  param.remote_flag_addr = remote_flag_addr;
-  param.local_flag_addr = local_flag_addr;
-  param.flag_size = sizeof(uint64_t);
-  param.protocol = COMM_PROTOCOL_RESERVED; // skip hccs
+  TestArgs<kN> args{};
+  args.param.thread = thread;
+  args.param.channel = channel;
+  args.param.list_num = static_cast<uint32_t>(kN);
+  args.param.remote_flag_addr = remote_flag_addr;
+  args.param.local_flag_addr = local_flag_addr;
+  args.param.flag_size = sizeof(uint64_t);
+  args.param.protocol = COMM_PROTOCOL_RESERVED;
 
-  std::array<HixlOneSideOpDesc, kN> ops;
   for (size_t i = 0; i < kN; ++i) {
-    ops[i].remote_buf = dst_buffers[i].data();
-    ops[i].local_buf = src_buffers[i].data();
-    ops[i].len = lens_storage[i];
+    args.ops[i].remote_buf = dst_buffers[i].data();
+    args.ops[i].local_buf = src_buffers[i].data();
+    args.ops[i].len = lens_storage[i];
   }
+  args.param.op_desc_list_addr = reinterpret_cast<uint64_t>(args.ops.data());
 
-  return {param, ops};
+  return args;
 }
 }  // namespace
 
@@ -94,9 +100,8 @@ TEST_F(HixlKernelBasicTest, BatchPutSuccess) {
   uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
   uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
 
-  auto [param, ops] = CreateTestParamFixed<3>(local_addr, remote_addr, lens_storage,
-                                               remote_flag_addr, local_flag_addr);
-  uint32_t ret = HixlBatchPut(&param, ops.data());
+  auto args = CreateTestArgs<3>(local_addr, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
+  uint32_t ret = HixlBatchPut(&args.param);
   EXPECT_EQ(ret, SUCCESS);
 }
 
@@ -115,8 +120,8 @@ TEST_F(HixlKernelBasicTest, BatchGetSuccess) {
   uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
   uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
 
-  auto [param, ops] = CreateTestParamFixed<3>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
-  uint32_t ret = HixlBatchGet(&param, ops.data());
+  auto args = CreateTestArgs<3>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
+  uint32_t ret = HixlBatchGet(&args.param);
   EXPECT_EQ(ret, SUCCESS);
 }
 
@@ -128,9 +133,8 @@ TEST_F(HixlKernelBasicTest, BatchPutFailByMemSize) {
   uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
   uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
 
-  auto [param, ops] = CreateTestParamFixed<1>(local_src, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
-
-  uint32_t ret = HixlBatchPut(&param, ops.data());
+  auto args = CreateTestArgs<1>(local_src, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
+  uint32_t ret = HixlBatchPut(&args.param);
   EXPECT_EQ(ret, FAILED);
 }
 
@@ -142,9 +146,8 @@ TEST_F(HixlKernelBasicTest, BatchGetFailByMemSize) {
   uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
   uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
 
-  auto [param, ops] = CreateTestParamFixed<1>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
-
-  uint32_t ret = HixlBatchGet(&param, ops.data());
+  auto args = CreateTestArgs<1>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
+  uint32_t ret = HixlBatchGet(&args.param);
   EXPECT_EQ(ret, FAILED);
 }
 
@@ -154,7 +157,6 @@ int32_t HcommAclrtNotifyRecordOnThread(ThreadHandle thread, uint64_t dstNotifyId
 }
 
 TEST_F(HixlKernelBasicTest, BatchGetHccsError) {
-  // 模拟远端源数据和本地目标缓冲区
   std::array<std::array<uint8_t, 8>, 3> remote_addr_hccs{};
   std::array<std::array<uint8_t, 8>, 3> local_addr_hccs{};
   std::array<uint64_t, 3> lens_storage{8, 8, 8};
@@ -166,19 +168,15 @@ TEST_F(HixlKernelBasicTest, BatchGetHccsError) {
     std::fill(arr.begin(), arr.end(), 0xBB);
   }
 
-  // ========== 核心修改1：使用真实的合法内存地址 ==========
   uint64_t remote_flag_addr_hccs = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
   uint64_t local_flag_addr_hccs = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
 
-  // ========== 核心修改2：直接传递地址值 ==========
-  auto [param, ops] = CreateTestParamFixed<3>(remote_addr_hccs, local_addr_hccs, lens_storage,
+  auto args = CreateTestArgs<3>(remote_addr_hccs, local_addr_hccs, lens_storage,
     remote_flag_addr_hccs, local_flag_addr_hccs);
-  param.protocol = COMM_PROTOCOL_HCCS;
-  uint32_t ret = HixlBatchGet(&param, ops.data());
+  args.param.protocol = COMM_PROTOCOL_HCCS;
+  uint32_t ret = HixlBatchGet(&args.param);
   EXPECT_NE(ret, SUCCESS);
 }
-
-// ========== 批量传输接口测试用例 ==========
 
 class HixlBatchTransferTest : public ::testing::Test {
  protected:
@@ -208,11 +206,11 @@ TEST_F(HixlBatchTransferTest, BatchTransferSuccess) {
   uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
   uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
 
-  auto [param, ops] = CreateTestParamFixed<3>(local_addr, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
+  auto args = CreateTestArgs<3>(local_addr, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
 
   g_mock_batch_transfer_ret = HCCL_SUCCESS;
 
-  uint32_t ret = HixlBatchPut(&param, ops.data());
+  uint32_t ret = HixlBatchPut(&args.param);
   EXPECT_EQ(ret, SUCCESS);
   EXPECT_EQ(g_mock_batch_transfer_call_count, 1u);
 }
@@ -232,11 +230,11 @@ TEST_F(HixlBatchTransferTest, BatchTransferFallbackToSingle) {
   uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
   uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
 
-  auto [param, ops] = CreateTestParamFixed<3>(local_addr, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
+  auto args = CreateTestArgs<3>(local_addr, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
 
   g_mock_batch_transfer_ret = HCCL_E_NOT_SUPPORT;
 
-  uint32_t ret = HixlBatchPut(&param, ops.data());
+  uint32_t ret = HixlBatchPut(&args.param);
   EXPECT_EQ(ret, SUCCESS);
   EXPECT_EQ(g_mock_batch_transfer_call_count, 1u);
 }
@@ -256,11 +254,11 @@ TEST_F(HixlBatchTransferTest, BatchTransferOtherError) {
   uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
   uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
 
-  auto [param, ops] = CreateTestParamFixed<3>(local_addr, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
+  auto args = CreateTestArgs<3>(local_addr, remote_addr, lens_storage, remote_flag_addr, local_flag_addr);
 
   g_mock_batch_transfer_ret = HCCL_E_PARA;
 
-  uint32_t ret = HixlBatchPut(&param, ops.data());
+  uint32_t ret = HixlBatchPut(&args.param);
   EXPECT_EQ(ret, FAILED);
   EXPECT_EQ(g_mock_batch_transfer_call_count, 1u);
 }
@@ -280,11 +278,11 @@ TEST_F(HixlBatchTransferTest, BatchGetSuccess) {
   uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
   uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
 
-  auto [param, ops] = CreateTestParamFixed<3>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
+  auto args = CreateTestArgs<3>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
 
   g_mock_batch_transfer_ret = HCCL_SUCCESS;
 
-  uint32_t ret = HixlBatchGet(&param, ops.data());
+  uint32_t ret = HixlBatchGet(&args.param);
   EXPECT_EQ(ret, SUCCESS);
   EXPECT_EQ(g_mock_batch_transfer_call_count, 1u);
 }
@@ -304,11 +302,11 @@ TEST_F(HixlBatchTransferTest, BatchGetFallbackToSingle) {
   uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
   uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
 
-  auto [param, ops] = CreateTestParamFixed<3>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
+  auto args = CreateTestArgs<3>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
 
   g_mock_batch_transfer_ret = HCCL_E_NOT_SUPPORT;
 
-  uint32_t ret = HixlBatchGet(&param, ops.data());
+  uint32_t ret = HixlBatchGet(&args.param);
   EXPECT_EQ(ret, SUCCESS);
   EXPECT_EQ(g_mock_batch_transfer_call_count, 1u);
 }
