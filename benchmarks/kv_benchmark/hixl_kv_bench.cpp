@@ -509,8 +509,15 @@ void InitRuntime(const KvBenchConfig &cfg, std::uint64_t local_size, std::uint64
   }
   runtime->hixl_initialized = true;
 
-  if (aclrtMalloc(&runtime->local_buffer, static_cast<size_t>(local_size), ACL_MEM_MALLOC_HUGE_ONLY) !=
-      ACL_ERROR_NONE) {
+  if (cfg.transport == "fabric_mem") {
+    const auto alloc_status =
+        FabricMemTransferService::MallocMem(MemType::MEM_DEVICE, static_cast<size_t>(local_size),
+                                            &runtime->local_buffer);
+    if (alloc_status != SUCCESS) {
+      throw std::runtime_error("fabric_mem device allocation failed");
+    }
+  } else if (aclrtMalloc(&runtime->local_buffer, static_cast<size_t>(local_size), ACL_MEM_MALLOC_HUGE_ONLY) !=
+             ACL_ERROR_NONE) {
     throw std::runtime_error("aclrtMalloc device buffer failed");
   }
   RegisterMem(runtime->hixl, runtime->local_buffer, local_size, MemType::MEM_DEVICE, &runtime->local_handle);
@@ -541,7 +548,11 @@ void CleanupRuntime(const KvBenchConfig &cfg, KvRuntime *runtime, const std::vec
     runtime->hixl_initialized = false;
   }
   if (runtime->local_buffer != nullptr) {
-    (void)aclrtFree(runtime->local_buffer);
+    if (cfg.transport == "fabric_mem") {
+      (void)FabricMemTransferService::FreeMem(runtime->local_buffer);
+    } else {
+      (void)aclrtFree(runtime->local_buffer);
+    }
     runtime->local_buffer = nullptr;
   }
   FreeHostBuffer(cfg, runtime->pool_buffer);

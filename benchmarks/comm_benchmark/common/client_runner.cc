@@ -91,7 +91,11 @@ void ReleaseHixlResources(Hixl &hixl_engine, bool need_register, bool is_host, c
   } else {
     for (const auto &element : buffers) {
       if (element != nullptr) {
-        (void)aclrtFree(element);
+        if (transport == "fabric_mem") {
+          (void)FabricMemTransferService::FreeMem(element);
+        } else {
+          (void)aclrtFree(element);
+        }
       }
     }
   }
@@ -111,6 +115,12 @@ int32_t AllocLocalBuffer(const BenchmarkConfig &cfg, bool *is_host, void **out_s
     aclError er = aclrtMallocHost(&tmp, alloc_size);
     if (er != ACL_ERROR_NONE) {
       std::fprintf(stderr, "[ERROR] client alloc host failed aclError=%d\n", static_cast<int>(er));
+      return -1;
+    }
+  } else if (cfg.transport == "fabric_mem") {
+    auto status = FabricMemTransferService::MallocMem(MemType::MEM_DEVICE, alloc_size, &tmp);
+    if (status != SUCCESS) {
+      std::fprintf(stderr, "[ERROR] client fabric_mem device alloc failed status=%d\n", static_cast<int>(status));
       return -1;
     }
   } else {
