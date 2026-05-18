@@ -21,6 +21,7 @@ add_library(cann_hixl_kernel SHARED
 
 target_include_directories(cann_hixl_kernel PRIVATE
         ${INCLUDE_LIST}
+        ${HIXL_CODE_DIR}/src/hixl/proxy
 )
 
 target_link_libraries(cann_hixl_kernel PRIVATE
@@ -28,7 +29,7 @@ target_link_libraries(cann_hixl_kernel PRIVATE
         $<BUILD_INTERFACE:hccl_headers>
         $<BUILD_INTERFACE:slog_headers>
         -Wl,--no-as-needed
-        slog
+        unified_dlog
         hcomm_proxy_static
         -Wl,--no-as-needed
 )
