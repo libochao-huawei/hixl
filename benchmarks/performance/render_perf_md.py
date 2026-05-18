@@ -20,6 +20,9 @@ from typing import Any
 DIRECTION_ORDER = ["D2rD", "D2rH", "H2rH", "H2rD", "rD2D", "rH2D", "rH2H", "rD2H"]
 TRANSPORT_ORDER = ["hccs", "rdma", "fabric_mem"]
 
+# HCCS path supports device-to-device only (matches comm benchmark restriction).
+HCCS_SUPPORTED_DIRECTIONS = frozenset({"D2rD", "rD2D"})
+
 DIRECTION_LABEL: dict[str, str] = {
     "D2rD": "D → rD (write D2D)",
     "rD2D": "rD → D (read D2D)",
@@ -62,6 +65,22 @@ def fmt_cell(val: Any) -> str:
         s = f"{val:.3f}".rstrip("0").rstrip(".")
         return s
     return str(val)
+
+
+def hccs_cell_not_supported(direction: str, transport: str) -> bool:
+    return transport == "hccs" and direction not in HCCS_SUPPORTED_DIRECTIONS
+
+
+def format_bandwidth_cell(
+    direction: str,
+    transport: str,
+    block_label: str,
+    lookup: dict[str, dict[str, dict[str, float]]],
+) -> str:
+    if hccs_cell_not_supported(direction, transport):
+        return "不支持"
+    val = lookup.get(direction, {}).get(transport, {}).get(block_label)
+    return fmt_cell(val)
 
 
 # ---------------------------------------------------------------------------
@@ -111,10 +130,10 @@ def build_lookup(rows: list[dict]) -> dict[str, dict[str, dict[str, float]]]:
 # ---------------------------------------------------------------------------
 
 
-def collect_columns(
+def collect_columns_with_data(
     lookup: dict[str, dict[str, dict[str, float]]]
 ) -> list[tuple[str, str]]:
-    """Return ordered list of (direction, transport) pairs that have data."""
+    """Return ordered list of (direction, transport) pairs that have numeric data."""
     cols: list[tuple[str, str]] = []
     for dname in DIRECTION_ORDER:
         if dname not in lookup:
@@ -125,15 +144,23 @@ def collect_columns(
     return cols
 
 
-def render_table(
-    lookup: dict[str, dict[str, dict[str, float]]], cols: list[tuple[str, str]]
-) -> str:
+def collect_columns_full() -> list[tuple[str, str]]:
+    """Full direction × transport matrix for perf tables (includes unsupported HCCS columns)."""
+    cols: list[tuple[str, str]] = []
+    for dname in DIRECTION_ORDER:
+        for tport in TRANSPORT_ORDER:
+            cols.append((dname, tport))
+    return cols
+
+
+def render_table(lookup: dict[str, dict[str, dict[str, float]]]) -> str:
+    cols = collect_columns_full()
     all_blocks: set[str] = set()
-    for dname, tport in cols:
-        all_blocks.update(lookup.get(dname, {}).get(tport, {}).keys())
+    for _dname, _tport in collect_columns_with_data(lookup):
+        all_blocks.update(lookup.get(_dname, {}).get(_tport, {}).keys())
     ordered_blocks = sorted(all_blocks, key=block_sort_key)
-    if not cols or not ordered_blocks:
-        return "*(No data)*\n\n"
+    if not ordered_blocks:
+        return "*(No bandwidth data in CSVs — run comm benchmarks first)*\n\n"
 
     lines: list[str] = []
     header = "| **Block** |"
@@ -147,8 +174,7 @@ def render_table(
     for bs in ordered_blocks:
         row = f"| {bs} |"
         for dname, tport in cols:
-            val = lookup.get(dname, {}).get(tport, {}).get(bs)
-            row += f" {fmt_cell(val)} |"
+            row += f" {format_bandwidth_cell(dname, tport, bs, lookup)} |"
         lines.append(row)
 
     return "\n".join(lines) + "\n"
@@ -192,23 +218,24 @@ def platform_intro(platform: str) -> str:
             "本页展示 HIXL 在 **昇腾 A2**（Atlas 800I A2 / A200I A2 Box）上的通信性能数据。\n\n"
             "**测试方式**：在同一台机器上运行 `hixl_comm_bench` 的 target 和 initiator，"
             "测量不同 block size（16K～2M）下的有效带宽。\n\n"
-            "**约束**：A2 上 HCCS 传输仅支持 Device↔Device（D2D）方向；"
-            "其他方向（D2H、H2H、H2D）只能走 ROCE（RDMA）传输。\n\n"
+            "**约束**：benchmark 将 **HCCS** 限制为 **仅 D2D**（`D2rD` / `rD2D`）；"
+            "涉及 Host 的方向请使用 **RDMA** 或 **FabricMem**。\n\n"
         )
     elif pid == "atlas_a3":
         lines.append(
             "本页展示 HIXL 在 **昇腾 A3**（Atlas A3 训练/推理系列）上的通信性能数据。\n\n"
             "**测试方式**：在同一台机器上运行 `hixl_comm_bench` 的 target 和 initiator，"
             "测量不同 block size（16K～2M）下的有效带宽。\n\n"
-            "**约束**：A3 上 HCCS 传输不支持 Host 内存作为远端 Cache；"
-            "D2H/H2H 方向的 HCCS 数据因此缺失。ROCE 和 FabricMem 支持全部方向。\n\n"
+            "**约束**：benchmark 将 **HCCS** 限制为 **仅 D2D**（`D2rD` / `rD2D`）；"
+            "其余方向请使用 **RDMA** 或 **FabricMem**。\n\n"
         )
     lines.append(
         "### 如何读懂表格\n\n"
         "- **Block** 列：每次传输的数据块大小（16K = 16 KiB，1M = 1 MiB）。\n"
         "- **方向+传输** 列：例如 `D2rD HCCS` 表示从本地 Device 写往远程 Device（HCCS 传输），"
         "`rH2D ROCE` 表示从远程 Host 读回本地 Device（ROCE 传输）。\n"
-        "- 数值为有效带宽（GB/s），**——** 表示该组合不支持或尚未测试。\n"
+        "- 数值为有效带宽（GB/s）；**不支持** 表示该传输路径不支持该方向（如 HCCS 仅 D2D）；"
+        "**——** 表示尚未采集到数据。\n"
         "- 所有数据来自单机 1:1（一个 initiator + 一个 target）测试。\n\n"
     )
     return "".join(lines)
@@ -336,15 +363,14 @@ def main() -> None:
         return
 
     lookup = build_lookup(rows)
-    cols = collect_columns(lookup)
-    if not cols:
-        print("[WARN] No direction+transport combos with data found")
-        return
+    data_cols = collect_columns_with_data(lookup)
+    if not data_cols:
+        print("[WARN] No direction+transport combos with numeric bandwidth data found")
 
     # --- perf.md ---
     intro = platform_intro(args.platform)
     legend = direction_legend()
-    table = render_table(lookup, cols)
+    table = render_table(lookup)
 
     sections = [intro, legend, "### 性能数据\n\n", table]
 

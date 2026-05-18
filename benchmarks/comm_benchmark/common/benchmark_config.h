@@ -21,7 +21,7 @@
 
 namespace hixl_benchmark {
 
-constexpr uint64_t kDefaultTotalSize = 134217728ULL;  // 128 MiB
+constexpr uint64_t kDefaultTotalSize = 1073741824ULL;  // 1 GiB
 constexpr uint32_t kDefaultBlockSteps = 1U;
 constexpr uint32_t kDefaultLoops = 1U;
 constexpr uint32_t kTcpClientCountMax = 65535U;

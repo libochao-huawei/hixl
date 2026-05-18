@@ -201,6 +201,10 @@ def _compute_direction(im: str, tm: str, op: str) -> str:
     return "unknown"
 
 
+def _hccs_supports_combo(initiator_mem: str, target_mem: str) -> bool:
+    return initiator_mem == "device" and target_mem == "device"
+
+
 # ------- Main --------
 
 def main() -> None:
@@ -246,6 +250,13 @@ def main() -> None:
             for im in MEM_TYPES:
                 for tm in MEM_TYPES:
                     for op in OP_TYPES:
+                        direction = _compute_direction(im, tm, op)
+                        if transport == "hccs" and not _hccs_supports_combo(im, tm):
+                            print(
+                                f"[SKIP] {direction} transport=hccs not supported "
+                                f"(HCCS is D2D-only; use rdma/fabric_mem)"
+                            )
+                            continue
                         comm_total += 1
                         hixl_port = args.base_hixl_port + port_offset * 2
                         tcp_port = args.base_tcp_port + port_offset

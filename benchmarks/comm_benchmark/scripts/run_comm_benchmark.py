@@ -50,6 +50,11 @@ DEFAULT_START_BLOCK = 16384      # 16K
 DEFAULT_MAX_BLOCK = 2097152      # 2M
 
 
+def is_hccs_d2d_combo(transport: str, bench_type: str) -> bool:
+    im, tm, _op = TYPE_MAP[bench_type]
+    return transport != "hccs" or (im == "device" and tm == "device")
+
+
 def get_local_ip() -> str:
     """Auto-detect local non-loopback IP by connecting a UDP socket."""
     try:
@@ -307,6 +312,14 @@ def _launch_single(args, bench_bin: str, devices: list[int]):
 # ------- Main entry -------
 
 def launch(args):
+    if not is_hccs_d2d_combo(args.transport, args.type):
+        print(
+            "[ERROR] transport=hccs only supports D2D (--type=D2rD or --type=rD2D); "
+            "use rdma or fabric_mem for host-involved directions.",
+            flush=True,
+        )
+        return -1
+
     bench_bin = args.bench_bin or find_bench_bin()
     if not Path(bench_bin).exists():
         print(f"[ERROR] bench binary not found: {bench_bin}", flush=True)

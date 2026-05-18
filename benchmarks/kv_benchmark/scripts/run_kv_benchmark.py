@@ -83,7 +83,7 @@ def parse_args():
     )
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument(
-        "--transport", choices=["hccs", "rdma", "fabric_mem"], default="fabric_mem"
+        "--transport", choices=["rdma", "fabric_mem"], default="fabric_mem"
     )
     parser.add_argument("--base_port", type=int, default=19000)
     parser.add_argument("--listen_host", default="127.0.0.1")

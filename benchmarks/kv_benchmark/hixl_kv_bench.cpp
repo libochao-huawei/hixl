@@ -241,7 +241,8 @@ KvBenchConfig ParseConfig(int argc, char **argv) {
 }
 
 bool ValidateConfig(const KvBenchConfig &cfg) {
-  const bool transport_ok = cfg.transport == "hccs" || cfg.transport == "rdma" || cfg.transport == "fabric_mem";
+  // KV workload uses host-side pool memory; HCCS comm path is restricted to D2D-only in benchmarks.
+  const bool transport_ok = cfg.transport == "rdma" || cfg.transport == "fabric_mem";
   const bool workload_ok =
       !(cfg.key_counts.empty() && cfg.token_lengths.empty()) && (cfg.key_counts.empty() || cfg.token_lengths.empty());
   return cfg.num_processes > 0U && cfg.rank < cfg.num_processes && cfg.batch_size > 0U && cfg.repeat > 0U &&
@@ -793,6 +794,10 @@ int main(int argc, char **argv) {
   std::vector<RankMeta> metas;
   try {
     cfg = ParseConfig(argc, argv);
+    if (cfg.transport == "hccs") {
+      std::cerr << "[ERROR] KV benchmark does not support transport=hccs (HCCS is D2D-only; use rdma or fabric_mem)\n";
+      return 1;
+    }
     if (!ValidateConfig(cfg)) {
       std::cerr << "[ERROR] invalid kv benchmark config\n";
       return 1;

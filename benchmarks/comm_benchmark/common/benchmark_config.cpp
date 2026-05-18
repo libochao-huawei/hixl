@@ -600,7 +600,7 @@ void BenchmarkConfigParser::PrintUsage(FILE *out) {
           "  --role|-r            target|initiator|client|server\n"
           "  --metadata           p2p|http (default p2p)\n"
           "  --benchmark_group    result grouping name (default default)\n"
-          "  --transport          hccs|rdma|fabric_mem (fabric_mem adds EnableUseFabricMem=1)\n"
+          "  --transport          hccs|rdma|fabric_mem (hccs: D2D only; fabric_mem adds EnableUseFabricMem=1)\n"
           "  --initiator_memory   host|device (default device) — initiator-side buffer\n"
           "  --target_memory      host|device (default device) — target-side buffer\n"
           "  --op_type            read|write|mix (alias of --transfer_op)\n"
@@ -846,6 +846,20 @@ bool ValidateTransport(const std::string &transport) {
   return true;
 }
 
+bool ValidateHccsMemoryCombination(const BenchmarkConfig *cfg) {
+  if (cfg->transport != "hccs") {
+    return true;
+  }
+  if (cfg->initiator_memory_type == "device" && cfg->target_memory_type == "device") {
+    return true;
+  }
+  fprintf(stderr,
+          "[ERROR] HCCS transport only supports D2D (initiator_memory=device, target_memory=device); "
+          "got initiator_memory=%s target_memory=%s (use rdma or fabric_mem for host-involved transfers)\n",
+          cfg->initiator_memory_type.c_str(), cfg->target_memory_type.c_str());
+  return false;
+}
+
 bool ValidateBlockSteps(const BenchmarkConfig *cfg) {
   for (uint32_t i = 0; i < cfg->block_steps; ++i) {
     if (cfg->block_size > (UINT64_MAX >> i)) {
@@ -929,6 +943,9 @@ bool BenchmarkConfigParser::Validate(BenchmarkConfig *cfg) {
   if (!ValidateMetadata(cfg->metadata) || !ValidateTransport(cfg->transport) ||
       !ValidateMemoryTypeValue(cfg->initiator_memory_type) ||
       !ValidateMemoryTypeValue(cfg->target_memory_type)) {
+    return false;
+  }
+  if (!ValidateHccsMemoryCombination(cfg)) {
     return false;
   }
   if (!ValidateBlockSteps(cfg)) {
