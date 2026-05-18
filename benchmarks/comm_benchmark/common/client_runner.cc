@@ -27,6 +27,7 @@
 #include "fabric_mem/fabric_mem_transfer_service.h"
 
 using hixl::AscendString;
+using hixl::FabricMemTransferService;
 using hixl::Hixl;
 using hixl::MemDesc;
 using hixl::MemHandle;
@@ -81,7 +82,7 @@ void ReleaseHixlResources(Hixl &hixl_engine, bool need_register, bool is_host, c
     for (const auto &element : buffers) {
       if (element != nullptr) {
         if (transport == "fabric_mem") {
-          (void)adxl::FabricMemTransferService::FreeMem(element);
+          (void)FabricMemTransferService::FreeMem(element);
         } else {
           (void)aclrtFreeHost(element);
         }
@@ -101,7 +102,7 @@ int32_t AllocLocalBuffer(const BenchmarkConfig &cfg, bool *is_host, void **out_s
   *is_host = (cfg.initiator_memory_type == "host");
   void *tmp = nullptr;
   if (*is_host && cfg.transport == "fabric_mem") {
-    auto status = adxl::FabricMemTransferService::MallocMem(adxl::MEM_HOST, alloc_size, &tmp);
+    auto status = FabricMemTransferService::MallocMem(MemType::MEM_HOST, alloc_size, &tmp);
     if (status != SUCCESS) {
       std::fprintf(stderr, "[ERROR] client fabric_mem alloc failed status=%d\n", static_cast<int>(status));
       return -1;

@@ -18,6 +18,7 @@
 #include "fabric_mem/fabric_mem_transfer_service.h"
 
 using hixl::AscendString;
+using hixl::FabricMemTransferService;
 using hixl::MemDesc;
 using hixl::MemType;
 using hixl::SUCCESS;
@@ -66,7 +67,7 @@ void ReleaseHixlResources(Hixl &hixl_engine, bool need_register, bool is_host,
     for (const auto &buffer : buffers) {
       if (buffer != nullptr) {
         if (transport == "fabric_mem") {
-          (void)adxl::FabricMemTransferService::FreeMem(buffer);
+          (void)FabricMemTransferService::FreeMem(buffer);
         } else {
           (void)aclrtFreeHost(buffer);
         }
@@ -115,7 +116,7 @@ void ServerRunner::ReleaseServerResources() {
   if (buffer_allocated_) {
     if (is_host_) {
       if (cfg_.transport == "fabric_mem") {
-        (void)adxl::FabricMemTransferService::FreeMem(buffer_);
+        (void)FabricMemTransferService::FreeMem(buffer_);
       } else {
         (void)aclrtFreeHost(buffer_);
       }
@@ -148,7 +149,7 @@ bool ServerRunner::AllocServerBufferForRun() {
   is_host_ = (cfg_.target_memory_type == "host");
   const size_t alloc_size = static_cast<size_t>(cfg_.total_size);
   if (is_host_ && cfg_.transport == "fabric_mem") {
-    auto status = adxl::FabricMemTransferService::MallocMem(adxl::MEM_HOST, alloc_size, &buffer_);
+    auto status = FabricMemTransferService::MallocMem(MemType::MEM_HOST, alloc_size, &buffer_);
     if (status != SUCCESS) {
       std::printf("[ERROR] server fabric_mem alloc failed status=%d\n", static_cast<int>(status));
       return false;

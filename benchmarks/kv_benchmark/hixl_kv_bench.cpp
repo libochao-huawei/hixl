@@ -49,6 +49,7 @@ constexpr std::int32_t kDefaultConnectTimeoutMs = 60000;
 constexpr std::int32_t kDefaultTransferTimeoutMs = 600000;
 
 using hixl::AscendString;
+using hixl::FabricMemTransferService;
 using hixl::Hixl;
 using hixl::MemDesc;
 using hixl::MemHandle;
@@ -461,7 +462,8 @@ void Barrier(const KvBenchConfig &cfg, const std::string &name) {
 
 void AllocHostBuffer(const KvBenchConfig &cfg, std::uint64_t size, void **buffer) {
   if (cfg.transport == "fabric_mem") {
-    const auto status = adxl::FabricMemTransferService::MallocMem(adxl::MEM_HOST, static_cast<size_t>(size), buffer);
+    const auto status =
+        FabricMemTransferService::MallocMem(MemType::MEM_HOST, static_cast<size_t>(size), buffer);
     if (status != SUCCESS) {
       throw std::runtime_error("fabric_mem host allocation failed");
     }
@@ -478,7 +480,7 @@ void FreeHostBuffer(const KvBenchConfig &cfg, void *buffer) {
     return;
   }
   if (cfg.transport == "fabric_mem") {
-    (void)adxl::FabricMemTransferService::FreeMem(buffer);
+    (void)FabricMemTransferService::FreeMem(buffer);
   } else {
     (void)aclrtFreeHost(buffer);
   }
