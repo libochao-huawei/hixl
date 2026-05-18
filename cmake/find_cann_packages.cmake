@@ -12,8 +12,7 @@ include(cmake/function.cmake)
 find_package_if_target_not_exists(securec MODULE REQUIRED)
 
 if (NOT ENABLE_TEST)
-    find_package_if_target_not_exists(slog MODULE REQUIRED)
-    find_package_if_target_not_exists(runtime MODULE REQUIRED)
+    find_package_if_target_not_exists(unified_dlog MODULE REQUIRED)
     find_package_if_target_not_exists(mmpa MODULE REQUIRED)
     find_package_if_target_not_exists(msprof MODULE REQUIRED)
     find_package_if_target_not_exists(hccl MODULE REQUIRED)
@@ -21,6 +20,7 @@ if (NOT ENABLE_TEST)
     find_package_if_target_not_exists(runtime MODULE REQUIRED)
     find_package_if_target_not_exists(metadef MODULE REQUIRED)
     find_package_if_target_not_exists(ascend_hal MODULE REQUIRED)
+    find_package_if_target_not_exists(error_manager MODULE REQUIRED)
 else ()
     add_library(hccl_headers INTERFACE)
     target_include_directories(hccl_headers INTERFACE
@@ -55,6 +55,12 @@ else ()
 
     add_library(metadef_headers INTERFACE)
     target_include_directories(metadef_headers INTERFACE
+        ${CANN_INSTALL_PATH}/include
+        ${CANN_INSTALL_PATH}/include/external
+    )
+
+    add_library(error_manager_headers INTERFACE)
+    target_include_directories(error_manager_headers INTERFACE
         ${CANN_INSTALL_PATH}/include
         ${CANN_INSTALL_PATH}/include/external
     )
