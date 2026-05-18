@@ -17,9 +17,9 @@
 extern "C" {
 #endif
 
-uint32_t HixlBatchPut(HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list);
+uint32_t HixlBatchPut(void *param);
 
-uint32_t HixlBatchGet(HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list);
+uint32_t HixlBatchGet(void *param);
 #ifdef __cplusplus
 }
 #endif

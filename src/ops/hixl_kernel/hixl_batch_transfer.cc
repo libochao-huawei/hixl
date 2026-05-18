@@ -106,10 +106,17 @@ uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param, HixlOneS
   return SUCCESS;
 }
 
-uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
+uint32_t HixlBatchTransfer(bool is_read, void *transfer_param) {
+  HixlOneSideOpParam *param = static_cast<HixlOneSideOpParam *>(transfer_param);
+  HixlOneSideOpDesc *op_list = reinterpret_cast<HixlOneSideOpDesc*>(param + 1);
   HIXL_LOGI("[HixlBatchPutAndGet] HixlBatchTransfer %s start.", is_read ? "read" : "write");
   if (param == nullptr) {
     HIXL_LOGE(PARAM_INVALID, "[HixlBatchPutAndGet] param is nullptr");
+    return PARAM_INVALID;
+  }
+
+  if (op_list == nullptr) {
+    HIXL_LOGE(PARAM_INVALID, "[HixlBatchPutAndGet] op_list is nullptr");
     return PARAM_INVALID;
   }
 
@@ -152,8 +159,8 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param, HixlOneSideO
 }  // namespace
 }  // namespace hixl
 extern "C" {
-uint32_t HixlBatchPut(HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
-  uint32_t ret = hixl::HixlBatchTransfer(false, param, op_list);
+uint32_t HixlBatchPut(void *param) {
+  uint32_t ret = hixl::HixlBatchTransfer(false, param);
   if (ret != 0) {
     HIXL_LOGE(hixl::FAILED, "[HixlBatchPut] HixlBatchPut failed, ret is %u", ret);
     return hixl::FAILED;
@@ -161,8 +168,8 @@ uint32_t HixlBatchPut(HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
   return ret;
 }
 
-uint32_t HixlBatchGet(HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
-  uint32_t ret = hixl::HixlBatchTransfer(true, param, op_list);
+uint32_t HixlBatchGet(void *param) {
+  uint32_t ret = hixl::HixlBatchTransfer(true, param);
   if (ret != 0) {
     HIXL_LOGE(hixl::FAILED, "[HixlBatchGet] HixlBatchGet failed, ret is %u", ret);
     return hixl::FAILED;
