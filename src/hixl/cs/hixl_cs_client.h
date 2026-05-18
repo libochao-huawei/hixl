@@ -125,11 +125,8 @@ class HixlCSClient {
   Status ResolveNotifyDeviceAddress(aclrtNotify notify, uint64_t &notify_addr, uint32_t &notify_len);
   Status RegisterNotifyMemForAllSlots(const std::vector<TransferPool::SlotHandle> &slots);
   Status LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handle,
-                           const HixlOneSideOpParam &param,
-                           const void *remote_flag);
-  Status LaunchDeviceKernelAsync(bool is_get, DeviceCompleteHandle &handle,
-                                const HixlOneSideOpParam &param,
-                                const void *remote_flag);
+                            const HixlOneSideOpParam &param,
+                            bool wait_notify = true);
   void ReleaseLegacyHandlesLocked();
   void AbortAllPendingDeviceHandlesLocked();
   void ReleaseDeviceResourcesLocked();
@@ -137,6 +134,11 @@ class HixlCSClient {
   void ReleaseSharedSlotRef(std::shared_ptr<TransferPool::SlotHandle> &slot_ref);
   void CleanupActiveSlot();
   Status AllocateHostFlag(void *&host_flag) const;
+  Status AllocateDeviceDescBuf(DeviceCompleteHandle &handle, uint32_t total_list_num,
+                               const HixlOneSideOpDesc *desc_list);
+  Status BuildDeviceChunkParam(DeviceCompleteHandle &handle, uint32_t chunk_offset,
+                               uint32_t chunk_list_num, bool is_last_chunk,
+                               HixlOneSideOpParam &param);
 
   // 获取 context 切换 guard，用于对外接口的 context 管理
   std::unique_ptr<hixl::TemporaryRtContext> GetContextGuard() const;
