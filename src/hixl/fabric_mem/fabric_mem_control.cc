@@ -27,6 +27,7 @@ namespace hixl {
 namespace {
 constexpr uint32_t kBacklog = 256U;
 constexpr int32_t kPollTimeoutMs = 100;
+constexpr int32_t kRecvTimeoutMultiplier = 10;
 constexpr size_t kShareHandleDataSize = sizeof(aclrtMemFabricHandle{}.data);
 constexpr int32_t kShareHandleArrayCheckErrCode = 401;
 
@@ -95,35 +96,38 @@ Status FabricMemControlServer::Start(const std::string &listen_info, FabricMemSh
   int32_t port = 0;
   HIXL_CHK_STATUS_RET(ParseListenInfo(listen_info, ip, port), "Parse fabric mem listen info failed:%s",
                       listen_info.c_str());
+  auto state = state_;
   if (port <= 0) {
-    provider_ = std::move(provider);
+    std::lock_guard<std::mutex> lock(state->mutex);
+    state->provider = std::move(provider);
     HIXL_LOGI("FabricMemControlServer does not listen because port:%d.", port);
     return SUCCESS;
   }
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (running_.load(std::memory_order_acquire)) {
+  std::lock_guard<std::mutex> lock(state->mutex);
+  if (state->running.load(std::memory_order_acquire)) {
     return SUCCESS;
   }
   CtrlMsgPlugin::Initialize();
-  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Listen(ip, static_cast<uint32_t>(port), kBacklog, listen_fd_),
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Listen(ip, static_cast<uint32_t>(port), kBacklog, state->listen_fd),
                       "Fabric mem control listen failed, ip:%s, port:%d.", ip.c_str(), port);
-  provider_ = std::move(provider);
-  running_.store(true, std::memory_order_release);
-  worker_ = std::thread(&FabricMemControlServer::Run, this);
+  state->provider = std::move(provider);
+  state->running.store(true, std::memory_order_release);
+  worker_ = std::thread(&FabricMemControlServer::Run, state);
   HIXL_EVENT("FabricMemControlServer started, listen:%s:%d.", ip.c_str(), port);
   return SUCCESS;
 }
 
 void FabricMemControlServer::Stop() {
+  auto state = state_;
   {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!running_.load(std::memory_order_acquire) && listen_fd_ < 0) {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    if (!state->running.load(std::memory_order_acquire) && state->listen_fd < 0) {
       return;
     }
-    running_.store(false, std::memory_order_release);
-    if (listen_fd_ >= 0) {
-      (void)close(listen_fd_);
-      listen_fd_ = -1;
+    state->running.store(false, std::memory_order_release);
+    if (state->listen_fd >= 0) {
+      (void)close(state->listen_fd);
+      state->listen_fd = -1;
     }
   }
   if (worker_.joinable()) {
@@ -131,58 +135,73 @@ void FabricMemControlServer::Stop() {
   }
 }
 
-void FabricMemControlServer::Run() {
-  while (running_.load(std::memory_order_acquire)) {
+void FabricMemControlServer::Run(std::shared_ptr<State> state) {
+  while (state->running.load(std::memory_order_acquire)) {
+    int32_t listen_fd = -1;
+    {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      listen_fd = state->listen_fd;
+    }
+    if (listen_fd < 0) {
+      break;
+    }
     pollfd pfd{};
-    pfd.fd = listen_fd_;
+    pfd.fd = listen_fd;
     pfd.events = POLLIN;
     const int32_t ret = poll(&pfd, 1, kPollTimeoutMs);
     if (ret <= 0) {
       continue;
     }
     int32_t conn_fd = -1;
-    if (CtrlMsgPlugin::Accept(listen_fd_, conn_fd) != SUCCESS || conn_fd < 0) {
+    if (CtrlMsgPlugin::Accept(listen_fd, conn_fd) != SUCCESS || conn_fd < 0) {
       continue;
     }
     HIXL_MAKE_GUARD(close_conn, ([conn_fd]() { (void)close(conn_fd); }));
     (void)CtrlMsgPlugin::SetTcpNoDelay(conn_fd);
     (void)CtrlMsgPlugin::SetTcpKeepAlive(conn_fd);
-    (void)HandleConnection(conn_fd);
+    (void)HandleConnection(state, conn_fd);
   }
 }
 
-Status FabricMemControlServer::HandleConnection(int32_t fd) {
+Status FabricMemControlServer::HandleConnection(const std::shared_ptr<State> &state, int32_t fd) {
   CtrlMsgType msg_type{};
   std::string payload;
-  HIXL_CHK_STATUS_RET(RecvTypedMsg(fd, kPollTimeoutMs * 10, msg_type, payload), "Recv fabric mem request failed.");
+  HIXL_CHK_STATUS_RET(RecvTypedMsg(fd, kPollTimeoutMs * kRecvTimeoutMultiplier, msg_type, payload),
+                      "Recv fabric mem request failed.");
   switch (msg_type) {
     case CtrlMsgType::kGetFabricMemInfoReq:
-      return HandleGetFabricMemInfo(fd);
+      return HandleGetFabricMemInfo(state, fd);
     case CtrlMsgType::kSendNotifyReq:
-      return HandleSendNotify(payload);
+      return HandleSendNotify(state, payload);
     case CtrlMsgType::kGetNotifiesReq:
-      return HandleGetNotifies(fd);
+      return HandleGetNotifies(state, fd);
     default:
       HIXL_LOGE(PARAM_INVALID, "Unexpected fabric mem request type:%d.", static_cast<int32_t>(msg_type));
       return PARAM_INVALID;
   }
 }
 
-Status FabricMemControlServer::HandleGetFabricMemInfo(int32_t fd) {
+Status FabricMemControlServer::HandleGetFabricMemInfo(const std::shared_ptr<State> &state, int32_t fd) {
   std::vector<ShareHandleInfo> share_handles;
-  Status result = provider_(share_handles);
+  FabricMemShareHandleProvider provider;
+  {
+    std::lock_guard<std::mutex> lock(state->mutex);
+    provider = state->provider;
+  }
+  HIXL_CHK_BOOL_RET_STATUS(static_cast<bool>(provider), FAILED, "FabricMemControlServer provider is empty.");
+  Status result = provider(share_handles);
   HIXL_CHK_STATUS_RET(SendShareHandleResponse(fd, result, share_handles), "Send fabric mem response failed.");
   return result;
 }
 
-Status FabricMemControlServer::HandleSendNotify(const std::string &payload) {
+Status FabricMemControlServer::HandleSendNotify(const std::shared_ptr<State> &state, const std::string &payload) {
   try {
     auto json = nlohmann::json::parse(payload);
     NotifyDesc notify;
     notify.name = AscendString(json.at("name").get<std::string>().c_str());
     notify.notify_msg = AscendString(json.at("notify_msg").get<std::string>().c_str());
-    std::lock_guard<std::mutex> lock(notify_mutex_);
-    notify_queue_.emplace_back(std::move(notify));
+    std::lock_guard<std::mutex> lock(state->notify_mutex);
+    state->notify_queue.emplace_back(std::move(notify));
     return SUCCESS;
   } catch (const nlohmann::json::exception &e) {
     HIXL_LOGE(PARAM_INVALID, "Parse fabric mem notify failed:%s", e.what());
@@ -190,11 +209,11 @@ Status FabricMemControlServer::HandleSendNotify(const std::string &payload) {
   }
 }
 
-Status FabricMemControlServer::HandleGetNotifies(int32_t fd) {
+Status FabricMemControlServer::HandleGetNotifies(const std::shared_ptr<State> &state, int32_t fd) {
   std::vector<NotifyDesc> notifies;
   {
-    std::lock_guard<std::mutex> lock(notify_mutex_);
-    notifies.swap(notify_queue_);
+    std::lock_guard<std::mutex> lock(state->notify_mutex);
+    notifies.swap(state->notify_queue);
   }
   nlohmann::json response;
   response["result"] = SUCCESS;
@@ -212,8 +231,8 @@ Status FabricMemControlServer::HandleGetNotifies(int32_t fd) {
 }
 
 Status FabricMemControlServer::DequeueNotifies(std::vector<NotifyDesc> &notifies) {
-  std::lock_guard<std::mutex> lock(notify_mutex_);
-  notifies.swap(notify_queue_);
+  std::lock_guard<std::mutex> lock(state_->notify_mutex);
+  notifies.swap(state_->notify_queue);
   return SUCCESS;
 }
 
