@@ -10,7 +10,7 @@
 
 set(DT_COMMON_COMPILE_OPTION ${DT_COMMON_COMPILE_OPTION} -fno-access-control)
 
-add_subdirectory(depends/slog)
+add_subdirectory(depends/unified_dlog)
 add_subdirectory(depends/mmpa)
 add_subdirectory(depends/hccl)
 add_subdirectory(depends/error_manager)

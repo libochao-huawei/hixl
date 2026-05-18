@@ -44,7 +44,10 @@ file(GLOB LLM_SRC_LIST
 
 add_library(llm_datadist SHARED ${LLM_SRC_LIST})
 
-target_include_directories(llm_datadist PRIVATE ${INC_DIR})
+target_include_directories(llm_datadist PRIVATE 
+    ${INC_DIR}
+    ${HIXL_CODE_DIR}/src/hixl/proxy
+    )
 
 target_compile_options(llm_datadist PRIVATE
         -ftrapv
@@ -105,7 +108,10 @@ file(GLOB ADXL_SRC_LIST
 
 add_library(adxl_static STATIC ${ADXL_SRC_LIST})
 
-target_include_directories(adxl_static PRIVATE ${ADXL_INC_DIR})
+target_include_directories(adxl_static PRIVATE 
+    ${ADXL_INC_DIR}
+    ${HIXL_CODE_DIR}/src/hixl/proxy
+    )
 
 target_compile_options(adxl_static PRIVATE
         -ftrapv
