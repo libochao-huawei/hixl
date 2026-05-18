@@ -19,18 +19,18 @@ namespace hixl {
 namespace {
 constexpr uint32_t kMaxBatchSize = 1000;
 
-int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param) {
+int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
   std::vector<HcommBatchTransferDesc> descs(param->list_num);
   for (uint32_t i = 0; i < param->list_num; i++) {
     descs[i].transType = is_read ? HCOMM_TRANSFER_TYPE_READ : HCOMM_TRANSFER_TYPE_WRITE;
     if (is_read) {
-      descs[i].transferInfo.read.len = param->len_list[i];
-      descs[i].transferInfo.read.dst = param->dst_buf_addr_list[i];
-      descs[i].transferInfo.read.src = param->src_buf_addr_list[i];
+      descs[i].transferInfo.read.len = op_list[i].len;
+      descs[i].transferInfo.read.dst = op_list[i].local_buf;
+      descs[i].transferInfo.read.src = op_list[i].remote_buf;
     } else {
-      descs[i].transferInfo.write.len = param->len_list[i];
-      descs[i].transferInfo.write.dst = param->dst_buf_addr_list[i];
-      descs[i].transferInfo.write.src = param->src_buf_addr_list[i];
+      descs[i].transferInfo.write.len = op_list[i].len;
+      descs[i].transferInfo.write.dst = op_list[i].remote_buf;
+      descs[i].transferInfo.write.src = op_list[i].local_buf;
     }
   }
 
@@ -53,40 +53,38 @@ int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param) {
   return ret;
 }
 
-uint32_t TransferWithSingle(bool is_read, HixlOneSideOpParam *param) {	 
+uint32_t TransferWithSingle(bool is_read, HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
   if (is_read) {
-    // 批量提交读任务
     for (uint32_t i = 0; i < param->list_num; i++) {
       HIXL_LOGI(
           "[HixlBatchPutAndGet] HcommReadOnThread start, list_num=%u, i=%u, thread=%u, channel=%u, "
           "dst_buf_list[%u]=%p, src_buf_list[%u]=%p, len_list[%u]=%lu",
-          param->list_num, i, param->thread, param->channel, i, param->dst_buf_addr_list[i], i,
-          param->src_buf_addr_list[i], i, param->len_list[i]);
-      int32_t ret = HcommProxy::ReadOnThread(param->thread, param->channel, param->dst_buf_addr_list[i],
-                                            param->src_buf_addr_list[i], param->len_list[i]);
+          param->list_num, i, param->thread, param->channel, i, op_list[i].local_buf, i,
+          op_list[i].remote_buf, i, op_list[i].len);
+      int32_t ret = HcommProxy::ReadOnThread(param->thread, param->channel, op_list[i].local_buf,
+                                            op_list[i].remote_buf, op_list[i].len);
       if (ret != 0) {
         HIXL_LOGE(FAILED,
                   "HcommReadOnThread failed. The address information is as follows:dst_buf:%p, scr_buf:%p, buf_len:%u, "
                   "ret is %d.",
-                  param->dst_buf_addr_list[i], param->src_buf_addr_list[i], param->len_list[i], ret);
+                  op_list[i].local_buf, op_list[i].remote_buf, op_list[i].len, ret);
         return FAILED;
       }
     }
   } else {
-    // 批量提交写任务
     for (uint32_t i = 0; i < param->list_num; i++) {
       HIXL_LOGI(
           "[HixlBatchPutAndGet] HcommWriteOnThread start, list_num=%u, i=%u, thread=%u, channel=%u, "
           "dst_buf_list[%u]=%p, src_buf_list[%u]=%p, len_list[%u]=%lu",
-          param->list_num, i, param->thread, param->channel, i, param->dst_buf_addr_list[i], i,
-          param->src_buf_addr_list[i], i, param->len_list[i]);
-      int32_t ret = HcommProxy::WriteOnThread(param->thread, param->channel, param->dst_buf_addr_list[i],
-                                              param->src_buf_addr_list[i], param->len_list[i]);
+          param->list_num, i, param->thread, param->channel, i, op_list[i].remote_buf, i,
+          op_list[i].local_buf, i, op_list[i].len);
+      int32_t ret = HcommProxy::WriteOnThread(param->thread, param->channel, op_list[i].remote_buf,
+                                              op_list[i].local_buf, op_list[i].len);
       if (ret != 0) {
         HIXL_LOGE(FAILED,
                   "HcommWriteOnThread failed. The address information is as follows:dst_buf:%p, scr_buf:%p, "
                   "buf_len:%u, ret is %d.",
-                  param->dst_buf_addr_list[i], param->src_buf_addr_list[i], param->len_list[i], ret);
+                  op_list[i].remote_buf, op_list[i].local_buf, op_list[i].len, ret);
         return FAILED;
       }
     }
@@ -94,11 +92,11 @@ uint32_t TransferWithSingle(bool is_read, HixlOneSideOpParam *param) {
   return SUCCESS;
 }
 
-uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param) {
-  int32_t batch_ret = TransferWithBatch(is_read, param);
+uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
+  int32_t batch_ret = TransferWithBatch(is_read, param, op_list);
   if (batch_ret == HCCL_E_NOT_SUPPORT) {
     HIXL_LOGI("[HixlBatchTransfer] HcommBatchTransferOnThread not supported, fallback to single calls");
-    return TransferWithSingle(is_read, param);
+    return TransferWithSingle(is_read, param, op_list);
   }
   if (batch_ret != 0) {
     HIXL_LOGE(FAILED, "HcommBatchTransferOnThread failed, ret=%d", batch_ret);
@@ -108,7 +106,7 @@ uint32_t HixlBatchTransferTask(bool is_read, HixlOneSideOpParam *param) {
   return SUCCESS;
 }
 
-uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
+uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
   HIXL_LOGI("[HixlBatchPutAndGet] HixlBatchTransfer %s start.", is_read ? "read" : "write");
   if (param == nullptr) {
     HIXL_LOGE(PARAM_INVALID, "[HixlBatchPutAndGet] param is nullptr");
@@ -119,7 +117,7 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
   int32_t ret = HcommProxy::BatchModeStart(kBatchTag);
   HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommBatchModeStart failed, ret is %d", ret);
 
-  ret = HixlBatchTransferTask(is_read, param);
+  ret = HixlBatchTransferTask(is_read, param, op_list);
   HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HixlBatchTransferTask failed, ret is %d", ret);
 
   ret = HcommProxy::ChannelFenceOnThread(param->thread, param->channel);
@@ -154,8 +152,8 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
 }  // namespace
 }  // namespace hixl
 extern "C" {
-uint32_t HixlBatchPut(HixlOneSideOpParam *param) {
-  uint32_t ret = hixl::HixlBatchTransfer(false, param);
+uint32_t HixlBatchPut(HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
+  uint32_t ret = hixl::HixlBatchTransfer(false, param, op_list);
   if (ret != 0) {
     HIXL_LOGE(hixl::FAILED, "[HixlBatchPut] HixlBatchPut failed, ret is %u", ret);
     return hixl::FAILED;
@@ -163,8 +161,8 @@ uint32_t HixlBatchPut(HixlOneSideOpParam *param) {
   return ret;
 }
 
-uint32_t HixlBatchGet(HixlOneSideOpParam *param) {
-  uint32_t ret = hixl::HixlBatchTransfer(true, param);
+uint32_t HixlBatchGet(HixlOneSideOpParam *param, HixlOneSideOpDesc *op_list) {
+  uint32_t ret = hixl::HixlBatchTransfer(true, param, op_list);
   if (ret != 0) {
     HIXL_LOGE(hixl::FAILED, "[HixlBatchGet] HixlBatchGet failed, ret is %u", ret);
     return hixl::FAILED;
