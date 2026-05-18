@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -37,20 +38,25 @@ class FabricMemControlServer {
   Status DequeueNotifies(std::vector<NotifyDesc> &notifies);
 
  private:
-  void Run();
-  Status HandleConnection(int32_t fd);
-  Status HandleGetFabricMemInfo(int32_t fd);
-  Status HandleSendNotify(const std::string &payload);
-  Status HandleGetNotifies(int32_t fd);
-  Status SendShareHandleResponse(int32_t fd, Status result, const std::vector<ShareHandleInfo> &share_handles);
+  struct State {
+    std::mutex mutex;
+    std::mutex notify_mutex;
+    std::atomic<bool> running{false};
+    int32_t listen_fd{-1};
+    FabricMemShareHandleProvider provider;
+    std::vector<NotifyDesc> notify_queue;
+  };
 
-  std::mutex mutex_;
-  std::mutex notify_mutex_;
-  std::atomic<bool> running_{false};
-  int32_t listen_fd_{-1};
+  static void Run(std::shared_ptr<State> state);
+  static Status HandleConnection(const std::shared_ptr<State> &state, int32_t fd);
+  static Status HandleGetFabricMemInfo(const std::shared_ptr<State> &state, int32_t fd);
+  static Status HandleSendNotify(const std::shared_ptr<State> &state, const std::string &payload);
+  static Status HandleGetNotifies(const std::shared_ptr<State> &state, int32_t fd);
+  static Status SendShareHandleResponse(int32_t fd, Status result,
+                                        const std::vector<ShareHandleInfo> &share_handles);
+
+  std::shared_ptr<State> state_{std::make_shared<State>()};
   std::thread worker_;
-  FabricMemShareHandleProvider provider_;
-  std::vector<NotifyDesc> notify_queue_;
 };
 
 class FabricMemControlClient {
