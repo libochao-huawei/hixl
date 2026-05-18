@@ -16,7 +16,7 @@
 #include "common/msg_handler_plugin.h"
 #include "hccl/hccl_adapter.h"
 #include "common/llm_utils.h"
-#include "channel.h"
+#include "comm_channel.h"
 #include "common/llm_checker.h"
 #include "common/llm_scope_guard.h"
 #include "common/def_types.h"
@@ -607,7 +607,7 @@ Status ChannelMsgHandler::Disconnect(const std::string &remote_engine, int32_t t
                  }));
   auto prepare_ret = PrepareDisconnect(remote_engine, timeout_in_millis, conn_fd);
   if (prepare_ret == NOT_CONNECTED) {
-    LLMEVENT("Channel does not exist or is already disconnected, channel_id:%s", remote_engine.c_str());
+    LLMEVENT("CommChannel does not exist or is already disconnected, channel_id:%s", remote_engine.c_str());
     return NOT_CONNECTED;
   }
   ADXL_CHK_STATUS_RET(prepare_ret, "Failed to prepare disconnect, remote engine:%s, timeout:%d ms.",
@@ -652,7 +652,7 @@ Status ChannelMsgHandler::SetupChannelManagerCallbacks() {
       item.channel_type = ChannelType::kClient;
       client_channel->SetDisconnecting(true);
     } else {
-      LLMLOGI("Channel %s not found for disconnect", channel_id.c_str());
+      LLMLOGI("CommChannel %s not found for disconnect", channel_id.c_str());
       return NOT_CONNECTED;
     }
     item.timeout_ms = timeout_ms;
@@ -806,7 +806,7 @@ Status ChannelMsgHandler::ProcessEviction(const EvictItem &item) {
 Status ChannelMsgHandler::ProcessServerEviction(const std::string &channel_id, ChannelPtr channel) {
   int32_t fd = channel->GetFd();
   if (fd < 0) {
-    LLMLOGW("Channel %s has invalid fd, cannot send request disconnect", channel_id.c_str());
+    LLMLOGW("CommChannel %s has invalid fd, cannot send request disconnect", channel_id.c_str());
     return SUCCESS;
   }
   uint64_t req_id = next_req_id_.fetch_add(1ULL, std::memory_order_acq_rel);

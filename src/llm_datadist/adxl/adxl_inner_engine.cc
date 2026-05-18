@@ -398,7 +398,7 @@ Status AdxlInnerEngine::ConnectWhenTransfer(const AscendString &remote_engine, i
     auto elapsed =
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count();
     if (elapsed >= timeout_in_millis) {
-      LLMEVENT("Channel is still disconnecting after timeout, remote_engine: %s, timeout: %d",
+      LLMEVENT("CommChannel is still disconnecting after timeout, remote_engine: %s, timeout: %d",
                remote_engine.GetString(), timeout_in_millis);
       return FAILED;
     }

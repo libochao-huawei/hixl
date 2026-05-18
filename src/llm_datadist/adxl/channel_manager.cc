@@ -279,8 +279,8 @@ Status ChannelManager::HandleRequestDisconnectMessage(const ChannelPtr &channel,
     }
   } else if (!can_disconnect) {
     resp.error_code = static_cast<uint32_t>(FAILED);
-    resp.error_message = "Channel is busy";
-    LLMLOGI("Channel %s is busy, cannot disconnect. transfer_count=%d, disconnecting=%d", req_msg.channel_id.c_str(),
+    resp.error_message = "CommChannel is busy";
+    LLMLOGI("CommChannel %s is busy, cannot disconnect. transfer_count=%d, disconnecting=%d", req_msg.channel_id.c_str(),
             channel->GetTransferCount(), channel->IsDisconnecting());
   } else {
     resp.error_code = static_cast<uint32_t>(FAILED);
@@ -424,10 +424,10 @@ Status ChannelManager::CreateChannel(const ChannelInfo &channel_info, ChannelPtr
     std::lock_guard<std::mutex> lock(mutex_);
     const auto &it = channels_.find(std::make_pair(channel_info.channel_type, channel_info.channel_id));
     ADXL_CHK_BOOL_RET_STATUS(it == channels_.cend(), ALREADY_CONNECTED,
-                             "Channel already exists, channel_type = %d, channel id:%s",
+                             "CommChannel already exists, channel_type = %d, channel id:%s",
                              static_cast<int32_t>(channel_info.channel_type), channel_info.channel_id.c_str());
   }
-  ChannelPtr channel = llm::MakeShared<Channel>(channel_info);
+  ChannelPtr channel = llm::MakeShared<CommChannel>(channel_info);
   ADXL_CHECK_NOTNULL(channel);
   ADXL_CHK_STATUS_RET(channel->Initialize(), "Failed to init channel");
   channel->SetStreamPool(stream_pool_);
@@ -436,7 +436,7 @@ Status ChannelManager::CreateChannel(const ChannelInfo &channel_info, ChannelPtr
   auto key = std::make_pair(channel_info.channel_type, channel_info.channel_id);
   const auto &it = channels_.find(key);
   ADXL_CHK_BOOL_RET_STATUS(it == channels_.cend(), ALREADY_CONNECTED,
-                           "Channel already exists, channel_type = %d, channel id:%s",
+                           "CommChannel already exists, channel_type = %d, channel id:%s",
                            static_cast<int32_t>(channel_info.channel_type), channel_info.channel_id.c_str());
   (void)channels_.emplace(std::make_pair(channel_info.channel_type, channel_info.channel_id), channel);
   channel_ptr = channel;
