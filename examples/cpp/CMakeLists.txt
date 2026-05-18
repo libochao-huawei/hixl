@@ -63,6 +63,6 @@ foreach(target_name IN LISTS targets_list)
                 -lrt
             )
         endif()
-        target_link_ascend_hal(${target_name})
+        target_link_libraries(${target_name} PRIVATE ascend_hal)
     endif()
 endforeach()
