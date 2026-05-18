@@ -12,6 +12,7 @@
 
 #include <limits>
 #include <string>
+#include <unistd.h>
 #include <unordered_set>
 
 #include "acl/acl_rt.h"
@@ -187,8 +188,17 @@ Status FabricMemEngine::ConnectLocked(const AscendString &remote_engine, int32_t
   HIXL_CHK_BOOL_RET_STATUS(fabric_mem_remote_mems_.find(remote) == fabric_mem_remote_mems_.end(), ALREADY_CONNECTED,
                            "[FabricMemEngine] remote engine:%s is already connected.", remote.c_str());
   std::vector<ShareHandleInfo> share_handles;
-  HIXL_CHK_STATUS_RET(FabricMemControlClient::Fetch(remote, timeout_in_millis, share_handles),
-                      "[FabricMemEngine] Failed to fetch share handles from remote:%s.", remote.c_str());
+  Status ret = FabricMemControlClient::Fetch(remote, timeout_in_millis, share_handles);
+  if (ret != SUCCESS) {
+    HIXL_LOGI("[FabricMemEngine] New protocol failed, trying old protocol for remote:%s.", remote.c_str());
+    int32_t old_fd = -1;
+    ret = FabricMemControlClient::FetchOld(remote, timeout_in_millis, share_handles, old_fd);
+    HIXL_CHK_STATUS_RET(ret,
+                        "[FabricMemEngine] Both new and old protocols failed for remote:%s.", remote.c_str());
+    if (old_fd >= 0) {
+      legacy_connections_[remote] = LegacyConnection{old_fd};
+    }
+  }
   return CreateAndRegisterRemoteMemory(share_handles, remote);
 }
 
@@ -215,8 +225,23 @@ Status FabricMemEngine::EnsureConnected(const AscendString &remote_engine, int32
     }
   }
   std::vector<ShareHandleInfo> share_handles;
-  HIXL_CHK_STATUS_RET(FabricMemControlClient::Fetch(remote, timeout_in_millis, share_handles),
-                      "[FabricMemEngine] Failed to fetch share handles from remote:%s.", remote.c_str());
+  Status ret = FabricMemControlClient::Fetch(remote, timeout_in_millis, share_handles);
+  if (ret != SUCCESS) {
+    int32_t old_fd = -1;
+    ret = FabricMemControlClient::FetchOld(remote, timeout_in_millis, share_handles, old_fd);
+    HIXL_CHK_STATUS_RET(ret,
+                        "[FabricMemEngine] Both protocols failed for remote:%s.", remote.c_str());
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (fabric_mem_remote_mems_.find(remote) != fabric_mem_remote_mems_.end()) {
+      if (old_fd >= 0) {
+        (void)close(old_fd);
+      }
+      return SUCCESS;
+    }
+    if (old_fd >= 0) {
+      legacy_connections_[remote] = LegacyConnection{old_fd};
+    }
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   if (fabric_mem_remote_mems_.find(remote) != fabric_mem_remote_mems_.end()) {
     return SUCCESS;
@@ -245,6 +270,13 @@ Status FabricMemEngine::DisconnectLocked(const AscendString &remote_engine, int3
   }
   fabric_mem_statistic_.RemoveStatisticChannel(FabricMemStatistic::GetClientStatisticChannelId(remote));
   fabric_mem_remote_mems_.erase(it);
+  auto legacy_it = legacy_connections_.find(remote);
+  if (legacy_it != legacy_connections_.end()) {
+    if (legacy_it->second.fd >= 0) {
+      (void)close(legacy_it->second.fd);
+    }
+    legacy_connections_.erase(legacy_it);
+  }
   return SUCCESS;
 }
 
@@ -257,6 +289,12 @@ void FabricMemEngine::Disconnect() {
     }
   }
   fabric_mem_remote_mems_.clear();
+  for (auto &item : legacy_connections_) {
+    if (item.second.fd >= 0) {
+      (void)close(item.second.fd);
+    }
+  }
+  legacy_connections_.clear();
 }
 
 Status FabricMemEngine::BuildTransferContextLocked(const std::string &remote_engine,
@@ -364,6 +402,12 @@ void FabricMemEngine::CleanupFabricMemLocked() {
     fabric_mem_control_server_.reset();
   }
   fabric_mem_remote_mems_.clear();
+  for (auto &item : legacy_connections_) {
+    if (item.second.fd >= 0) {
+      (void)close(item.second.fd);
+    }
+  }
+  legacy_connections_.clear();
   if (fabric_mem_transfer_service_ != nullptr) {
     fabric_mem_transfer_service_->Finalize();
     fabric_mem_transfer_service_.reset();

@@ -13,7 +13,9 @@
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <mutex>
+#include <set>
 #include <thread>
 #include <vector>
 
@@ -37,26 +39,36 @@ class FabricMemControlServer {
   Status DequeueNotifies(std::vector<NotifyDesc> &notifies);
 
  private:
-  void Run();
-  Status HandleConnection(int32_t fd);
-  Status HandleGetFabricMemInfo(int32_t fd);
-  Status HandleSendNotify(const std::string &payload);
-  Status HandleGetNotifies(int32_t fd);
-  Status SendShareHandleResponse(int32_t fd, Status result, const std::vector<ShareHandleInfo> &share_handles);
+  struct State {
+    std::mutex mutex;
+    std::mutex notify_mutex;
+    std::atomic<bool> running{false};
+    int32_t listen_fd{-1};
+    FabricMemShareHandleProvider provider;
+    std::vector<NotifyDesc> notify_queue;
+    std::set<int32_t> keepalive_fds;
+  };
 
-  std::mutex mutex_;
-  std::mutex notify_mutex_;
-  std::atomic<bool> running_{false};
-  int32_t listen_fd_{-1};
+  static void Run(std::shared_ptr<State> state);
+  static Status HandleConnection(const std::shared_ptr<State> &state, int32_t fd);
+  static Status HandleGetFabricMemInfo(const std::shared_ptr<State> &state, int32_t fd);
+  static Status HandleSendNotify(const std::shared_ptr<State> &state, const std::string &payload);
+  static Status HandleGetNotifies(const std::shared_ptr<State> &state, int32_t fd);
+  static Status HandleOldConnectRequest(const std::shared_ptr<State> &state, int32_t fd);
+  static Status HandleOldDisconnectRequest(const std::shared_ptr<State> &state, int32_t fd);
+  static Status SendShareHandleResponse(int32_t fd, Status result,
+                                        const std::vector<ShareHandleInfo> &share_handles);
+
+  std::shared_ptr<State> state_{std::make_shared<State>()};
   std::thread worker_;
-  FabricMemShareHandleProvider provider_;
-  std::vector<NotifyDesc> notify_queue_;
 };
 
 class FabricMemControlClient {
  public:
   static Status Fetch(const std::string &remote_engine, int32_t timeout_ms,
                       std::vector<ShareHandleInfo> &share_handles);
+  static Status FetchOld(const std::string &remote_engine, int32_t timeout_ms,
+                         std::vector<ShareHandleInfo> &share_handles, int32_t &conn_fd);
   static Status SendNotify(const std::string &remote_engine, const NotifyDesc &notify, int32_t timeout_ms);
   static Status FetchNotifies(const std::string &remote_engine, int32_t timeout_ms, std::vector<NotifyDesc> &notifies);
 };
