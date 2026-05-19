@@ -13,6 +13,7 @@
 
 #include <mutex>
 #include <map>
+#include <atomic>
 #include "engine.h"
 #include "client_manager.h"
 #include "hixl_server.h"
@@ -153,7 +154,11 @@ class HixlEngine : public hixl::Engine {
   Status InitServer();
   Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
   Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
+  Status ParseAutoConnectConfig(const std::map<AscendString, AscendString> &options);
+  Status AutoConnect(const AscendString &remote_engine, int32_t timeout_in_millis);
+  Status AutoDisconnect(const AscendString &remote_engine, int32_t timeout_in_millis);
   Status GetTransferStatusInner(const TransferReq &req, TransferStatus &status);
+
   std::mutex mutex_;
 
   std::atomic<bool> is_initialized_;
@@ -166,6 +171,8 @@ class HixlEngine : public hixl::Engine {
   uint8_t rdma_service_level_{kRdmaServiceLevel};
   std::mutex req_map_mutex_;
   std::map<uint64_t, TransferInfo> req_map_;
+
+  bool auto_connect_{false};
 };
 }  // namespace hixl
 
