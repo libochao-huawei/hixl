@@ -257,6 +257,10 @@ void TransferPool::AbortSlotByIndexLocked(uint32_t slot_index) {
 
   {
     hixl::TemporaryRtContext guard(slot.ctx);
+    if (slot.stream != nullptr) {
+      HIXL_CHK_ACL(aclrtStreamAbort(slot.stream), "[TransferPool] aclrtStreamAbort failed");
+    }
+
     if (slot.notify != nullptr) {
       aclrtNotify *notify_ptr = &slot.notify;
       const aclError reset_ret = aclrtNotifyBatchReset(notify_ptr, static_cast<size_t>(1));
@@ -266,14 +270,11 @@ void TransferPool::AbortSlotByIndexLocked(uint32_t slot_index) {
       }
     }
 
-    if (slot.thread != 0U) {
-      HIXL_CHK_ACL(HcommProxy::ThreadFree(&slot.thread, 1U), "HcommThreadFree failed");
-      slot.thread = 0U;
-    }
-
-    if (slot.stream != nullptr) {
-      HIXL_CHK_ACL(aclrtStreamAbort(slot.stream), "[TransferPool] aclrtStreamAbort failed");
-    }
+  }
+  if (slot.thread != 0U) {
+    const hixl::TemporaryRtContext rts_guard(rts_context_);
+    HIXL_CHK_ACL(HcommProxy::ThreadFree(&slot.thread, 1U), "HcommThreadFree failed");
+    slot.thread = 0U;
   }
   if (slot.ctx != nullptr) {
     HIXL_LOGI("[TransferPool] destroying context %p in AbortSlotByIndexLocked", slot.ctx);
@@ -368,6 +369,7 @@ Status TransferPool::EnsureThreadLocked(Slot &slot) const {
   if (slot.thread != 0U) {
     return SUCCESS;
   }
+  const hixl::TemporaryRtContext guard(rts_context_);
   uint32_t notify_num = kDefaultNotifyNumPerThread;
   HIXL_CHK_HCCL_RET(HcommProxy::ThreadAlloc(kDefaultEngine, kDefaultThreadNum, &notify_num, &slot.thread));
   return SUCCESS;
@@ -393,10 +395,11 @@ void TransferPool::DestroySlotLocked(Slot &slot) const {
       HIXL_CHK_ACL(aclrtDestroyNotify(slot.notify));
       slot.notify = nullptr;
     }
-    if (slot.thread != 0U) {
-      HIXL_CHK_ACL(HcommProxy::ThreadFree(&slot.thread, 1U), "HcommThreadFree failed");
-      slot.thread = 0U;
-    }
+  }
+  if (slot.thread != 0U) {
+    const hixl::TemporaryRtContext rts_guard(rts_context_);
+    HIXL_CHK_ACL(HcommProxy::ThreadFree(&slot.thread, 1U), "HcommThreadFree failed");
+    slot.thread = 0U;
   }
   if (slot.ctx != nullptr) {
     HIXL_LOGI("[TransferPool] destroying context %p", slot.ctx);
