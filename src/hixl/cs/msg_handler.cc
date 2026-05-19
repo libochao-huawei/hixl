@@ -27,9 +27,7 @@ Status MsgHandler::Initialize() {
   thread_pool_ = MakeUnique<ThreadPool>("cs_server", kMinThreadPoolSize, kMaxThreadPoolSize);
   HIXL_CHECK_NOTNULL(thread_pool_);
   running_ = true;
-
-  HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&ctx_));
-  HIXL_LOGI("aclrtGetCurrentContext ctx=%p", ctx_);
+  HIXL_CHK_STATUS_RET(aclrt_context_.GetCurrentContext(), "Failed to capture acl context");
   listener_ = std::thread([this]() {
     HandleMsg();
   });
@@ -92,9 +90,7 @@ void MsgHandler::HandleMsg() {
     }
     auto proc = it->second;
     (void)thread_pool_->commit([this, req, proc]() -> void {
-      if (ctx_ != nullptr) {
-        aclrtSetCurrentContext(ctx_);
-      }
+      HIXL_CHK_STATUS(aclrt_context_.SetCurrentContext(), "Failed to set acl context");
       (void)HandleMsg(req.first, req.second, proc);
     });
   }
