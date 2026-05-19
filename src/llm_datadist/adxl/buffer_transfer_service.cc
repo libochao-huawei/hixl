@@ -570,7 +570,7 @@ Status BufferTransferService::ProcessCopyWithAsync(const ChannelPtr &channel, co
       stream_pool->DestroyStream(stream);
     }
   }));
-  ADXL_CHK_BOOL_RET_STATUS(stream != nullptr, FAILED, "CommChannel is finalized.");
+  ADXL_CHK_BOOL_RET_STATUS(stream != nullptr, FAILED, "Channel is finalized.");
   auto start = std::chrono::steady_clock::now();
   for (size_t i = 0; i < src_addrs.size(); ++i) {
     ADXL_CHK_ACL_RET(aclrtMemcpyAsync(llm::ValueToPtr(dst_addrs[i]), sizes[i], llm::ValueToPtr(src_addrs[i]), sizes[i],

@@ -126,7 +126,7 @@ Status CommChannel::Finalize() {
   ClearNotifyMessages();
   disconnect_flag_.store(false, std::memory_order_release);
   transfer_count_.store(0, std::memory_order_release);
-  LLMLOGI("CommChannel finalized, channel_id:%s.", channel_info_.channel_id.c_str());
+  LLMLOGI("Channel finalized, channel_id:%s.", channel_info_.channel_id.c_str());
   return SUCCESS;
 }
 
@@ -189,7 +189,7 @@ Status CommChannel::TransferAsync(TransferOp operation, const std::vector<Transf
   const auto transfer_start = std::chrono::steady_clock::now();
   const auto transfer_bytes = GetTransferBytes(op_descs);
   const auto op_desc_count = GetTransferOpDescCount(op_descs);
-  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream), "CommChannel transfer async failed.");
+  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream), "Channel transfer async failed.");
   LLM_CHK_ACL_RET(aclrtCreateEvent(&event));
   LLM_CHK_ACL_RET(aclrtRecordEvent(event, stream));
   std::lock_guard<std::mutex> lock(transfer_reqs_mutex_);
@@ -253,7 +253,7 @@ Status CommChannel::GetTransferStatus(const TransferReq &req, TransferStatus &st
 
 Status CommChannel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs, aclrtStream stream) {
   ADXL_CHK_BOOL_RET_STATUS(channel_info_.comm != nullptr, FAILED,
-                           "CommChannel comm is null, channel may have been finalized, channel_id:%s.",
+                           "Channel comm is null, channel may have been finalized, channel_id:%s.",
                            channel_info_.channel_id.c_str());
   auto trans_func = [this, operation, &stream](HcclOneSideOpDesc *descs, uint32_t desc_num) -> Status {
     HcclResult ret = HCCL_SUCCESS;
@@ -276,7 +276,7 @@ Status CommChannel::TransferAsync(TransferOp operation, const std::vector<Transf
 Status CommChannel::TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                                          aclrtStream stream, uint64_t timeout) {
   ADXL_CHK_BOOL_RET_STATUS(channel_info_.comm != nullptr, FAILED,
-                           "CommChannel comm is null, channel may have been finalized, channel_id:%s.",
+                           "Channel comm is null, channel may have been finalized, channel_id:%s.",
                            channel_info_.channel_id.c_str());
   const auto start = std::chrono::steady_clock::now();
   std::vector<HcclOneSideOpDesc> hccl_op_descs;
@@ -385,7 +385,7 @@ bool CommChannel::IsHeartbeatTimeout() const {
     auto now = std::chrono::steady_clock::now();
     const auto cost = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_heartbeat_time_).count();
     if (cost >= timeout_in_millis_) {
-      LLMLOGW("CommChannel heartbeat timeout detected, cost:%ld ms, channel_id:%s", cost, channel_info_.channel_id.c_str());
+      LLMLOGW("Channel heartbeat timeout detected, cost:%ld ms, channel_id:%s", cost, channel_info_.channel_id.c_str());
       return true;
     }
   }
