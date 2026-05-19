@@ -20,6 +20,16 @@
 #include "common/ctrl_msg.h"
 
 namespace hixl {
+class OptionalAclContext {
+ public:
+  Status CaptureIfNeeded();
+  Status SetOnCurrentThreadIfNeeded() const;
+
+ private:
+  bool enabled_ = false;
+  aclrtContext ctx_ = nullptr;
+};
+
 class MsgHandler {
  public:
   ~MsgHandler();
@@ -40,7 +50,7 @@ class MsgHandler {
   std::unique_ptr<ThreadPool> thread_pool_ = nullptr;
   std::atomic<bool> running_{false};
   std::thread listener_;
-  aclrtContext ctx_ = nullptr;
+  OptionalAclContext acl_context_;
 };
 }  // namespace hixl
 
