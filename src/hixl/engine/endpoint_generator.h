@@ -23,6 +23,28 @@
 namespace hixl {
 class EndpointGenerator {
  public:
+  enum class SocType { kV2, kV3, kV5, kOther };
+
+  struct LocalDeviceResource {
+    SocType soc_type = SocType::kOther;
+    int32_t logic_device_id = -1;
+    int32_t phy_device_id = -1;
+    int64_t super_device_id = -1;
+    int64_t super_pod_id = -1;
+  };
+
+  enum class LocalRuntimeMode {
+    kHostOnly,
+    kDevice,
+  };
+
+  struct LocalRuntimeContext {
+    LocalRuntimeMode mode = LocalRuntimeMode::kHostOnly;
+    bool has_local_device_endpoint = false;
+    bool need_device_context = false;
+    LocalDeviceResource device_resource{};
+  };
+
   static Status BuildEndpointListFromOptions(const std::map<AscendString, AscendString> &options,
                                              const std::string &local_engine,
                                              std::string &local_comm_res,
@@ -33,10 +55,12 @@ class EndpointGenerator {
   static Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str);
   static Status DeserializeEndpointConfigList(const std::string &json_str,
                                               std::vector<EndpointConfig> &endpoint_list);
+  static bool HasLocalDeviceEndpoint(const std::vector<EndpointConfig> &endpoint_list);
+  static bool HasLocalDeviceEndpoint(const EndpointDesc *endpoint_list, uint32_t list_num);
+  static Status ResolveLocalRuntimeContext(const std::vector<EndpointConfig> &local_endpoints,
+                                           LocalRuntimeContext &ctx);
 
  private:
-  enum class SocType { kV2, kV3, kV5, kOther };
-
   struct EndpointInfo {
     std::string protocol;
     std::string comm_id;
@@ -60,16 +84,18 @@ class EndpointGenerator {
                                    const std::string &local_engine,
                                    std::string &net_instance_id);
   static Status ParseEndpointListFromLocalCommRes(const std::map<AscendString, AscendString> &options,
-                                                     std::string &local_comm_res,
-                                                     std::vector<EndpointConfig> &endpoint_list);
+                                                  std::string &local_comm_res,
+                                                  std::vector<EndpointConfig> &endpoint_list);
   static Status GenEndpointFromProtocolDesc(const std::map<AscendString, AscendString> &options,
-                                             std::vector<EndpointConfig> &endpoint_list);
+                                            std::vector<EndpointConfig> &endpoint_list);
   static Status BuildEndpointListFromLocalCommRes(const nlohmann::json &config,
                                                   bool has_endpoint_list,
                                                   const std::string &local_engine,
                                                   std::vector<EndpointConfig> &endpoint_list);
   static Status ParseLocalCommRes(const nlohmann::json &config, std::vector<EndpointConfig> &endpoint_list);
-  static Status FillDeviceInfoIfNeeded(std::vector<EndpointConfig> &endpoint_list);
+  static Status QueryLocalDeviceCount(uint32_t &count);
+  static Status QueryLocalDeviceResource(LocalDeviceResource &resource);
+  static Status FillDeviceInfoIfNeeded(const LocalDeviceResource &resource, std::vector<EndpointConfig> &endpoint_list);
   static Status BuildEndpointList(int32_t phy_device_id, std::vector<EndpointInfo> &endpoint_list);
   static Status BuildRoceEndpoint(int32_t phy_device_id, EndpointInfo &endpoint);
   static Status BuildHccsEndpoint(int32_t phy_device_id, EndpointInfo &endpoint);

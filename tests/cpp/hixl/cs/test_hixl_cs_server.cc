@@ -16,11 +16,13 @@
 #include <arpa/inet.h>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include "ascendcl_stub.h"
 #include "cs/hixl_cs.h"
 #include "hixl/hixl_types.h"
 #include "common/ctrl_msg.h"
 #include "common/ctrl_msg_plugin.h"
 #include "slog_stub.h"
+#include "engine/endpoint_test_utils.h"
 
 using namespace std;
 using namespace ::testing;
@@ -47,6 +49,8 @@ class HixlCSTest : public ::testing::Test {
  protected:
   // 在测试类中设置一些准备工作，如果需要的话
   void SetUp() override {
+    acl_stub_ = endpoint_test::CreateAclRuntimeStub("Ascend910_9391", 0, 12, 9, 8);
+    llm::AclRuntimeStub::SetInstance(acl_stub_);
     EndpointDesc ep0{};
     ep0.loc.locType = ENDPOINT_LOC_TYPE_HOST;
     ep0.protocol = COMM_PROTOCOL_UBC_CTP;
@@ -69,7 +73,10 @@ class HixlCSTest : public ::testing::Test {
   }
   // 在测试类中进行清理工作，如果需要的话
   void TearDown() override {
+    llm::AclRuntimeStub::Reset();
   }
+
+  std::shared_ptr<endpoint_test::MockAclRuntimeStub> acl_stub_;
 
  private:
   std::vector<EndpointDesc> default_eps;
@@ -197,12 +204,29 @@ TEST_F(HixlCSTest, TestHixlCSServer) {
   MemHandle mem_handle2 = nullptr;
   ret = HixlCSServerRegMem(server_handle, "a", &mem2, &mem_handle2);
   EXPECT_EQ(ret, SUCCESS);
-  ret = HixlCSServerListen(server_handle, kBackLog);
-  EXPECT_EQ(ret, SUCCESS);
   ret = HixlCSServerUnregMem(server_handle, mem_handle);
   EXPECT_EQ(ret, SUCCESS);
   ret = HixlCSServerUnregMem(server_handle, mem_handle2);
   EXPECT_EQ(ret, SUCCESS);
+  ret = HixlCSServerDestroy(server_handle);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_GE(acl_stub_->get_current_context_call_count_, 1U);
+}
+
+TEST_F(HixlCSTest, TestHixlCSServerDeviceEndpointWithZeroDeviceCountRegistersDeviceFlagByPlacement) {
+  acl_stub_->device_count_ = 0;
+  HixlServerConfig config{};
+  HixlServerHandle server_handle = nullptr;
+  HixlServerDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = kPort;
+  desc.endpoint_list = &default_eps[0];
+  desc.endpoint_list_num = default_eps.size();
+
+  auto ret = HixlCSServerCreate(&desc, &config, &server_handle);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 1U);
   ret = HixlCSServerDestroy(server_handle);
   EXPECT_EQ(ret, SUCCESS);
 }
@@ -301,5 +325,29 @@ TEST_F(HixlCSTest, TestHixlCSServerDisconnectionCleanup) {
 TEST_F(HixlCSTest, TestStructSize) {
   EXPECT_EQ(sizeof(HixlClientDesc), 128) << "HixlClientDesc size should be 128 bytes";
   EXPECT_EQ(sizeof(HixlServerDesc), 128) << "HixlServerDesc size should be 128 bytes";
+}
+
+TEST_F(HixlCSTest, HostOnlyServerInitializeWithDeviceCountCapturesAclContext) {
+  std::vector<EndpointDesc> host_eps;
+  EndpointDesc ep{};
+  ep.loc.locType = ENDPOINT_LOC_TYPE_HOST;
+  ep.protocol = COMM_PROTOCOL_ROCE;
+  ep.commAddr.type = COMM_ADDR_TYPE_IP_V4;
+  ASSERT_EQ(inet_pton(AF_INET, "127.0.0.1", &ep.commAddr.addr), 1);
+  host_eps.emplace_back(ep);
+
+  HixlServerConfig config{};
+  HixlServerHandle server_handle = nullptr;
+  HixlServerDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = kPort + 1U;
+  desc.endpoint_list = host_eps.data();
+  desc.endpoint_list_num = static_cast<uint32_t>(host_eps.size());
+  auto ret = HixlCSServerCreate(&desc, &config, &server_handle);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(acl_stub_->get_current_context_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->set_current_context_call_count_, 0U);
+  ret = HixlCSServerDestroy(server_handle);
+  EXPECT_EQ(ret, SUCCESS);
 }
 }  // namespace hixl

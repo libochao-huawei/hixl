@@ -9,6 +9,7 @@
  */
 
 #include "hixl_client.h"
+#include <algorithm>
 #include <cstring>
 #include <thread>
 #include "securec.h"
@@ -18,6 +19,7 @@
 #include "common/ctrl_msg.h"
 #include "common/ctrl_msg_plugin.h"
 #include "common/scope_guard.h"
+#include "cs/msg_handler.h"
 #include "engine/client_handler_factory.h"
 #include "engine/endpoint_generator.h"
 #include "engine/endpoint_matcher.h"
@@ -33,6 +35,12 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
     HIXL_LOGE(PARAM_INVALID, "The input local_endpoint_list is empty");
     return PARAM_INVALID;
   }
+  has_local_device_client_ = false;
+  runtime_ctx_resolved_ = false;
+  HIXL_CHK_STATUS_RET(EndpointGenerator::ResolveLocalRuntimeContext(local_endpoint_list, runtime_ctx_),
+                      "ResolveLocalRuntimeContext failed");
+  runtime_ctx_resolved_ = true;
+  // 创建socket，与server建链，发送请求，获取remote_endpoint_list
   std::vector<EndpointConfig> remote_endpoint_list;
   CtrlMsgPlugin::Initialize();
   {
@@ -61,9 +69,24 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
   HIXL_CHK_STATUS_RET(EndpointMatcher::MatchEndpoints(local_endpoint_list, remote_endpoint_list,
                                                       matched_pairs, handler_type),
                       "EndpointMatcher::MatchEndpoints failed");
-  HandlerCreateArgs args{server_ip_, server_port_, rdma_tc_, rdma_sl_, handler_type, std::move(matched_pairs)};
+  const bool has_device_pair = std::any_of(matched_pairs.begin(), matched_pairs.end(), [](const auto &pair) {
+    return pair.local.placement == kPlacementDevice;
+  });
+
+  HandlerCreateArgs args{};
+  args.server_ip = server_ip_;
+  args.server_port = server_port_;
+  args.rdma_tc = rdma_tc_;
+  args.rdma_sl = rdma_sl_;
+  args.handler_type = handler_type;
+  args.has_local_device_resource = runtime_ctx_.need_device_context;
+  if (runtime_ctx_.need_device_context) {
+    args.local_dev_phy_id = static_cast<uint32_t>(runtime_ctx_.device_resource.phy_device_id);
+  }
+  args.matched_pairs = std::move(matched_pairs);
   client_handler_ = ClientHandlerFactory::Create(args);
   HIXL_CHECK_NOTNULL(client_handler_, "ClientHandlerFactory create handler failed");
+  has_local_device_client_ = has_device_pair;
   return SUCCESS;
 }
 
@@ -111,6 +134,23 @@ Status HixlClient::RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> 
   const size_t json_len = static_cast<size_t>(body_size - sizeof(CtrlMsgType));
   std::string json_str(reinterpret_cast<const char *>(body.data() + sizeof(msg_type)), json_len);
   return EndpointGenerator::DeserializeEndpointConfigList(json_str, remote_endpoint_list);
+}
+
+Status HixlClient::EnsureRuntimeContextForLocalEndpoint(const EndpointConfig &local_endpoint_config) {
+  if (runtime_ctx_resolved_) {
+    if (local_endpoint_config.placement == kPlacementDevice) {
+      HIXL_CHK_BOOL_RET_STATUS(runtime_ctx_.need_device_context && runtime_ctx_.device_resource.phy_device_id >= 0,
+                               FAILED,
+                               "endpoint_list contains local device endpoint but no local device resource is available");
+    }
+    return SUCCESS;
+  }
+
+  std::vector<EndpointConfig> local_endpoints{local_endpoint_config};
+  HIXL_CHK_STATUS_RET(EndpointGenerator::ResolveLocalRuntimeContext(local_endpoints, runtime_ctx_),
+                      "ResolveLocalRuntimeContext failed");
+  runtime_ctx_resolved_ = true;
+  return SUCCESS;
 }
 
 Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {
