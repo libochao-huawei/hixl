@@ -95,10 +95,13 @@ class HixlClient {
    */
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
 
+  Status SendNotify(const NotifyDesc &notify, int32_t timeout_ms);
+
  private:
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const;
   void WaitBatchCsSyncInflightDrain();
+  Status RecvNotifyAck(int32_t fd, int32_t timeout_ms);
 
   std::string server_ip_;
   uint32_t server_port_;

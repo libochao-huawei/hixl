@@ -21,11 +21,26 @@
 #include "engine/client_handler_factory.h"
 #include "engine/endpoint_generator.h"
 #include "engine/endpoint_matcher.h"
+#include "nlohmann/json.hpp"
 
 namespace hixl {
 namespace {
 constexpr uint64_t kMaxRecvRespBodySize = static_cast<uint64_t>(4ULL * 1024ULL * 1024ULL);
 constexpr uint32_t kCtrlMsgPluginTimeoutMs = 10000U;
+
+std::string SerializeNotifyMsg(const NotifyMsg &msg) {
+  nlohmann::json j{{"name", msg.name}, {"notify_msg", msg.notify_msg}};
+  return j.dump();
+}
+
+NotifyAck ParseNotifyAck(const std::string &json_str) {
+  NotifyAck ack;
+  auto j = nlohmann::json::parse(json_str);
+  if (j.contains("result")) {
+    j.at("result").get_to(ack.result);
+  }
+  return ack;
+}
 }  // namespace
 
 Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_list) {
@@ -213,4 +228,87 @@ Status HixlClient::Finalize() {
   return ret;
 }
 
+Status HixlClient::RecvNotifyAck(int32_t fd, int32_t timeout_ms) {
+  CtrlMsgHeader header{};
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, &header, static_cast<uint32_t>(sizeof(header)), timeout_ms),
+                      "HixlClient receive NotifyAck header failed, fd:%d", fd);
+  HIXL_CHK_BOOL_RET_STATUS(header.magic == kMagicNumber, PARAM_INVALID,
+                           "Invalid magic for NotifyAck, expect:0x%X, actual:0x%X", kMagicNumber, header.magic);
+  HIXL_CHK_BOOL_RET_STATUS(header.body_size > sizeof(CtrlMsgType) && header.body_size <= kMaxRecvRespBodySize,
+                           PARAM_INVALID, "Invalid body_size for NotifyAck, body_size:%lu", header.body_size);
+
+  const uint64_t body_size = header.body_size;
+  std::vector<uint8_t> body(body_size);
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, body.data(), static_cast<uint32_t>(body_size), timeout_ms),
+                      "HixlClient receive NotifyAck body failed, fd:%d", fd);
+
+  CtrlMsgType msg_type{};
+  const void *src = static_cast<const void *>(body.data());
+  errno_t rc = memcpy_s(&msg_type, sizeof(msg_type), src, sizeof(msg_type));
+  HIXL_CHK_BOOL_RET_STATUS(rc == EOK, FAILED, "memcpy_s msg_type failed, rc:%d", static_cast<int32_t>(rc));
+  HIXL_CHK_BOOL_RET_STATUS(msg_type == CtrlMsgType::kNotifyAck, PARAM_INVALID,
+                           "Unexpected msg_type=%d, expect kNotifyAck=%d", static_cast<int32_t>(msg_type),
+                           static_cast<int32_t>(CtrlMsgType::kNotifyAck));
+
+  const size_t json_len = static_cast<size_t>(body_size - sizeof(CtrlMsgType));
+  std::string json_str(reinterpret_cast<const char *>(body.data() + sizeof(msg_type)), json_len);
+  NotifyAck ack{};
+  try {
+    ack = ParseNotifyAck(json_str);
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "Failed to parse NotifyAck, exception:%s", e.what());
+    return PARAM_INVALID;
+  }
+  if (ack.result != SUCCESS) {
+    HIXL_LOGE(ack.result, "NotifyAck result failed, result:%u", ack.result);
+    return ack.result;
+  }
+  HIXL_LOGI("HixlClient received NotifyAck success");
+  return SUCCESS;
+}
+
+Status HixlClient::SendNotify(const NotifyDesc &notify, int32_t timeout_ms) {
+  NotifyMsg notify_msg{notify.name.GetString(), notify.notify_msg.GetString()};
+
+  if (notify_msg.name.empty() || notify_msg.name.size() > kMaxNotifyNameLen) {
+    HIXL_LOGE(PARAM_INVALID, "Notify name length invalid, size:%zu, max:%zu", notify_msg.name.size(),
+              kMaxNotifyNameLen);
+    return PARAM_INVALID;
+  }
+  if (notify_msg.notify_msg.size() > kMaxNotifyMsgLen) {
+    HIXL_LOGE(PARAM_INVALID, "Notify message too long, size:%zu, max:%zu", notify_msg.notify_msg.size(),
+              kMaxNotifyMsgLen);
+    return PARAM_INVALID;
+  }
+
+  std::string msg_str = SerializeNotifyMsg(notify_msg);
+
+  CtrlMsgHeader header{};
+  header.magic = kMagicNumber;
+  header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + msg_str.size());
+  CtrlMsgType msg_type = CtrlMsgType::kNotify;
+
+  int32_t tmp_socket = -1;
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip_, server_port_, tmp_socket, timeout_ms),
+                      "HixlClient create temp socket failed for SendNotify");
+  HIXL_MAKE_GUARD(close_socket_guard, ([tmp_socket]() {
+    if (tmp_socket >= 0) {
+      close(tmp_socket);
+      HIXL_LOGI("HixlClient closed temp socket:%d after SendNotify", tmp_socket);
+    }
+  }));
+
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(tmp_socket, &header, static_cast<uint64_t>(sizeof(header))),
+                      "HixlClient send NotifyMsg header failed, socket:%d", tmp_socket);
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(tmp_socket, &msg_type, static_cast<uint64_t>(sizeof(msg_type))),
+                      "HixlClient send NotifyMsg msg_type failed, socket:%d", tmp_socket);
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(tmp_socket, msg_str.c_str(), static_cast<uint64_t>(msg_str.size())),
+                      "HixlClient send NotifyMsg body failed, socket:%d", tmp_socket);
+
+  HIXL_LOGI("HixlClient sent NotifyMsg, name:%s, socket:%d", notify_msg.name.c_str(), tmp_socket);
+  HIXL_CHK_STATUS_RET(RecvNotifyAck(tmp_socket, timeout_ms),
+                      "HixlClient receive NotifyAck failed, timeout:%d ms, socket:%d", timeout_ms, tmp_socket);
+
+  return SUCCESS;
+}
 }  // namespace hixl

@@ -15,6 +15,9 @@
 
 namespace hixl {
 const uint32_t kMagicNumber = 0xA4B3C2D1;
+constexpr size_t kMaxNotifyNameLen = 256;
+constexpr size_t kMaxNotifyMsgLen = 4096;
+constexpr size_t kMaxNotifyQueueSize = 4096;
 
 #pragma pack(push, 1)
 struct CtrlMsgHeader {
@@ -40,6 +43,8 @@ enum class CtrlMsgType : int32_t {
   kSendNotifyReq = 14,
   kGetNotifiesReq = 15,
   kGetNotifiesResp = 16,
+  kNotify = 17,
+  kNotifyAck = 18,
   kEnd
 };
 
@@ -91,6 +96,15 @@ struct GetRemoteMemResp {
 struct DestroyChannelReq {
   uint64_t endpoint_handle;
   uint64_t channel_handle;
+};
+
+struct NotifyMsg {
+  std::string name;
+  std::string notify_msg;
+};
+
+struct NotifyAck {
+  Status result = SUCCESS;
 };
 
 using CtrlMsgPtr = std::shared_ptr<CtrlMsg>;
