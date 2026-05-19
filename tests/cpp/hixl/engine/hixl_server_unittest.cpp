@@ -10,6 +10,9 @@
 
 #include <gtest/gtest.h>
 #include <limits>
+#include <memory>
+#include "ascendcl_stub.h"
+#include "engine/endpoint_test_utils.h"
 #include "engine/hixl_server.h"
 #include "hixl/hixl_types.h"
 #include "common/hixl_inner_types.h"
@@ -24,6 +27,8 @@ static constexpr uint32_t kPort = 16000;
 class HixlServerTest : public ::testing::Test {
  protected:
   void SetUp() override {
+    acl_stub_ = endpoint_test::CreateAclRuntimeStub("Ascend910_9391", 0, 12, 9, 8);
+    llm::AclRuntimeStub::SetInstance(acl_stub_);
     EndpointConfig ep0;
     ep0.protocol = "roce";
     ep0.comm_id = "192.168.1.2";
@@ -40,7 +45,11 @@ class HixlServerTest : public ::testing::Test {
     mem_.len = kMemLen;
   }
 
-  void TearDown() override {}
+  void TearDown() override {
+    llm::AclRuntimeStub::Reset();
+  }
+
+  std::shared_ptr<endpoint_test::MockAclRuntimeStub> acl_stub_;
 
  private:
   HixlServer server_;
@@ -177,5 +186,32 @@ TEST_F(HixlServerTest, RegisterMemAddrLenOverflow) {
   MemHandle handle = nullptr;
   EXPECT_EQ(server_.RegisterMem(mem_overflow, MemType::MEM_DEVICE, handle), PARAM_INVALID);
   EXPECT_EQ(server_.Finalize(), SUCCESS);
+}
+
+TEST_F(HixlServerTest, InitializeHostOnlySkipsDeviceQueries) {
+  std::vector<EndpointConfig> host_eps;
+  EndpointConfig ep{};
+  ep.protocol = "roce";
+  ep.comm_id = "127.0.0.1";
+  ep.placement = "host";
+  host_eps.emplace_back(ep);
+
+  EXPECT_EQ(server_.Initialize(ip_, port_, host_eps), SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_phy_device_call_count_, 0U);
+  EXPECT_EQ(server_.Finalize(), SUCCESS);
+}
+
+TEST_F(HixlServerTest, InitializeFailsWhenDeviceEndpointHasNoLocalDeviceResource) {
+  acl_stub_->get_device_failed_ = true;
+  std::vector<EndpointConfig> device_eps;
+  EndpointConfig ep{};
+  ep.protocol = "hccs";
+  ep.comm_id = "7";
+  ep.placement = "device";
+  device_eps.emplace_back(ep);
+
+  EXPECT_NE(server_.Initialize(ip_, port_, device_eps), SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 1U);
 }
 }  // namespace hixl
