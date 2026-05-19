@@ -154,6 +154,8 @@ class HixlEngine : public hixl::Engine {
  private:
   static const std::unordered_set<std::string> kSupportedOptions;
   Status InitServer();
+  Status AutoConnect(const AscendString &remote_engine, int32_t timeout_in_millis);
+  Status AutoDisconnect(const AscendString &remote_engine, int32_t timeout_in_millis);
   Status GetTransferStatusInner(const TransferReq &req, TransferStatus &status);
   std::mutex mutex_;
 
@@ -167,6 +169,8 @@ class HixlEngine : public hixl::Engine {
   uint8_t rdma_service_level_{kRdmaServiceLevel};
   std::mutex req_map_mutex_;
   std::map<uint64_t, TransferInfo> req_map_;
+
+  bool auto_connect_{false};
 };
 }  // namespace hixl
 
