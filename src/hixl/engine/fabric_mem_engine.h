@@ -14,6 +14,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 
@@ -74,8 +75,10 @@ class FabricMemEngine : public hixl::Engine {
                                        const std::string &remote);
 
   // Lock hierarchy (must be acquired in this order):
+  //   transfer_mutex_ -> mutex_
   //   mutex_ -> stream_pool_mutex_ -> channel_2_req_mutex_ -> async_req_mutex_
   //   mutex_ -> share_handle_mutex_
+  std::shared_mutex transfer_mutex_;
   std::mutex mutex_;
   std::atomic<bool> is_initialized_{false};
 
