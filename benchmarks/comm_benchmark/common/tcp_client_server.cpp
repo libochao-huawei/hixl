@@ -29,7 +29,8 @@ namespace {
 
 constexpr int kListenPollSliceMs = 250;
 constexpr int kRecvNotifyPollTimeoutMs = 30 * 60 * 1000;
-constexpr uint16_t kConnectRetryTimes = 5;
+constexpr uint32_t kDefaultTcpConnectTimeoutMs = 60000U;
+constexpr uint32_t kConnectRetryIntervalMs = 1000U;
 constexpr int kAcceptConnTimeoutMs = 5000;
 
 void CloseClientFds(std::vector<int> *fds) {
@@ -277,7 +278,7 @@ bool TcpServerSession::WaitAllNotify() {
 
 TCPClient::TCPClient() = default;
 
-bool TCPClient::ConnectToServer(const std::string &host, uint16_t port) {
+bool TCPClient::ConnectToServer(const std::string &host, uint16_t port, uint32_t timeout_ms) {
   sock_ = socket(AF_INET, SOCK_STREAM, 0);
   if (sock_ == -1) {
     std::cerr << "[ERROR] Create socket failed" << std::endl;
@@ -293,25 +294,34 @@ bool TCPClient::ConnectToServer(const std::string &host, uint16_t port) {
     server_.sin_addr.s_addr = inet_addr(host.c_str());
   }
 
-  uint16_t retry_times = kConnectRetryTimes;
-  uint16_t i = 0;
-  while (i < retry_times) {
-    auto ret = connect(sock_, reinterpret_cast<sockaddr *>(&server_), sizeof(server_));
-    if (ret < 0) {
-      std::cout << "[WARNING] Connect to tcp server failed, retry_times: " << i << std::endl;
-      i++;
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-    } else {
-      std::cout << "[INFO] Connect to tcp server success" << std::endl;
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int64_t>(timeout_ms));
+  uint32_t attempt = 0U;
+  while (std::chrono::steady_clock::now() < deadline) {
+    const auto ret = connect(sock_, reinterpret_cast<sockaddr *>(&server_), sizeof(server_));
+    if (ret >= 0) {
+      std::cout << "[INFO] Connect to tcp server success (attempts=" << attempt << ")" << std::endl;
       return true;
     }
+    std::cout << "[WARNING] Connect to tcp server failed, retry_times: " << attempt << std::endl;
+    ++attempt;
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) {
+      break;
+    }
+    const auto remain_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+    const auto sleep_ms = static_cast<int64_t>(kConnectRetryIntervalMs);
+    const auto wait_ms = std::min<int64_t>(sleep_ms, std::max<int64_t>(remain_ms, 1LL));
+    std::this_thread::sleep_for(std::chrono::milliseconds(wait_ms));
   }
-  std::cerr << "[ERROR] Connect to tcp server failed" << std::endl;
+  std::cerr << "[ERROR] Connect to tcp server failed after " << attempt << " attempt(s), timeout_ms="
+            << timeout_ms << std::endl;
   return false;
 }
 
 bool TCPClient::SendUint64(uint64_t data) const {
-  // 将主机字节序转换为网络字节序
+  // Convert host byte order to network byte order.
   uint64_t network_data = htobe64(data);
   if (send(sock_, &network_data, sizeof(uint64_t), 0) < 0) {
     std::cerr << "[ERROR] Send uint64 to tcp peer failed" << std::endl;
@@ -356,7 +366,7 @@ bool TCPClient::SendTaskStatus() const {
 
 bool TCPClient::ReceiveTaskStatus() const {
   bool received = false;
-  // 接收数据
+  // Receive the task status flag.
   ssize_t bytes_received = recv(sock_, &received, sizeof(received), 0);
   if (bytes_received < 0) {
     std::cerr << "[ERROR] Received status failed" << std::endl;
@@ -395,7 +405,7 @@ bool TCPServer::StartServer(uint16_t port, int listen_backlog) {
     return false;
   }
 
-  // 设置socket选项
+  // Configure socket reuse options before bind.
   if (setsockopt(server_fd_, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt_, sizeof(opt_))) {
     std::cerr << "[ERROR] Set socket option failed" << std::endl;
     return false;
@@ -405,7 +415,7 @@ bool TCPServer::StartServer(uint16_t port, int listen_backlog) {
   address_.sin_addr.s_addr = INADDR_ANY;
   address_.sin_port = htons(port);
 
-  // 绑定socket到端口
+  // Bind the socket to the requested port.
   if (bind(server_fd_, reinterpret_cast<sockaddr *>(&address_), sizeof(address_)) < 0) {
     std::cerr << "[ERROR] Bind port failed" << std::endl;
     return false;
@@ -477,7 +487,7 @@ bool TCPServer::AcceptConnection() {
 uint64_t TCPServer::ReceiveUint64() const {
   uint64_t received_data = 0;
 
-  // 接收uint64_t数据
+  // Receive one uint64_t payload from the connected client.
   ssize_t bytes_received = recv(client_socket_, &received_data, sizeof(uint64_t), 0);
   if (bytes_received < 0) {
     std::cerr << "[ERROR] Received data failed" << std::endl;
@@ -491,7 +501,7 @@ uint64_t TCPServer::ReceiveUint64() const {
     return 0;
   }
 
-  // 网络字节序转换为主机字节序
+  // Convert network byte order back to host byte order.
   received_data = be64toh(received_data);
   std::cout << "[INFO] Tcp server received uint64 data success" << std::endl;
   return received_data;
@@ -519,7 +529,7 @@ bool TCPServer::SendTaskStatus() const {
 
 bool TCPServer::ReceiveTaskStatus() const {
   bool received = false;
-  // 接收数据
+  // Receive the task status flag.
   ssize_t bytes_received = recv(client_socket_, &received, sizeof(received), 0);
   if (bytes_received < 0) {
     std::cerr << "[ERROR] Received status failed" << std::endl;
