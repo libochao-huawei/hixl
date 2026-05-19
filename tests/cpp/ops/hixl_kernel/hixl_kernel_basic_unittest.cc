@@ -59,7 +59,7 @@ HixlOneSideOpParam CreateTestParamFixed(std::array<std::array<uint8_t, 8>, kN> &
   param.remote_flag_addr = remote_flag_addr;
   param.local_flag_addr = local_flag_addr;
   param.flag_size = sizeof(uint64_t);
-  param.protocol = COMM_PROTOCOL_RESERVED; // skip hccs
+  param.use_notify_record = 0; // skip hccs
   return param;
 }
 }  // namespace
@@ -187,7 +187,7 @@ TEST_F(HixlKernelBasicTest, BatchGetHccsError) {
   // ========== 核心修改2：直接传递地址值 ==========
   auto param = CreateTestParamFixed<3>(remote_addr_hccs, local_addr_hccs, lens_storage,
     remote_flag_addr_hccs, local_flag_addr_hccs);
-  param.protocol = COMM_PROTOCOL_HCCS;
+  param.use_notify_record = 1;
   uint32_t ret = HixlBatchGet(&param);
   EXPECT_NE(ret, SUCCESS);
 }
