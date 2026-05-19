@@ -10,6 +10,7 @@
 
 #include "engine/ub_client_handler.h"
 #include "cs/hixl_cs_client.h"
+#include "cs/msg_handler.h"
 #include <algorithm>
 #include <chrono>
 #include <thread>
@@ -40,13 +41,15 @@ UbClientHandler::UbClientHandler(std::map<CommType, HixlClientHandle> handles) :
 Status UbClientHandler::Create(const HandlerCreateArgs &args, std::unique_ptr<UbClientHandler> &out) {
   std::map<CommType, HixlClientHandle> handles;
   for (const auto &pair : args.matched_pairs) {
-    int32_t dev_logic_id = 0;
-    int32_t dev_phy_id = 0;
-    HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
-    HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
+    uint32_t dev_phy_id = 0;
+    if (pair.local.placement == kPlacementDevice) {
+      HIXL_CHK_BOOL_RET_STATUS(args.has_local_device_resource, FAILED,
+                               "local device endpoint requires local device resource");
+      dev_phy_id = args.local_dev_phy_id;
+    }
     EndpointDesc le{};
     EndpointDesc re{};
-    HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(pair.local, le, static_cast<uint32_t>(dev_phy_id)));
+    HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(pair.local, le, dev_phy_id));
     HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(pair.remote, re));
     HixlClientDesc desc{};
     desc.server_ip = args.server_ip.c_str();
@@ -74,12 +77,12 @@ Status UbClientHandler::Connect(uint32_t timeout_ms) {
 
   ThreadPool thread_pool("ub_connect", handles_.size());
   std::vector<std::future<Status>> futures;
-  aclrtContext context = nullptr;
-  HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&context));
+  OptionalAclContext acl_context;
+  HIXL_CHK_STATUS_RET(acl_context.CaptureIfNeeded(), "Failed to capture acl context");
 
   for (const auto &[type, handle] : handles_) {
-    futures.emplace_back(thread_pool.commit([handle, timeout_ms, type, context]() -> Status {
-      HIXL_CHK_ACL_RET(aclrtSetCurrentContext(context));
+    futures.emplace_back(thread_pool.commit([handle, timeout_ms, type, acl_context]() -> Status {
+      HIXL_CHK_STATUS_RET(acl_context.SetOnCurrentThreadIfNeeded(), "Failed to set acl context");
       HIXL_CHK_STATUS_RET(HixlCSClientConnect(handle, timeout_ms), "UbClientHandler Connect failed for type:%s",
                           CommTypeToString(type));
       return SUCCESS;

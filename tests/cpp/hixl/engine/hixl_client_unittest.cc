@@ -309,7 +309,7 @@ const std::string MockHixlServer::kHostOnlyJson = R"([
       "dst_eid": "",
       "plane": "",
       "placement": "host",
-      "net_instance_id": "superpod2-2"
+      "net_instance_id": "superpod1-1"
     }
   ])";
 
@@ -424,7 +424,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.protocol = "roce";
     ep.comm_id = "127.0.0.1";
     ep.placement = "host";
-    ep.net_instance_id = "superpod2-2";
+    ep.net_instance_id = "superpod1-1";
     return ep;
   }
 
@@ -728,6 +728,7 @@ TEST_F(HixlClientUTest, Initialize4UBTest) {
   local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
   Status st = client_->Initialize(local_endpoint_list);
   EXPECT_EQ(st, SUCCESS);
+  EXPECT_TRUE(client_->has_local_device_client_);
 }
 
 // Initialize 接口测试：正常场景 创建 ub 链路2条
@@ -874,15 +875,19 @@ TEST_F(HixlClientUTest, ConnectSuccessTest) {
   server_->DestroyServerAndUnreg();
 }
 
-TEST_F(HixlClientUTest, CreateCsClientsHostOnlySkipsDeviceQueries) {
-  const EndpointConfig local_endpoint = MakeRoceDiffNetLocalEp();
-  const EndpointConfig remote_endpoint = MakeRoceHostOnlyRemoteEp();
+TEST_F(HixlClientUTest, InitializeHostOnlyDirectClientSkipsDeviceQueries) {
+  StartHostOnlyServer();
+  std::vector<EndpointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
 
-  Status st = client_->CreateCsClients(local_endpoint, remote_endpoint, CommType::COMM_TYPE_ROCE);
+  Status st = client_->Initialize(local_endpoint_list);
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
   EXPECT_EQ(acl_stub_->get_phy_device_call_count_, 0U);
   EXPECT_FALSE(client_->has_local_device_client_);
+  st = client_->Finalize();
+  EXPECT_EQ(st, SUCCESS);
+  server_->DestroyServerAndUnreg();
 }
 
 // Connect 接口测试：异常场景 - 未初始化

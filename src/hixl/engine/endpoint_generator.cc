@@ -284,52 +284,52 @@ Status EndpointGenerator::BuildEndpointListFromOptions(const std::map<AscendStri
   return SUCCESS;
 }
 
-  Status EndpointGenerator::BuildEndpointListFromLocalCommRes(const nlohmann::json &config, bool has_endpoint_list,
-                                                              const std::string &local_engine,
-                                                              std::vector<EndpointConfig> &endpoint_list) {
-    endpoint_list.clear();
-    uint32_t local_device_count = 0U;
-    bool auto_generate = false;
-    LocalDeviceResource resource{};
-    if (!has_endpoint_list) {
-      HIXL_CHK_STATUS_RET(QueryLocalDeviceCount(local_device_count), "QueryLocalDeviceCount failed");
-      HIXL_CHK_BOOL_RET_STATUS(local_device_count > 0U, FAILED,
-                               "endpoint_list is not configured and local device count is zero");
-      HIXL_CHK_STATUS_RET(QueryLocalDeviceResource(resource),
-                          "endpoint_list contains local device endpoint but no local device resource is available");
-      HIXL_CHK_BOOL_RET_STATUS(resource.phy_device_id >= 0, FAILED,
-                               "endpoint_list contains local device endpoint but no local device resource is available");
-      auto_generate = (resource.soc_type == SocType::kV2 || resource.soc_type == SocType::kV3 ||
-                       resource.soc_type == SocType::kV5) &&
-                      config.is_object();
-    }
-
-    if (auto_generate && resource.soc_type == SocType::kV5) {
-      HIXL_LOGI("[BuildEndpointListFromLocalCommRes] kA5 auto-generate: logic_id=%d, phy_id=%d",
-                resource.logic_device_id, resource.phy_device_id);
-      hixl::LocalCommRes local_comm_res;
-      HIXL_CHK_STATUS_RET(hixl::GenerateLocalCommRes(resource.phy_device_id, local_comm_res),
-                          "[BuildEndpointListFromLocalCommRes] GenerateLocalCommRes failed");
-      endpoint_list = std::move(local_comm_res.endpoint_list);
-      HIXL_LOGI("[BuildEndpointListFromLocalCommRes] kA5 generated %zu endpoints", endpoint_list.size());
-    } else if (auto_generate) {
-      LocCommResInfo loc_comm_res_info{};
-      HIXL_CHK_STATUS_RET(GenerateInfo(resource.logic_device_id, local_engine, loc_comm_res_info),
-                          "GenerateInfo failed");
-      ConvertLocCommResInfoToEndpointList(loc_comm_res_info, endpoint_list);
-      HIXL_CHK_STATUS_RET(FillDeviceInfoIfNeeded(resource, endpoint_list), "FillDeviceInfoIfNeeded failed");
-    }
-
-    if (has_endpoint_list) {
-      HIXL_CHK_STATUS_RET(ParseLocalCommRes(config, endpoint_list), "ParseLocalCommRes failed");
-      LocalRuntimeContext ctx{};
-      HIXL_CHK_STATUS_RET(ResolveLocalRuntimeContext(endpoint_list, ctx), "ResolveLocalRuntimeContext failed");
-      if (ctx.need_device_context) {
-        HIXL_CHK_STATUS_RET(FillDeviceInfoIfNeeded(ctx.device_resource, endpoint_list), "FillDeviceInfoIfNeeded failed");
-      }
-    }
-    return SUCCESS;
+Status EndpointGenerator::BuildEndpointListFromLocalCommRes(const nlohmann::json &config, bool has_endpoint_list,
+                                                            const std::string &local_engine,
+                                                            std::vector<EndpointConfig> &endpoint_list) {
+  endpoint_list.clear();
+  uint32_t local_device_count = 0U;
+  bool auto_generate = false;
+  LocalDeviceResource resource{};
+  if (!has_endpoint_list) {
+    HIXL_CHK_STATUS_RET(QueryLocalDeviceCount(local_device_count), "QueryLocalDeviceCount failed");
+    HIXL_CHK_BOOL_RET_STATUS(local_device_count > 0U, FAILED,
+                             "endpoint_list is not configured and local device count is zero");
+    HIXL_CHK_STATUS_RET(QueryLocalDeviceResource(resource),
+                        "endpoint_list contains local device endpoint but no local device resource is available");
+    HIXL_CHK_BOOL_RET_STATUS(resource.phy_device_id >= 0, FAILED,
+                             "endpoint_list contains local device endpoint but no local device resource is available");
+    auto_generate = (resource.soc_type == SocType::kV2 || resource.soc_type == SocType::kV3 ||
+                     resource.soc_type == SocType::kV5) &&
+                    config.is_object();
   }
+
+  if (auto_generate && resource.soc_type == SocType::kV5) {
+    HIXL_LOGI("[BuildEndpointListFromLocalCommRes] kA5 auto-generate: logic_id=%d, phy_id=%d",
+              resource.logic_device_id, resource.phy_device_id);
+    hixl::LocalCommRes local_comm_res;
+    HIXL_CHK_STATUS_RET(hixl::GenerateLocalCommRes(resource.phy_device_id, local_comm_res),
+                        "[BuildEndpointListFromLocalCommRes] GenerateLocalCommRes failed");
+    endpoint_list = std::move(local_comm_res.endpoint_list);
+    HIXL_LOGI("[BuildEndpointListFromLocalCommRes] kA5 generated %zu endpoints", endpoint_list.size());
+  } else if (auto_generate) {
+    LocCommResInfo loc_comm_res_info{};
+    HIXL_CHK_STATUS_RET(GenerateInfo(resource.logic_device_id, local_engine, loc_comm_res_info),
+                        "GenerateInfo failed");
+    ConvertLocCommResInfoToEndpointList(loc_comm_res_info, endpoint_list);
+    HIXL_CHK_STATUS_RET(FillDeviceInfoIfNeeded(resource, endpoint_list), "FillDeviceInfoIfNeeded failed");
+  }
+
+  if (has_endpoint_list) {
+    HIXL_CHK_STATUS_RET(ParseLocalCommRes(config, endpoint_list), "ParseLocalCommRes failed");
+    LocalRuntimeContext ctx{};
+    HIXL_CHK_STATUS_RET(ResolveLocalRuntimeContext(endpoint_list, ctx), "ResolveLocalRuntimeContext failed");
+    if (ctx.need_device_context) {
+      HIXL_CHK_STATUS_RET(FillDeviceInfoIfNeeded(ctx.device_resource, endpoint_list), "FillDeviceInfoIfNeeded failed");
+    }
+  }
+  return SUCCESS;
+}
 
 Status EndpointGenerator::ConvertToEndpointDesc(const EndpointConfig &endpoint_config,
                                                 EndpointDesc &endpoint,

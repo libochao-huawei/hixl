@@ -9,6 +9,7 @@
  */
 
 #include "hixl_client.h"
+#include <algorithm>
 #include <cstring>
 #include <thread>
 #include "securec.h"
@@ -68,9 +69,24 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
   HIXL_CHK_STATUS_RET(EndpointMatcher::MatchEndpoints(local_endpoint_list, remote_endpoint_list,
                                                       matched_pairs, handler_type),
                       "EndpointMatcher::MatchEndpoints failed");
-  HandlerCreateArgs args{server_ip_, server_port_, rdma_tc_, rdma_sl_, handler_type, std::move(matched_pairs)};
+  const bool has_device_pair = std::any_of(matched_pairs.begin(), matched_pairs.end(), [](const auto &pair) {
+    return pair.local.placement == kPlacementDevice;
+  });
+
+  HandlerCreateArgs args{};
+  args.server_ip = server_ip_;
+  args.server_port = server_port_;
+  args.rdma_tc = rdma_tc_;
+  args.rdma_sl = rdma_sl_;
+  args.handler_type = handler_type;
+  args.has_local_device_resource = runtime_ctx_.need_device_context;
+  if (runtime_ctx_.need_device_context) {
+    args.local_dev_phy_id = static_cast<uint32_t>(runtime_ctx_.device_resource.phy_device_id);
+  }
+  args.matched_pairs = std::move(matched_pairs);
   client_handler_ = ClientHandlerFactory::Create(args);
   HIXL_CHECK_NOTNULL(client_handler_, "ClientHandlerFactory create handler failed");
+  has_local_device_client_ = has_device_pair;
   return SUCCESS;
 }
 
