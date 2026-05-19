@@ -21,6 +21,7 @@
 #include "common/hixl_inner_types.h"
 #include "common/ctrl_msg.h"
 #include "engine/client_handler.h"
+#include "engine/endpoint_generator.h"
 
 namespace hixl {
 
@@ -99,11 +100,15 @@ class HixlClient {
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const;
   void WaitBatchCsSyncInflightDrain();
+  Status EnsureRuntimeContextForLocalEndpoint(const EndpointConfig &local_endpoint_config);
 
   std::string server_ip_;
   uint32_t server_port_;
   uint8_t rdma_tc_{kRdmaTrafficClass};
   uint8_t rdma_sl_{kRdmaServiceLevel};
+  EndpointGenerator::LocalRuntimeContext runtime_ctx_{};
+  bool runtime_ctx_resolved_{false};
+  bool has_local_device_client_{false};
   bool is_connected_{false};  // true为已建链；false未建链
   bool is_finalized_{false};
   bool finalize_pending_{
