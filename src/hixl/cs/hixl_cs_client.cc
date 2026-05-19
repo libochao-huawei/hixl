@@ -806,7 +806,12 @@ Status HixlCSClient::FillDeviceArgs(const CommunicateMem &mem_param, MemDev &mem
   args.local_flag = notify_addr;
   args.flag_size = notify_len_;
   args.notify_id = slot.notify_id;
-  args.protocol = ep.protocol;
+  if (ep.protocol == COMM_PROTOCOL_HCCS) {
+    args.use_notify_record = 1;
+  } else {
+    args.use_notify_record = 0;
+  }
+  HIXL_LOGI("[HixlClient] protocol=%u, use_notify_record=%u", ep.protocol, args.use_notify_record);
   return SUCCESS;
 }
 
