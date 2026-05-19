@@ -75,13 +75,60 @@ void ExpectSingleUboeEndpoint(const std::vector<EndpointConfig> &endpoint_list, 
   EXPECT_EQ(endpoint_list[0].net_instance_id, "default_superpod1_1");
 }
 
-void ExpectRoceHccsUboeEndpoints(const std::vector<EndpointConfig> &endpoint_list,
-                                 const std::string &uboe_comm_id) {
-  ASSERT_EQ(endpoint_list.size(), 3U);
-  EXPECT_EQ(endpoint_list[0].protocol, kProtocolRoce);
-  EXPECT_EQ(endpoint_list[1].protocol, kProtocolHccs);
-  EXPECT_EQ(endpoint_list[2].protocol, kProtocolUboe);
-  EXPECT_EQ(endpoint_list[2].comm_id, uboe_comm_id);
+std::string MakeHostOnlyLocalCommRes(const std::string &net_instance_id = "127.0.0.1") {
+  return R"(
+  {
+    "net_instance_id": ")" + net_instance_id + R"(",
+    "endpoint_list": [
+      {
+        "protocol": "roce",
+        "comm_id": "127.0.0.1",
+        "placement": "host"
+      }
+    ],
+    "version": "1.3"
+  })";
+}
+
+std::string MakeDeviceOnlyLocalCommRes(const std::string &net_instance_id = "sp_v3") {
+  return R"(
+  {
+    "net_instance_id": ")" + net_instance_id + R"(",
+    "endpoint_list": [
+      {
+        "protocol": "hccs",
+        "comm_id": "7",
+        "placement": "device"
+      }
+    ],
+    "version": "1.3"
+  })";
+}
+
+Status BuildEndpointListFromLocalCommRes(const std::string &local_comm_res, std::string *parsed_local_comm_res,
+                                         std::vector<EndpointConfig> *endpoint_list) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(local_comm_res.c_str());
+  return EndpointGenerator::BuildEndpointListFromOptions(options, "127.0.0.1:26000", *parsed_local_comm_res,
+                                                         *endpoint_list);
+}
+
+void ExpectHostOnlyLocalCommResBuildSucceedsWithNoDeviceRuntimeQueries(
+    const std::shared_ptr<MockLocCommResAclRuntimeStub> &acl_stub, bool expect_context_queries = false) {
+  std::string parsed_local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_EQ(BuildEndpointListFromLocalCommRes(MakeHostOnlyLocalCommRes(), &parsed_local_comm_res, &endpoint_list),
+            SUCCESS);
+  ASSERT_EQ(endpoint_list.size(), 1U);
+  EXPECT_EQ(endpoint_list[0].placement, kPlacementHost);
+  EXPECT_EQ(acl_stub->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub->get_soc_name_call_count_, 0U);
+  EXPECT_EQ(acl_stub->get_device_call_count_, 0U);
+  EXPECT_EQ(acl_stub->get_phy_device_call_count_, 0U);
+  if (expect_context_queries) {
+    EXPECT_EQ(acl_stub->get_current_context_call_count_, 0U);
+    EXPECT_EQ(acl_stub->set_current_context_call_count_, 0U);
+  }
 }
 }  // namespace
 
@@ -349,6 +396,154 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsParsesManualJsonAndFi
   EXPECT_EQ(endpoint_list[1].device_info.phy_device_id, 23);
   EXPECT_EQ(endpoint_list[1].device_info.super_device_id, 45);
   EXPECT_EQ(endpoint_list[1].device_info.super_pod_id, 67);
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsHostOnlyWithZeroDeviceCountSkipsDeviceRuntimeQueries) {
+  acl_stub_->device_count_ = 0;
+
+  ExpectHostOnlyLocalCommResBuildSucceedsWithNoDeviceRuntimeQueries(acl_stub_, true);
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsHostOnlyWithDeviceCountSkipsDeviceRuntimeQueries) {
+  acl_stub_->device_count_ = 2;
+
+  ExpectHostOnlyLocalCommResBuildSucceedsWithNoDeviceRuntimeQueries(acl_stub_);
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsHostOnlyFailsWhenDeviceCountQueryFails) {
+  acl_stub_->get_device_count_failed_ = true;
+
+  std::string parsed_local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_NE(BuildEndpointListFromLocalCommRes(MakeHostOnlyLocalCommRes(), &parsed_local_comm_res, &endpoint_list),
+            SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_soc_name_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_phy_device_call_count_, 0U);
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsFailsWhenDeviceEndpointHasZeroDeviceCount) {
+  acl_stub_->device_count_ = 0;
+
+  std::string parsed_local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_NE(BuildEndpointListFromLocalCommRes(MakeDeviceOnlyLocalCommRes(), &parsed_local_comm_res, &endpoint_list),
+            SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_soc_name_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_phy_device_call_count_, 0U);
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGenerateFailsWithZeroDeviceCount) {
+  acl_stub_->device_count_ = 0;
+
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(R"({})");
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_NE(EndpointGenerator::BuildEndpointListFromOptions(options, "127.0.0.1:26000", local_comm_res,
+                                                            endpoint_list),
+            SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_soc_name_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_phy_device_call_count_, 0U);
+}
+
+TEST_F(EndpointGeneratorUTest, ResolveLocalRuntimeContextHostOnlyWithZeroDeviceCountSkipsDeviceRuntimeQueries) {
+  acl_stub_->device_count_ = 0;
+  std::vector<EndpointConfig> endpoint_list;
+  EndpointConfig ep{};
+  ep.protocol = kProtocolRoce;
+  ep.comm_id = "127.0.0.1";
+  ep.placement = kPlacementHost;
+  endpoint_list.emplace_back(ep);
+
+  EndpointGenerator::LocalRuntimeContext ctx{};
+  EXPECT_EQ(EndpointGenerator::ResolveLocalRuntimeContext(endpoint_list, ctx), SUCCESS);
+  EXPECT_EQ(ctx.mode, EndpointGenerator::LocalRuntimeMode::kHostOnly);
+  EXPECT_FALSE(ctx.has_local_device_endpoint);
+  EXPECT_FALSE(ctx.need_device_context);
+  EXPECT_EQ(ctx.device_resource.phy_device_id, -1);
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_soc_name_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_phy_device_call_count_, 0U);
+}
+
+TEST_F(EndpointGeneratorUTest, ResolveLocalRuntimeContextDeviceQueriesDeviceResource) {
+  acl_stub_->soc_name_ = "Ascend910_9391";
+  acl_stub_->device_id_ = 4;
+  acl_stub_->phy_device_id_ = 9;
+  acl_stub_->super_device_id_ = 11;
+  acl_stub_->super_pod_id_ = 13;
+
+  std::vector<EndpointConfig> endpoint_list;
+  EndpointConfig ep{};
+  ep.protocol = kProtocolHccs;
+  ep.comm_id = "9";
+  ep.placement = kPlacementDevice;
+  endpoint_list.emplace_back(ep);
+
+  EndpointGenerator::LocalRuntimeContext ctx{};
+  EXPECT_EQ(EndpointGenerator::ResolveLocalRuntimeContext(endpoint_list, ctx), SUCCESS);
+  EXPECT_EQ(ctx.mode, EndpointGenerator::LocalRuntimeMode::kDevice);
+  EXPECT_TRUE(ctx.has_local_device_endpoint);
+  EXPECT_TRUE(ctx.need_device_context);
+  EXPECT_EQ(ctx.device_resource.logic_device_id, 4);
+  EXPECT_EQ(ctx.device_resource.phy_device_id, 9);
+  EXPECT_EQ(ctx.device_resource.super_device_id, 11);
+  EXPECT_EQ(ctx.device_resource.super_pod_id, 13);
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 1U);
+}
+
+TEST_F(EndpointGeneratorUTest, ResolveLocalRuntimeContextDeviceWithZeroDeviceCountDoesNotDowngradeToHostOnly) {
+  acl_stub_->device_count_ = 0;
+
+  std::vector<EndpointConfig> endpoint_list;
+  EndpointConfig ep{};
+  ep.protocol = kProtocolHccs;
+  ep.comm_id = "9";
+  ep.placement = kPlacementDevice;
+  endpoint_list.emplace_back(ep);
+
+  EndpointGenerator::LocalRuntimeContext ctx{};
+  EXPECT_NE(EndpointGenerator::ResolveLocalRuntimeContext(endpoint_list, ctx), SUCCESS);
+  EXPECT_EQ(ctx.mode, EndpointGenerator::LocalRuntimeMode::kDevice);
+  EXPECT_TRUE(ctx.has_local_device_endpoint);
+  EXPECT_TRUE(ctx.need_device_context);
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_soc_name_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_phy_device_call_count_, 0U);
+}
+
+TEST_F(EndpointGeneratorUTest, ResolveLocalRuntimeContextFailsWhenDeviceCountQueryFails) {
+  acl_stub_->get_device_count_failed_ = true;
+
+  std::vector<EndpointConfig> endpoint_list;
+  EndpointConfig ep{};
+  ep.protocol = kProtocolRoce;
+  ep.comm_id = "127.0.0.1";
+  ep.placement = kPlacementHost;
+  endpoint_list.emplace_back(ep);
+
+  EndpointGenerator::LocalRuntimeContext ctx{};
+  EXPECT_NE(EndpointGenerator::ResolveLocalRuntimeContext(endpoint_list, ctx), SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_soc_name_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
+}
+
+TEST_F(EndpointGeneratorUTest, ResolveLocalRuntimeContextRejectsEmptyEndpointList) {
+  EndpointGenerator::LocalRuntimeContext ctx{};
+  EXPECT_EQ(EndpointGenerator::ResolveLocalRuntimeContext({}, ctx), PARAM_INVALID);
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_soc_name_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2) {

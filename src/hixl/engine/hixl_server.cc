@@ -29,14 +29,16 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
                               const std::vector<EndpointConfig> &data_endpoint_config_list) {
   data_endpoint_config_list_ = data_endpoint_config_list;
   std::vector<EndpointDesc> data_end_point_list;
-  int32_t dev_logic_id = 0;
-  int32_t dev_phy_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
-  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
+  uint32_t dev_phy_id = 0;
+  EndpointGenerator::LocalRuntimeContext ctx{};
+  HIXL_CHK_STATUS_RET(EndpointGenerator::ResolveLocalRuntimeContext(data_endpoint_config_list, ctx),
+                      "ResolveLocalRuntimeContext failed");
+  if (ctx.need_device_context) {
+    dev_phy_id = static_cast<uint32_t>(ctx.device_resource.phy_device_id);
+  }
   for (const auto &it : data_endpoint_config_list) {
     EndpointDesc end_point_info{};
-    HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(it, end_point_info,
-                                                                 static_cast<uint32_t>(dev_phy_id)),
+    HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(it, end_point_info, dev_phy_id),
                         "Failed to convert endpoint config to endpoint info.");
     data_end_point_list.emplace_back(end_point_info);
   }
