@@ -29,6 +29,7 @@
 #include "common/ctrl_msg.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "engine/test_mmpa_utils.h"
+#include "engine/endpoint_test_utils.h"
 
 #include <securec.h>
 
@@ -591,6 +592,7 @@ class HixlCSClientUT : public ::testing::Test {
     server_.Stop();
     port_ = kZero;
     llm::MmpaStub::GetInstance().Reset();
+    llm::AclRuntimeStub::Reset();
   }
 
   void StartServer(MiniSrvMode c, MiniSrvMode m) {
@@ -650,6 +652,26 @@ TEST_F(HixlCSClientUT, CreateSuccess) {
   desc.local_endpoint = &src_;
   desc.remote_endpoint = &dst_;
   EXPECT_EQ(client_.Create(&desc, &config), SUCCESS);
+}
+
+TEST_F(HixlCSClientUT, CreateDeviceEndpointDoesNotGateInitDeviceResourceByDeviceCount) {
+  auto acl_stub = endpoint_test::CreateAclRuntimeStub("Ascend910_9391", 0, 12, 9, 8);
+  acl_stub->device_count_ = 0;
+  llm::AclRuntimeStub::SetInstance(acl_stub);
+
+  port_ = kPort;
+  src_.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
+  src_.protocol = COMM_PROTOCOL_UBC_TP;
+  HixlClientConfig config{};
+  HixlClientDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = port_;
+  desc.local_endpoint = &src_;
+  desc.remote_endpoint = &dst_;
+
+  EXPECT_EQ(client_.Create(&desc, &config), SUCCESS);
+  EXPECT_EQ(acl_stub->get_device_count_call_count_, 0U);
+  EXPECT_EQ(acl_stub->get_device_call_count_, 1U);
 }
 
 TEST_F(HixlCSClientUT, CreateFailNullServerIp) {
