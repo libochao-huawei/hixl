@@ -34,3 +34,4 @@ hixl-pr-review-reports
 # oat check
 oat_reports/
 log/
+.opencode/

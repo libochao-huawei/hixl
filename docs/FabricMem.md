@@ -76,7 +76,7 @@ graph LR
 
 ### 真实场景单机16卡benchmark
 
-**Benchmark 程序**：`fabric_mem_kv_benchmark`。
+**Benchmark 程序**：`benchmarks/kv_benchmark/hixl_kv_bench --transport=fabric_mem`。旧的 standalone `fabric_mem_kv_benchmark` 已合入统一 KV benchmark。
 
 **在测什么**：单块大小为 DeepSeek-R1 KV 形状，**61×128K + 61×16K = 8784KB/块**。总块数 16/32/48/64 时，块在多卡间均分；**Put（D2RH）仅在 rank 0**；**Get（RH2D）每卡都执行**。对外打印的 Get 时间为 **10 次的算术平均**。
 

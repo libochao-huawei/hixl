@@ -59,7 +59,7 @@ class TCPClient {
  public:
   TCPClient();
 
-  bool ConnectToServer(const std::string &host, uint16_t port);
+  bool ConnectToServer(const std::string &host, uint16_t port, uint32_t timeout_ms = 60000U);
 
   bool SendUint64(uint64_t data) const;
 
