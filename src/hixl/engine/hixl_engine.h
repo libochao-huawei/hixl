@@ -13,6 +13,9 @@
 
 #include <mutex>
 #include <map>
+#include <unordered_map>
+#include <memory>
+#include <atomic>
 #include "engine.h"
 #include "client_manager.h"
 #include "hixl_server.h"
@@ -28,8 +31,7 @@ class HixlEngine : public hixl::Engine {
    * 如果是ipv6格式为[host_ip]:host_port或[host_ip],
    * 当设置host_port且host_port > 0时代表当前HixlEngine作为server端，需要对配置端口进行监听
    */
-  explicit HixlEngine(const AscendString &local_engine)
-      : Engine(local_engine), is_initialized_(false) {};
+  explicit HixlEngine(const AscendString &local_engine) : Engine(local_engine), is_initialized_(false) {};
 
   /**
    * @brief 判断HixlEngine是否初始化
@@ -146,6 +148,10 @@ class HixlEngine : public hixl::Engine {
   Status InitServer();
   Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
   Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
+  Status ParseAutoConnectConfig(const std::map<AscendString, AscendString> &options);
+  Status AutoConnectForTransfer(const AscendString &remote_engine, int32_t timeout_in_millis);
+  Status DisconnectOnError(const AscendString &remote_engine, int32_t timeout_in_millis);
+
   std::mutex mutex_;
 
   std::atomic<bool> is_initialized_;
@@ -157,6 +163,12 @@ class HixlEngine : public hixl::Engine {
   uint8_t rdma_traffic_class_{kRdmaTrafficClass};
   uint8_t rdma_service_level_{kRdmaServiceLevel};
   std::map<uint64_t, TransferInfo> req_map_;
+
+  bool auto_connect_{false};
+
+  // 用于并发建链的细粒度锁：每个 remote_engine 对应一个独立的锁
+  std::mutex mutex_map_mutex_;
+  std::unordered_map<std::string, std::shared_ptr<std::mutex>> engine_mutexes_;
 };
 }  // namespace hixl
 

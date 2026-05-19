@@ -12,9 +12,13 @@
 
 #include "cs/hixl_cs.h"
 #include "hixl/hixl_types.h"
+#include "nlohmann/json.hpp"
 
 namespace hixl {
 const uint32_t kMagicNumber = 0xA4B3C2D1;
+constexpr size_t kMaxNotifyNameLen = 256;
+constexpr size_t kMaxNotifyMsgLen = 4096;
+constexpr size_t kMaxNotifyQueueSize = 4096;
 
 #pragma pack(push, 1)
 struct CtrlMsgHeader {
@@ -40,6 +44,8 @@ enum class CtrlMsgType : int32_t {
   kSendNotifyReq = 14,
   kGetNotifiesReq = 15,
   kGetNotifiesResp = 16,
+  kNotify = 17,
+  kNotifyAck = 18,
   kEnd
 };
 
@@ -91,6 +97,34 @@ struct DestroyChannelReq {
   uint64_t endpoint_handle;
   uint64_t channel_handle;
 };
+
+struct NotifyMsg {
+  std::string name;
+  std::string notify_msg;
+};
+
+struct NotifyAck {
+  Status result = SUCCESS;
+};
+
+inline void to_json(nlohmann::json &j, const NotifyMsg &msg) {
+  j = nlohmann::json{{"name", msg.name}, {"notify_msg", msg.notify_msg}};
+}
+
+inline void from_json(const nlohmann::json &j, NotifyMsg &msg) {
+  j.at("name").get_to(msg.name);
+  j.at("notify_msg").get_to(msg.notify_msg);
+}
+
+inline void to_json(nlohmann::json &j, const NotifyAck &ack) {
+  j = nlohmann::json{{"result", ack.result}};
+}
+
+inline void from_json(const nlohmann::json &j, NotifyAck &ack) {
+  if (j.contains("result")) {
+    j.at("result").get_to(ack.result);
+  }
+}
 
 using CtrlMsgPtr = std::shared_ptr<CtrlMsg>;
 using MsgProcessor = std::function<Status(int32_t fd, const char *msg, uint64_t msg_len)>;

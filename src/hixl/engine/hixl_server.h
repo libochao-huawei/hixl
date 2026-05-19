@@ -54,13 +54,31 @@ class HixlServer {
    */
   Status Finalize();
 
+  /**
+   * @brief 获取接收到的通知消息列表
+   * @param [out] notifications 接收到的通知消息列表
+   * @return 成功:SUCCESS, 失败:其它.
+   */
+  Status GetNotifies(std::vector<NotifyDesc> &notifies);
+
+  /**
+   * @brief 注册回调处理函数
+   * @param [in] msg_type 消息类型
+   * @param [in] processor 回调处理函数
+   * @return 成功:SUCCESS, 失败:其它.
+   */
   Status RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor) const;
 
  private:
+  Status RegisterNotifyHandlers();
+
   void *server_handle_ = nullptr;
   std::vector<EndpointConfig> data_endpoint_config_list_;
   std::mutex mtx_;
   std::map<MemHandle, AddrInfo> handle_to_addr_;
+  std::vector<NotifyDesc> notify_messages_;
+  std::mutex notify_mutex_;
+  std::mutex notify_send_mutex_;
 };
 }  // namespace hixl
 #endif  // #ifndef CANN_HIXL_SRC_HIXL_ENGINE_HIXL_SERVER_H
