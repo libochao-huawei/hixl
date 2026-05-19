@@ -369,7 +369,6 @@ Status TransferPool::EnsureThreadLocked(Slot &slot) const {
   if (slot.thread != 0U) {
     return SUCCESS;
   }
-  const hixl::TemporaryRtContext guard(rts_context_);
   uint32_t notify_num = kDefaultNotifyNumPerThread;
   HIXL_CHK_HCCL_RET(HcommProxy::ThreadAlloc(kDefaultEngine, kDefaultThreadNum, &notify_num, &slot.thread));
   return SUCCESS;
