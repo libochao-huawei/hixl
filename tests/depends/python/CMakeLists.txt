@@ -8,6 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
+# llm_datadist_wrapper.so
 set(LLM_DATADIST_WRAPPER_SRC_FILES
         "${HIXL_CODE_DIR}/src/python/llm_wrapper/llm_wrapper_v2.cc"
         "${HIXL_CODE_DIR}/src/python/llm_wrapper/llm_datadist_v2_wrapper.cc")
@@ -47,6 +48,7 @@ target_compile_options(llm_datadist_wrapper_stub PRIVATE
         -Xlinker -export-dynamic
 )
 
+# metadef_wrapper.so
 add_library(metadef_wrapper_stub MODULE
         "${HIXL_CODE_DIR}/src/python/metadef_wrapper/metadef_wrapper.cc"
 )
@@ -72,6 +74,34 @@ set_target_properties(metadef_wrapper_stub
 set_target_properties(metadef_wrapper_stub PROPERTIES OUTPUT_NAME "metadef_wrapper")
 
 target_compile_options(metadef_wrapper_stub PRIVATE
+        ${DT_COMMON_COMPILE_OPTION}
+        -Xlinker -export-dynamic
+)
+
+# libhixl_wrapper.so
+add_library(hixl_wrapper_stub MODULE
+        "${HIXL_CODE_DIR}/src/python/hixl_wrapper/hixl_wrapper.cc"
+)
+
+target_include_directories(hixl_wrapper_stub PRIVATE
+        ${HIXL_CODE_DIR}/include
+        ${HIXL_CODE_DIR}/tests/depends/llm_datadist/src
+)
+
+target_link_libraries(hixl_wrapper_stub PRIVATE
+        metadef_headers
+        llm_datadist_base
+        ${DT_COMMON_LINK_OPTION}
+)
+
+set_target_properties(hixl_wrapper_stub
+        PROPERTIES
+        PREFIX ""
+)
+
+set_target_properties(hixl_wrapper_stub PROPERTIES OUTPUT_NAME "libhixl_wrapper")
+
+target_compile_options(hixl_wrapper_stub PRIVATE
         ${DT_COMMON_COMPILE_OPTION}
         -Xlinker -export-dynamic
 )

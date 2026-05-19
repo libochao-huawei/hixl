@@ -195,9 +195,10 @@ run() {
       unset LD_PRELOAD
       cp ${BUILD_PATH}/tests/depends/python/llm_datadist_wrapper.so ${BASEPATH}/src/python/llm_datadist/llm_datadist/
       cp ${BUILD_PATH}/tests/depends/python/metadef_wrapper.so ${BASEPATH}/src/python/llm_datadist/llm_datadist/
+      cp ${BUILD_PATH}/tests/depends/python/libhixl_wrapper.so ${BASEPATH}/src/python/hixl/hixl/_capi/
       cp -r ${BASEPATH}/tests/python ./
       PYTHON_ORIGINAL_PATH=$PYTHONPATH
-      export PYTHONPATH=${BASEPATH}/src/python/llm_datadist/
+      export PYTHONPATH=${BASEPATH}/src/python/llm_datadist/:${BASEPATH}/src/python/hixl/
 
       echo "----------st start----------"
       if [[ "X$ENABLE_ASAN" = "XON" ]]; then
@@ -209,9 +210,11 @@ run() {
       if [[ "$?" -ne 0 ]]; then
           echo "!!! PY TEST FAILED, PLEASE CHECK YOUR CHANGES !!!"
           rm -f ${BASEPATH}/src/python/llm_datadist/llm_datadist/*.so
+          rm -f ${BASEPATH}/src/python/hixl/hixl/_capi/*.so
           exit 1;
       fi
       rm -f ${BASEPATH}/src/python/llm_datadist/llm_datadist/*.so
+      rm -f ${BASEPATH}/src/python/hixl/hixl/_capi/*.so
 
       if [[ "X$ENABLE_ASAN" = "XON" ]]; then
         unset LD_PRELOAD
@@ -241,6 +244,7 @@ run() {
                   -d ${BUILD_PATH}/tests/cpp/hixl/CMakeFiles/hixl_test.dir \
                   -d ${BUILD_PATH}/tests/depends/python/CMakeFiles/llm_datadist_wrapper_stub.dir \
                   -d ${BUILD_PATH}/tests/depends/python/CMakeFiles/metadef_wrapper_stub.dir \
+                  -d ${BUILD_PATH}/tests/depends/python/CMakeFiles/hixl_wrapper_stub.dir \
                -o cov/tmp.info
           lcov -e cov/tmp.info "${BASEPATH}/src/*" -o cov/coverage.info
           cd ${BASEPATH}/cov

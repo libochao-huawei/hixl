@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ----------------------------------------------------------------------------
-# Copyright (c) 2025 Huawei Technologies Co., Ltd.
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -59,73 +59,6 @@ class _LazyLibLoader:
             c_int,
         ]
         lib.HixlInitialize.restype = c_uint32
-
-        lib.HixlFinalize.argtypes = [c_void_p]
-        lib.HixlFinalize.restype = None
-
-        lib.HixlRegisterMem.argtypes = [
-            c_void_p,
-            c_uintptr_t,
-            c_size_t,
-            c_int,
-            ctypes.POINTER(c_void_p),
-        ]
-        lib.HixlRegisterMem.restype = c_uint32
-
-        lib.HixlDeregisterMem.argtypes = [c_void_p, c_void_p]
-        lib.HixlDeregisterMem.restype = c_uint32
-
-        lib.HixlConnect.argtypes = [c_void_p, c_char_p, c_int32]
-        lib.HixlConnect.restype = c_uint32
-
-        lib.HixlDisconnect.argtypes = [c_void_p, c_char_p, c_int32]
-        lib.HixlDisconnect.restype = c_uint32
-
-        lib.HixlTransferSync.argtypes = [
-            c_void_p,
-            c_char_p,
-            c_int,
-            ctypes.POINTER(c_uintptr_t),
-            ctypes.POINTER(c_uintptr_t),
-            ctypes.POINTER(c_size_t),
-            c_int,
-            c_int32,
-        ]
-        lib.HixlTransferSync.restype = c_uint32
-
-        lib.HixlTransferAsync.argtypes = [
-            c_void_p,
-            c_char_p,
-            c_int,
-            ctypes.POINTER(c_uintptr_t),
-            ctypes.POINTER(c_uintptr_t),
-            ctypes.POINTER(c_size_t),
-            c_int,
-            c_void_p,
-            ctypes.POINTER(c_void_p),
-        ]
-        lib.HixlTransferAsync.restype = c_uint32
-
-        lib.HixlGetTransferStatus.argtypes = [c_void_p, c_void_p, ctypes.POINTER(c_int)]
-        lib.HixlGetTransferStatus.restype = c_uint32
-
-        lib.HixlSendNotify.argtypes = [c_void_p, c_char_p, c_char_p, c_char_p, c_int32]
-        lib.HixlSendNotify.restype = c_uint32
-
-        lib.HixlGetNotifies.argtypes = [
-            c_void_p,
-            ctypes.POINTER(ctypes.POINTER(c_char_p)),
-            ctypes.POINTER(ctypes.POINTER(c_char_p)),
-            ctypes.POINTER(c_int),
-        ]
-        lib.HixlGetNotifies.restype = c_uint32
-
-        lib.HixlFreeNotifies.argtypes = [
-            ctypes.POINTER(c_char_p),
-            ctypes.POINTER(c_char_p),
-            c_int,
-        ]
-        lib.HixlFreeNotifies.restype = None
 
     def __getattr__(self, name):
         lib = self._load_lib()
