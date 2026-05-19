@@ -336,6 +336,14 @@ bool ApplyLoopsKv(const std::string &val, BenchmarkConfig *cfg) {
   return true;
 }
 
+bool ApplyConnectLoopsKv(const std::string &val, BenchmarkConfig *cfg) {
+  if (!ParseU32(val, &cfg->connect_loops) || cfg->connect_loops == 0) {
+    fprintf(stderr, "[ERROR] Invalid --connect_loops=%s\n", val.c_str());
+    return false;
+  }
+  return true;
+}
+
 bool ApplyUseAsyncKv(const std::string &val, BenchmarkConfig *cfg) {
   if (!ParseBool(val, &cfg->use_async)) {
     fprintf(stderr, "[ERROR] Invalid --use_async=%s (expect true|false|0|1)\n", val.c_str());
@@ -396,6 +404,7 @@ const std::map<std::string, KvApplyFn> &KvHandlerTable() {
       {"-y", ApplyAsyncBatchNumKv},
       {"--connect_timeout", ApplyConnectTimeoutKv},
       {"-C", ApplyConnectTimeoutKv},
+      {"--connect_loops", ApplyConnectLoopsKv},
   };
   return kTable;
 }
@@ -457,6 +466,7 @@ void BenchmarkConfigParser::PrintUsage(FILE *out) {
            "  --use_async|-x       true|false (default false), enable async transfer mode\n"
            "  --async_batch_num|-y async requests per batch (default 1), requires: total_size %% async_batch_num == 0\n"
            "  --connect_timeout|-C connect timeout in ms (default 60000)\n"
+           "  --connect_loops      repeat connect/transfer/disconnect cycle (default 1)\n"
            "  --hixl_option|-H     HIXL Initialize() option, form KEY=VALUE (repeatable); "
           "KEY e.g. LocalCommRes, BufferPool, RdmaTrafficClass, RdmaServiceLevel, adxl.*\n"
           "                       If neither BufferPool nor adxl.BufferPool is set and "

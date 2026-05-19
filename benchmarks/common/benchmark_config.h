@@ -58,6 +58,8 @@ struct BenchmarkConfig {
   uint64_t block_size = kDefaultTotalSize;
   uint32_t block_steps = kDefaultBlockSteps;
   uint32_t loops = kDefaultLoops;
+  /// Repeat connect/transfer/disconnect cycle count (single-link only, default 1).
+  uint32_t connect_loops = 1U;
   /// True if --block_size / -k was set on the command line.
   bool block_size_explicit = false;
   /// Parsed from repeatable --hixl_option=KEY=VALUE / -H=KEY=VALUE (KEY is full HIXL option name).

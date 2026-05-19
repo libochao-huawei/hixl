@@ -687,7 +687,7 @@ void ClientRunner::ReleaseLaneResources() {
   const bool skip_bulk_disconnect = lane_shared_multi_remote_workers_disconnected_ &&
                                     cfg_.expanded_remote_engines.size() > 1U && cfg_.local_engine_list.size() == 1U;
   lane_shared_multi_remote_workers_disconnected_ = false;
-  if (!skip_bulk_disconnect) {
+  if (!skip_bulk_disconnect && lane_hixl_connected_) {
     DisconnectAllRemoteEngines(lane_hixl_, cfg_.expanded_remote_engines);
   }
   lane_hixl_connected_ = false;
@@ -753,21 +753,39 @@ int ClientRunner::RunOnePair(const std::string &remote, void *src_slice, size_t 
   }
   std::printf("[INFO] Server RegisterMem success\n");
 
-  const auto connect_ret = lane_hixl_.Connect(AscendString(remote.c_str()), static_cast<int32_t>(cfg_.connect_timeout_ms));
-  if (connect_ret != SUCCESS) {
-    std::printf("[ERROR] Connect failed, ret = %u, errmsg: %s\n", connect_ret, RecentErrMsg());
-    return -1;
-  }
-  std::printf("[INFO] Connect success\n");
-  lane_hixl_connected_ = true;
+  uint32_t fail_count = 0;
+  for (uint32_t ci = 0; ci < cfg_.connect_loops; ++ci) {
+    if (cfg_.connect_loops > 1U) {
+      std::printf("[INFO] Connect loop %u/%u\n", ci + 1U, cfg_.connect_loops);
+    }
+    const auto connect_ret =
+        lane_hixl_.Connect(AscendString(remote.c_str()), static_cast<int32_t>(cfg_.connect_timeout_ms));
+    if (connect_ret != SUCCESS) {
+      std::printf("[ERROR] Connect failed at loop %u, ret = %u, errmsg: %s\n", ci + 1U, connect_ret, RecentErrMsg());
+      ++fail_count;
+      continue;
+    }
+    std::printf("[INFO] Connect success\n");
+    lane_hixl_connected_ = true;
 
-  if (RunTransfer(lane_hixl_, src_slice, remote.c_str(), remote_addr, cfg_) != 0) {
-    return -1;
+    if (RunTransfer(lane_hixl_, src_slice, remote.c_str(), remote_addr, cfg_) != 0) {
+      std::printf("[ERROR] Transfer failed at connect loop %u\n", ci + 1U);
+      ++fail_count;
+    }
+
+    const auto disconnect_ret = lane_hixl_.Disconnect(AscendString(remote.c_str()));
+    if (disconnect_ret != SUCCESS) {
+      std::printf("[ERROR] Disconnect failed at connect loop %u, ret = %u, errmsg: %s\n", ci + 1U, disconnect_ret,
+                  RecentErrMsg());
+    } else {
+      std::printf("[INFO] Disconnect success\n");
+    }
+    lane_hixl_connected_ = false;
   }
 
   lane_need_tcp_notify_ = true;
   std::printf("[INFO] Client Sample end\n");
-  return 0;
+  return (fail_count > 0U) ? -1 : 0;
 }
 
 int ClientRunner::Run() {
