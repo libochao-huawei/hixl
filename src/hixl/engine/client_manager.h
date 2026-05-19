@@ -11,8 +11,10 @@
 #ifndef HIXL_SRC_HIXL_ENGINE_CLIENT_MANAGER_H_
 #define HIXL_SRC_HIXL_ENGINE_CLIENT_MANAGER_H_
 
-#include <mutex>
 #include <map>
+#include <memory>
+#include <mutex>
+#include <unordered_map>
 #include <vector>
 #include "hixl_client.h"
 #include "common/hixl_inner_types.h"
@@ -29,11 +31,15 @@ class ClientManager {
   Status CreateClient(const ClientConfig &config, ClientPtr &client_ptr);
   ClientPtr GetClient(const std::string &remote_engine);
   Status DestroyClient(const std::string &remote_engine);
+  std::shared_ptr<std::mutex> GetClientMutex(const std::string &remote_engine);
+  void DestroyClientMutex(const std::string &remote_engine);
   bool IsEmpty();
 
  private:
   std::mutex mutex_;
   std::map<std::string, ClientPtr> clients_;
+  std::mutex client_mutexes_mutex_;
+  std::unordered_map<std::string, std::shared_ptr<std::mutex>> client_mutexes_;
 };
 }  // namespace hixl
 

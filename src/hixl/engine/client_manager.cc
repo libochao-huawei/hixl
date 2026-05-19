@@ -51,6 +51,26 @@ Status ClientManager::DestroyClient(const std::string &remote_engine) {
   return ret;
 }
 
+std::shared_ptr<std::mutex> ClientManager::GetClientMutex(const std::string &remote_engine) {
+  std::lock_guard<std::mutex> lock(client_mutexes_mutex_);
+  auto it = client_mutexes_.find(remote_engine);
+  if (it != client_mutexes_.end()) {
+    return it->second;
+  }
+
+  auto client_mutex = std::make_shared<std::mutex>();
+  client_mutexes_.emplace(remote_engine, client_mutex);
+  return client_mutex;
+}
+
+void ClientManager::DestroyClientMutex(const std::string &remote_engine) {
+  std::lock_guard<std::mutex> lock(client_mutexes_mutex_);
+  auto it = client_mutexes_.find(remote_engine);
+  if (it != client_mutexes_.end() && it->second.use_count() == 1) {
+    client_mutexes_.erase(it);
+  }
+}
+
 bool ClientManager::IsEmpty() {
   return clients_.empty();
 }
@@ -63,6 +83,10 @@ Status ClientManager::Finalize() {
     }
   }
   clients_.clear();
+  {
+    std::lock_guard<std::mutex> client_mutexes_lock(client_mutexes_mutex_);
+    client_mutexes_.clear();
+  }
   return SUCCESS;
 }
 }  // namespace hixl
