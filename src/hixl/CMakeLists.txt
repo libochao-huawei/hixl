@@ -26,7 +26,7 @@ file(GLOB HIXL_SRC_LIST
         "${CMAKE_CURRENT_LIST_DIR}/fabric_mem/*.cc"
         "${CMAKE_CURRENT_LIST_DIR}/cs/*.cc"
         "${CMAKE_CURRENT_LIST_DIR}/profiling/*.cc"
-        "${CMAKE_CURRENT_LIST_DIR}/proxy/hcomm/*.cc"
+        "${CMAKE_CURRENT_LIST_DIR}/proxy/*.cc"
         )
 
 add_library(cann_hixl SHARED ${HIXL_SRC_LIST})
