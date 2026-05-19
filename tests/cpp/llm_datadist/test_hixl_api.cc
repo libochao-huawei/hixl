@@ -29,6 +29,27 @@ using ::testing::Invoke;
 using ::testing::Mock;
 
 namespace hixl {
+void HixlWaitDisconnectAsyncDone(Hixl &engine, int32_t timeout_in_millis,
+                                 std::map<AscendString, AsyncConnectStatus> &statuses) {
+  const auto expire_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_in_millis);
+  while (std::chrono::steady_clock::now() <= expire_time) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    engine.GetAsyncConnectStatus(statuses);
+
+    AsyncConnectStatus status;
+    bool is_all_disconnected = true;
+    for (const auto &status : statuses) {
+      if (status.second == AsyncConnectStatus::DISCONNECT_PENDING ||
+          status.second == AsyncConnectStatus::DISCONNECTING) {
+        is_all_disconnected = false;
+        break;
+      }
+    }
+    if (is_all_disconnected) {
+      break;
+    }
+  }
+}
 namespace {
 constexpr size_t kTransferSize = 1024;
 constexpr uint8_t kDataPattern = 0xAA;
@@ -664,24 +685,7 @@ TEST_F(HixlSTest, TestHixlConnectAsync) {
   }
 
   std::map<AscendString, AsyncConnectStatus> statuses;
-  const auto expire_time =
-      std::chrono::steady_clock::now() + std::chrono::milliseconds(TIMEOUT_IN_MILLIS * (ENGINE_NUM - 1));
-  while (std::chrono::steady_clock::now() <= expire_time) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_IN_MILLIS));
-    engine_list[0].GetAsyncConnectStatus(statuses);
-
-    bool is_all_disconnected = true;
-    for (const auto &status : statuses) {
-      if (status.second == AsyncConnectStatus::DISCONNECT_PENDING ||
-          status.second == AsyncConnectStatus::DISCONNECTING) {
-        is_all_disconnected = false;
-        break;
-      }
-    }
-    if (is_all_disconnected) {
-      break;
-    }
-  }
+  HixlWaitDisconnectAsyncDone(engine_list[0], TIMEOUT_IN_MILLIS * (ENGINE_NUM - 1), statuses);
   EXPECT_EQ(statuses.empty(), true);
 
   for (int32_t i = 0; i < ENGINE_NUM; ++i) {
