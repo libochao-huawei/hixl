@@ -16,11 +16,12 @@
  * - 5个代理函数成功路径（DcmiProxy::GetLogicIdFromPhyId / DcmiProxy::GetUrmaDeviceCnt / DcmiProxy::GetEidList /
  *   DcmiProxy::GetMainboardId / DcmiProxy::GetDeviceInfo）
  * - LoadDcmi() 已加载缓存路径
+ * - LoadDcmi() 失败路径（dlopen 模拟失败）
+ * - UnloadDcmi() 未加载场景
  *
- * 注意：dcmi_proxy.cc 使用真实的 dlopen/dlsym/dlclose（来自 <dlfcn.h>），而非 MmpaStub。
- * 因此失败路径（dlopen 失败、dlsym 失败、init 失败）无法通过 MmpaStub mock 来测试，
- * 需要通过 LD_PRELOAD mock dlopen 来测试。LD_PRELOAD 测试在本地环境可运行，
- * 但在某些 CI 环境中可能受限。
+ * 注意：dcmi_proxy.cc 使用 dlopen/dlsym/dlclose（来自 <dlfcn.h>），dcmi_stub.cc 通过
+ * LD_PRELOAD=libdcmi.so 提供桩函数。dlopen 失败路径通过 dcmi_stub.cc 中的 dlopen 包装
+ * 函数模拟（受 DcmiStubSetDlopenFail 控制）。
  */
 
 #include <cstdint>
@@ -38,6 +39,7 @@ void DcmiStubSetLogicId(unsigned int id, int ret);
 void DcmiStubSetUrmaDeviceCnt(unsigned int cnt, int ret);
 void DcmiStubSetSuperPodId(unsigned int id, int ret);
 void DcmiStubSetEidCount(int count);
+void DcmiStubSetDlopenFail(bool fail);
 }
 
 namespace hixl {
@@ -200,6 +202,39 @@ TEST_F(DcmiProxyBoundaryTest, GetMainboardIdServer) {
   int32_t ret = DcmiProxy::GetMainboardId(logic_id, &mainboard_id);
   EXPECT_EQ(ret, 0);
   EXPECT_EQ(mainboard_id, 0x21U);
+}
+
+// ============================================================================
+// LoadDcmi() 失败路径测试
+// ============================================================================
+
+class DcmiProxyLoadFailTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    ResetDcmiStub();
+    // 确保 DCMI 未加载（g_dcmi_loaded 初始为 false）
+    DcmiProxy::UnloadDcmi();
+  }
+
+  void TearDown() override {
+    ResetDcmiStub();
+    DcmiProxy::UnloadDcmi();
+  }
+};
+
+// dlopen 失败时，LoadDcmi 返回 -1，所有代理函数返回 -1
+TEST_F(DcmiProxyLoadFailTest, LoadDcmiFailsWhenDlopenFails) {
+  DcmiStubSetDlopenFail(true);  // 下次 dlopen 返回 nullptr
+
+  unsigned int logic_id = 0;
+  unsigned int mainboard_id = 0;
+  int32_t ret = DcmiProxy::GetMainboardId(logic_id, &mainboard_id);
+  EXPECT_EQ(ret, -1);
+}
+
+// UnloadDcmi 在未加载时直接返回
+TEST_F(DcmiProxyLoadFailTest, UnloadDcmiWhenNotLoaded) {
+  DcmiProxy::UnloadDcmi();  // 不应崩溃
 }
 
 }  // namespace hixl
