@@ -24,14 +24,14 @@ namespace hixl {
 
 // ============ DCMI 相关数据结构 ============
 
-constexpr int32_t DCMI_URMA_EID_SIZE = 16;
-constexpr int32_t MAX_EID_PER_UE = 32;
+constexpr int32_t kDcmiUrmaEidSize = 16;
+constexpr int32_t kMaxEidPerUe = 32;
 
 /**
  * @brief DCMI URMA EID 结构
  */
-using DcmiUrmaEid = union dcmi_urma_eid {
-    unsigned char raw[DCMI_URMA_EID_SIZE];
+union DcmiUrmaEid {
+    unsigned char raw[kDcmiUrmaEidSize];
     struct {
         unsigned long subnet_prefix;
         unsigned long interface_id;
@@ -41,7 +41,7 @@ using DcmiUrmaEid = union dcmi_urma_eid {
 /**
  * @brief DCMI URMA EID 信息结构
  */
-using DcmiUrmaEidInfo = struct dcmi_urma_eid_info {
+struct DcmiUrmaEidInfo {
     DcmiUrmaEid eid;
     unsigned int eid_index;
 };

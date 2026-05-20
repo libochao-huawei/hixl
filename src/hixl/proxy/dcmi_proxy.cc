@@ -13,7 +13,7 @@
  * @brief DCMI 接口代理模块实现
  */
 
-#include "proxy/dcmi_proxy.h"
+#include "dcmi_proxy.h"
 #include <dlfcn.h>
 #include <unistd.h>
 #include "common/hixl_log.h"
@@ -34,12 +34,12 @@ using DcmiGetDeviceInfoFunc = int32_t(*)(int32_t npu_id, int32_t main_cmd,
                                       uint32_t sub_cmd, void* buf, uint32_t* size);
 
 // DCMI 接口函数指针
-static DcmiInitFunc g_dcmi_init = nullptr;
-static DcmiGetUrmaDeviceCntFunc g_dcmi_get_urma_device_cnt = nullptr;
-static DcmiGetEidListFunc g_dcmi_get_eid_list = nullptr;
-static DcmiGetMainboardIdFunc g_dcmi_get_mainboard_id = nullptr;
-static DcmiGetLogicIdFromPhyIdFunc g_dcmi_get_logicid_from_phyid = nullptr;
-static DcmiGetDeviceInfoFunc g_dcmi_get_device_info = nullptr;
+DcmiInitFunc g_dcmi_init = nullptr;
+DcmiGetUrmaDeviceCntFunc g_dcmi_get_urma_device_cnt = nullptr;
+DcmiGetEidListFunc g_dcmi_get_eid_list = nullptr;
+DcmiGetMainboardIdFunc g_dcmi_get_mainboard_id = nullptr;
+DcmiGetLogicIdFromPhyIdFunc g_dcmi_get_logicid_from_phyid = nullptr;
+DcmiGetDeviceInfoFunc g_dcmi_get_device_info = nullptr;
 
 void *g_dcmi_handle = nullptr;
 volatile bool g_dcmi_loaded = false;
@@ -82,9 +82,9 @@ int32_t TryLoadDcmiSymbols() {
 }
 
 int32_t InitDcmiWithRetry() {
-  constexpr int32_t max_wait_time = 10;
+  constexpr int32_t kMaxWaitTime = 10;
 
-  for (int32_t i = 0; i < max_wait_time; ++i) {
+  for (int32_t i = 0; i < kMaxWaitTime; ++i) {
     g_dcmi_init_status = g_dcmi_init();
     if (g_dcmi_init_status == 0) {
       break;
@@ -93,7 +93,7 @@ int32_t InitDcmiWithRetry() {
   }
 
   if (g_dcmi_init_status != 0) {
-    HIXL_LOGE(FAILED, "DCMI init failed after %d retries", max_wait_time);
+    HIXL_LOGE(FAILED, "DCMI init failed after %d retries", kMaxWaitTime);
     dlclose(g_dcmi_handle);
     g_dcmi_handle = nullptr;
     g_dcmi_init_status = -1;

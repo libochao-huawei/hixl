@@ -60,11 +60,11 @@ EidByte6Info ParseEidByte6(const std::string &eid) {
 namespace {
 
 std::string ConvertEidToString(const unsigned char *raw, size_t len) {
-  if (raw == nullptr || len < static_cast<size_t>(DCMI_URMA_EID_SIZE)) {
+  if (raw == nullptr || len < static_cast<size_t>(kDcmiUrmaEidSize)) {
     return "";
   }
   std::ostringstream oss;
-  for (int32_t k = 0; k < DCMI_URMA_EID_SIZE; ++k) {
+  for (int32_t k = 0; k < kDcmiUrmaEidSize; ++k) {
     oss << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(raw[k]);
   }
   return oss.str();
@@ -93,8 +93,8 @@ int32_t LoadUrmaDevicesFromDcmi(int32_t npu_id, std::vector<UrmaDevice> &urma_de
     UrmaDevice urma_dev;
     urma_dev.name = "udma" + std::to_string(i);
 
-    DcmiUrmaEidInfo eid_buf[MAX_EID_PER_UE];
-    int32_t eid_cnt = MAX_EID_PER_UE;
+    DcmiUrmaEidInfo eid_buf[kMaxEidPerUe];
+    int32_t eid_cnt = kMaxEidPerUe;
     ret = DcmiProxy::GetEidList(logic_id, i, eid_buf, &eid_cnt);
     if (ret != 0) {
       continue;
