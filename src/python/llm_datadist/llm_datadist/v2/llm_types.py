@@ -86,6 +86,9 @@ class Placement(IntEnum):
     HOST = 0
     DEVICE = 1
 
+    def __str__(self):
+        return f"{self.__class__.__name__}.{self.name}"
+
 
 class CacheDesc(object):
     """
@@ -530,7 +533,7 @@ class TransferWithCacheKeyConfig:
         self._src_layer_range = src_layer_range
         check_layer_range('dst_layer_range', dst_layer_range, allow_none=False)
         self._dst_layer_range = dst_layer_range
-        raise_if_false((src_layer_range.stop - src_layer_range.start) == (dst_layer_range.stop - src_layer_range.start),
+        raise_if_false((src_layer_range.stop - src_layer_range.start) == (dst_layer_range.stop - dst_layer_range.start),
                        'src_layer_range size should be equal to dst_layer_range size')
         check_uint32('src_batch_index', src_batch_index)
 

@@ -49,7 +49,6 @@ class LLMDataDist(object):
         self._is_initialized = False
         self._engine_options: Dict[str, str] = {}
         self._enable_cache_mgr = False
-        self._enable_free_comm = False
         self._enable_local_comm_res = False
 
     def _check_flow_graph_max_size(self, options: Dict[str, str]) -> None:
@@ -58,7 +57,7 @@ class LLMDataDist(object):
             return
         check_isinstance('ge.flowGraphMemMaxSize', value, str)
         raise_if_false(len(value.split(",")) == 1, "ge.flowGraphMemMaxSize only support one mem pool in llm datadist")
-        raise_if_false(value.isdigit(), "e.ge.flowGraphMemMaxSize must be digit, config value={0}", value)
+        raise_if_false(value.isdigit(), "ge.flowGraphMemMaxSize must be digit, config value={0}", value)
 
 
     def init(self, options: Dict[str, str]) -> None:

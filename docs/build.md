@@ -125,8 +125,8 @@ source /usr/local/Ascend/cann/set_env.sh
   # Ubuntu/Debian操作系统安装命令示例如下，其他操作系统请自行安装
   sudo apt-get install cmake bash ccache
   ```
-- GCC 7.3.x - 13.x
-- Python 3.9.x - 3.13.x
+- GCC 7.3.x - 14.2.x
+- Python 3.9.x - 3.14.x
 - CMake >= 3.16.0
 - bash >= 5.1.16，由于测试用例开启了地址消毒，代码中执行system函数会触发低版本的bash被地址消毒检查出内存泄露。
 - unzip，用于解压下载的第三方开源软件的zip压缩包。
@@ -239,7 +239,7 @@ bash build.sh --cann_3rd_lib_path={your_3rd_party_path}
 
 ## 安装
 
-将[编译执行](#编译执行)环节生成的run包进行安装。
+将[源码编译](#源码编译)环节生成的run包进行安装。
 - 说明，此处的安装路径（无论默认还是指定）需与前面安装toolkit包时的路径保持一致。
 ```bash
 # 如果需要指定安装路径则加上--install-path=${cann_install_path}

@@ -16,7 +16,7 @@
 #include "common/msg_handler_plugin.h"
 #include "hccl/hccl_adapter.h"
 #include "common/llm_utils.h"
-#include "channel.h"
+#include "comm_channel.h"
 #include "common/llm_checker.h"
 #include "common/llm_scope_guard.h"
 #include "common/def_types.h"
@@ -55,6 +55,7 @@ static void to_json(nlohmann::json &j, const ChannelConnectInfo &c) {
   j["comm_res"] = c.comm_res;
   j["timeout"] = c.timeout;
   j["addrs"] = c.addrs;
+  j["share_handles"] = nlohmann::json::array();
 }
 
 static void from_json(const nlohmann::json &j, ChannelStatus &c) {

@@ -12,6 +12,7 @@ set(HIXL_TEST_FILES
         common/thread_pool_ut.cc
         proxy/hccp_proxy_ut.cc
         proxy/dcmi_proxy_ut.cc
+        proxy/dsmi_proxy_ut.cc
         cs/endpoint_store_ut.cc
         cs/test_hixl_cs_server.cc
         cs/hixl_cs_client_ut.cc
@@ -45,7 +46,7 @@ file(GLOB HIXL_SRC_LIST
 
 file(GLOB ADXL_SRC_LIST
         "${HIXL_CODE_DIR}/src/llm_datadist/api/adxl_engine_impl.cc"
-        "${HIXL_CODE_DIR}/src/llm_datadist/statistic_manager.cc"
+        "${HIXL_CODE_DIR}/src/llm_datadist/comm_statistic_manager.cc"
         "${HIXL_CODE_DIR}/src/llm_datadist/llm_datadist_timer.cc"
         "${HIXL_CODE_DIR}/src/llm_datadist/adxl/*.cc"
         "${HIXL_CODE_DIR}/src/llm_datadist/common/*.cc"

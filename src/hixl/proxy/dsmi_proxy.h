@@ -7,26 +7,31 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#ifndef CANN_HIXL_SRC_HIXL_PROXY_DSMI_PROXY_H_
+#define CANN_HIXL_SRC_HIXL_PROXY_DSMI_PROXY_H_
 
-#ifndef CANN_HIXL_SRC_HIXL_FABRIC_MEM_FABRIC_MEM_ALLOCATOR_H_
-#define CANN_HIXL_SRC_HIXL_FABRIC_MEM_FABRIC_MEM_ALLOCATOR_H_
-
-#include <cstddef>
 #include <cstdint>
-
-#include "acl/acl.h"
 #include "hixl/hixl_types.h"
 
 namespace hixl {
-class FabricMemAllocator {
+
+/**
+ * @brief Proxy class for DSMI (Device System Management Interface) operations.
+ *        Provides interface to query device board information via libdrvdsmi_host.so.
+ */
+class DsmiProxy {
  public:
-  static Status MallocMem(MemType type, size_t size, void **ptr);
-  static Status FreeMem(void *ptr);
-  static Status GetPaHandleFromVa(uintptr_t va_addr, aclrtDrvMemHandle &pa_handle);
-  static void AddVaToPaMapping(uintptr_t va_addr, aclrtDrvMemHandle pa_handle);
-  static void RemoveVaToPaMapping(uintptr_t va_addr);
-  static Status AllocatePhysicalMemory(MemType type, size_t total_size, aclrtDrvMemHandle &handle);
+  DsmiProxy() = delete;
+
+  /**
+   * @brief Get device slot ID via dsmi_get_board_info.
+   * @param device_id Logical device ID.
+   * @param slot_id Output slot ID from board info.
+   * @return SUCCESS or FAILED.
+   */
+  static Status GetDevSlotId(int32_t device_id, uint32_t &slot_id);
 };
+
 }  // namespace hixl
 
-#endif  // CANN_HIXL_SRC_HIXL_FABRIC_MEM_FABRIC_MEM_ALLOCATOR_H_
+#endif  // CANN_HIXL_SRC_HIXL_PROXY_DSMI_PROXY_H_

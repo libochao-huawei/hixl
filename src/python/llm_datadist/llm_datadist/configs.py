@@ -27,6 +27,9 @@ class LLMRole(IntEnum):
     DECODER = 2
     MIX = 3
 
+    def __str__(self):
+        return f"{self.__class__.__name__}.{self.name}"
+
 
 def trans_str_ip(ip):
     if isinstance(ip, str):
@@ -330,7 +333,7 @@ class LlmConfig(object):
         self._host_mem_pool_cfg = host_mem_pool_cfg
 
     @property
-    def rdma_traffic_class(self) -> str:
+    def rdma_traffic_class(self) -> int:
         return self._rdma_traffic_class
 
     @rdma_traffic_class.setter
@@ -339,7 +342,7 @@ class LlmConfig(object):
         self._rdma_traffic_class = rdma_traffic_class
 
     @property
-    def rdma_service_level(self) -> str:
+    def rdma_service_level(self) -> int:
         return self._rdma_service_level
 
     @rdma_service_level.setter
