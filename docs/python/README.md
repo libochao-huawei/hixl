@@ -21,7 +21,7 @@
 - [RegisterMemStatus](RegisterMemStatus.md)
 - [Placement](Placement.md)
 - [CacheDesc](CacheDesc.md)
-- [Memtype](MemType.md)
+- [MemType](MemType.md)
 - [MemInfo](MemInfo.md)
 - [CacheKey](CacheKey.md)
 - [CacheKeyByIdAndIndex](CacheKeyByIdAndIndex.md)

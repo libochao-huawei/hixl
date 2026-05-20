@@ -17,14 +17,14 @@
 ## 函数原型
 
 ```
-__init__(mem_type: Memtype, addr: int, size: int)
+__init__(mem_type: MemType, addr: int, size: int)
 ```
 
 ## 参数说明
 
 | 参数名称 | 数据类型 | 取值说明 |
 | --- | --- | --- |
-| mem_type | Memtype | 内存地址类型。 |
+| mem_type | MemType | 内存地址类型。 |
 | addr | int | 内存地址。 |
 | size | int | 内存地址对应大小，单位字节。 |
 
@@ -32,7 +32,7 @@ __init__(mem_type: Memtype, addr: int, size: int)
 
 ```
 from llm_datadist import MemInfo
-mem_info = MemInfo(Memtype.MEM_TYPE_DEVICE, 1234, 10)
+mem_info = MemInfo(MemType.MEM_TYPE_DEVICE, 1234, 10)
 ```
 
 ## 返回值
