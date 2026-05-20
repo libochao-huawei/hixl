@@ -395,7 +395,7 @@ datadist = LLMDataDist(role, cluster_id)
 cache_manager = datadist.cache_manager
 addr = 12345678 # 发生故障的地址
 size = 1024  # 发生故障的地址大小
-mem_info = MemInfo(Memtype.MEM_TYPE_DEVICE, addr, size)
+mem_info = MemInfo(MemType.MEM_TYPE_DEVICE, addr, size)
 cache_manager.remap_registered_memory(mem_info)
 ```
 
