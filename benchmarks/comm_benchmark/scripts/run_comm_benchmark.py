@@ -110,29 +110,38 @@ def effective_soc_for_hccs_gate(args) -> str | None:
     return detect_platform_noninteractive()
 
 
-def infer_platform_from_csv_dir(csv_dir: Path) -> str | None:
-    """Infer a2/a3/a5 from collected comm CSV rows when SOC probe is unavailable."""
+def _collect_csv_transport_info(csv_path: Path) -> tuple[set[str], set[str]]:
     transports: set[str] = set()
     directions: set[str] = set()
+    try:
+        with csv_path.open(newline='', encoding='utf-8') as csv_file:
+            for row in csv.DictReader(csv_file):
+                transport = row.get('transport', '').strip()
+                direction = row.get('direction', '').strip()
+                if transport:
+                    transports.add(transport)
+                if direction:
+                    directions.add(direction)
+    except OSError:
+        pass
+    return transports, directions
+
+
+def infer_platform_from_csv_dir(csv_dir: Path) -> str | None:
+    """Infer a2/a3/a5 from collected comm CSV rows when SOC probe is unavailable."""
+    all_transports: set[str] = set()
+    all_directions: set[str] = set()
     for csv_path in csv_dir.glob('comm_result_*.csv'):
-        try:
-            with csv_path.open(newline='', encoding='utf-8') as csv_file:
-                for row in csv.DictReader(csv_file):
-                    transport = row.get('transport', '').strip()
-                    direction = row.get('direction', '').strip()
-                    if transport:
-                        transports.add(transport)
-                    if direction:
-                        directions.add(direction)
-        except OSError:
-            continue
-    if not transports:
+        transports, directions = _collect_csv_transport_info(csv_path)
+        all_transports.update(transports)
+        all_directions.update(directions)
+    if not all_transports:
         return None
-    if 'hccs' in transports and ('H2rD' in directions or 'rD2H' in directions):
+    if 'hccs' in all_transports and ('H2rD' in all_directions or 'rD2H' in all_directions):
         return 'a3'
-    if 'fabric_mem' in transports:
-        return 'a5' if 'hccs' not in transports else 'a3'
-    if 'hccs' in transports:
+    if 'fabric_mem' in all_transports:
+        return 'a5' if 'hccs' not in all_transports else 'a3'
+    if 'hccs' in all_transports:
         return 'a2'
     return None
 
@@ -1063,11 +1072,13 @@ def _run_dual_target_step(ctx: DualTargetContext, transport: str, bench_type: st
         args.transport = saved_transport
 
 
-def _run_target_directions(
-    ctx: DualTargetContext,
+def _run_dual_directions(
+    ctx,
     transport: str,
     bench_types: list[str],
     run_counter: list[int],
+    step_fn,
+    role_label: str,
 ) -> int:
     args = ctx.args
     last_ret = 0
@@ -1077,16 +1088,25 @@ def _run_target_directions(
         if len(bench_types) > 1:
             log.info(
                 f'[DUAL] transport={transport} [{idx}/{len(bench_types)}] '
-                f'Direction {bench_type} — starting target ...'
+                f'Direction {bench_type} — starting {role_label} ...'
             )
-        ret = _run_dual_target_step(ctx, transport, bench_type)
+        ret = step_fn(ctx, transport, bench_type)
         if ret != 0:
-            log.info(f'[ERROR] Target failed for transport={transport} direction={bench_type} with code {ret}')
+            log.info(f'[ERROR] {role_label.capitalize()} failed for transport={transport} direction={bench_type} with code {ret}')
             return ret
         if len(bench_types) > 1:
             log.info(f'[DUAL] transport={transport} [{idx}/{len(bench_types)}] Direction {bench_type} — done')
         last_ret = ret
     return last_ret
+
+
+def _run_target_directions(
+    ctx: DualTargetContext,
+    transport: str,
+    bench_types: list[str],
+    run_counter: list[int],
+) -> int:
+    return _run_dual_directions(ctx, transport, bench_types, run_counter, _run_dual_target_step, 'target')
 
 
 def _launch_target(args, bench_bin: str, topology: DualTopology, run_plan: list[tuple[str, list[str]]]):
@@ -1149,24 +1169,7 @@ def _run_initiator_directions(
     bench_types: list[str],
     run_counter: list[int],
 ) -> int:
-    args = ctx.args
-    last_ret = 0
-    for (idx, bench_type) in enumerate(bench_types, start=1):
-        run_counter[0] += 1
-        _dual_inter_run_delay(args, run_counter[0])
-        if len(bench_types) > 1:
-            log.info(
-                f'[DUAL] transport={transport} [{idx}/{len(bench_types)}] '
-                f'Direction {bench_type} — starting initiator ...'
-            )
-        ret = _run_dual_initiator_step(ctx, transport, bench_type)
-        if ret != 0:
-            log.info(f'[ERROR] Initiator failed for transport={transport} direction={bench_type} with code {ret}')
-            return ret
-        if len(bench_types) > 1:
-            log.info(f'[DUAL] transport={transport} [{idx}/{len(bench_types)}] Direction {bench_type} — done')
-        last_ret = ret
-    return last_ret
+    return _run_dual_directions(ctx, transport, bench_types, run_counter, _run_dual_initiator_step, 'initiator')
 
 
 def _launch_initiator(args, bench_bin: str, topology: DualTopology, run_plan: list[tuple[str, list[str]]], gate_soc):

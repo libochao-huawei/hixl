@@ -271,11 +271,11 @@ def _transports_for_platform(platform_id: str) -> list[str]:
 
 
 def _comm_combo_iter(platform_id: str):
-    for transport in _transports_for_platform(platform_id):
-        for im in MEM_TYPES:
-            for tm in MEM_TYPES:
-                for op in OP_TYPES:
-                    yield transport, im, tm, op
+    from itertools import product
+    for transport, im, tm, op in product(
+        _transports_for_platform(platform_id), MEM_TYPES, MEM_TYPES, OP_TYPES
+    ):
+        yield transport, im, tm, op
 
 
 def parse_all_benchmark_args() -> argparse.Namespace:
