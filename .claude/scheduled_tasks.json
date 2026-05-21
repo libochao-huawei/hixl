@@ -1,0 +1,15 @@
+{
+  "tasks": [
+    {
+      "id": "28182fd1",
+      "cron": "*/3 * * * *",
+      "prompt": "Check the CI pipeline status for GitCode PR #513 (https://gitcode.com/cann/hixl/pull/513). \n\nRun this curl command to check the labels:\ncurl -s \"https://api.gitcode.com/api/v5/repos/cann/hixl/pulls/513/labels\" | python3 -c \"import sys,json; labels=json.load(sys.stdin); ci=[l['name'] for l in labels if 'ci' in l['name'].lower()]; print(ci)\"\n\nIf labels show `ci-pipeline-passed`: Report \"CI PASSED - all checks green!\" and CANCEL this cron job.\nIf labels show `ci-pipeline-failed`: Report \"CI FAILED - need to fix\". Fetch the PR page or CI logs to understand the failure, then fix the code in /Users/youxiao/codes/hixl on the dev branch, commit, and push. After pushing, resume monitoring.\nIf labels still show `ci-pipeline-running`: Report \"Still running...\" and let the cron continue.",
+      "createdAt": 1779378264887,
+      "lastFiredAt": 1779378854145,
+      "recurring": true,
+      "createdBySessionId": "ff0ca89c-7be9-46b4-a73b-f93846c78aae",
+      "createdByPid": 11618,
+      "createdByProcStart": "Thu May 21 15:41:41 2026"
+    }
+  ]
+}
