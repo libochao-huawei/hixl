@@ -188,7 +188,9 @@ Status FabricMemTransferService::Transfer(const FabricMemTransferContext &contex
   const auto start = std::chrono::steady_clock::now();
   const uint64_t timeout_us = static_cast<uint64_t>(timeout_in_millis) * kMillisToMicros;
   std::vector<aclrtStream> streams;
+  const auto stream_wait_start = std::chrono::steady_clock::now();
   HIXL_CHK_STATUS_RET(TryGetStream(streams, timeout_us), "Failed to get fabric mem streams.");
+  const auto stream_wait_us = GetDurationUs(stream_wait_start, std::chrono::steady_clock::now());
   HIXL_DISMISSABLE_GUARD(fail_guard, ([this, &streams]() {
                            std::vector<AsyncResource> resources;
                            resources.reserve(streams.size());
@@ -198,9 +200,12 @@ Status FabricMemTransferService::Transfer(const FabricMemTransferContext &contex
                            DestroyAsyncResources(resources);
                          }));
   auto op_descs_copy = op_descs;
-  auto real_copy_start = std::chrono::steady_clock::now();
+  const auto copy_start = std::chrono::steady_clock::now();
+  std::chrono::steady_clock::time_point real_copy_start;
   HIXL_CHK_STATUS_RET(DoTransfer(streams, context, operation, op_descs_copy, real_copy_start),
                       "Fabric mem copy failed.");
+  const auto copy_us = GetDurationUs(copy_start, std::chrono::steady_clock::now());
+  const auto sync_start = std::chrono::steady_clock::now();
   for (auto &stream : streams) {
     const auto cost = GetDurationUs(start, std::chrono::steady_clock::now());
     HIXL_CHK_BOOL_RET_STATUS(cost < timeout_us, TIMEOUT, "Fabric mem transfer timeout.");
@@ -209,14 +214,19 @@ Status FabricMemTransferService::Transfer(const FabricMemTransferContext &contex
     HIXL_CHK_ACL_RET(aclrtSynchronizeStreamWithTimeout(stream, stream_timeout_ms),
                      "Synchronize fabric mem stream failed.");
   }
+  const auto sync_us = GetDurationUs(sync_start, std::chrono::steady_clock::now());
   const auto real_copy_cost = GetDurationUs(real_copy_start, std::chrono::steady_clock::now());
   HIXL_DISMISS_GUARD(fail_guard);
   ReleaseStreams(streams);
   const auto transfer_cost = GetDurationUs(start, std::chrono::steady_clock::now());
-  UpdateStats(context, transfer_cost, real_copy_cost, GetTransferBytes(op_descs_copy),
-              static_cast<uint64_t>(op_descs_copy.size()));
+  const auto transfer_bytes = GetTransferBytes(op_descs_copy);
+  UpdateStats(context, transfer_cost, real_copy_cost, transfer_bytes, static_cast<uint64_t>(op_descs_copy.size()));
   HIXL_LOGI("Fabric mem transfer cost:%lu us, real copy:%lu us, channel:%s.", transfer_cost, real_copy_cost,
             context.channel_id.c_str());
+  HIXL_EVENT("[FabricMemTransferService] Transfer timing, channel:%s, stream_wait_us:%lu, copy_us:%lu, sync_us:%lu, "
+             "real_copy_us:%lu, total_us:%lu, bytes:%lu, stream_num:%zu",
+             context.channel_id.c_str(), stream_wait_us, copy_us, sync_us, real_copy_cost, transfer_cost, transfer_bytes,
+             streams.size());
   return SUCCESS;
 }
 

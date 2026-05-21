@@ -95,7 +95,7 @@ def parse_args():
         "--transfer_threads",
         type=int,
         default=8,
-        help="Worker threads for concurrent remote slice transfers (default: 8)",
+        help="Worker threads for concurrent key transfers (default: 8)",
     )
     parser.add_argument(
         "--transport", choices=["rdma", "fabric_mem"], default=None,
