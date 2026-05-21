@@ -647,8 +647,9 @@ void InitRuntime(const KvBenchConfig &cfg, std::uint64_t local_size, std::uint64
 
 void CleanupRuntime(const KvBenchConfig &cfg, KvRuntime *runtime, const std::vector<RankMeta> &metas) {
   if (runtime->hixl_initialized) {
+    const bool disconnect_self = cfg.transport == kTransportFabricMem;
     for (const auto &meta : metas) {
-      if (meta.rank == cfg.rank) {
+      if (meta.rank == cfg.rank && !disconnect_self) {
         continue;
       }
       (void)runtime->hixl.Disconnect(AscendString(meta.endpoint.c_str()));
@@ -682,8 +683,9 @@ void CleanupRuntime(const KvBenchConfig &cfg, KvRuntime *runtime, const std::vec
 }
 
 void ConnectPeers(const KvBenchConfig &cfg, KvRuntime *runtime, const std::vector<RankMeta> &metas) {
+  const bool connect_self = cfg.transport == kTransportFabricMem;
   for (const auto &meta : metas) {
-    if (meta.rank == cfg.rank) {
+    if (meta.rank == cfg.rank && !connect_self) {
       continue;
     }
     if (IsTraceRank(cfg)) {
@@ -780,7 +782,7 @@ void GeneratePlacements(const std::vector<std::uint64_t> &rank_pool_sizes,
 
 void EnsurePlacementMetadata(const std::vector<std::uint64_t> &rank_pool_sizes,
                              WorkloadTransferState *state) {
-  if (state->placements_ready) {
+  if (state.placements_ready) {
     return;
   }
   GeneratePlacements(rank_pool_sizes, state);
@@ -881,7 +883,7 @@ TimingStats MeasureRepeated(const KvBenchConfig &cfg, const std::string &name,
       Barrier(cfg, name + "_ready_" + std::to_string(i));
     }
     const auto start = std::chrono::steady_clock::now();
-    const auto stage_timing = fn(i == 0U);
+    const auto stage_timing = fn(true);
     const auto end = std::chrono::steady_clock::now();
     if (sync_all_ranks) {
       Barrier(cfg, name + "_done_" + std::to_string(i));
@@ -1104,9 +1106,10 @@ int RunKvBenchParsed(KvBenchConfig &cfg, KvRuntime *runtime, std::vector<RankMet
 
   std::vector<KvBenchResult> results;
   {
+    const bool local_copy_for_self = cfg.transport != kTransportFabricMem;
     KvTransferExecutor transfer_executor(&runtime->hixl, BuildRankMetaByRank(*metas), cfg.rank,
                                          cfg.transfer_threads, kDefaultTransferTimeoutMs, runtime->aclrt_context,
-                                         RecentErrMsg);
+                                         RecentErrMsg, local_copy_for_self);
     results = RunBenchmark(cfg, runtime, &transfer_executor, *metas, *model, workloads, rank_pool_sizes);
   }
   WriteCsv(cfg, results, pool_size);
