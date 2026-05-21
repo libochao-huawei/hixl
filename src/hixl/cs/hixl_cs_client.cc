@@ -66,6 +66,14 @@ uint32_t GetMaxKernelBatchSize() {
   }();
   return batch_size;
 }
+
+bool IsPerfStatUboeEnabled() {
+  static bool enabled = []() {
+    const char *env_val = std::getenv("HIXL_PERF_STAT_UBOE");
+    return (env_val != nullptr && std::strcmp(env_val, "1") == 0);
+  }();
+  return enabled;
+}
 // notifywait默认1836ms等待时长，通过异步接口提供给用户使用，由用户感知超时主动退出，不使用notify的超时时间
 constexpr uint16_t kNotifyDefaultWaitTimeMs = 27 * 68;
 void FreeExportDesc(std::vector<hixl::HixlMemDesc> &desc_list) {
@@ -1017,14 +1025,29 @@ Status HixlCSClient::BatchTransferSync(bool is_get, uint32_t list_num, const Hix
                                        uint32_t timeout_ms) {
   auto ctx_guard = GetContextGuard();
   (void)ctx_guard;
+
+  bool perf_stat = IsPerfStatUboeEnabled();
+  auto t0 = perf_stat ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   HIXL_CHK_STATUS_RET(ValidateAddress(list_num, desc_list), "[HixlClient] ValidateAddress failed.");
+  auto t1 = perf_stat ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   HIXL_CHECK_NOTNULL(local_endpoint_);
   const EndpointDesc endpoint = local_endpoint_->GetEndpoint();
   if (IsDeviceEndpoint(endpoint)) {
     if (endpoint.protocol == COMM_PROTOCOL_UBOE) {
       std::vector<HixlOneSideOpDesc> mutable_descs(desc_list, desc_list + list_num);
       HIXL_CHK_STATUS_RET(ConvertUboeDescs(list_num, mutable_descs.data()), "[HixlClient] convert uboe descs failed.");
-      return BatchTransferDeviceSync(is_get, list_num, mutable_descs.data(), timeout_ms);
+      auto t2 = perf_stat ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+      Status ret = BatchTransferDeviceSync(is_get, list_num, mutable_descs.data(), timeout_ms);
+      auto t3 = perf_stat ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+      if (perf_stat) {
+        auto validate_us = std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+        auto convert_us = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count();
+        auto transfer_us = std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count();
+        HIXL_EVENT("[HixlClient] PerfStat: ValidateAddress=%luus, ConvertUboeDescs=%luus, BatchTransferDeviceSync=%luus",
+                  static_cast<uint64_t>(validate_us), static_cast<uint64_t>(convert_us),
+                  static_cast<uint64_t>(transfer_us));
+      }
+      return ret;
     }
     return BatchTransferDeviceSync(is_get, list_num, desc_list, timeout_ms);
   }
