@@ -19,10 +19,19 @@ Gb/s).
 
 import argparse
 import csv
+import sys
 from collections import defaultdict
+import logging
 from pathlib import Path
 
+_BENCHMARKS_DIR = Path(__file__).resolve().parents[2]
+if str(_BENCHMARKS_DIR) not in sys.path:
+    sys.path.insert(0, str(_BENCHMARKS_DIR))
 
+from benchmark_log import configure_logging  # noqa: E402
+
+configure_logging()
+log = logging.getLogger(__name__)
 def read_rows(csv_path):
     with open(csv_path, newline="", encoding="utf-8") as csv_file:
         return list(csv.DictReader(csv_file))
@@ -73,7 +82,7 @@ _X_AXIS_LABELS = {"key_count": "Key count", "token_length": "Token length"}
 def plot(plt, rows, metric, output, x_field):
     series = aggregate_points(rows, metric, x_field)
     if not series:
-        print(f"[WARN] no data for {metric}; skip")
+        log.warning(f"[WARN] no data for {metric}; skip")
         return
     all_xs = set()
     for (model, transport), points in series.items():
@@ -91,9 +100,7 @@ def plot(plt, rows, metric, output, x_field):
     plt.tight_layout()
     plt.savefig(output)
     plt.close()
-    print(f"[INFO] wrote {output}")
-
-
+    log.info(f"[INFO] wrote {output}")
 def main():
     parser = argparse.ArgumentParser(description="Plot HIXL KV benchmark")
     parser.add_argument("csv")
@@ -101,12 +108,12 @@ def main():
     args = parser.parse_args()
     rows = read_rows(args.csv)
     if not rows:
-        print(f"[WARN] {args.csv} has no rows; skip plot generation")
+        log.warning(f"[WARN] {args.csv} has no rows; skip plot generation")
         return
     try:
         import matplotlib.pyplot as plt
     except ImportError:
-        print("[WARN] matplotlib is not installed; skip plot generation")
+        log.warning("[WARN] matplotlib is not installed; skip plot generation")
         return
     out_dir = Path(args.output_dir) if args.output_dir else Path(args.csv).parent
     out_dir.mkdir(parents=True, exist_ok=True)

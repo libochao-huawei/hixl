@@ -87,41 +87,55 @@ int32_t InitializeHixl(const std::string &local_engine, const BenchmarkConfig &c
   return 0;
 }
 
-void ReleaseHixlResources(Hixl &hixl_engine, bool need_register, bool is_host, const std::vector<MemHandle> &handles,
-                          const std::vector<void *> &buffers, const std::string &transport = "") {
-  if (need_register) {
-    for (const auto &element : handles) {
-      if (element == nullptr) {
-        continue;
-      }
-      auto ret = hixl_engine.DeregisterMem(element);
-      if (ret != 0) {
-        std::printf("[ERROR] DeregisterMem failed, ret = %u, errmsg: %s\n", ret, RecentErrMsg());
-      } else {
-        std::printf("[INFO] DeregisterMem success\n");
-      }
+void DeregisterMemHandles(Hixl &hixl_engine, const std::vector<MemHandle> &handles) {
+  for (const auto &element : handles) {
+    if (element == nullptr) {
+      continue;
+    }
+    const auto ret = hixl_engine.DeregisterMem(element);
+    if (ret != 0) {
+      std::printf("[ERROR] DeregisterMem failed, ret = %u, errmsg: %s\n", ret, RecentErrMsg());
+    } else {
+      std::printf("[INFO] DeregisterMem success\n");
     }
   }
+}
+
+void FreeHostBuffers(const std::vector<void *> &buffers, const std::string &transport) {
+  for (const auto &element : buffers) {
+    if (element == nullptr) {
+      continue;
+    }
+    if (transport == "fabric_mem") {
+      (void)FabricMemTransferService::FreeMem(element);
+    } else {
+      (void)aclrtFreeHost(element);
+    }
+  }
+}
+
+void FreeDeviceBuffers(const std::vector<void *> &buffers, const std::string &transport) {
+  for (const auto &element : buffers) {
+    if (element == nullptr) {
+      continue;
+    }
+    if (transport == "fabric_mem") {
+      (void)FabricMemTransferService::FreeMem(element);
+    } else {
+      (void)aclrtFree(element);
+    }
+  }
+}
+
+void ReleaseHixlResources(Hixl &hixl_engine, bool need_register, bool is_host, const std::vector<MemHandle> &handles,
+                          const std::vector<void *> &buffers, const std::string &transport) {
+  if (need_register) {
+    DeregisterMemHandles(hixl_engine, handles);
+  }
   if (is_host) {
-    for (const auto &element : buffers) {
-      if (element != nullptr) {
-        if (transport == "fabric_mem") {
-          (void)FabricMemTransferService::FreeMem(element);
-        } else {
-          (void)aclrtFreeHost(element);
-        }
-      }
-    }
+    FreeHostBuffers(buffers, transport);
   } else {
-    for (const auto &element : buffers) {
-      if (element != nullptr) {
-        if (transport == "fabric_mem") {
-          (void)FabricMemTransferService::FreeMem(element);
-        } else {
-          (void)aclrtFree(element);
-        }
-      }
-    }
+    FreeDeviceBuffers(buffers, transport);
   }
   hixl_engine.Finalize();
 }

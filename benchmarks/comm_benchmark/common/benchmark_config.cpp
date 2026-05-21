@@ -504,57 +504,69 @@ bool ApplyMaxThreadsKv(const std::string &val, BenchmarkConfig *cfg) {
   return true;
 }
 
+void PopulateCoreKvHandlers(std::map<std::string, KvApplyFn> *table) {
+  auto &t = *table;
+  t["--role"] = ApplyRoleKv;
+  t["-r"] = ApplyRoleKv;
+  t["--benchmark_group"] = ApplyBenchmarkGroupKv;
+  t["--soc_variant"] = ApplySocVariantKv;
+  t["--output_dir"] = ApplyOutputDirKv;
+  t["--target_id"] = ApplyTargetIdKv;
+  t["--device_id"] = ApplyDeviceIdKv;
+  t["-d"] = ApplyDeviceIdKv;
+  t["--local_engine"] = ApplyLocalEngineKv;
+  t["-l"] = ApplyLocalEngineKv;
+  t["--remote_engine"] = ApplyRemoteEngineKv;
+  t["-e"] = ApplyRemoteEngineKv;
+  t["--tcp_port"] = ApplyTcpPortKv;
+  t["-p"] = ApplyTcpPortKv;
+  t["--tcp_accept_wait_s"] = ApplyTcpAcceptWaitSecKv;
+  t["-a"] = ApplyTcpAcceptWaitSecKv;
+  t["--tcp_client_count"] = ApplyTcpClientCountKv;
+  t["-c"] = ApplyTcpClientCountKv;
+  t["--initiator_memory"] = ApplyInitiatorMemoryKv;
+  t["--target_memory"] = ApplyTargetMemoryKv;
+  t["--transfer_op"] = ApplyTransferOpKv;
+  t["-o"] = ApplyTransferOpKv;
+  t["--op_type"] = ApplyOpTypeKv;
+  t["--transport"] = ApplyTransportKv;
+}
+
+void PopulateBenchKvHandlers(std::map<std::string, KvApplyFn> *table) {
+  auto &t = *table;
+  t["--total_size"] = ApplyTotalSizeKv;
+  t["-t"] = ApplyTotalSizeKv;
+  t["--buffer_size"] = ApplyBufferSizeKv;
+  t["--block_size"] = ApplyBlockSizeKv;
+  t["-k"] = ApplyBlockSizeKv;
+  t["--block_steps"] = ApplyBlockStepsKv;
+  t["-s"] = ApplyBlockStepsKv;
+  t["--loops"] = ApplyLoopsKv;
+  t["-n"] = ApplyLoopsKv;
+  t["--use_async"] = ApplyUseAsyncKv;
+  t["-x"] = ApplyUseAsyncKv;
+  t["--async_batch_num"] = ApplyAsyncBatchNumKv;
+  t["-y"] = ApplyAsyncBatchNumKv;
+  t["--connect_timeout"] = ApplyConnectTimeoutKv;
+  t["-C"] = ApplyConnectTimeoutKv;
+  t["--warmup_duration"] = ApplyWarmupDurationKv;
+  t["--check_consistency"] = ApplyCheckConsistencyKv;
+  t["--seed"] = ApplySeedKv;
+  t["--start_block_size"] = ApplyStartBlockSizeKv;
+  t["--max_block_size"] = ApplyMaxBlockSizeKv;
+  t["--start_batch_size"] = ApplyStartBatchSizeKv;
+  t["--max_batch_size"] = ApplyMaxBatchSizeKv;
+  t["--start_threads"] = ApplyStartThreadsKv;
+  t["--max_threads"] = ApplyMaxThreadsKv;
+}
+
 const std::map<std::string, KvApplyFn> &KvHandlerTable() {
-  static const std::map<std::string, KvApplyFn> kTable = {
-      {"--role", ApplyRoleKv},
-      {"-r", ApplyRoleKv},
-      {"--benchmark_group", ApplyBenchmarkGroupKv},
-      {"--soc_variant", ApplySocVariantKv},
-      {"--output_dir", ApplyOutputDirKv},
-      {"--target_id", ApplyTargetIdKv},
-      {"--device_id", ApplyDeviceIdKv},
-      {"-d", ApplyDeviceIdKv},
-      {"--local_engine", ApplyLocalEngineKv},
-      {"-l", ApplyLocalEngineKv},
-      {"--remote_engine", ApplyRemoteEngineKv},
-      {"-e", ApplyRemoteEngineKv},
-      {"--tcp_port", ApplyTcpPortKv},
-      {"-p", ApplyTcpPortKv},
-      {"--tcp_accept_wait_s", ApplyTcpAcceptWaitSecKv},
-      {"-a", ApplyTcpAcceptWaitSecKv},
-      {"--tcp_client_count", ApplyTcpClientCountKv},
-      {"-c", ApplyTcpClientCountKv},
-      {"--initiator_memory", ApplyInitiatorMemoryKv},
-      {"--target_memory", ApplyTargetMemoryKv},
-      {"--transfer_op", ApplyTransferOpKv},
-      {"-o", ApplyTransferOpKv},
-      {"--op_type", ApplyOpTypeKv},
-      {"--transport", ApplyTransportKv},
-      {"--total_size", ApplyTotalSizeKv},
-      {"-t", ApplyTotalSizeKv},
-      {"--buffer_size", ApplyBufferSizeKv},
-      {"--block_size", ApplyBlockSizeKv},
-      {"-k", ApplyBlockSizeKv},
-      {"--block_steps", ApplyBlockStepsKv},
-      {"-s", ApplyBlockStepsKv},
-      {"--loops", ApplyLoopsKv},
-      {"-n", ApplyLoopsKv},
-      {"--use_async", ApplyUseAsyncKv},
-      {"-x", ApplyUseAsyncKv},
-      {"--async_batch_num", ApplyAsyncBatchNumKv},
-      {"-y", ApplyAsyncBatchNumKv},
-      {"--connect_timeout", ApplyConnectTimeoutKv},
-      {"-C", ApplyConnectTimeoutKv},
-      {"--warmup_duration", ApplyWarmupDurationKv},
-      {"--check_consistency", ApplyCheckConsistencyKv},
-      {"--seed", ApplySeedKv},
-      {"--start_block_size", ApplyStartBlockSizeKv},
-      {"--max_block_size", ApplyMaxBlockSizeKv},
-      {"--start_batch_size", ApplyStartBatchSizeKv},
-      {"--max_batch_size", ApplyMaxBatchSizeKv},
-      {"--start_threads", ApplyStartThreadsKv},
-      {"--max_threads", ApplyMaxThreadsKv},
-  };
+  static const std::map<std::string, KvApplyFn> kTable = []() {
+    std::map<std::string, KvApplyFn> table;
+    PopulateCoreKvHandlers(&table);
+    PopulateBenchKvHandlers(&table);
+    return table;
+  }();
   return kTable;
 }
 

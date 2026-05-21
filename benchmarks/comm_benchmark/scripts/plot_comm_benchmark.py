@@ -21,13 +21,22 @@ from __future__ import annotations
 import argparse
 import csv
 import statistics
+import sys
 from collections import defaultdict
+import logging
+from dataclasses import dataclass
 from pathlib import Path
 
+_BENCHMARKS_DIR = Path(__file__).resolve().parents[2]
+if str(_BENCHMARKS_DIR) not in sys.path:
+    sys.path.insert(0, str(_BENCHMARKS_DIR))
 
 BLOCK_ORDER = ["16K", "32K", "64K", "128K", "256K", "512K", "1M", "2M", "4M", "8M"]
 
+from benchmark_log import configure_logging  # noqa: E402
 
+configure_logging()
+log = logging.getLogger(__name__)
 def block_sort_key(label: str) -> int:
     try:
         return BLOCK_ORDER.index(label)
@@ -43,12 +52,12 @@ def plot_single(csv_path: Path, output_dir: Path) -> None:
     try:
         import matplotlib.pyplot as plt
     except ImportError:
-        print("[WARN] matplotlib is not installed; skip plot generation")
+        log.warning("[WARN] matplotlib is not installed; skip plot generation")
         return
 
     rows = _load_csv(csv_path)
     if not rows:
-        print(f"[WARN] no data in {csv_path}")
+        log.warning(f"[WARN] no data in {csv_path}")
         return
 
     direction = rows[0].get("direction", "unknown")
@@ -56,13 +65,29 @@ def plot_single(csv_path: Path, output_dir: Path) -> None:
     title = f"{direction} ({transport})"
 
     by_block = _avg_by_block(rows, "bandwidth_gbps")
-    _line_chart(plt, by_block, title, "Block", "Bandwidth (GB/s)",
-                output_dir / f"comm_bandwidth_{direction}_{transport}.png")
+    _line_chart(
+        plt,
+        ChartPlotSpec(
+            by_block=by_block,
+            title=title,
+            xlabel="Block",
+            ylabel="Bandwidth (GB/s)",
+            output=output_dir / f"comm_bandwidth_{direction}_{transport}.png",
+        ),
+    )
 
     by_block_p99 = _avg_by_block(rows, "p99_us")
     if by_block_p99:
-        _line_chart(plt, by_block_p99, f"{title} — P99", "Block", "P99 (us)",
-                    output_dir / f"comm_p99_{direction}_{transport}.png")
+        _line_chart(
+            plt,
+            ChartPlotSpec(
+                by_block=by_block_p99,
+                title=f"{title} — P99",
+                xlabel="Block",
+                ylabel="P99 (us)",
+                output=output_dir / f"comm_p99_{direction}_{transport}.png",
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -86,8 +111,17 @@ def _avg_by_block(rows: list[dict], field: str) -> dict[str, float]:
     return {k: statistics.mean(v) for k, v in groups.items()}
 
 
-def _line_chart(plt, by_block: dict, title: str, xlabel: str, ylabel: str, output: Path) -> None:
-    items = sorted(by_block.items(), key=lambda kv: block_sort_key(kv[0]))
+@dataclass
+class ChartPlotSpec:
+    by_block: dict
+    title: str
+    xlabel: str
+    ylabel: str
+    output: Path
+
+
+def _line_chart(plt, spec: ChartPlotSpec) -> None:
+    items = sorted(spec.by_block.items(), key=lambda kv: block_sort_key(kv[0]))
     if not items:
         return
     labels, ys = zip(*items)
@@ -95,16 +129,14 @@ def _line_chart(plt, by_block: dict, title: str, xlabel: str, ylabel: str, outpu
     plt.figure(figsize=(9, 5))
     plt.plot(xs, ys, marker="o", linestyle="-", linewidth=1.5, markersize=5)
     plt.xticks(xs, labels, rotation=35, ha="right")
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(title)
+    plt.xlabel(spec.xlabel)
+    plt.ylabel(spec.ylabel)
+    plt.title(spec.title)
     plt.grid(True, linestyle=":", alpha=0.4)
     plt.tight_layout()
-    plt.savefig(output, dpi=140)
+    plt.savefig(spec.output, dpi=140)
     plt.close()
-    print(f"[INFO] wrote {output}")
-
-
+    log.info(f"[INFO] wrote {spec.output}")
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------

@@ -47,13 +47,13 @@ struct BenchmarkConfig {
   std::string local_engine;
   std::string remote_engine;
   std::string target_id;
-  uint16_t tcp_port = 20000;
+  uint16_t tcp_port = kDefaultTcpPort;
   /// Parsed from `--tcp_port` (comma-separated); if empty before Validate, set to `{tcp_port}`.
   std::vector<uint16_t> tcp_port_list;
   /// After Validate: same length as expanded_*; per-lane/per-remote TCP coordination port.
   std::vector<uint16_t> expanded_tcp_ports;
   /// Server: wall-clock budget for TCP connect phase (from listen ready), default 30 seconds.
-  uint32_t tcp_accept_wait_sec = 30U;
+  uint32_t tcp_accept_wait_sec = kDefaultAcceptWaitSec;
   /// Server: TCP peers to accept before connect phase succeeds (default 1).
   uint32_t tcp_client_count = 1U;
   std::string transfer_op = "read";
@@ -65,7 +65,7 @@ struct BenchmarkConfig {
   bool use_async = false;
   bool check_consistency = false;
   uint32_t async_batch_num = 1U;
-  uint32_t connect_timeout_ms = 60000U;
+  uint32_t connect_timeout_ms = kDefaultConnectTimeoutMs;
   uint32_t warmup_duration_sec = kDefaultWarmupDurationSec;
   uint64_t total_size = kDefaultTotalSize;
   uint64_t buffer_size = kDefaultBufferSize;
