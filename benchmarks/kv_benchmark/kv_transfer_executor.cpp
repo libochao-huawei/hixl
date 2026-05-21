@@ -142,10 +142,11 @@ void RunOneRemoteSegment(hixl::Hixl &hixl, std::uint32_t local_rank, std::uint32
 KvTransferExecutor::KvTransferExecutor(hixl::Hixl *hixl, std::map<std::uint32_t, RankMeta> metas_by_rank,
                                        std::uint32_t self_rank, std::uint32_t num_threads,
                                        std::int32_t timeout_ms, aclrtContext device_context,
-                                       const char *(*recent_errmsg)())
+                                       const char *(*recent_errmsg)(), bool local_copy_for_self)
     : hixl_(hixl),
       metas_by_rank_(std::move(metas_by_rank)),
       self_rank_(self_rank),
+      local_copy_for_self_(local_copy_for_self),
       worker_count_(std::max(1U, num_threads)),
       timeout_ms_(timeout_ms),
       device_context_(device_context),
@@ -164,7 +165,7 @@ std::vector<SegmentTransferTask> KvTransferExecutor::BuildTasks(
     if (item.second.empty()) {
       continue;
     }
-    if (item.first == self_rank_) {
+    if (item.first == self_rank_ && local_copy_for_self_) {
       tasks.push_back(SegmentTransferTask{item.first, "", &item.second, true});
       continue;
     }
