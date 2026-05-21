@@ -24,6 +24,7 @@
 #include <limits>
 #include <map>
 #include <numeric>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -51,6 +52,7 @@ constexpr std::uint32_t kDefaultProcessCount = 8U;
 constexpr std::uint32_t kDefaultBasePort = 19000U;
 constexpr std::uint32_t kDefaultWarmup = 1U;
 constexpr std::uint32_t kDefaultRepeat = 10U;
+constexpr std::uint64_t kDefaultSeed = 1234ULL;
 constexpr std::uint32_t kDefaultSyncTimeoutSec = 300U;
 constexpr std::int32_t kDefaultConnectTimeoutMs = 60000;
 constexpr std::int32_t kDefaultTransferTimeoutMs = 600000;
@@ -97,6 +99,7 @@ struct KvBenchConfig {
   std::string model = kDefaultModel;
   std::string model_config = "kv_benchmark/config/models.json";
   std::string key_counts;
+  std::uint64_t seed = kDefaultSeed;
   std::string transport = kTransportRdma;
   std::string output_dir = "kv_benchmark/output";
   std::string run_id = "manual";
@@ -282,6 +285,14 @@ std::uint32_t ParseU32(const std::map<std::string, std::string> &args, const std
   return static_cast<std::uint32_t>(parsed);
 }
 
+std::uint64_t ParseU64(const std::map<std::string, std::string> &args, const char *key, std::uint64_t value) {
+  const auto it = args.find(key);
+  if (it == args.end()) {
+    return value;
+  }
+  return std::stoull(it->second);
+}
+
 KvBenchConfig ParseConfig(int argc, char **argv) {
   const auto args = CollectArgs(argc, argv);
   KvBenchConfig cfg;
@@ -293,6 +304,7 @@ KvBenchConfig ParseConfig(int argc, char **argv) {
   cfg.repeat = ParseU32(args, "--repeat", cfg.repeat);
   cfg.sync_timeout_sec = ParseU32(args, "--sync_timeout_sec", cfg.sync_timeout_sec);
   cfg.transfer_threads = ParseU32(args, "--transfer_threads", cfg.transfer_threads);
+  cfg.seed = ParseU64(args, "--seed", cfg.seed);
   if (args.count("--local_buffer_min") != 0U) cfg.local_buffer_min = ParseSize(args.at("--local_buffer_min"));
   if (args.count("--pool_memory") != 0U) cfg.pool_memory = args.at("--pool_memory");
   if (args.count("--model") != 0U) cfg.model = args.at("--model");
@@ -418,7 +430,7 @@ std::vector<std::uint64_t> ComputeMaxSegmentUsage(const KvBenchConfig &cfg, cons
   for (const auto &workload : workloads) {
     const auto slice_plan = BuildWorkloadSlicePlan(kFakeBufferBase, cfg.rank, workload.token_length,
                                                    workload.key_count, model);
-    KvStore store(BuildSegmentManagerUniform(cfg.num_processes, uniform_segment_capacity));
+    KvStore store(cfg.seed, BuildSegmentManagerUniform(cfg.num_processes, uniform_segment_capacity));
     PlaceSlicePlan(&store, slice_plan);
     for (const auto &item : store.Placements()) {
       const auto &placement = item.second;
@@ -437,7 +449,7 @@ void VerifyRankPoolLayouts(const KvBenchConfig &cfg, const ModelSpec &model,
   for (const auto &workload : workloads) {
     const auto slice_plan = BuildWorkloadSlicePlan(kFakeBufferBase, cfg.rank, workload.token_length,
                                                    workload.key_count, model);
-    KvStore store(BuildSegmentManagerFromPoolSizes(rank_pool_sizes));
+    KvStore store(cfg.seed, BuildSegmentManagerFromPoolSizes(rank_pool_sizes));
     PlaceSlicePlan(&store, slice_plan);
   }
 }
@@ -754,20 +766,27 @@ void PrintStageTiming(const KvBenchConfig &cfg, TransferOp op, const KvWorkload 
             << " total_us=" << (plan_us + transfer_us) << std::endl;
 }
 
-void GeneratePlacements(const std::vector<std::uint64_t> &rank_pool_sizes,
+void GeneratePlacements(std::uint64_t seed, const std::vector<std::uint64_t> &rank_pool_sizes,
                         WorkloadTransferState *state) {
   SegmentManager manager = BuildSegmentManagerFromPoolSizes(rank_pool_sizes);
   state->placements.clear();
   state->placements.reserve(state->slices.size());
+  std::mt19937_64 rng(seed);
+  std::map<std::uint64_t, std::uint32_t> key_segments;
   std::uint64_t current_key = std::numeric_limits<std::uint64_t>::max();
   std::uint32_t selected_segment = 0U;
-  std::uint32_t next_segment = 0U;
   const auto segment_count = static_cast<std::uint32_t>(rank_pool_sizes.size());
+  std::uniform_int_distribution<std::uint32_t> dist(0U, segment_count - 1U);
   for (const auto &slice : state->slices) {
     if (slice.key_index != current_key) {
       current_key = slice.key_index;
-      selected_segment = next_segment % segment_count;
-      ++next_segment;
+      const auto it = key_segments.find(current_key);
+      if (it == key_segments.end()) {
+        selected_segment = dist(rng);
+        key_segments[current_key] = selected_segment;
+      } else {
+        selected_segment = it->second;
+      }
     }
     const auto allocation = manager.AllocateFrom(selected_segment, slice.size);
     if (!allocation.has_value()) {
@@ -778,12 +797,12 @@ void GeneratePlacements(const std::vector<std::uint64_t> &rank_pool_sizes,
   state->placements_ready = true;
 }
 
-void EnsurePlacementMetadata(const std::vector<std::uint64_t> &rank_pool_sizes,
+void EnsurePlacementMetadata(std::uint64_t seed, const std::vector<std::uint64_t> &rank_pool_sizes,
                              WorkloadTransferState *state) {
   if (state->placements_ready) {
     return;
   }
-  GeneratePlacements(rank_pool_sizes, state);
+  GeneratePlacements(seed, rank_pool_sizes, state);
 }
 
 std::vector<std::uint64_t> BuildKeyDistribution(std::uint32_t segment_count,
@@ -830,8 +849,8 @@ std::map<std::uint32_t, std::vector<TransferOpDesc>> BuildDescsFromPlacements(
 }
 
 std::map<std::uint32_t, std::vector<TransferOpDesc>> BuildPutTransferDescs(const std::vector<RankMeta> &metas,
-    const std::vector<std::uint64_t> &rank_pool_sizes, WorkloadTransferState *state) {
-  GeneratePlacements(rank_pool_sizes, state);
+    const std::vector<std::uint64_t> &rank_pool_sizes, std::uint64_t seed, WorkloadTransferState *state) {
+  GeneratePlacements(seed, rank_pool_sizes, state);
   return BuildDescsFromPlacements(metas, *state);
 }
 
@@ -848,7 +867,7 @@ TransferStageTiming ExecuteKvTransfer(const KvBenchConfig &cfg, KvTransferExecut
                                       const std::vector<std::uint64_t> &rank_pool_sizes,
                                       WorkloadTransferState *state, bool trace_transfer) {
   const auto plan_start = std::chrono::steady_clock::now();
-  const auto descs_by_rank = op == hixl::WRITE ? BuildPutTransferDescs(metas, rank_pool_sizes, state)
+  const auto descs_by_rank = op == hixl::WRITE ? BuildPutTransferDescs(metas, rank_pool_sizes, cfg.seed, state)
                                                : BuildGetTransferDescs(metas, *state);
   const auto plan_us = ElapsedUs(plan_start, std::chrono::steady_clock::now());
 
@@ -881,7 +900,7 @@ TimingStats MeasureRepeated(const KvBenchConfig &cfg, const std::string &name,
       Barrier(cfg, name + "_ready_" + std::to_string(i));
     }
     const auto start = std::chrono::steady_clock::now();
-    const auto stage_timing = fn(i == 0U);
+    const auto stage_timing = fn(true);
     const auto end = std::chrono::steady_clock::now();
     if (sync_all_ranks) {
       Barrier(cfg, name + "_done_" + std::to_string(i));
@@ -925,7 +944,7 @@ KvBenchResult RunWorkload(const KvBenchConfig &cfg, KvRuntime *runtime, KvTransf
     PrintStageTiming(cfg, hixl::WRITE, workload, put_timing.plan_us, put_timing.transfer_us);
   }
   Barrier(cfg, "workload_" + std::to_string(index) + "_put_done");
-  EnsurePlacementMetadata(rank_pool_sizes, &transfer_state);
+  EnsurePlacementMetadata(cfg.seed, rank_pool_sizes, &transfer_state);
 
   get = MeasureRepeated(
       cfg, "workload_" + std::to_string(index) + "_get",

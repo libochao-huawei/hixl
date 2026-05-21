@@ -106,6 +106,7 @@ def parse_args():
     parser.add_argument("--connect_host", default="127.0.0.1")
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--repeat", type=int, default=10)
+    parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--sync_timeout_sec", type=int, default=300)
     parser.add_argument(
         "--skip_plot", action="store_true", help="Skip automatic plot generation"
@@ -257,6 +258,7 @@ def main():
             f"--connect_host={args.connect_host}",
             f"--warmup={args.warmup}",
             f"--repeat={args.repeat}",
+            f"--seed={args.seed}",
             f"--sync_timeout_sec={args.sync_timeout_sec}",
             f"--key_counts={key_counts}",
         ]

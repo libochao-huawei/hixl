@@ -16,8 +16,8 @@
 
 namespace hixl_kv_benchmark {
 
-KvStore::KvStore(SegmentManager segment_manager)
-    : segment_manager_(std::move(segment_manager)) {}
+KvStore::KvStore(std::uint64_t seed, SegmentManager segment_manager)
+    : segment_manager_(std::move(segment_manager)), rng_(seed) {}
 
 bool KvStore::CheckInput(const std::vector<std::string> &keys, const std::vector<BufferView> &buffers) const {
   if (keys.empty() || keys.size() != buffers.size()) {
@@ -40,8 +40,8 @@ std::uint32_t KvStore::ResolveSegmentForKeyGroup(const std::string &group_key) {
   if (segment_count == 0U) {
     throw std::runtime_error("no segments available for key placement");
   }
-  const auto segment_id = next_segment_ % segment_count;
-  ++next_segment_;
+  std::uniform_int_distribution<std::uint32_t> dist(0U, segment_count - 1U);
+  const auto segment_id = dist(rng_);
   key_group_segments_[group_key] = segment_id;
   return segment_id;
 }

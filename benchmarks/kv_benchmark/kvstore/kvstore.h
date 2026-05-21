@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <map>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -34,7 +35,7 @@ struct KeyPlacement {
 
 class KvStore {
  public:
-  explicit KvStore(SegmentManager segment_manager);
+  explicit KvStore(std::uint64_t seed, SegmentManager segment_manager);
 
   bool EnsurePlacements(const std::vector<std::string> &keys, const std::vector<BufferView> &buffers);
 
@@ -47,10 +48,10 @@ class KvStore {
   std::uint32_t ResolveSegmentForKeyGroup(const std::string &group_key);
 
   SegmentManager segment_manager_;
+  std::mt19937_64 rng_;
   std::map<std::string, KeyPlacement> placements_;
-  /// One round-robin assigned segment per KV block (key); all slices of that key use it.
+  /// One randomly chosen segment per KV block (key); all slices of that key use it.
   std::map<std::string, std::uint32_t> key_group_segments_;
-  std::uint32_t next_segment_ = 0U;
 };
 
 }  // namespace hixl_kv_benchmark
