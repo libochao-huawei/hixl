@@ -1,4 +1,4 @@
-# MemType
+# Memtype
 
 表示地址所在位置，通常作为MemInfo的mem\_type参数的类型。
 
