@@ -46,7 +46,7 @@ class KvTransferExecutor {
  public:
   KvTransferExecutor(hixl::Hixl *hixl, std::map<std::uint32_t, RankMeta> metas_by_rank, std::uint32_t self_rank,
                      std::uint32_t num_threads, std::int32_t timeout_ms, aclrtContext device_context,
-                     const char *(*recent_errmsg)());
+                     const char *(*recent_errmsg)(), bool local_copy_for_self = true);
   ~KvTransferExecutor();
   KvTransferExecutor(const KvTransferExecutor &) = delete;
   KvTransferExecutor &operator=(const KvTransferExecutor &) = delete;
@@ -67,6 +67,7 @@ class KvTransferExecutor {
   hixl::Hixl *hixl_ = nullptr;
   std::map<std::uint32_t, RankMeta> metas_by_rank_;
   std::uint32_t self_rank_ = 0U;
+  bool local_copy_for_self_ = true;
   std::uint32_t worker_count_ = 0U;
   std::int32_t timeout_ms_ = 0;
   aclrtContext device_context_ = nullptr;
