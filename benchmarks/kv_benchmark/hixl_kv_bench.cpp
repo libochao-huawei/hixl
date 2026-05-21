@@ -881,7 +881,7 @@ TimingStats MeasureRepeated(const KvBenchConfig &cfg, const std::string &name,
       Barrier(cfg, name + "_ready_" + std::to_string(i));
     }
     const auto start = std::chrono::steady_clock::now();
-    const auto stage_timing = fn(i == 0U);
+    const auto stage_timing = fn(true);
     const auto end = std::chrono::steady_clock::now();
     if (sync_all_ranks) {
       Barrier(cfg, name + "_done_" + std::to_string(i));

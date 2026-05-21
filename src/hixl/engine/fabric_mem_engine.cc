@@ -10,6 +10,7 @@
 
 #include "fabric_mem_engine.h"
 
+#include <chrono>
 #include <limits>
 #include <string>
 #include <unistd.h>
@@ -27,6 +28,21 @@ namespace hixl {
 namespace {
 std::mutex g_fabric_mem_vm_mutex;
 size_t g_fabric_mem_vm_ref_count = 0;
+
+uint64_t GetDurationUs(const std::chrono::steady_clock::time_point &start,
+                       const std::chrono::steady_clock::time_point &end) {
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
+}
+
+const char *TransferOpName(TransferOp operation) {
+  return operation == READ ? "READ" : "WRITE";
+}
+
+void LogTransferSyncTiming(const char *remote_engine, TransferOp operation, uint64_t context_us, uint64_t transfer_us,
+                           uint64_t total_us) {
+  HIXL_EVENT("[FabricMemEngine] TransferSync timing, remote:%s, op:%s, context_us:%lu, transfer_us:%lu, total_us:%lu",
+             remote_engine, TransferOpName(operation), context_us, transfer_us, total_us);
+}
 
 Status BuildAddrInfo(const MemDesc &mem, MemType type, AddrInfo &addr_info) {
   HIXL_CHK_BOOL_RET_STATUS(mem.len > 0, PARAM_INVALID, "[FabricMemEngine] Memory length must be greater than zero.");
@@ -308,18 +324,25 @@ Status FabricMemEngine::TransferSync(const AscendString &remote_engine, Transfer
                                      const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis) {
   HixlProfType type = (operation == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
   HIXL_API_PROFILING(type);
+  const auto total_start = std::chrono::steady_clock::now();
+  const char *remote = remote_engine.GetString();
   if (auto_connect_) {
     HIXL_CHK_STATUS_RET(EnsureConnected(remote_engine, timeout_in_millis),
-                        "[FabricMemEngine] Auto-connect failed, remote:%s.", remote_engine.GetString());
+                        "[FabricMemEngine] Auto-connect failed, remote:%s.", remote);
+    const auto lock_start = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> lock(mutex_);
     HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(), "[FabricMemEngine] FabricMem service is null.");
     FabricMemTransferContext context;
-    Status ret = BuildTransferContextLocked(remote_engine.GetString(), context);
+    Status ret = BuildTransferContextLocked(remote, context);
     if (ret != SUCCESS) {
       (void)DisconnectLocked(remote_engine, timeout_in_millis);
       return ret;
     }
+    const auto context_us = GetDurationUs(lock_start, std::chrono::steady_clock::now());
+    const auto transfer_start = std::chrono::steady_clock::now();
     ret = fabric_mem_transfer_service_->Transfer(context, operation, op_descs, timeout_in_millis);
+    const auto transfer_us = GetDurationUs(transfer_start, std::chrono::steady_clock::now());
+    LogTransferSyncTiming(remote, operation, context_us, transfer_us, GetDurationUs(total_start, std::chrono::steady_clock::now()));
     if (ret != SUCCESS) {
       (void)DisconnectLocked(remote_engine, timeout_in_millis);
     }
@@ -328,16 +351,22 @@ Status FabricMemEngine::TransferSync(const AscendString &remote_engine, Transfer
   std::shared_lock<std::shared_mutex> transfer_lock(transfer_mutex_);
   FabricMemTransferContext context;
   FabricMemTransferService *transfer_service = nullptr;
+  const auto context_start = std::chrono::steady_clock::now();
   {
     std::lock_guard<std::mutex> lock(mutex_);
     HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(), "[FabricMemEngine] FabricMem service is null.");
     transfer_service = fabric_mem_transfer_service_.get();
-    const Status ret = BuildTransferContextLocked(remote_engine.GetString(), context);
+    const Status ret = BuildTransferContextLocked(remote, context);
     if (ret != SUCCESS) {
       return ret;
     }
   }
-  return transfer_service->Transfer(context, operation, op_descs, timeout_in_millis);
+  const auto context_us = GetDurationUs(context_start, std::chrono::steady_clock::now());
+  const auto transfer_start = std::chrono::steady_clock::now();
+  const Status ret = transfer_service->Transfer(context, operation, op_descs, timeout_in_millis);
+  const auto transfer_us = GetDurationUs(transfer_start, std::chrono::steady_clock::now());
+  LogTransferSyncTiming(remote, operation, context_us, transfer_us, GetDurationUs(total_start, std::chrono::steady_clock::now()));
+  return ret;
 }
 
 Status FabricMemEngine::TransferAsync(const AscendString &remote_engine, TransferOp operation,
