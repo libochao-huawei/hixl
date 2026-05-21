@@ -35,10 +35,11 @@ struct RankMeta {
   std::uint64_t pool_size = 0U;
 };
 
-struct SegmentTransferTask {
+struct KeyTransferTask {
+  std::uint64_t key_index = 0U;
   std::uint32_t segment_id = 0U;
   std::string endpoint;
-  const std::vector<hixl::TransferOpDesc> *descs = nullptr;
+  std::vector<hixl::TransferOpDesc> descs;
   bool is_self = false;
 };
 
@@ -46,18 +47,14 @@ class KvTransferExecutor {
  public:
   KvTransferExecutor(hixl::Hixl *hixl, std::map<std::uint32_t, RankMeta> metas_by_rank, std::uint32_t self_rank,
                      std::uint32_t num_threads, std::int32_t timeout_ms, aclrtContext device_context,
-                     const char *(*recent_errmsg)());
+                     const char *(*recent_errmsg)(), bool local_copy_for_self = true);
   ~KvTransferExecutor();
   KvTransferExecutor(const KvTransferExecutor &) = delete;
   KvTransferExecutor &operator=(const KvTransferExecutor &) = delete;
 
-  void Transfer(hixl::TransferOp op,
-                const std::map<std::uint32_t, std::vector<hixl::TransferOpDesc>> &descs_by_rank,
-                bool trace_transfer);
+  void Transfer(hixl::TransferOp op, std::vector<KeyTransferTask> tasks, bool trace_transfer);
 
  private:
-  std::vector<SegmentTransferTask> BuildTasks(
-      const std::map<std::uint32_t, std::vector<hixl::TransferOpDesc>> &descs_by_rank) const;
   void StartWorkers();
   void StopWorkers();
   void WaitWorkersReady();
@@ -67,6 +64,7 @@ class KvTransferExecutor {
   hixl::Hixl *hixl_ = nullptr;
   std::map<std::uint32_t, RankMeta> metas_by_rank_;
   std::uint32_t self_rank_ = 0U;
+  bool local_copy_for_self_ = true;
   std::uint32_t worker_count_ = 0U;
   std::int32_t timeout_ms_ = 0;
   aclrtContext device_context_ = nullptr;
@@ -77,7 +75,7 @@ class KvTransferExecutor {
   std::condition_variable done_cv_;
   std::condition_variable ready_cv_;
   std::vector<std::thread> workers_;
-  std::vector<SegmentTransferTask> tasks_;
+  std::vector<KeyTransferTask> tasks_;
   hixl::TransferOp op_ = hixl::WRITE;
   std::size_t next_task_ = 0U;
   std::size_t remaining_tasks_ = 0U;

@@ -21,13 +21,21 @@ from __future__ import annotations
 import argparse
 import csv
 import statistics
+import sys
 from collections import defaultdict
+import logging
 from pathlib import Path
 
+_BENCHMARKS_DIR = Path(__file__).resolve().parents[2]
+if str(_BENCHMARKS_DIR) not in sys.path:
+    sys.path.insert(0, str(_BENCHMARKS_DIR))
 
 BLOCK_ORDER = ["16K", "32K", "64K", "128K", "256K", "512K", "1M", "2M", "4M", "8M"]
 
+from benchmark_log import configure_logging  # noqa: E402
 
+configure_logging()
+log = logging.getLogger(__name__)
 def block_sort_key(label: str) -> int:
     try:
         return BLOCK_ORDER.index(label)
@@ -43,12 +51,12 @@ def plot_single(csv_path: Path, output_dir: Path) -> None:
     try:
         import matplotlib.pyplot as plt
     except ImportError:
-        print("[WARN] matplotlib is not installed; skip plot generation")
+        log.warning("[WARN] matplotlib is not installed; skip plot generation")
         return
 
     rows = _load_csv(csv_path)
     if not rows:
-        print(f"[WARN] no data in {csv_path}")
+        log.warning(f"[WARN] no data in {csv_path}")
         return
 
     direction = rows[0].get("direction", "unknown")
@@ -102,9 +110,7 @@ def _line_chart(plt, by_block: dict, title: str, xlabel: str, ylabel: str, outpu
     plt.tight_layout()
     plt.savefig(output, dpi=140)
     plt.close()
-    print(f"[INFO] wrote {output}")
-
-
+    log.info(f"[INFO] wrote {output}")
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
