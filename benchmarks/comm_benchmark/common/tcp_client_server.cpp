@@ -29,6 +29,7 @@ namespace {
 
 constexpr int kListenPollSliceMs = 250;
 constexpr int kRecvNotifyPollTimeoutMs = 30 * 60 * 1000;
+constexpr int64_t kMinPollRemainMs = 1LL;
 constexpr uint32_t kDefaultTcpConnectTimeoutMs = 60000U;
 constexpr uint32_t kConnectRetryIntervalMs = 1000U;
 constexpr int kAcceptConnTimeoutMs = 5000;
@@ -58,6 +59,33 @@ bool HandleNewClient(int cfd, uint64_t addr_to_send, std::vector<int> *out_clien
   return true;
 }
 
+// Returns 1 when a peer is accepted, 0 on poll timeout, -1 on hard failure.
+int AcceptOnePeerInConnectPhase(TCPServer *srv, uint64_t addr_to_send,
+                                const std::chrono::steady_clock::time_point &deadline,
+                                std::vector<int> *out_client_fds) {
+  const auto now = std::chrono::steady_clock::now();
+  if (now >= deadline) {
+    return 0;
+  }
+  const int64_t remain_ms = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
+  const int poll_ms = static_cast<int>(std::min<int64_t>(static_cast<int64_t>(kListenPollSliceMs),
+                                                         std::max<int64_t>(remain_ms, kMinPollRemainMs)));
+  int cfd = -1;
+  bool timed_out = false;
+  if (!srv->AcceptIntoClientFd(&cfd, poll_ms, &timed_out)) {
+    if (!timed_out) {
+      std::printf("[ERROR] AcceptIntoClientFd failed.\n");
+      CloseClientFds(out_client_fds);
+      return -1;
+    }
+    return 0;
+  }
+  if (!HandleNewClient(cfd, addr_to_send, out_client_fds)) {
+    return -1;
+  }
+  return 1;
+}
+
 bool RunConnectPhaseFill(TCPServer *srv, uint16_t port, uint64_t addr_to_send, uint32_t max_connect_phase_sec,
                          uint32_t expected_peer_count, std::vector<int> *out_client_fds) {
   if (srv == nullptr || out_client_fds == nullptr) {
@@ -71,41 +99,29 @@ bool RunConnectPhaseFill(TCPServer *srv, uint16_t port, uint64_t addr_to_send, u
   std::printf(
       "[INFO] TCP server started (connect phase, expect %" PRIu32 " peer(s), max %" PRIu32 " s wall time).\n",
       expected_peer_count, max_connect_phase_sec);
-  const auto t0 = std::chrono::steady_clock::now();
-  const auto budget = std::chrono::seconds(static_cast<int>(max_connect_phase_sec));
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(static_cast<int>(max_connect_phase_sec));
 
   while (out_client_fds->size() < expected_peer_count) {
-    const auto now = std::chrono::steady_clock::now();
-    if (now >= t0 + budget) {
-      const size_t got = out_client_fds->size();
-      if (got == 0U) {
-        std::printf("[ERROR] TCP connect phase: no client within %" PRIu32 " s.\n", max_connect_phase_sec);
-      } else {
-        std::printf(
-            "[ERROR] TCP connect phase: timeout after %" PRIu32 " s (expected %" PRIu32 " peers, got %zu).\n",
-            max_connect_phase_sec, expected_peer_count, got);
-      }
-      CloseClientFds(out_client_fds);
+    const int accept_status = AcceptOnePeerInConnectPhase(srv, addr_to_send, deadline, out_client_fds);
+    if (accept_status < 0) {
       return false;
     }
-    const int64_t remain_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>((t0 + budget) - now).count();
-    const int poll_ms = static_cast<int>(
-        std::min<int64_t>(static_cast<int64_t>(kListenPollSliceMs), std::max<int64_t>(remain_ms, 1LL)));
-
-    int cfd = -1;
-    bool timed_out = false;
-    if (!srv->AcceptIntoClientFd(&cfd, poll_ms, &timed_out)) {
-      if (!timed_out) {
-        std::printf("[ERROR] AcceptIntoClientFd failed.\n");
-        CloseClientFds(out_client_fds);
-        return false;
-      }
-      continue;
+    if (accept_status == 0 && std::chrono::steady_clock::now() >= deadline) {
+      break;
     }
-    if (!HandleNewClient(cfd, addr_to_send, out_client_fds)) {
-      return false;
+  }
+  if (out_client_fds->size() < expected_peer_count) {
+    const size_t got = out_client_fds->size();
+    if (got == 0U) {
+      std::printf("[ERROR] TCP connect phase: no client within %" PRIu32 " s.\n", max_connect_phase_sec);
+    } else {
+      std::printf(
+          "[ERROR] TCP connect phase: timeout after %" PRIu32 " s (expected %" PRIu32 " peers, got %zu).\n",
+          max_connect_phase_sec, expected_peer_count, got);
     }
+    CloseClientFds(out_client_fds);
+    return false;
   }
   std::printf("[INFO] TCP connect phase finished, N=%zu (expected=%" PRIu32 ")\n", out_client_fds->size(),
               expected_peer_count);
