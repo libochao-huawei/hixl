@@ -46,43 +46,57 @@ int32_t InitializeHixl(const std::string &local_engine, const hixl_benchmark::Be
   return 0;
 }
 
+void DeregisterMemHandles(Hixl &hixl_engine, const std::vector<hixl::MemHandle> &handles) {
+  for (const auto &handle : handles) {
+    if (handle == nullptr) {
+      continue;
+    }
+    const auto ret = hixl_engine.DeregisterMem(handle);
+    if (ret != 0) {
+      std::printf("[ERROR] DeregisterMem failed, ret = %u, errmsg: %s\n", ret, RecentErrMsg());
+    } else {
+      std::printf("[INFO] DeregisterMem success\n");
+    }
+  }
+}
+
+void FreeHostBuffers(const std::vector<void *> &buffers, const std::string &transport) {
+  for (const auto &buffer : buffers) {
+    if (buffer == nullptr) {
+      continue;
+    }
+    if (transport == "fabric_mem") {
+      (void)FabricMemTransferService::FreeMem(buffer);
+    } else {
+      (void)aclrtFreeHost(buffer);
+    }
+  }
+}
+
+void FreeDeviceBuffers(const std::vector<void *> &buffers, const std::string &transport) {
+  for (const auto &buffer : buffers) {
+    if (buffer == nullptr) {
+      continue;
+    }
+    if (transport == "fabric_mem") {
+      (void)FabricMemTransferService::FreeMem(buffer);
+    } else {
+      (void)aclrtFree(buffer);
+    }
+  }
+}
+
 void ReleaseHixlResources(Hixl &hixl_engine, bool need_register, bool is_host,
                           const std::vector<hixl::MemHandle> &handles,
                           const std::vector<void *> &buffers,
                           const std::string &transport = "") {
   if (need_register) {
-    for (const auto &handle : handles) {
-      if (handle == nullptr) {
-        continue;
-      }
-      auto ret = hixl_engine.DeregisterMem(handle);
-      if (ret != 0) {
-        std::printf("[ERROR] DeregisterMem failed, ret = %u, errmsg: %s\n", ret, RecentErrMsg());
-      } else {
-        std::printf("[INFO] DeregisterMem success\n");
-      }
-    }
+    DeregisterMemHandles(hixl_engine, handles);
   }
   if (is_host) {
-    for (const auto &buffer : buffers) {
-      if (buffer != nullptr) {
-        if (transport == "fabric_mem") {
-          (void)FabricMemTransferService::FreeMem(buffer);
-        } else {
-          (void)aclrtFreeHost(buffer);
-        }
-      }
-    }
+    FreeHostBuffers(buffers, transport);
   } else {
-    for (const auto &buffer : buffers) {
-      if (buffer != nullptr) {
-        if (transport == "fabric_mem") {
-          (void)FabricMemTransferService::FreeMem(buffer);
-        } else {
-          (void)aclrtFree(buffer);
-        }
-      }
-    }
+    FreeDeviceBuffers(buffers, transport);
   }
   hixl_engine.Finalize();
 }

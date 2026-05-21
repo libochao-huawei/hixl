@@ -10,11 +10,9 @@
 
 #include "kv_transfer_executor.h"
 
-#include <algorithm>
 #include <chrono>
 #include <exception>
 #include <iostream>
-#include <map>
 #include <mutex>
 #include <stdexcept>
 #include <thread>
@@ -46,32 +44,31 @@ std::uint64_t CurrentThreadId() {
   return static_cast<std::uint64_t>(syscall(SYS_gettid));
 }
 
-void TraceSegment(const char *stage, std::uint32_t local_rank, std::uint32_t worker_id,
-                  const SegmentTransferTask &task, TransferOp op, std::mutex *trace_mu,
-                  std::uint64_t elapsed_us = 0U) {
-  if (trace_mu == nullptr || task.descs == nullptr || local_rank != 0U) {
+void TraceKeyTransfer(const char *stage, std::uint32_t local_rank, std::uint32_t worker_id,
+                      const KeyTransferTask &task, TransferOp op, std::mutex *trace_mu,
+                      std::uint64_t elapsed_us = 0U) {
+  if (trace_mu == nullptr || task.descs.empty() || local_rank != 0U) {
     return;
   }
   std::lock_guard<std::mutex> guard(*trace_mu);
   std::cout << "[TRACE] xfer " << stage << " rank=" << local_rank << " worker=" << worker_id
-            << " tid=" << CurrentThreadId() << " op=" << OpName(op) << " seg=" << task.segment_id
-            << " peer=" << task.endpoint << " bytes=" << SumBytes(*task.descs);
+            << " tid=" << CurrentThreadId() << " op=" << OpName(op) << " key=" << task.key_index
+            << " seg=" << task.segment_id << " peer=" << task.endpoint << " bytes=" << SumBytes(task.descs);
   if (elapsed_us != 0U) {
     std::cout << " elapsed=" << elapsed_us;
   }
   std::cout << std::endl;
 }
 
-void TraceLocalCopy(const char *stage, std::uint32_t local_rank, std::uint32_t worker_id,
-                    const SegmentTransferTask &task, TransferOp op, std::mutex *trace_mu,
-                    std::uint64_t elapsed_us = 0U) {
-  if (trace_mu == nullptr || task.descs == nullptr || local_rank != 0U) {
+void TraceLocalCopy(const char *stage, std::uint32_t local_rank, std::uint32_t worker_id, const KeyTransferTask &task,
+                    TransferOp op, std::mutex *trace_mu, std::uint64_t elapsed_us = 0U) {
+  if (trace_mu == nullptr || task.descs.empty() || local_rank != 0U) {
     return;
   }
   std::lock_guard<std::mutex> guard(*trace_mu);
   std::cout << "[TRACE] copy " << stage << " rank=" << local_rank << " worker=" << worker_id
-            << " tid=" << CurrentThreadId() << " op=" << OpName(op) << " seg=" << task.segment_id
-            << " bytes=" << SumBytes(*task.descs);
+            << " tid=" << CurrentThreadId() << " op=" << OpName(op) << " key=" << task.key_index
+            << " seg=" << task.segment_id << " bytes=" << SumBytes(task.descs);
   if (elapsed_us != 0U) {
     std::cout << " elapsed=" << elapsed_us;
   }
@@ -88,11 +85,11 @@ void SetWorkerContext(aclrtContext device_context) {
   }
 }
 
-void RunLocalSegmentCopy(std::uint32_t local_rank, std::uint32_t worker_id, const SegmentTransferTask &task,
-                         TransferOp op, const char *(*recent_errmsg)(), std::mutex *trace_mu) {
+void RunLocalKeyCopy(std::uint32_t local_rank, std::uint32_t worker_id, const KeyTransferTask &task, TransferOp op,
+                     const char *(*recent_errmsg)(), std::mutex *trace_mu) {
   TraceLocalCopy("begin", local_rank, worker_id, task, op, trace_mu);
   const auto start = std::chrono::steady_clock::now();
-  for (const auto &desc : *task.descs) {
+  for (const auto &desc : task.descs) {
     void *dst = nullptr;
     const void *src = nullptr;
     aclrtMemcpyKind kind = ACL_MEMCPY_DEVICE_TO_HOST;
@@ -108,7 +105,7 @@ void RunLocalSegmentCopy(std::uint32_t local_rank, std::uint32_t worker_id, cons
     const auto ret = aclrtMemcpy(dst, desc.len, src, desc.len, kind);
     if (ret != ACL_ERROR_NONE) {
       const char *errmsg = recent_errmsg != nullptr ? recent_errmsg() : "unknown";
-      throw std::runtime_error("local aclrtMemcpy failed for segment " + std::to_string(task.segment_id) +
+      throw std::runtime_error("local aclrtMemcpy failed for key " + std::to_string(task.key_index) +
                                ", ret=" + std::to_string(ret) + ", errmsg: " + errmsg);
     }
   }
@@ -117,24 +114,21 @@ void RunLocalSegmentCopy(std::uint32_t local_rank, std::uint32_t worker_id, cons
   TraceLocalCopy("end", local_rank, worker_id, task, op, trace_mu, elapsed_us);
 }
 
-void RunOneRemoteSegment(hixl::Hixl &hixl, std::uint32_t local_rank, std::uint32_t worker_id,
-                         const SegmentTransferTask &task, TransferOp op, std::int32_t timeout_ms,
-                         const char *(*recent_errmsg)(), std::mutex *trace_mu) {
-  if (task.descs == nullptr || task.descs->empty()) {
-    throw std::runtime_error("internal error: empty remote segment transfer task");
-  }
-  TraceSegment("begin", local_rank, worker_id, task, op, trace_mu);
+void RunOneRemoteKey(hixl::Hixl &hixl, std::uint32_t local_rank, std::uint32_t worker_id, const KeyTransferTask &task,
+                     TransferOp op, std::int32_t timeout_ms, const char *(*recent_errmsg)(), std::mutex *trace_mu) {
+  TraceKeyTransfer("begin", local_rank, worker_id, task, op, trace_mu);
   const auto start = std::chrono::steady_clock::now();
-  const auto ret = hixl.TransferSync(AscendString(task.endpoint.c_str()), op, *task.descs, timeout_ms);
+  const auto ret = hixl.TransferSync(AscendString(task.endpoint.c_str()), op, task.descs, timeout_ms);
   if (ret != SUCCESS) {
     const char *errmsg = recent_errmsg != nullptr ? recent_errmsg() : "unknown";
-    throw std::runtime_error("TransferSync failed for segment " + std::to_string(task.segment_id) + " to " +
-                             task.endpoint + ", descs=" + std::to_string(task.descs->size()) +
-                             ", ret=" + std::to_string(ret) + ", errmsg: " + errmsg);
+    throw std::runtime_error("TransferSync failed for key " + std::to_string(task.key_index) + " segment " +
+                             std::to_string(task.segment_id) + " to " + task.endpoint +
+                             ", descs=" + std::to_string(task.descs.size()) + ", ret=" + std::to_string(ret) +
+                             ", errmsg: " + errmsg);
   }
   const auto elapsed_us = static_cast<std::uint64_t>(
       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count());
-  TraceSegment("end", local_rank, worker_id, task, op, trace_mu, elapsed_us);
+  TraceKeyTransfer("end", local_rank, worker_id, task, op, trace_mu, elapsed_us);
 }
 
 }  // namespace
@@ -142,10 +136,11 @@ void RunOneRemoteSegment(hixl::Hixl &hixl, std::uint32_t local_rank, std::uint32
 KvTransferExecutor::KvTransferExecutor(hixl::Hixl *hixl, std::map<std::uint32_t, RankMeta> metas_by_rank,
                                        std::uint32_t self_rank, std::uint32_t num_threads,
                                        std::int32_t timeout_ms, aclrtContext device_context,
-                                       const char *(*recent_errmsg)())
+                                       const char *(*recent_errmsg)(), bool local_copy_for_self)
     : hixl_(hixl),
       metas_by_rank_(std::move(metas_by_rank)),
       self_rank_(self_rank),
+      local_copy_for_self_(local_copy_for_self),
       worker_count_(std::max(1U, num_threads)),
       timeout_ms_(timeout_ms),
       device_context_(device_context),
@@ -155,26 +150,6 @@ KvTransferExecutor::KvTransferExecutor(hixl::Hixl *hixl, std::map<std::uint32_t,
 
 KvTransferExecutor::~KvTransferExecutor() {
   StopWorkers();
-}
-
-std::vector<SegmentTransferTask> KvTransferExecutor::BuildTasks(
-    const std::map<std::uint32_t, std::vector<TransferOpDesc>> &descs_by_rank) const {
-  std::vector<SegmentTransferTask> tasks;
-  for (const auto &item : descs_by_rank) {
-    if (item.second.empty()) {
-      continue;
-    }
-    if (item.first == self_rank_) {
-      tasks.push_back(SegmentTransferTask{item.first, "", &item.second, true});
-      continue;
-    }
-    const auto meta_it = metas_by_rank_.find(item.first);
-    if (meta_it == metas_by_rank_.end()) {
-      throw std::runtime_error("missing rank meta for remote transfer");
-    }
-    tasks.push_back(SegmentTransferTask{item.first, meta_it->second.endpoint, &item.second, false});
-  }
-  return tasks;
 }
 
 void KvTransferExecutor::StartWorkers() {
@@ -221,6 +196,41 @@ void KvTransferExecutor::RecordErrorAndCancelPending() {
   remaining_tasks_ -= std::min(remaining_tasks_, canceled);
 }
 
+bool KvTransferExecutor::AcquireWorkerTask(KeyTransferTask *task, TransferOp *op, bool *trace_transfer) {
+  std::unique_lock<std::mutex> lock(mutex_);
+  work_cv_.wait(lock, [this]() { return stop_ || (work_active_ && next_task_ < tasks_.size()); });
+  if (stop_) {
+    return false;
+  }
+  *task = std::move(tasks_.at(next_task_++));
+  *op = op_;
+  *trace_transfer = trace_transfer_;
+  return true;
+}
+
+void KvTransferExecutor::RunWorkerTask(std::uint32_t worker_id, const KeyTransferTask &task, TransferOp op,
+                                       bool trace_transfer) {
+  try {
+    if (task.is_self) {
+      RunLocalKeyCopy(self_rank_, worker_id, task, op, recent_errmsg_, trace_transfer ? &trace_mu_ : nullptr);
+    } else {
+      RunOneRemoteKey(*hixl_, self_rank_, worker_id, task, op, timeout_ms_, recent_errmsg_,
+                      trace_transfer ? &trace_mu_ : nullptr);
+    }
+  } catch (...) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    RecordErrorAndCancelPending();
+  }
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (remaining_tasks_ > 0U) {
+    --remaining_tasks_;
+  }
+  if (remaining_tasks_ == 0U && work_active_) {
+    work_active_ = false;
+    done_cv_.notify_one();
+  }
+}
+
 void KvTransferExecutor::WorkerLoop(std::uint32_t worker_id) {
   try {
     SetWorkerContext(device_context_);
@@ -236,47 +246,18 @@ void KvTransferExecutor::WorkerLoop(std::uint32_t worker_id) {
     ++ready_workers_;
     ready_cv_.notify_one();
   }
-  while (true) {
-    SegmentTransferTask task;
+  for (;;) {
+    KeyTransferTask task;
     TransferOp op = hixl::WRITE;
     bool trace_transfer = false;
-    {
-      std::unique_lock<std::mutex> lock(mutex_);
-      work_cv_.wait(lock, [this]() { return stop_ || (work_active_ && next_task_ < tasks_.size()); });
-      if (stop_) {
-        return;
-      }
-      task = tasks_.at(next_task_++);
-      op = op_;
-      trace_transfer = trace_transfer_;
+    if (!AcquireWorkerTask(&task, &op, &trace_transfer)) {
+      return;
     }
-    try {
-      if (task.is_self) {
-        RunLocalSegmentCopy(self_rank_, worker_id, task, op, recent_errmsg_, trace_transfer ? &trace_mu_ : nullptr);
-      } else {
-        RunOneRemoteSegment(*hixl_, self_rank_, worker_id, task, op, timeout_ms_, recent_errmsg_,
-                            trace_transfer ? &trace_mu_ : nullptr);
-      }
-    } catch (...) {
-      std::lock_guard<std::mutex> lock(mutex_);
-      RecordErrorAndCancelPending();
-    }
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (remaining_tasks_ > 0U) {
-        --remaining_tasks_;
-      }
-      if (remaining_tasks_ == 0U && work_active_) {
-        work_active_ = false;
-        done_cv_.notify_one();
-      }
-    }
+    RunWorkerTask(worker_id, task, op, trace_transfer);
   }
 }
 
-void KvTransferExecutor::Transfer(
-    TransferOp op, const std::map<std::uint32_t, std::vector<TransferOpDesc>> &descs_by_rank, bool trace_transfer) {
-  auto tasks = BuildTasks(descs_by_rank);
+void KvTransferExecutor::Transfer(TransferOp op, std::vector<KeyTransferTask> tasks, bool trace_transfer) {
   if (tasks.empty()) {
     return;
   }

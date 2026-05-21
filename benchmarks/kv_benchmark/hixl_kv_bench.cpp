@@ -63,6 +63,9 @@ constexpr const char *kTransportFabricMem = "fabric_mem";
 constexpr const char *kTransportHccs = "hccs";
 constexpr const char *kPoolMemoryHost = "host";
 constexpr const char *kDefaultModel = "deepseek-r1";
+constexpr const char *kDefaultKeyCounts = "16,32,48,64";
+constexpr std::uint32_t kPercentileIndexNumerator = 99U;
+constexpr std::uint32_t kPercentileIndexDenominator = 100U;
 constexpr std::uint32_t kTraceRank = 0U;
 
 using hixl::AscendString;
@@ -77,6 +80,7 @@ using hixl::TransferOpDesc;
 using hixl_kv_benchmark::BufferView;
 using hixl_kv_benchmark::BuildWorkloadSlicePlan;
 using hixl_kv_benchmark::FindModelSpec;
+using hixl_kv_benchmark::KeyTransferTask;
 using hixl_kv_benchmark::KvSliceEntry;
 using hixl_kv_benchmark::KvStore;
 using hixl_kv_benchmark::KvTransferExecutor;
@@ -304,7 +308,7 @@ KvBenchConfig ParseConfig(int argc, char **argv) {
   if (args.count("--listen_host") != 0U) cfg.listen_host = args.at("--listen_host");
   if (args.count("--connect_host") != 0U) cfg.connect_host = args.at("--connect_host");
   if (cfg.key_counts.empty()) {
-    cfg.key_counts = "16,32,48,64";
+    cfg.key_counts = kDefaultKeyCounts;
   }
   return cfg;
 }
@@ -546,7 +550,8 @@ std::vector<RankMeta> LoadAllRankMeta(const KvBenchConfig &cfg) {
 }
 
 void Barrier(const KvBenchConfig &cfg, const std::string &name) {
-  const auto dir = SyncDir(cfg) / name;
+  std::filesystem::path dir = SyncDir(cfg);
+  dir /= name;
   const auto path = dir / ("rank" + std::to_string(cfg.rank));
   if (IsTraceRank(cfg)) {
     std::cout << "[TRACE] rank=" << cfg.rank << " barrier_enter name=" << name << std::endl;
@@ -617,21 +622,14 @@ void InitRuntime(const KvBenchConfig &cfg, std::uint64_t local_size, std::uint64
   }
   runtime->hixl_initialized = true;
 
-  if (cfg.transport == kTransportFabricMem) {
-    const auto alloc_status =
-        FabricMemTransferService::MallocMem(MemType::MEM_DEVICE, static_cast<size_t>(local_size),
-                                            &runtime->local_buffer);
-    if (alloc_status != SUCCESS) {
-      throw std::runtime_error("fabric_mem device allocation failed");
-    }
-  } else if (aclrtMalloc(&runtime->local_buffer, static_cast<size_t>(local_size), ACL_MEM_MALLOC_HUGE_ONLY) !=
-             ACL_ERROR_NONE) {
+  if (aclrtMalloc(&runtime->local_buffer, static_cast<size_t>(local_size), ACL_MEM_MALLOC_HUGE_ONLY) !=
+      ACL_ERROR_NONE) {
     throw std::runtime_error("aclrtMalloc device buffer failed");
   }
   if (runtime->local_buffer == nullptr) {
     throw std::runtime_error("device buffer allocation succeeded but returned null");
   }
-  // fabric_mem: only host pool is registered; device local_buffer is used via TransferSync addresses only.
+  // fabric_mem: only host pool is registered; aclrtMalloc device local_buffer is used via TransferSync addresses only.
   if (cfg.transport != kTransportFabricMem) {
     RegisterMem(runtime->hixl, runtime->local_buffer, local_size, MemType::MEM_DEVICE, &runtime->local_handle);
     runtime->local_registered = true;
@@ -647,8 +645,9 @@ void InitRuntime(const KvBenchConfig &cfg, std::uint64_t local_size, std::uint64
 
 void CleanupRuntime(const KvBenchConfig &cfg, KvRuntime *runtime, const std::vector<RankMeta> &metas) {
   if (runtime->hixl_initialized) {
+    const bool disconnect_self = cfg.transport == kTransportFabricMem;
     for (const auto &meta : metas) {
-      if (meta.rank == cfg.rank) {
+      if (meta.rank == cfg.rank && !disconnect_self) {
         continue;
       }
       (void)runtime->hixl.Disconnect(AscendString(meta.endpoint.c_str()));
@@ -665,11 +664,7 @@ void CleanupRuntime(const KvBenchConfig &cfg, KvRuntime *runtime, const std::vec
     runtime->hixl_initialized = false;
   }
   if (runtime->local_buffer != nullptr) {
-    if (cfg.transport == kTransportFabricMem) {
-      (void)FabricMemTransferService::FreeMem(runtime->local_buffer);
-    } else {
-      (void)aclrtFree(runtime->local_buffer);
-    }
+    (void)aclrtFree(runtime->local_buffer);
     runtime->local_buffer = nullptr;
   }
   FreeHostBuffer(cfg, runtime->pool_buffer);
@@ -682,8 +677,9 @@ void CleanupRuntime(const KvBenchConfig &cfg, KvRuntime *runtime, const std::vec
 }
 
 void ConnectPeers(const KvBenchConfig &cfg, KvRuntime *runtime, const std::vector<RankMeta> &metas) {
+  const bool connect_self = cfg.transport == kTransportFabricMem;
   for (const auto &meta : metas) {
-    if (meta.rank == cfg.rank) {
+    if (meta.rank == cfg.rank && !connect_self) {
       continue;
     }
     if (IsTraceRank(cfg)) {
@@ -727,19 +723,18 @@ std::uint64_t ElapsedUs(const std::chrono::steady_clock::time_point &start,
   return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(end - start).count());
 }
 
-void PrintTransferPlanSummary(const KvBenchConfig &cfg,
-                              const std::map<std::uint32_t, std::vector<TransferOpDesc>> &descs_by_rank,
-                              TransferOp op, const KvWorkload &workload) {
+void PrintTransferPlanSummary(const KvBenchConfig &cfg, const std::vector<KeyTransferTask> &tasks, TransferOp op,
+                              const KvWorkload &workload) {
   if (!IsTraceRank(cfg)) {
     return;
   }
   std::cout << "[TRACE] rank=" << cfg.rank << " transfer_plan op=" << TransferOpName(op)
-            << " model=" << cfg.model << " key_count=" << workload.key_count
-            << " segments=" << descs_by_rank.size() << std::endl;
-  for (const auto &item : descs_by_rank) {
-    std::cout << "[TRACE] rank=" << cfg.rank << " transfer_segment op=" << TransferOpName(op)
-              << " segment=" << item.first << " self=" << (item.first == cfg.rank)
-              << " descs=" << item.second.size() << " bytes=" << SumTransferBytes(item.second) << std::endl;
+            << " model=" << cfg.model << " key_count=" << workload.key_count << " tasks=" << tasks.size()
+            << std::endl;
+  for (const auto &task : tasks) {
+    std::cout << "[TRACE] rank=" << cfg.rank << " transfer_key op=" << TransferOpName(op) << " key=" << task.key_index
+              << " segment=" << task.segment_id << " self=" << task.is_self << " descs=" << task.descs.size()
+              << " bytes=" << SumTransferBytes(task.descs) << std::endl;
   }
 }
 
@@ -810,54 +805,75 @@ std::vector<std::uint64_t> BuildKeyDistribution(std::uint32_t segment_count,
   return distribution;
 }
 
-std::map<std::uint32_t, std::vector<TransferOpDesc>> BuildDescsFromPlacements(
-    const std::vector<RankMeta> &metas, const WorkloadTransferState &state) {
-  std::map<std::uint32_t, std::vector<TransferOpDesc>> descs_by_rank;
+KeyTransferTask MakeKeyTransferTask(std::uint64_t key_index, std::uint32_t segment_id, const RankMeta &meta,
+                                    std::uint32_t self_rank, bool local_copy_for_self) {
+  KeyTransferTask task;
+  task.key_index = key_index;
+  task.segment_id = segment_id;
+  if (segment_id == self_rank && local_copy_for_self) {
+    task.is_self = true;
+    return task;
+  }
+  task.endpoint = meta.endpoint;
+  return task;
+}
+
+TransferOpDesc MakeTransferOpDesc(const PreparedTransferSlice &slice, const PreparedSlicePlacement &placement,
+                                  const RankMeta &meta) {
+  if (placement.offset + placement.size > meta.pool_size) {
+    throw std::runtime_error("KV slice placement exceeds registered remote pool");
+  }
+  TransferOpDesc desc{};
+  desc.local_addr = slice.local_addr;
+  desc.remote_addr = meta.pool_addr + static_cast<std::uintptr_t>(placement.offset);
+  desc.len = static_cast<size_t>(placement.size);
+  return desc;
+}
+
+std::vector<KeyTransferTask> BuildKeyTransferTasks(const std::vector<RankMeta> &metas,
+                                                   const WorkloadTransferState &state, std::uint32_t self_rank,
+                                                   bool local_copy_for_self) {
+  if (!state.placements_ready) {
+    throw std::runtime_error("missing KV placement metadata before building key transfer tasks");
+  }
+  if (state.slices.size() != state.placements.size()) {
+    throw std::runtime_error("KV placement metadata size mismatch");
+  }
+  std::vector<KeyTransferTask> tasks;
+  std::uint64_t current_key = std::numeric_limits<std::uint64_t>::max();
   for (std::size_t i = 0U; i < state.slices.size(); ++i) {
     const auto &slice = state.slices[i];
     const auto &placement = state.placements[i];
-    const auto &meta = metas.at(placement.segment_id);
-    if (placement.offset + placement.size > meta.pool_size) {
-      throw std::runtime_error("KV slice placement exceeds registered remote pool");
+    if (slice.key_index != current_key) {
+      current_key = slice.key_index;
+      tasks.push_back(MakeKeyTransferTask(current_key, placement.segment_id, metas.at(placement.segment_id),
+                                          self_rank, local_copy_for_self));
     }
-    TransferOpDesc desc{};
-    desc.local_addr = slice.local_addr;
-    desc.remote_addr = meta.pool_addr + static_cast<std::uintptr_t>(placement.offset);
-    desc.len = static_cast<size_t>(placement.size);
-    descs_by_rank[placement.segment_id].push_back(desc);
+    tasks.back().descs.push_back(MakeTransferOpDesc(slice, placement, metas.at(placement.segment_id)));
   }
-  return descs_by_rank;
-}
-
-std::map<std::uint32_t, std::vector<TransferOpDesc>> BuildPutTransferDescs(const std::vector<RankMeta> &metas,
-    const std::vector<std::uint64_t> &rank_pool_sizes, WorkloadTransferState *state) {
-  GeneratePlacements(rank_pool_sizes, state);
-  return BuildDescsFromPlacements(metas, *state);
-}
-
-std::map<std::uint32_t, std::vector<TransferOpDesc>> BuildGetTransferDescs(
-    const std::vector<RankMeta> &metas, const WorkloadTransferState &state) {
-  if (!state.placements_ready) {
-    throw std::runtime_error("missing KV placement metadata before get");
-  }
-  return BuildDescsFromPlacements(metas, state);
+  return tasks;
 }
 
 TransferStageTiming ExecuteKvTransfer(const KvBenchConfig &cfg, KvTransferExecutor *transfer_executor,
                                       const std::vector<RankMeta> &metas, const KvWorkload &workload, TransferOp op,
-                                      const std::vector<std::uint64_t> &rank_pool_sizes,
-                                      WorkloadTransferState *state, bool trace_transfer) {
+                                      const std::vector<std::uint64_t> &rank_pool_sizes, WorkloadTransferState *state,
+                                      bool trace_transfer) {
   const auto plan_start = std::chrono::steady_clock::now();
-  const auto descs_by_rank = op == hixl::WRITE ? BuildPutTransferDescs(metas, rank_pool_sizes, state)
-                                               : BuildGetTransferDescs(metas, *state);
+  const bool local_copy_for_self = cfg.transport != kTransportFabricMem;
+  if (op == hixl::WRITE) {
+    GeneratePlacements(rank_pool_sizes, state);
+  } else if (!state->placements_ready) {
+    throw std::runtime_error("missing KV placement metadata before get");
+  }
+  auto tasks = BuildKeyTransferTasks(metas, *state, cfg.rank, local_copy_for_self);
   const auto plan_us = ElapsedUs(plan_start, std::chrono::steady_clock::now());
 
   const bool trace_enabled = trace_transfer && IsTraceRank(cfg);
   if (trace_enabled) {
-    PrintTransferPlanSummary(cfg, descs_by_rank, op, workload);
+    PrintTransferPlanSummary(cfg, tasks, op, workload);
   }
   const auto transfer_start = std::chrono::steady_clock::now();
-  transfer_executor->Transfer(op, descs_by_rank, trace_enabled);
+  transfer_executor->Transfer(op, std::move(tasks), trace_enabled);
   const auto transfer_us = ElapsedUs(transfer_start, std::chrono::steady_clock::now());
   return TransferStageTiming{plan_us, transfer_us};
 }
@@ -867,7 +883,9 @@ double Percentile99(std::vector<double> values) {
     return 0.0;
   }
   std::sort(values.begin(), values.end());
-  const auto idx = static_cast<std::size_t>((values.size() * 99U + 99U) / 100U - 1U);
+  const auto idx = static_cast<std::size_t>(
+      (values.size() * kPercentileIndexNumerator + kPercentileIndexDenominator - 1U) / kPercentileIndexDenominator -
+      1U);
   return values[std::min(idx, values.size() - 1U)];
 }
 
@@ -881,7 +899,7 @@ TimingStats MeasureRepeated(const KvBenchConfig &cfg, const std::string &name,
       Barrier(cfg, name + "_ready_" + std::to_string(i));
     }
     const auto start = std::chrono::steady_clock::now();
-    const auto stage_timing = fn(i == 0U);
+    const auto stage_timing = fn(true);
     const auto end = std::chrono::steady_clock::now();
     if (sync_all_ranks) {
       Barrier(cfg, name + "_done_" + std::to_string(i));
@@ -891,6 +909,9 @@ TimingStats MeasureRepeated(const KvBenchConfig &cfg, const std::string &name,
       samples.push_back(static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()) /
                         1000.0);
     }
+  }
+  if (samples.empty()) {
+    return TimingStats{};
   }
   const double sum = std::accumulate(samples.begin(), samples.end(), 0.0);
   return TimingStats{sum / static_cast<double>(samples.size()), Percentile99(samples)};
@@ -904,30 +925,35 @@ double BandwidthGbps(std::uint64_t bytes, double us) {
   return bytes_per_second / kDecimalBytesPerGb;
 }
 
+TimingStats RunWorkloadPut(const KvBenchConfig &cfg, KvTransferExecutor *transfer_executor,
+                         const std::vector<RankMeta> &metas, const ModelSpec &model, const KvWorkload &workload,
+                         const std::vector<std::uint64_t> &rank_pool_sizes, WorkloadTransferState *transfer_state) {
+  if (model.IsShared() && cfg.rank != 0U) {
+    return TimingStats{};
+  }
+  const auto put_start = std::chrono::steady_clock::now();
+  const auto put_timing = ExecuteKvTransfer(cfg, transfer_executor, metas, workload, hixl::WRITE, rank_pool_sizes,
+                                            transfer_state, IsTraceRank(cfg));
+  const auto put_end = std::chrono::steady_clock::now();
+  const double put_us =
+      static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(put_end - put_start).count()) / 1000.0;
+  PrintStageTiming(cfg, hixl::WRITE, workload, put_timing.plan_us, put_timing.transfer_us);
+  return TimingStats{put_us, put_us};
+}
+
 KvBenchResult RunWorkload(const KvBenchConfig &cfg, KvRuntime *runtime, KvTransferExecutor *transfer_executor,
                           const std::vector<RankMeta> &metas, const ModelSpec &model, const KvWorkload &workload,
                           std::size_t index,
                           const std::vector<std::uint64_t> &rank_pool_sizes) {
-  TimingStats put;
-  TimingStats get;
   WorkloadTransferState transfer_state = BuildWorkloadTransferState(runtime->local_buffer, workload, model);
 
   Barrier(cfg, "workload_" + std::to_string(index) + "_ready");
-  // PUT runs once to populate remote pools; GET is measured with warmup/repeat.
-  if (!model.IsShared() || cfg.rank == 0U) {
-    const auto put_start = std::chrono::steady_clock::now();
-    const auto put_timing = ExecuteKvTransfer(cfg, transfer_executor, metas, workload, hixl::WRITE, rank_pool_sizes,
-                                              &transfer_state, IsTraceRank(cfg));
-    const auto put_end = std::chrono::steady_clock::now();
-    const double put_us =
-        static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(put_end - put_start).count()) / 1000.0;
-    put = TimingStats{put_us, put_us};
-    PrintStageTiming(cfg, hixl::WRITE, workload, put_timing.plan_us, put_timing.transfer_us);
-  }
+  const TimingStats put =
+      RunWorkloadPut(cfg, transfer_executor, metas, model, workload, rank_pool_sizes, &transfer_state);
   Barrier(cfg, "workload_" + std::to_string(index) + "_put_done");
   EnsurePlacementMetadata(rank_pool_sizes, &transfer_state);
 
-  get = MeasureRepeated(
+  const TimingStats get = MeasureRepeated(
       cfg, "workload_" + std::to_string(index) + "_get",
       [&](bool trace_transfer) {
         return ExecuteKvTransfer(cfg, transfer_executor, metas, workload, hixl::READ, rank_pool_sizes,
@@ -1061,6 +1087,17 @@ void PrintKvBufferPlan(const KvBenchConfig &cfg, std::uint64_t local_size, std::
             << " pool_size=" << FormatBytesKiB(pool_size) << std::endl;
 }
 
+std::vector<KvBenchResult> ExecuteKvBenchmark(const KvBenchConfig &cfg, KvRuntime *runtime,
+                                              const std::vector<RankMeta> &metas, const ModelSpec &model,
+                                              const std::vector<KvWorkload> &workloads,
+                                              const std::vector<std::uint64_t> &rank_pool_sizes) {
+  const bool local_copy_for_self = cfg.transport != kTransportFabricMem;
+  KvTransferExecutor transfer_executor(&runtime->hixl, BuildRankMetaByRank(metas), cfg.rank, cfg.transfer_threads,
+                                       kDefaultTransferTimeoutMs, runtime->aclrt_context, RecentErrMsg,
+                                       local_copy_for_self);
+  return RunBenchmark(cfg, runtime, &transfer_executor, metas, model, workloads, rank_pool_sizes);
+}
+
 int RunKvBenchParsed(KvBenchConfig &cfg, KvRuntime *runtime, std::vector<RankMeta> *metas) {
   if (cfg.transport == kTransportHccs) {
     std::cerr << "[ERROR] KV benchmark does not support transport=hccs (HCCS is D2D-only; use rdma or fabric_mem)\n";
@@ -1095,20 +1132,13 @@ int RunKvBenchParsed(KvBenchConfig &cfg, KvRuntime *runtime, std::vector<RankMet
   const auto pool_size = rank_pool_sizes.at(cfg.rank);
 
   PrintKvBufferPlan(cfg, local_size, pool_size);
-
   InitRuntime(cfg, local_size, pool_size, runtime);
   WriteRankMeta(cfg, *runtime, pool_size);
   *metas = LoadAllRankMeta(cfg);
   ConnectPeers(cfg, runtime, *metas);
   Barrier(cfg, "all_connected");
 
-  std::vector<KvBenchResult> results;
-  {
-    KvTransferExecutor transfer_executor(&runtime->hixl, BuildRankMetaByRank(*metas), cfg.rank,
-                                         cfg.transfer_threads, kDefaultTransferTimeoutMs, runtime->aclrt_context,
-                                         RecentErrMsg);
-    results = RunBenchmark(cfg, runtime, &transfer_executor, *metas, *model, workloads, rank_pool_sizes);
-  }
+  const auto results = ExecuteKvBenchmark(cfg, runtime, *metas, *model, workloads, rank_pool_sizes);
   WriteCsv(cfg, results, pool_size);
   WriteJson(cfg, results);
   PrintSummary(cfg, results);
