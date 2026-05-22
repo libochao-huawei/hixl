@@ -28,7 +28,7 @@ static inline void to_json(nlohmann::json &j, const CommMem &m) {
 
 namespace hixl {
 namespace {
-constexpr uint32_t kDeviceTransferPoolSize = 128U;  // 与 HixlCSClient 侧设备池大小一致
+constexpr uint32_t kDeviceTransferPoolSize = 2U;  // 与 HixlCSClient 侧设备池大小一致
 constexpr int32_t kMaxEventsNum = 128;  // epoll_wait并发处理事件数量，减少epoll系统调用
 constexpr int32_t kEpollWaitTimeInMillis = 100;  // epoll_wait等待超时时间
 constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";// client用于感知收发完成的标识
