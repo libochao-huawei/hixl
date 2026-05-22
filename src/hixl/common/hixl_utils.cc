@@ -270,4 +270,5 @@ TemporaryRtContext::~TemporaryRtContext() {
     HIXL_CHK_STATUS(aclrtSetCurrentContext(prev_context_));
   }
 }
+
 }  // namespace hixl

@@ -328,7 +328,7 @@ TEST_F(HixlEngineTest, EngineFactoryUsesHixlEngineWhenProtocolDescConfigured) {
   EXPECT_NE(dynamic_cast<HixlEngine *>(engine.get()), nullptr);
 }
 
-TEST_F(HixlEngineTest, InitializeSetsClientListenPortFromGlobalResourceConfig) {
+TEST_F(HixlEngineTest, InitializeSetsClientQosFromGlobalResourceConfig) {
   std::map<AscendString, AscendString> options = options1;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.listen_port":26301})";
   HixlOptions parsed;
@@ -345,7 +345,7 @@ TEST_F(HixlEngineTest, InitializeSetsClientListenPortFromGlobalResourceConfig) {
   engine.Finalize();
 }
 
-TEST_F(HixlEngineTest, InitializeWithoutListenPortDoesNotSetClientListenPort) {
+TEST_F(HixlEngineTest, InitializeWithoutQosDoesNotSetClientQos) {
   HixlOptions parsed;
   ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
 
@@ -356,6 +356,38 @@ TEST_F(HixlEngineTest, InitializeWithoutListenPortDoesNotSetClientListenPort) {
   std::vector<MemInfo> mem_info_list;
   engine.BuildClientConfig(AscendString("127.0.0.1:26300"), config, mem_info_list, kTimeOut);
   EXPECT_FALSE(config.local_listen_port.has_value());
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, InitializeSetsClientQosFromGlobalResourceConfig) {
+  std::map<AscendString, AscendString> options = options1;
+  std::string json_str = R"({"comm_resource_config.qos": 7})";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.qos": 7})";
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+
+  HixlEngine engine("127.0.0.1");
+  EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
+
+  ClientConfig config{};
+  std::vector<MemInfo> mem_info_list;
+  engine.BuildClientConfig(AscendString("127.0.0.1:26300"), config, mem_info_list, kTimeOut);
+  ASSERT_TRUE(config.qos.has_value());
+  EXPECT_EQ(config.qos.value(), 7);
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, InitializeWithoutQosDoesNotSetClientQos) {
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
+
+  HixlEngine engine("127.0.0.1");
+  EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
+
+  ClientConfig config{};
+  std::vector<MemInfo> mem_info_list;
+  engine.BuildClientConfig(AscendString("127.0.0.1:26300"), config, mem_info_list, kTimeOut);
+  EXPECT_FALSE(config.qos.has_value());
   engine.Finalize();
 }
 
