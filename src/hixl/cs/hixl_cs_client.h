@@ -185,6 +185,7 @@ class HixlCSClient {
   std::mutex active_slot_mu_;
   // Mutex to protect LaunchDeviceKernel + memcpy/sync serialization
   std::mutex device_launch_mu_;
+  int8_t qos_{0};
 };
 }  // namespace hixl
 
