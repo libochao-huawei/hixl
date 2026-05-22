@@ -16,16 +16,20 @@
 #include <string>
 
 #include "nlohmann/json.hpp"
+#include "engine/client_handler_factory.h"
 
 namespace hixl {
 
 class ClientHandlerConfigHelper {
  public:
-  static std::string BuildGlobalResourceConfig(const std::optional<uint32_t> &listen_port) {
-    if (!listen_port.has_value()) {
-      return "";
+  static std::string BuildGlobalResourceConfig(const HandlerCreateArgs &args) {
+    nlohmann::json json = "";
+    if (args.local_listen_port.has_value()) {
+      json["comm_resource_config.listen_port"] = *args.local_listen_port;
     }
-    nlohmann::json json{{"comm_resource_config.listen_port", *listen_port}};
+    if (args.qos.has_value()) {
+      json["comm_resource_config.qos"] = *args.qos;
+    }
     return json.dump();
   }
 };

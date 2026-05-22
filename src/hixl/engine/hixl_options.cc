@@ -75,6 +75,9 @@ void from_json(const nlohmann::json &j, CommResourceConfigDesc &cfg) {
   if (j.contains("comm_resource_config.listen_port")) {
     cfg.listen_port = JsonToNumber<uint32_t>(j.at("comm_resource_config.listen_port"));
   }
+  if (j.contains(kQosName)) {
+    cfg.qos = JsonToNumber<uint32_t>(j.at(kQosName));
+  }
 }
 
 void from_json(const nlohmann::json &j, GlobalResourceConfig &cfg) {
@@ -263,7 +266,12 @@ Status HixlOptions::ParseGlobalResourceConfig(const std::map<AscendString, Ascen
                                "comm_resource_config.listen_port must be in [%u, %u], got %u",
                                kMinListenPort, kMaxListenPort, val);
     }
-
+    if (cfg.comm_resource_config.qos.has_value()) {
+      uint32_t val = *cfg.comm_resource_config.qos;
+      HIXL_CHK_BOOL_RET_STATUS(val >= kQosMin && val <= kQosMax, PARAM_INVALID,
+                               "comm_resource_config.qos must be in [%u, %u], got %u",
+                               kQosMin, kQosMax, val);
+    }
     global_resource_config_ = std::move(cfg);
     return SUCCESS;
   } catch (const nlohmann::json::exception &e) {
