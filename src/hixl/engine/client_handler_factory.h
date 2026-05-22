@@ -26,7 +26,6 @@ struct HandlerCreateArgs {
   uint32_t server_port;
   uint8_t rdma_tc;
   uint8_t rdma_sl;
-
   enum class HandlerType { DIRECT, UB };
   HandlerType handler_type;
 
@@ -36,6 +35,7 @@ struct HandlerCreateArgs {
     CommType type;
   };
   std::vector<EndpointPair> matched_pairs;
+  int8_t qos;
 };
 
 class ClientHandlerFactory {

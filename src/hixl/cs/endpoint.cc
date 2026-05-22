@@ -164,6 +164,7 @@ Status Endpoint::CreateChannel(const ChannelDesc &channel_desc, ChannelHandle &c
     ch_desc.roceAttr.sl = static_cast<uint32_t>(channel_desc.sl);
     HIXL_LOGI("[channel] ROCE attributes set, tc=%u, sl=%u", ch_desc.roceAttr.tc, ch_desc.roceAttr.sl);
   }
+  // need add qos at here when HcommChannelDesc exist qos
   ChannelPtr channel = MakeShared<Channel>();
   HIXL_CHECK_NOTNULL(channel);
   Status ret = channel->Create(handle_, ch_desc, engine);

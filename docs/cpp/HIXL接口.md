@@ -145,6 +145,7 @@ Status Initialize(const AscendString &local_engine, const std::map<AscendString,
 | 字段名 | 数据类型 | 必选/可选 | 说明 | 支持值/填写规则 |
 | ---- | ---- | ---- | ---- | ---- |
 | comm_resource_config.protocol_desc | 字符串数组 | 可选 | 配置通信协议以及通信设备位置 | 当前仅支持["uboe:device"]，表示使用uboe协议，通信设备在device；当没有配置OPTION_LOCAL_COMM_RES或配置的OPTION_LOCAL_COMM_RES中endpoint_list为空时，会自动生成uboe的endpoint信息，否则配置项不起作用. |
+| comm_resource_config.qos | 字符串数组 | 可选 | 配置通信协议qos | 当前仅支持["0","1","2","3","4,"5","6","7"]，当未配置的时候，默认为"0"。该配置仅在A5/A6上生效，其他环境配置不报错且不生效 |
 
 **调用示例**
 

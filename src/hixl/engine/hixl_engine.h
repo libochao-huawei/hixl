@@ -157,6 +157,7 @@ class HixlEngine : public hixl::Engine {
   uint8_t rdma_traffic_class_{kRdmaTrafficClass};
   uint8_t rdma_service_level_{kRdmaServiceLevel};
   std::map<uint64_t, TransferInfo> req_map_;
+  int8_t qos_{0};
 };
 }  // namespace hixl
 
