@@ -74,6 +74,9 @@ Status HcclError2Status(HcclResult ret);
 
 Status ParseConfigProtocolDesc(const std::map<AscendString, AscendString> &options,
                                std::vector<std::string> &protocol_desc);
+
+Status ParseConfigQos(const std::map<AscendString, AscendString> &options, int8_t &qos);
+                              
 Status CheckIp(const std::string &ip);
 
 Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip);

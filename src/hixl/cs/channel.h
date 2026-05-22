@@ -31,6 +31,7 @@ struct ChannelDesc {
   uint8_t sl;
   ChannelType channel_type{ChannelType::kClient};
   uint32_t channel_index{0U};
+  int8_t qos;
 };
 
 class Channel {

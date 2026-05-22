@@ -86,11 +86,15 @@ Status GetIpAddressFromHccnTool(uint32_t phy_device_id, std::string &ip) {
 
 struct CommResourceConfig {
   std::vector<std::string> protocol_desc;
+  std::string qos;
 };
 
 void from_json(const nlohmann::json &j, CommResourceConfig &config) {
   if (j.contains("comm_resource_config.protocol_desc")) {
     j.at("comm_resource_config.protocol_desc").get_to(config.protocol_desc);
+  }
+  if (j.contains("comm_resource_config.qos")) {
+    j.at("comm_resource_config.qos").get_to(config.qos);
   }
 }
 
@@ -326,4 +330,33 @@ Status ParseConfigProtocolDesc(const std::map<AscendString, AscendString> &optio
   }
   return SUCCESS;
 }
+
+Status ParseConfigQos(const std::map<AscendString, AscendString> &options, int8_t &qos)
+{
+  auto find_ret = options.find(OPTION_GLOBAL_RESOURCE_CONFIG);
+  if (find_ret == options.cend()) {
+    constexpr int8_t qos_default_value = 0;
+    qos = qos_default_value;
+    HIXL_LOGD("set qos to default value=%d.", qos);
+  } else {
+    HIXL_LOGD("option[%s] config value=%s.", OPTION_GLOBAL_RESOURCE_CONFIG, find_ret->second.GetString());
+    CommResourceConfig config{};
+    HIXL_CHK_STATUS_RET(ParseCommResourceConfig(find_ret->second.GetString(), config),
+                        "Parse comm resource config failed.");
+
+    constexpr int8_t qos_min_value = 0;
+    constexpr int8_t qos_max_value = 7;
+    int8_t qos_input = 0;
+    HIXL_CHK_STATUS_RET(ToNumber(config.qos, qos_input),
+      "comm_resource_config.qos value [%s] is invalid, should be in range [%d, %d] as number",
+      config.qos.c_str(), qos_min_value, qos_max_value);
+    HIXL_CHK_BOOL_RET_STATUS((qos_input >= qos_min_value && qos_input <= qos_max_value), PARAM_INVALID,
+      "comm_resource_config.qos value [%s] is invalid, should be in range [%d, %d] as number",
+      config.qos.c_str(), qos_min_value, qos_max_value);
+    qos = qos_input;
+    HIXL_LOGD("set qos to input value=%u.", qos);
+  }
+  return SUCCESS;
+}
+
 }  // namespace hixl

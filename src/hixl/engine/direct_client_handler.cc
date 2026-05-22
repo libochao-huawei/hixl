@@ -35,6 +35,7 @@ Status DirectClientHandler::Create(const HandlerCreateArgs &args, std::unique_pt
   desc.remote_endpoint = &remote_endpoint;
   desc.tc = args.rdma_tc;
   desc.sl = args.rdma_sl;
+  desc.qos = args.qos;
   HixlClientHandle handle = nullptr;
   const HixlClientConfig config{};
   HIXL_CHK_STATUS_RET(HixlCSClientCreate(&desc, &config, &handle), "HixlCSClientCreate failed for type %s",
