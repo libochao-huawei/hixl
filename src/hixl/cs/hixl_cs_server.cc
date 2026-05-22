@@ -363,6 +363,7 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   channel_desc.sl = req.sl;
   channel_desc.channel_type = ChannelType::kServer;
   channel_desc.channel_index = req.channel_index;
+  channel_desc.qos = req.qos;
   HIXL_CHK_STATUS_RET(ep->CreateChannel(channel_desc, channel_handle), "Failed to create channel");
   std::lock_guard<std::mutex> lock(chn_mutex_);
   EndpointChannelInfo info{};

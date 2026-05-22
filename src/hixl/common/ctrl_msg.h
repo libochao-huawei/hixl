@@ -64,6 +64,7 @@ struct CreateChannelReq {
   uint8_t tc;
   uint8_t sl;
   uint32_t channel_index = 0U;
+  int8_t qos = 0;
 };
 
 struct CreateChannelResp {

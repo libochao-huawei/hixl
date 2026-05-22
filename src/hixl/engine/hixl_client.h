@@ -29,6 +29,7 @@ struct ClientConfig {
   std::string remote_engine;
   uint8_t rdma_tc;
   uint8_t rdma_sl;
+  int8_t qos;
 };
 
 class HixlClient {
@@ -39,7 +40,8 @@ class HixlClient {
    * @param [in] server_port  服务端监听端口号
    */
   HixlClient(const std::string &server_ip, uint32_t server_port, const ClientConfig &config)
-      : server_ip_(server_ip), server_port_(server_port), rdma_tc_(config.rdma_tc), rdma_sl_(config.rdma_sl) {}
+      : server_ip_(server_ip), server_port_(server_port), rdma_tc_(config.rdma_tc), rdma_sl_(config.rdma_sl),
+        qos_(config.qos) {}
   ~HixlClient() = default;
 
   /**
@@ -112,6 +114,7 @@ class HixlClient {
   std::unique_ptr<IClientHandler> client_handler_;
   std::mutex status_mutex_;  // 保护 is_connected_、is_finalized_、finalize_pending_；TransferSync 与 Finalize 在此与
                              // inflight 配对
+  int8_t qos_{0};
 };
 
 }  // namespace hixl
