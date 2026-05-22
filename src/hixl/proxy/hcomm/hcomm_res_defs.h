@@ -214,6 +214,7 @@ typedef struct {
             uint32_t qos;            ///< HCCS QoS
         } hccsAttr;
     };
+    uint32_t qos;
 } HcommChannelDesc;
 
 // 传输类型定义
