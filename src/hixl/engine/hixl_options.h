@@ -38,6 +38,7 @@ struct ConnectPoolConfig {
 struct CommResourceConfigDesc {
   std::optional<std::vector<std::string>> protocol_desc;
   std::optional<uint32_t> listen_port;
+  std::optional<uint32_t> qos;
 };
 
 struct GlobalResourceConfig {
