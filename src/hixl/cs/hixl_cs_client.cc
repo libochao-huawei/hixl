@@ -821,6 +821,7 @@ Status HixlCSClient::BuildDeviceChunkParam(DeviceCompleteHandle &handle, uint32_
   if (local_endpoint_->GetEndpoint().protocol == COMM_PROTOCOL_HCCS) {
     param.use_notify_record = 1;
   }
+  param.enable_perf = IsPerfStatUboeEnabled();
   HIXL_LOGI("[HixlClient] protocol=%u, use_notify_record=%u", local_endpoint_->GetEndpoint().protocol,
             param.use_notify_record);
   return SUCCESS;
