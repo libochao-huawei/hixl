@@ -42,24 +42,7 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
   runtime_ctx_resolved_ = true;
   // 创建socket，与server建链，发送请求，获取remote_endpoint_list
   std::vector<EndpointConfig> remote_endpoint_list;
-  CtrlMsgPlugin::Initialize();
-  {
-    int32_t socket = -1;
-    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip_, server_port_, socket, kCtrlMsgPluginTimeoutMs),
-                        "Connect socket failed");
-    ScopeGuard socket_guard([&socket]() {
-      if (socket != -1) {
-        HIXL_LOGI("HixlClient close socket start, socket:%d", socket);
-        close(socket);
-        HIXL_LOGI("HixlClient close socket end, socket:%d", socket);
-        socket = -1;
-      }
-    });
-    HIXL_CHK_STATUS_RET(SendEndpointInfoReq(socket, CtrlMsgType::kGetEndpointInfoReq),
-                        "HixlClient send GetEndpointInfoReq failed, socket:%d", socket);
-    HIXL_CHK_STATUS_RET(RecvEndpointInfoResp(socket, remote_endpoint_list),
-                        "HixlClient receive GetEndpointInfoResp failed, socket:%d", socket);
-  }
+  HIXL_CHK_STATUS_RET(GetRemoteEndpointList(remote_endpoint_list), "GetRemoteEndpointList failed");
   if (remote_endpoint_list.empty()) {
     HIXL_LOGE(FAILED, "HixlClient received empty remote_endpoint_list");
     return FAILED;
@@ -87,6 +70,26 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
   client_handler_ = ClientHandlerFactory::Create(args);
   HIXL_CHECK_NOTNULL(client_handler_, "ClientHandlerFactory create handler failed");
   has_local_device_client_ = has_device_pair;
+  return SUCCESS;
+}
+
+Status HixlClient::GetRemoteEndpointList(std::vector<EndpointConfig> &remote_endpoint_list) const {
+  CtrlMsgPlugin::Initialize();
+  int32_t socket = -1;
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip_, server_port_, socket, kCtrlMsgPluginTimeoutMs),
+                      "Connect socket failed");
+  ScopeGuard socket_guard([&socket]() {
+    if (socket != -1) {
+      HIXL_LOGI("HixlClient close socket start, socket:%d", socket);
+      close(socket);
+      HIXL_LOGI("HixlClient close socket end, socket:%d", socket);
+      socket = -1;
+    }
+  });
+  HIXL_CHK_STATUS_RET(SendEndpointInfoReq(socket, CtrlMsgType::kGetEndpointInfoReq),
+                      "HixlClient send GetEndpointInfoReq failed, socket:%d", socket);
+  HIXL_CHK_STATUS_RET(RecvEndpointInfoResp(socket, remote_endpoint_list),
+                      "HixlClient receive GetEndpointInfoResp failed, socket:%d", socket);
   return SUCCESS;
 }
 
