@@ -27,6 +27,9 @@ static void from_json(const nlohmann::json &j, DeviceInfo &d) {
   if (j.contains("device_ip")) {
     j.at("device_ip").get_to(d.device_ip);
   }
+  if (j.contains("device_port")) {
+    j.at("device_port").get_to(d.device_port);
+  }
 }
 
 static void to_json(nlohmann::json &j, const DeviceInfo &d) {
@@ -34,6 +37,9 @@ static void to_json(nlohmann::json &j, const DeviceInfo &d) {
   j["device_id"] = d.device_id;
   if (!d.device_ip.empty()) {
     j["device_ip"] = d.device_ip;
+  }
+  if (!d.device_port.empty()) {
+    j["device_port"] = d.device_port;
   }
   j["rank_id"] = std::to_string(d.rank_id);
 }
@@ -163,7 +169,8 @@ int32_t RankTableGeneratorV1::GetPeerRankId() {
 
 ge::Status RankTableGeneratorV1::GenerateLocalCommRes(const std::string &server_id,
                                                       int32_t device_id,
-                                                      std::string &local_comm_res) {
+                                                      std::string &local_comm_res,
+                                                      std::optional<uint32_t> device_port) {
   rank_table_v1::RankTableInfo local_rank_table{};
   local_rank_table.version = kConfigVersionV1;
   rank_table_v1::ServerInfo server_info{};
@@ -174,6 +181,9 @@ ge::Status RankTableGeneratorV1::GenerateLocalCommRes(const std::string &server_
   device_info.device_id = std::to_string(phy_device_id);
   LLM_CHK_HIXL_RET(hixl::GetDeviceIp(phy_device_id, device_info.device_ip),
                    "Failed to get device_ip, phy_device_id:%u", phy_device_id);
+  if (device_port.has_value()) {
+    device_info.device_port = std::to_string(device_port.value());
+  }
   server_info.device_list.emplace_back(device_info);
   local_rank_table.server_list.emplace_back(server_info);
   try {
