@@ -44,7 +44,8 @@ struct HixlClientDesc {
   uint32_t server_port;
   uint8_t tc; // RDMA网卡的traffic class
   uint8_t sl; // RDMA网卡的service level
-  uint8_t reserved[98] = {}; // 保留字段：预留空间以供未来扩展，结构体总大小保持为128字节
+  int8_t qos; // qos
+  uint8_t reserved[97] = {}; // 保留字段：预留空间以供未来扩展，结构体总大小保持为128字节
 };
 
 struct HixlServerDesc {

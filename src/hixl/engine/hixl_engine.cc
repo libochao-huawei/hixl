@@ -53,6 +53,7 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
 
   HIXL_CHK_STATUS_RET(ParseTrafficClass(options), "[HixlEngine] Failed to parse traffic class");
   HIXL_CHK_STATUS_RET(ParseServiceLevel(options), "[HixlEngine] Failed to parse service level");
+  HIXL_CHK_STATUS_RET(ParseConfigQos(options, qos_), "[HixlEngine] Failed to parse qos");
   HIXL_CHK_STATUS_RET(InitServer(),
                       "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
                       local_engine_.c_str(), local_comm_res.c_str());
@@ -115,6 +116,7 @@ Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in
   config.remote_engine = remote_engine.GetString();
   config.rdma_tc = rdma_traffic_class_;
   config.rdma_sl = rdma_service_level_;
+  config.qos = qos_;
   HIXL_CHK_STATUS_RET(client_manager_.CreateClient(config, client_ptr),
                       "[HixlEngine] Failed to create HixlClient, local_engine: %s, remote_engine: %s",
                       local_engine_.c_str(), remote_engine.GetString());
