@@ -89,9 +89,10 @@ class EndpointGenerator {
   static Status GenEndpointFromProtocolDesc(const std::map<AscendString, AscendString> &options,
                                             std::vector<EndpointConfig> &endpoint_list);
   static Status BuildEndpointListFromLocalCommRes(const nlohmann::json &config,
-                                                  bool has_endpoint_list,
                                                   const std::string &local_engine,
-                                                  std::vector<EndpointConfig> &endpoint_list);
+                                                  std::vector<EndpointConfig> &endpoint_list,
+                                                  LocalRuntimeContext &runtime_ctx,
+                                                  bool &runtime_ctx_resolved);
   static Status ParseLocalCommRes(const nlohmann::json &config, std::vector<EndpointConfig> &endpoint_list);
   static Status QueryLocalDeviceCount(uint32_t &count);
   static Status QueryLocalDeviceResource(LocalDeviceResource &resource);
