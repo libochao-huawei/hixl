@@ -573,6 +573,8 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2) {
   EXPECT_EQ(endpoint_list[0].device_info.super_pod_id, -1);
   EXPECT_EQ(endpoint_list[1].protocol, kProtocolHccs);
   EXPECT_EQ(endpoint_list[1].comm_id, "3");
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 1U);
 
   (void)remove(file_path.c_str());
 }
