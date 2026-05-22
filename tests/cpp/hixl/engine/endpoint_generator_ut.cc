@@ -129,6 +129,20 @@ void ExpectHostOnlyLocalCommResBuildSucceedsWithNoDeviceRuntimeQueries(
     EXPECT_EQ(acl_stub->set_current_context_call_count_, 0U);
   }
 }
+
+void ExpectDeviceOnlyLocalCommResBuildSkipsManualDeviceInfo(
+    const std::shared_ptr<MockLocCommResAclRuntimeStub> &acl_stub) {
+  acl_stub->phy_device_id_ = 23;
+
+  std::string parsed_local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_EQ(BuildEndpointListFromLocalCommRes(MakeDeviceOnlyLocalCommRes(), &parsed_local_comm_res, &endpoint_list),
+            SUCCESS);
+  ASSERT_EQ(endpoint_list.size(), 1U);
+  EXPECT_EQ(endpoint_list[0].device_info.phy_device_id, -1);
+  EXPECT_EQ(endpoint_list[0].device_info.super_device_id, -1);
+  EXPECT_EQ(endpoint_list[0].device_info.super_pod_id, -1);
+}
 }  // namespace
 
 class EndpointGeneratorUTest : public ::testing::Test {
@@ -399,30 +413,14 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsParsesManualJsonAndFi
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsSkipsManualDeviceInfoForV5) {
   acl_stub_->soc_name_ = "Ascend950";
-  acl_stub_->phy_device_id_ = 23;
 
-  std::string parsed_local_comm_res;
-  std::vector<EndpointConfig> endpoint_list;
-  EXPECT_EQ(BuildEndpointListFromLocalCommRes(MakeDeviceOnlyLocalCommRes(), &parsed_local_comm_res, &endpoint_list),
-            SUCCESS);
-  ASSERT_EQ(endpoint_list.size(), 1U);
-  EXPECT_EQ(endpoint_list[0].device_info.phy_device_id, -1);
-  EXPECT_EQ(endpoint_list[0].device_info.super_device_id, -1);
-  EXPECT_EQ(endpoint_list[0].device_info.super_pod_id, -1);
+  ExpectDeviceOnlyLocalCommResBuildSkipsManualDeviceInfo(acl_stub_);
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsSkipsManualDeviceInfoForOtherSoc) {
   acl_stub_->soc_name_ = "OtherSoc";
-  acl_stub_->phy_device_id_ = 23;
 
-  std::string parsed_local_comm_res;
-  std::vector<EndpointConfig> endpoint_list;
-  EXPECT_EQ(BuildEndpointListFromLocalCommRes(MakeDeviceOnlyLocalCommRes(), &parsed_local_comm_res, &endpoint_list),
-            SUCCESS);
-  ASSERT_EQ(endpoint_list.size(), 1U);
-  EXPECT_EQ(endpoint_list[0].device_info.phy_device_id, -1);
-  EXPECT_EQ(endpoint_list[0].device_info.super_device_id, -1);
-  EXPECT_EQ(endpoint_list[0].device_info.super_pod_id, -1);
+  ExpectDeviceOnlyLocalCommResBuildSkipsManualDeviceInfo(acl_stub_);
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsHostOnlyWithZeroDeviceCountSkipsDeviceRuntimeQueries) {
