@@ -37,7 +37,7 @@
 namespace hixl {
 namespace {
 std::atomic<uint32_t> g_next_channel_index{0U};
-constexpr uint32_t kDeviceTransferPoolSize = 128U;
+constexpr uint32_t kDeviceTransferPoolSize = 2U;
 constexpr uint32_t kDeviceCompleteMagic = 0x55425548U;
 constexpr uint32_t kRoceCompleteMagic = 0x524F4345U;
 constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";
