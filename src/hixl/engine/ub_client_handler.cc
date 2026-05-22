@@ -58,6 +58,7 @@ Status UbClientHandler::Create(const HandlerCreateArgs &args, std::unique_ptr<Ub
     desc.remote_endpoint = &re;
     desc.tc = args.rdma_tc;
     desc.sl = args.rdma_sl;
+    desc.qos = args.qos;
     HixlClientHandle handle = nullptr;
     HixlClientConfig config{};
     if (!global_resource_config.empty()) {

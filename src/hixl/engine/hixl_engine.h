@@ -175,6 +175,7 @@ class HixlEngine : public hixl::Engine {
   std::map<uint64_t, TransferInfo> req_map_;
 
   std::atomic<bool> auto_connect_{false};
+  int8_t qos_{0};
 };
 }  // namespace hixl
 

@@ -82,6 +82,30 @@ Status GetIpAddressFromHccnTool(uint32_t phy_device_id, std::string &ip) {
   return SUCCESS;
 }
 
+struct CommResourceConfig {
+  std::vector<std::string> protocol_desc;
+  int64_t qos;
+};
+
+void from_json(const nlohmann::json &j, CommResourceConfig &config) {
+  if (j.contains("comm_resource_config.protocol_desc")) {
+    j.at("comm_resource_config.protocol_desc").get_to(config.protocol_desc);
+  }
+  if (j.contains("comm_resource_config.qos")) {
+    j.at("comm_resource_config.qos").get_to(config.qos);
+  }
+}
+
+Status ParseCommResourceConfig(const std::string &json_str, CommResourceConfig &config) {
+  try {
+    auto j = nlohmann::json::parse(json_str);
+    j.get_to(config);
+    return SUCCESS;
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "parse CommResourceConfig json failed, json=%s, exception=%s", json_str.c_str(), e.what());
+    return PARAM_INVALID;
+  }
+}
 }  // namespace
 Status HcclError2Status(HcclResult ret) {
   static const std::map<HcclResult, Status> result2status = {
@@ -270,4 +294,29 @@ TemporaryRtContext::~TemporaryRtContext() {
     HIXL_CHK_STATUS(aclrtSetCurrentContext(prev_context_));
   }
 }
+
+Status ParseConfigQos(const std::map<AscendString, AscendString> &options, int8_t &qos)
+{
+  auto find_ret = options.find(OPTION_GLOBAL_RESOURCE_CONFIG);
+  if (find_ret == options.cend()) {
+    constexpr int8_t qos_default_value = 0;
+    qos = qos_default_value;
+    HIXL_LOGD("set qos to default value=%d.", qos);
+  } else {
+    HIXL_LOGD("option[%s] config value=%s.", OPTION_GLOBAL_RESOURCE_CONFIG, find_ret->second.GetString());
+    CommResourceConfig config{};
+    HIXL_CHK_STATUS_RET(ParseCommResourceConfig(find_ret->second.GetString(), config),
+                        "Parse comm resource config failed.");
+
+    constexpr int8_t qos_min_value = 0;
+    constexpr int8_t qos_max_value = 7;
+    HIXL_CHK_BOOL_RET_STATUS((config.qos >= qos_min_value && config.qos <= qos_max_value), PARAM_INVALID,
+      "comm_resource_config.qos value [%ld] is invalid, should be in range [%d, %d] as number",
+      config.qos, qos_min_value, qos_max_value);
+    qos = static_cast<int8_t>(config.qos);
+    HIXL_LOGD("set qos to input value=%u.", qos);
+  }
+  return SUCCESS;
+}
+
 }  // namespace hixl

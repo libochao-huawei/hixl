@@ -285,6 +285,7 @@ Status HixlCSClient::InitBaseClient(const HixlClientDesc *client_desc) {
   local_endpoint_ = MakeShared<Endpoint>(local_endpoint);
   tc_ = client_desc->tc;
   sl_ = client_desc->sl;
+  qos_ = client_desc->qos;
   HIXL_CHECK_NOTNULL(local_endpoint_);
   Status ret = local_endpoint_->Initialize();
   HIXL_CHK_STATUS_RET(ret,
@@ -356,12 +357,13 @@ Status HixlCSClient::Create(const HixlClientDesc *client_desc, const HixlClientC
   HIXL_EVENT(
       "[HixlClient] Create begin. Server=%s:%u. "
       "SrcEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x], "
-      "DstEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x]",
+      "DstEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x]"
+      "qos:%u",
       client_desc->server_ip, client_desc->server_port, client_desc->local_endpoint->loc.locType,
       client_desc->local_endpoint->protocol, client_desc->local_endpoint->commAddr.type,
       client_desc->local_endpoint->commAddr.id, client_desc->remote_endpoint->loc.locType,
       client_desc->remote_endpoint->protocol, client_desc->remote_endpoint->commAddr.type,
-      client_desc->remote_endpoint->commAddr.id);
+      client_desc->remote_endpoint->commAddr.id, client_desc->qos);
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(InitBaseClient(client_desc), "[HixlClient] InitBaseClient failed");
   EndpointHandle endpoint_handle = local_endpoint_->GetHandle();
@@ -1196,6 +1198,7 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
   create_body.tc = tc_;
   create_body.sl = sl_;
   create_body.channel_index = channel_index;
+  create_body.qos = qos_;
   ret = ConnMsgHandler::SendCreateChannelRequest(socket_, create_body);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendCreateChannelRequest failed. fd=%d", socket_);
   ChannelHandle channel_handle = 0UL;
@@ -1205,6 +1208,7 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
   channel_desc.sl = sl_;
   channel_desc.channel_type = ChannelType::kClient;
   channel_desc.channel_index = channel_index;
+  channel_desc.qos = qos_;
   ret = local_endpoint_->CreateChannel(channel_desc, channel_handle);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] Endpoint CreateChannel failed. Dst[id:0x%x]", remote_endpoint_.commAddr.id);
   ret = ConnMsgHandler::RecvCreateChannelResponse(socket_, timeout_ms);

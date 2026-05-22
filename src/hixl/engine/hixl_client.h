@@ -32,6 +32,7 @@ struct ClientConfig {
   uint8_t rdma_sl;
   uint32_t timeout_ms;
   std::optional<uint32_t> local_listen_port;
+  int8_t qos;
 };
 
 class HixlClient {
@@ -46,7 +47,8 @@ class HixlClient {
         server_port_(server_port),
         rdma_tc_(config.rdma_tc),
         rdma_sl_(config.rdma_sl),
-        local_listen_port_(config.local_listen_port) {}
+        local_listen_port_(config.local_listen_port)
+        qos_(config.qos) {}
   ~HixlClient() = default;
 
   /**
@@ -129,6 +131,7 @@ class HixlClient {
   std::mutex ctrl_socket_mutex_;
   std::mutex status_mutex_;  // 保护 is_connected_、is_finalized_、finalize_pending_；TransferSync 与 Finalize 在此与
                              // inflight 配对
+  int8_t qos_{0};
 };
 
 }  // namespace hixl

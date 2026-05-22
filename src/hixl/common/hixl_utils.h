@@ -72,6 +72,9 @@ std::string ToString(const Container &c) {
 
 Status HcclError2Status(HcclResult ret);
 
+
+Status ParseConfigQos(const std::map<AscendString, AscendString> &options, int8_t &qos);
+                              
 Status CheckIp(const std::string &ip);
 
 Status GetDeviceIp(int32_t phy_device_id, std::string &device_ip);

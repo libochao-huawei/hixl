@@ -70,6 +70,7 @@ Status HixlEngine::Initialize(const HixlOptions &options) {
   Status ret = EndpointGenerator::BuildEndpointList(
       options, local_engine_, local_comm_res, endpoint_list_);
   HIXL_CHK_STATUS_RET(ret, "[HixlEngine] Failed to build endpoint list from options");
+  HIXL_CHK_STATUS_RET(ParseConfigQos(options, qos_), "[HixlEngine] Failed to parse qos");
   HIXL_CHK_STATUS_RET(InitServer(),
                       "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
                       local_engine_.c_str(), local_comm_res.c_str());

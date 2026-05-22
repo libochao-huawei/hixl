@@ -38,6 +38,7 @@ struct HandlerCreateArgs {
     CommType type;
   };
   std::vector<EndpointPair> matched_pairs;
+  int8_t qos;
 };
 
 class ClientHandlerFactory {
