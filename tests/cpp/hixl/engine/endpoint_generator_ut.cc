@@ -398,6 +398,34 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsParsesManualJsonAndFi
   EXPECT_EQ(endpoint_list[1].device_info.super_pod_id, 67);
 }
 
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsSkipsManualDeviceInfoForV5) {
+  acl_stub_->soc_name_ = "Ascend950";
+  acl_stub_->phy_device_id_ = 23;
+
+  std::string parsed_local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_EQ(BuildEndpointListFromLocalCommRes(MakeDeviceOnlyLocalCommRes(), &parsed_local_comm_res, &endpoint_list),
+            SUCCESS);
+  ASSERT_EQ(endpoint_list.size(), 1U);
+  EXPECT_EQ(endpoint_list[0].device_info.phy_device_id, -1);
+  EXPECT_EQ(endpoint_list[0].device_info.super_device_id, -1);
+  EXPECT_EQ(endpoint_list[0].device_info.super_pod_id, -1);
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsSkipsManualDeviceInfoForOtherSoc) {
+  acl_stub_->soc_name_ = "OtherSoc";
+  acl_stub_->phy_device_id_ = 23;
+
+  std::string parsed_local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_EQ(BuildEndpointListFromLocalCommRes(MakeDeviceOnlyLocalCommRes(), &parsed_local_comm_res, &endpoint_list),
+            SUCCESS);
+  ASSERT_EQ(endpoint_list.size(), 1U);
+  EXPECT_EQ(endpoint_list[0].device_info.phy_device_id, -1);
+  EXPECT_EQ(endpoint_list[0].device_info.super_device_id, -1);
+  EXPECT_EQ(endpoint_list[0].device_info.super_pod_id, -1);
+}
+
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsHostOnlyWithZeroDeviceCountSkipsDeviceRuntimeQueries) {
   acl_stub_->device_count_ = 0;
 
@@ -574,6 +602,8 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2) {
   EXPECT_EQ(endpoint_list[0].device_info.super_pod_id, -1);
   EXPECT_EQ(endpoint_list[1].protocol, kProtocolHccs);
   EXPECT_EQ(endpoint_list[1].comm_id, "3");
+  EXPECT_EQ(acl_stub_->get_device_count_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 1U);
 
   (void)remove(file_path.c_str());
 }
