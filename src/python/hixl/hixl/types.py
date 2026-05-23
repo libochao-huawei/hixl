@@ -10,6 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
+from dataclasses import dataclass, field
 from enum import IntEnum
 
 
@@ -26,8 +27,8 @@ class Status(IntEnum):
 
 
 class MemType(IntEnum):
-    DEVICE = 0
-    HOST = 1
+    MEM_DEVICE = 0
+    MEM_HOST = 1
 
 
 class TransferOp(IntEnum):
@@ -42,7 +43,31 @@ class TransferStatus(IntEnum):
     FAILED = 3
 
 
-# Options constants
+@dataclass
+class TransferOpDesc:
+    local_addr: int = 0
+    remote_addr: int = 0
+    len: int = 0
+
+
+@dataclass
+class MemDesc:
+    addr: int = 0
+    len: int = 0
+    reserved: bytes = field(default_factory=lambda: b"\x00" * 128)
+
+
+@dataclass
+class TransferArgs:
+    reserved: bytes = field(default_factory=lambda: b"\x00" * 128)
+
+
+@dataclass
+class NotifyDesc:
+    name: str = ""
+    notify_msg: str = ""
+
+
 OPTION_ENABLE_USE_FABRIC_MEM = "EnableUseFabricMem"
 OPTION_RDMA_TRAFFIC_CLASS = "RdmaTrafficClass"
 OPTION_RDMA_SERVICE_LEVEL = "RdmaServiceLevel"

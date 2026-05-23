@@ -16,7 +16,11 @@
 extern "C" {
 
 HixlHandle HixlCreate() {
-  return new hixl::Hixl();
+  try {
+    return new hixl::Hixl();
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 void HixlDestroy(HixlHandle handle) {
@@ -26,12 +30,20 @@ void HixlDestroy(HixlHandle handle) {
 }
 
 uint32_t HixlInitialize(HixlHandle handle, const char *local_engine, const char **option_keys, const char **option_vals,
-                        int option_count) {
+                        int32_t option_count) {
   auto *hixl = static_cast<hixl::Hixl *>(handle);
-  if (!hixl) return hixl::PARAM_INVALID;
+  if (!hixl) {
+    return hixl::PARAM_INVALID;
+  }
+  if (!local_engine) {
+    return hixl::PARAM_INVALID;
+  }
 
   std::map<hixl::AscendString, hixl::AscendString> options;
-  for (int i = 0; i < option_count; ++i) {
+  for (int32_t i = 0; i < option_count; ++i) {
+    if (!option_keys[i] || !option_vals[i]) {
+      return hixl::PARAM_INVALID;
+    }
     options[hixl::AscendString(option_keys[i])] = hixl::AscendString(option_vals[i]);
   }
 

@@ -11,8 +11,16 @@
 # ----------------------------------------------------------------------------
 
 from .hixl import Hixl
-from .types import Status, MemType, TransferOp, TransferStatus
-from .exception import HixlException, check_status
+from .types import (
+    Status,
+    MemType,
+    TransferOp,
+    TransferStatus,
+    TransferOpDesc,
+    MemDesc,
+    TransferArgs,
+    NotifyDesc,
+)
 
 __all__ = [
     "Hixl",
@@ -20,6 +28,8 @@ __all__ = [
     "MemType",
     "TransferOp",
     "TransferStatus",
-    "HixlException",
-    "check_status",
+    "TransferOpDesc",
+    "MemDesc",
+    "TransferArgs",
+    "NotifyDesc",
 ]

@@ -12,6 +12,7 @@
 
 import ctypes
 import os
+import threading
 
 from ._lib_loader import load_lib_from_path
 
@@ -28,19 +29,16 @@ c_uintptr_t = ctypes.c_size_t
 
 
 class _LazyLibLoader:
-    """Lazy loader for hixl_wrapper library.
-
-    Library is loaded only when first accessed, allowing tests to mock before import.
-    """
-
     _lib = None
     _loaded = False
+    _lock = threading.Lock()
 
     def _load_lib(self):
-        if not self._loaded:
-            self._lib = load_lib_from_path(LIB_NAME, _dir)
-            self._setup_argtypes()
-            self._loaded = True
+        with self._lock:
+            if not self._loaded:
+                self._lib = load_lib_from_path(LIB_NAME, _dir)
+                self._setup_argtypes()
+                self._loaded = True
         return self._lib
 
     def _setup_argtypes(self):
@@ -56,7 +54,7 @@ class _LazyLibLoader:
             c_char_p,
             ctypes.POINTER(c_char_p),
             ctypes.POINTER(c_char_p),
-            c_int,
+            c_int32,
         ]
         lib.HixlInitialize.restype = c_uint32
 

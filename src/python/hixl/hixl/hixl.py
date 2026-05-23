@@ -12,9 +12,18 @@
 
 import ctypes
 import logging
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from ._capi.hixl_wrapper import hixl_lib
-from .types import Status
+from .types import (
+    Status,
+    MemType,
+    TransferOp,
+    TransferStatus,
+    TransferOpDesc,
+    MemDesc,
+    TransferArgs,
+    NotifyDesc,
+)
 from .exception import check_status, HixlException
 
 
@@ -27,13 +36,15 @@ class Hixl:
 
     def __init__(self):
         self._handle = hixl_lib.HixlCreate()
+        if not self._handle:
+            raise HixlException(Status.FAILED, "Failed to create Hixl instance")
         self._is_initialized = False
 
     def __del__(self):
         try:
-            if self._handle is not None:
-                self.finalize()
-                hixl_lib.HixlDestroy(self._handle)
+            handle = getattr(self, "_handle", None)
+            if not handle:
+                hixl_lib.HixlDestroy(handle)
                 self._handle = None
         except Exception as e:
             logging.warning(f"Hixl cleanup failed in __del__: {e}")
@@ -55,7 +66,7 @@ class Hixl:
         if self._is_initialized:
             return
 
-        options = options or {}
+        options = options if options is not None else {}
         keys = list(options.keys())
         vals = list(options.values())
 
@@ -92,43 +103,43 @@ class Hixl:
     def finalize(self) -> None:
         raise HixlException(Status.UNSUPPORTED, "finalize is not supported")
 
-    def register_mem(self, addr: int, length: int, mem_type: int) -> int:
+    def register_mem(self, mem_desc: MemDesc, mem_type: MemType) -> int:
         raise HixlException(Status.UNSUPPORTED, "register_mem is not supported")
 
-    def deregister_mem(self, handle_id: int) -> None:
+    def deregister_mem(self, mem_handle: int) -> None:
         raise HixlException(Status.UNSUPPORTED, "deregister_mem is not supported")
 
-    def connect(self, remote_engine: str, timeout: int = 1000) -> None:
+    def connect(self, remote_engine: str, timeout_in_millis: int = 1000) -> None:
         raise HixlException(Status.UNSUPPORTED, "connect is not supported")
 
-    def disconnect(self, remote_engine: str, timeout: int = 1000) -> None:
+    def disconnect(self, remote_engine: str, timeout_in_millis: int = 1000) -> None:
         raise HixlException(Status.UNSUPPORTED, "disconnect is not supported")
 
     def transfer_sync(
         self,
         remote_engine: str,
-        operation: int,
-        op_descs: list,
-        timeout: int = 1000,
+        operation: TransferOp,
+        op_descs: List[TransferOpDesc],
+        timeout_in_millis: int = 1000,
     ) -> None:
         raise HixlException(Status.UNSUPPORTED, "transfer_sync is not supported")
 
     def transfer_async(
         self,
         remote_engine: str,
-        operation: int,
-        op_descs: list,
-        optional_args: Optional[bytes] = None,
+        operation: TransferOp,
+        op_descs: List[TransferOpDesc],
+        optional_args: Optional[TransferArgs] = None,
     ) -> int:
         raise HixlException(Status.UNSUPPORTED, "transfer_async is not supported")
 
-    def get_transfer_status(self, req_handle_id: int, auto_cleanup: bool = True) -> int:
+    def get_transfer_status(self, req: int) -> TransferStatus:
         raise HixlException(Status.UNSUPPORTED, "get_transfer_status is not supported")
 
     def send_notify(
-        self, remote_engine: str, notify_name: str, notify_msg: str, timeout: int = 1000
+        self, remote_engine: str, notify: NotifyDesc, timeout_in_millis: int = 1000
     ) -> None:
         raise HixlException(Status.UNSUPPORTED, "send_notify is not supported")
 
-    def get_notifies(self) -> list:
+    def get_notifies(self) -> List[NotifyDesc]:
         raise HixlException(Status.UNSUPPORTED, "get_notifies is not supported")

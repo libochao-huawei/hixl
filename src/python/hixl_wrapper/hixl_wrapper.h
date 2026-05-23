@@ -12,7 +12,6 @@
 #define HIXL_WRAPPER_H_
 
 #include <stdint.h>
-#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,7 +23,7 @@ HixlHandle HixlCreate();
 void HixlDestroy(HixlHandle handle);
 
 uint32_t HixlInitialize(HixlHandle handle, const char *local_engine, const char **option_keys, const char **option_vals,
-                        int option_count);
+                        int32_t option_count);
 #ifdef __cplusplus
 }
 #endif
