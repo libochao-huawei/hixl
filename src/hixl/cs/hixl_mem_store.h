@@ -14,12 +14,14 @@
 #include <mutex>
 #include "hixl/hixl_types.h"
 
+struct HixlOneSideOpDesc;
+
 namespace hixl {
 struct MemoryRegion {
   const void *addr = nullptr;  // 内存起始地址
   size_t size = 0U;            // 内存区域大小
   bool is_host_mem = false;
-  void *register_dev_addr = nullptr; // 非空时有效
+  void *register_dev_addr = nullptr;  // 非空时有效
 
   MemoryRegion() = default;
   MemoryRegion(const void *a, size_t s, bool is_host = false, void *dev_addr = nullptr) noexcept
@@ -62,10 +64,14 @@ class HixlMemStore {
   bool CheckMemoryForRegister(bool is_server, const void *check_addr, size_t check_size);
   Status FindMemoryRegion(bool is_server, const void *addr, MemoryRegion &region) const;
 
+  Status ValidateMemoryAccessBatch(uint32_t list_num, const HixlOneSideOpDesc *desc_list);
+  Status ConvertHostAddrBatch(uint32_t list_num, HixlOneSideOpDesc *desc_list);
+
  private:
   bool CheckMemoryForAccess(bool is_server, const void *check_addr, size_t check_size);
   bool CheckMergedRegionsAccess(const std::map<const void *, MemoryRegion> &regions, uintptr_t s, uintptr_t e,
                                 typename std::map<const void *, MemoryRegion>::const_iterator it);
+  Status FindMemoryRegionInternal(bool is_server, const void *addr, MemoryRegion &region) const;
   // 内存区域信息结构体
   std::map<const void *, MemoryRegion> server_regions_;
   std::map<const void *, MemoryRegion> client_regions_;

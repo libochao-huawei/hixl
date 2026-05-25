@@ -10,8 +10,10 @@
 
 #include <cstring>
 #include <cstdint>
+#include <limits>
 #include "hixl/hixl_types.h"
 #include "common/hixl_checker.h"
+#include "cs/hixl_cs.h"
 #include "hixl_mem_store.h"
 
 namespace hixl {
@@ -43,7 +45,7 @@ bool CheckRegionsContiguous(const MemoryRegion &prev, const MemoryRegion &curr) 
   // 如果没有 register_dev_addr 地址，addr地址连续即可
   return true;
 }
-}
+}  // namespace
 Status HixlMemStore::RecordMemory(bool is_server, const void *addr, size_t size, bool is_host_mem,
                                   void *register_dev_addr) {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -110,8 +112,8 @@ bool HixlMemStore::CheckMemoryForRegister(bool is_server, const void *check_addr
   auto overlaps = [s, e](const MemoryRegion &r) {
     auto rs = reinterpret_cast<uintptr_t>(r.addr);
     auto re = rs + r.size;
-    bool is_overlap = (s < re) && (rs < e); //内存重叠，返回true
-    bool is_same = (s == rs) && (e == re); //当内存块与已注册内存块完全一致时，此时允许重新注册，返回false
+    bool is_overlap = (s < re) && (rs < e);  // 内存重叠，返回true
+    bool is_same = (s == rs) && (e == re);  // 当内存块与已注册内存块完全一致时，此时允许重新注册，返回false
     return is_overlap && !is_same;
   };
 
@@ -175,8 +177,7 @@ bool HixlMemStore::CheckMemoryForAccess(bool is_server, const void *check_addr, 
 }
 
 bool HixlMemStore::CheckMergedRegionsAccess(const std::map<const void *, MemoryRegion> &regions, uintptr_t s,
-                                            uintptr_t e,
-                                            std::map<const void *, MemoryRegion>::const_iterator it) {
+                                            uintptr_t e, std::map<const void *, MemoryRegion>::const_iterator it) {
   auto get_addr = [](const MemoryRegion &r) { return reinterpret_cast<uintptr_t>(r.addr); };
   auto get_region_end = [&get_addr](const MemoryRegion &r) { return get_addr(r) + r.size; };
   auto contains = [s, e, get_addr, get_region_end](const MemoryRegion &r) {
@@ -251,12 +252,15 @@ Status HixlMemStore::FindMemoryRegion(bool is_server, const void *addr, MemoryRe
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
+  return FindMemoryRegionInternal(is_server, addr, region);
+}
+
+Status HixlMemStore::FindMemoryRegionInternal(bool is_server, const void *addr, MemoryRegion &region) const {
   const auto &regions = is_server ? server_regions_ : client_regions_;
   if (regions.empty()) {
     return FAILED;
   }
   auto it = regions.lower_bound(addr);
-  // 检查找到的段
   if (it != regions.end()) {
     if (IsAddrInRegion(it->second, addr)) {
       region = it->second;
@@ -264,7 +268,6 @@ Status HixlMemStore::FindMemoryRegion(bool is_server, const void *addr, MemoryRe
     }
   }
 
-  // 检查前一个段
   if (it != regions.begin()) {
     const auto &prev = std::prev(it)->second;
     if (IsAddrInRegion(prev, addr)) {
@@ -273,5 +276,162 @@ Status HixlMemStore::FindMemoryRegion(bool is_server, const void *addr, MemoryRe
     }
   }
   return FAILED;
+}
+
+Status HixlMemStore::ValidateMemoryAccessBatch(uint32_t list_num, const HixlOneSideOpDesc *desc_list) {
+  if (list_num == 0U) {
+    return SUCCESS;
+  }
+  if (desc_list == nullptr) {
+    return PARAM_INVALID;
+  }
+
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  MemoryRegion cached_server_region;
+  bool server_cache_valid = false;
+  MemoryRegion cached_client_region;
+  bool client_cache_valid = false;
+
+  for (uint32_t i = 0; i < list_num; i++) {
+    const void *server_addr = desc_list[i].remote_buf;
+    const void *client_addr = desc_list[i].local_buf;
+    size_t mem_size = static_cast<size_t>(desc_list[i].len);
+
+    if (server_addr == nullptr || client_addr == nullptr || mem_size == size_t{0}) {
+      HIXL_LOGE(PARAM_INVALID,
+                "This memory is not registered and cannot be read from or written to. "
+                "Please check remote_buf:%p, local_buf:%p, buf_len:%zu (index=%u)",
+                server_addr, client_addr, mem_size, i);
+      return PARAM_INVALID;
+    }
+
+    bool server_valid = false;
+    if (server_cache_valid) {
+      uintptr_t s = reinterpret_cast<uintptr_t>(server_addr);
+      uintptr_t rs = reinterpret_cast<uintptr_t>(cached_server_region.addr);
+      uintptr_t re = rs + cached_server_region.size;
+      if (mem_size <= std::numeric_limits<uintptr_t>::max() - s) {
+        uintptr_t e = s + mem_size;
+        server_valid = (s >= rs && e <= re);
+      }
+    }
+    if (!server_valid) {
+      server_valid = CheckMemoryForAccess(true, server_addr, mem_size);
+      if (server_valid) {
+        MemoryRegion region;
+        if (FindMemoryRegionInternal(true, server_addr, region) == SUCCESS) {
+          cached_server_region = region;
+          server_cache_valid = true;
+        }
+      }
+    }
+    if (!server_valid) {
+      HIXL_LOGE(PARAM_INVALID,
+                "Server memory verification failed; the memory has not been registered yet. memory information: "
+                "server_addr:%p, buf_len:%zu (index=%u)",
+                server_addr, mem_size, i);
+      return PARAM_INVALID;
+    }
+
+    bool client_valid = false;
+    if (client_cache_valid) {
+      uintptr_t s = reinterpret_cast<uintptr_t>(client_addr);
+      uintptr_t rs = reinterpret_cast<uintptr_t>(cached_client_region.addr);
+      uintptr_t re = rs + cached_client_region.size;
+      if (mem_size <= std::numeric_limits<uintptr_t>::max() - s) {
+        uintptr_t e = s + mem_size;
+        client_valid = (s >= rs && e <= re);
+      }
+    }
+    if (!client_valid) {
+      client_valid = CheckMemoryForAccess(false, client_addr, mem_size);
+      if (client_valid) {
+        MemoryRegion region;
+        if (FindMemoryRegionInternal(false, client_addr, region) == SUCCESS) {
+          cached_client_region = region;
+          client_cache_valid = true;
+        }
+      }
+    }
+    if (!client_valid) {
+      HIXL_LOGE(PARAM_INVALID,
+                "Client memory verification failed; the memory has not been registered yet. memory information: "
+                "client_addr:%p, buf_len:%zu (index=%u)",
+                client_addr, mem_size, i);
+      return PARAM_INVALID;
+    }
+  }
+  return SUCCESS;
+}
+
+Status HixlMemStore::ConvertHostAddrBatch(uint32_t list_num, HixlOneSideOpDesc *desc_list) {
+  if (list_num == 0U) {
+    return SUCCESS;
+  }
+  if (desc_list == nullptr) {
+    return PARAM_INVALID;
+  }
+
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  MemoryRegion cached_server_region;
+  bool server_cache_valid = false;
+  MemoryRegion cached_client_region;
+  bool client_cache_valid = false;
+
+  for (uint32_t i = 0; i < list_num; i++) {
+    if (desc_list[i].remote_buf == nullptr) {
+      HIXL_LOGE(PARAM_INVALID, "[HixlMemStore] remote_buf is nullptr (index=%u)", i);
+      return PARAM_INVALID;
+    }
+    if (desc_list[i].local_buf == nullptr) {
+      HIXL_LOGE(PARAM_INVALID, "[HixlMemStore] local_buf is nullptr (index=%u)", i);
+      return PARAM_INVALID;
+    }
+
+    MemoryRegion server_region;
+    if (server_cache_valid && IsAddrInRegion(cached_server_region, desc_list[i].remote_buf)) {
+      server_region = cached_server_region;
+    } else {
+      Status s = FindMemoryRegionInternal(true, desc_list[i].remote_buf, server_region);
+      if (s != SUCCESS) {
+        HIXL_LOGE(s, "[HixlMemStore] remote addr %p not registered in server regions (index=%u)",
+                  desc_list[i].remote_buf, i);
+        return s;
+      }
+      cached_server_region = server_region;
+      server_cache_valid = true;
+    }
+
+    if (server_region.is_host_mem) {
+      HIXL_CHECK_NOTNULL(server_region.register_dev_addr, ", register_dev_addr is nullptr.");
+      uintptr_t offset =
+          reinterpret_cast<uintptr_t>(desc_list[i].remote_buf) - reinterpret_cast<uintptr_t>(server_region.addr);
+      desc_list[i].remote_buf = static_cast<void *>(static_cast<char *>(server_region.register_dev_addr) + offset);
+    }
+
+    MemoryRegion client_region;
+    if (client_cache_valid && IsAddrInRegion(cached_client_region, desc_list[i].local_buf)) {
+      client_region = cached_client_region;
+    } else {
+      Status s = FindMemoryRegionInternal(false, desc_list[i].local_buf, client_region);
+      if (s != SUCCESS) {
+        HIXL_LOGE(s, "[HixlMemStore] local addr %p not registered in client regions (index=%u)", desc_list[i].local_buf,
+                  i);
+        return s;
+      }
+      cached_client_region = client_region;
+      client_cache_valid = true;
+    }
+
+    if (client_region.is_host_mem) {
+      HIXL_CHECK_NOTNULL(client_region.register_dev_addr, ", register_dev_addr is nullptr.");
+      uintptr_t offset =
+          reinterpret_cast<uintptr_t>(desc_list[i].local_buf) - reinterpret_cast<uintptr_t>(client_region.addr);
+      desc_list[i].local_buf = static_cast<void *>(static_cast<char *>(client_region.register_dev_addr) + offset);
+    }
+  }
+  return SUCCESS;
 }
 }  // namespace hixl

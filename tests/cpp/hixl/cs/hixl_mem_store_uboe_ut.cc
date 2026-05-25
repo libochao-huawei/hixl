@@ -10,12 +10,13 @@
 
 #include "gtest/gtest.h"
 #include "hixl_mem_store.h"
+#include "cs/hixl_cs.h"
 #include "hixl/hixl_types.h"
 
 namespace hixl {
 namespace {
-void* IntToPtr(uint32_t addr) {
-  return reinterpret_cast<void*>(static_cast<uintptr_t>(addr));
+void *IntToPtr(uint32_t addr) {
+  return reinterpret_cast<void *>(static_cast<uintptr_t>(addr));
 }
 }  // anonymous namespace
 
@@ -251,6 +252,99 @@ TEST(HixlMemStoreUboeTest, FindMemoryRegionUnregistered) {
 
   // 根据代码实现，regions 为空或找不到时返回 FAILED
   EXPECT_EQ(store.FindMemoryRegion(true, unregistered_addr, region), FAILED);
+}
+
+TEST(HixlMemStoreUboeTest, ConvertHostAddrBatchSingleDesc) {
+  HixlMemStore store;
+  void *host_addr = IntToPtr(100);
+  void *dev_addr = IntToPtr(1000);
+  constexpr size_t kSize = 2048;
+
+  EXPECT_EQ(store.RecordMemory(true, host_addr, kSize, true, dev_addr), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(false, IntToPtr(200), kSize, true, IntToPtr(2000)), SUCCESS);
+
+  HixlOneSideOpDesc desc{host_addr, IntToPtr(200), 8};
+  EXPECT_EQ(store.ConvertHostAddrBatch(1, &desc), SUCCESS);
+  EXPECT_EQ(desc.remote_buf, IntToPtr(1000));
+  EXPECT_EQ(desc.local_buf, IntToPtr(2000));
+}
+
+TEST(HixlMemStoreUboeTest, ConvertHostAddrBatchMultipleDescsSameRegion) {
+  HixlMemStore store;
+  void *server_host_addr = IntToPtr(100);
+  void *server_dev_addr = IntToPtr(1000);
+  void *client_host_addr = IntToPtr(5000);
+  void *client_dev_addr = IntToPtr(6000);
+  constexpr size_t kRegionSize = 8192;
+  constexpr uint32_t kListNum = 100;
+
+  EXPECT_EQ(store.RecordMemory(true, server_host_addr, kRegionSize, true, server_dev_addr), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(false, client_host_addr, kRegionSize, true, client_dev_addr), SUCCESS);
+
+  std::vector<HixlOneSideOpDesc> descs(kListNum);
+  for (uint32_t i = 0; i < kListNum; i++) {
+    descs[i] = {IntToPtr(100 + i * 8), IntToPtr(5000 + i * 8), 8};
+  }
+  EXPECT_EQ(store.ConvertHostAddrBatch(kListNum, descs.data()), SUCCESS);
+
+  for (uint32_t i = 0; i < kListNum; i++) {
+    EXPECT_EQ(descs[i].remote_buf, IntToPtr(1000 + i * 8));
+    EXPECT_EQ(descs[i].local_buf, IntToPtr(6000 + i * 8));
+  }
+}
+
+TEST(HixlMemStoreUboeTest, ConvertHostAddrBatchDeviceMemNoConversion) {
+  HixlMemStore store;
+  void *server_dev_addr = IntToPtr(100);
+  void *client_dev_addr = IntToPtr(200);
+  constexpr size_t kSize = 2048;
+
+  EXPECT_EQ(store.RecordMemory(true, server_dev_addr, kSize, false, nullptr), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(false, client_dev_addr, kSize, false, nullptr), SUCCESS);
+
+  HixlOneSideOpDesc desc{server_dev_addr, client_dev_addr, 8};
+  EXPECT_EQ(store.ConvertHostAddrBatch(1, &desc), SUCCESS);
+  EXPECT_EQ(desc.remote_buf, server_dev_addr);
+  EXPECT_EQ(desc.local_buf, client_dev_addr);
+}
+
+TEST(HixlMemStoreUboeTest, ConvertHostAddrBatchUnregisteredAddr) {
+  HixlMemStore store;
+  void *server_addr = IntToPtr(100);
+  constexpr size_t kSize = 2048;
+  EXPECT_EQ(store.RecordMemory(true, server_addr, kSize, true, IntToPtr(1000)), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(false, IntToPtr(200), kSize), SUCCESS);
+
+  HixlOneSideOpDesc desc{IntToPtr(5000), IntToPtr(200), 8};
+  EXPECT_EQ(store.ConvertHostAddrBatch(1, &desc), FAILED);
+}
+
+TEST(HixlMemStoreUboeTest, ConvertHostAddrBatchNullptrBuffers) {
+  HixlMemStore store;
+  EXPECT_EQ(store.ConvertHostAddrBatch(1, nullptr), PARAM_INVALID);
+  EXPECT_EQ(store.ConvertHostAddrBatch(0, nullptr), SUCCESS);
+
+  HixlOneSideOpDesc desc_null_remote{nullptr, IntToPtr(200), 8};
+  EXPECT_EQ(store.ConvertHostAddrBatch(1, &desc_null_remote), PARAM_INVALID);
+
+  HixlOneSideOpDesc desc_null_local{IntToPtr(100), nullptr, 8};
+  EXPECT_EQ(store.ConvertHostAddrBatch(1, &desc_null_local), PARAM_INVALID);
+}
+
+TEST(HixlMemStoreUboeTest, ConvertHostAddrBatchMixedHostAndDevice) {
+  HixlMemStore store;
+  void *server_host = IntToPtr(100);
+  void *server_dev = IntToPtr(1000);
+  void *client_dev = IntToPtr(2000);
+  constexpr size_t kSize = 4096;
+
+  EXPECT_EQ(store.RecordMemory(true, server_host, kSize, true, server_dev), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(false, client_dev, kSize, false, nullptr), SUCCESS);
+
+  HixlOneSideOpDesc desc{IntToPtr(200), client_dev, 8};
+  EXPECT_EQ(store.ConvertHostAddrBatch(1, &desc), SUCCESS);
+  EXPECT_EQ(desc.remote_buf, IntToPtr(1100));
+  EXPECT_EQ(desc.local_buf, client_dev);
 }
 
 }  // namespace hixl

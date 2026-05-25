@@ -459,18 +459,7 @@ Status HixlCSClient::ReleaseCompleteHandle(CompleteHandleInfo *query_handle) {
 }
 
 Status HixlCSClient::ValidateAddress(uint32_t list_num, const HixlOneSideOpDesc *desc_list) {
-  for (uint32_t i = 0; i < list_num; i++) {
-    Buffers buffer{desc_list[i].remote_buf, desc_list[i].local_buf};
-    Status check_result = mem_store_.ValidateMemoryAccess(buffer.remote, desc_list[i].len, buffer.local);
-    if (check_result != SUCCESS) {
-      HIXL_LOGE(PARAM_INVALID,
-                "This memory is not registered and cannot be read from or written to. "
-                "Please check remote_buf:%p, local_buf:%p, buf_len:%lu",
-                buffer.remote, buffer.local, desc_list[i].len);
-      return check_result;
-    }
-  }
-  return SUCCESS;
+  return mem_store_.ValidateMemoryAccessBatch(list_num, desc_list);
 }
 Status HixlCSClient::TransferWithRetry(bool is_get, uint64_t channel_handle, void *dst_buf, const void *src_buf,
                                        uint64_t len) const {
@@ -1087,13 +1076,7 @@ Status HixlCSClient::ConvertHostRegisterAddr(bool is_server, const char *name, v
 }
 
 Status HixlCSClient::ConvertUboeDescs(uint32_t list_num, HixlOneSideOpDesc *desc_list) {
-  for (uint32_t i = 0; i < list_num; i++) {
-    HIXL_CHK_STATUS_RET(ConvertHostRegisterAddr(true, "remote", desc_list[i].remote_buf),
-                        "[HixlClient][UBOE] Convert remote addr failed");
-    HIXL_CHK_STATUS_RET(ConvertHostRegisterAddr(false, "local", desc_list[i].local_buf),
-                        "[HixlClient][UBOE] Convert local addr failed");
-  }
-  return SUCCESS;
+  return mem_store_.ConvertHostAddrBatch(list_num, desc_list);
 }
 
 Status HixlCSClient::BatchTransferAsync(bool is_get, uint32_t list_num, const HixlOneSideOpDesc *desc_list,
