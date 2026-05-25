@@ -10,6 +10,7 @@
 #include <atomic>
 #include <gtest/gtest.h>
 #include <memory>
+#include <string>
 #include <thread>
 #include <vector>
 #include "fabric_mem/virtual_memory_manager.h"
@@ -22,6 +23,22 @@ namespace {
 constexpr size_t kTestSize1GB = 1024UL * 1024UL * 1024UL;
 constexpr size_t kTestSize2GB = 2UL * kTestSize1GB;
 constexpr size_t kTestSize500MB = 500UL * 1024UL * 1024UL;
+
+class MockVmAclRuntimeStub : public llm::AclRuntimeStub {
+ public:
+  std::string soc_name_;
+  void *last_expect_ptr_ = nullptr;
+
+  const char *aclrtGetSocName() override {
+    return soc_name_.c_str();
+  }
+
+  aclError aclrtReserveMemAddress(void **devPtr, size_t size, size_t alignment, void *devAddr,
+                                  uint64_t flags) override {
+    last_expect_ptr_ = devAddr;
+    return llm::AclRuntimeStub::aclrtReserveMemAddress(devPtr, size, alignment, devAddr, flags);
+  }
+};
 
 class ScopedRuntimeMockForVmManager {
  public:
@@ -65,6 +82,32 @@ TEST_F(VirtualMemoryManagerTest, Initialize_Success) {
   EXPECT_EQ(manager.Initialize(), SUCCESS);
   // Second initialization should also succeed
   EXPECT_EQ(manager.Initialize(), SUCCESS);
+}
+
+TEST_F(VirtualMemoryManagerTest, ReserveMemAddress_UsesNoUCMemoryOnA3) {
+  auto mock = std::make_shared<MockVmAclRuntimeStub>();
+  mock->soc_name_ = "Ascend910_9391";
+  scoped_mock_ = std::make_unique<ScopedRuntimeMockForVmManager>(mock);
+
+  VirtualMemoryManager &manager = VirtualMemoryManager::GetInstance();
+  void *addr = nullptr;
+  EXPECT_EQ(manager.ReserveMemAddress(addr, kTestSize500MB), SUCCESS);
+  ASSERT_NE(addr, nullptr);
+  EXPECT_NE(mock->last_expect_ptr_, nullptr);
+  EXPECT_EQ(aclrtReleaseMemAddress(addr), ACL_ERROR_NONE);
+}
+
+TEST_F(VirtualMemoryManagerTest, ReserveMemAddress_UsesReserveMemAddressOnNonA3) {
+  auto mock = std::make_shared<MockVmAclRuntimeStub>();
+  mock->soc_name_ = "Ascend910B1";
+  scoped_mock_ = std::make_unique<ScopedRuntimeMockForVmManager>(mock);
+
+  VirtualMemoryManager &manager = VirtualMemoryManager::GetInstance();
+  void *addr = nullptr;
+  EXPECT_EQ(manager.ReserveMemAddress(addr, kTestSize500MB), SUCCESS);
+  ASSERT_NE(addr, nullptr);
+  EXPECT_EQ(mock->last_expect_ptr_, nullptr);
+  EXPECT_EQ(aclrtReleaseMemAddress(addr), ACL_ERROR_NONE);
 }
 
 TEST_F(VirtualMemoryManagerTest, ReserveMemAddress_Success) {
