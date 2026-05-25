@@ -29,6 +29,7 @@
 #include <set>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
 #include <nlohmann/json.hpp>
@@ -63,6 +64,13 @@ constexpr const char *kNetInstancePrefix = "superpod_";
 constexpr const char *kDefaultTopoDir = "/etc/";
 constexpr const char *kDefaultTopoSuffix = "noroce.json";
 constexpr const char *kDefaultRoutePath = "/lib/route.conf";
+
+// Procfs 路径常量
+constexpr const char *kProcPathAscendUb = "/proc/ascend_ub";
+constexpr const char *kProcPathAsdrvUb = "/proc/asdrv_ub";
+constexpr const char *kProcNamespaceNode = "/proc/uda/namespace_node";
+constexpr const char *kProcDevIdFile = "dev_id";
+constexpr const char *kProcPairInfoFile = "pair_info";
 
 // DCMI 主命令和子命令
 enum DcmiMainCmd {
@@ -124,6 +132,242 @@ std::string FindLatestTopoFile() {
   }
   closedir(dir);
   return latest_file;
+}
+
+// 检查指定路径的文件是否存在
+bool IsFileExists(const std::string &path) {
+  struct stat st;
+  return (stat(path.c_str(), &st) == 0);
+}
+
+// 查找可用的 proc 基路径（ascend_ub 或 asdrv_ub）
+std::string FindProcBasePath() {
+  if (IsFileExists(std::string(kProcPathAscendUb) + "/" + kProcDevIdFile)) {
+    return kProcPathAscendUb;
+  }
+  if (IsFileExists(std::string(kProcPathAsdrvUb) + "/" + kProcDevIdFile)) {
+    return kProcPathAsdrvUb;
+  }
+  return "";
+}
+
+// 读取文件内容到字符串
+bool ReadFileToString(const std::string &path, std::string &content) {
+  std::ifstream file(path);
+  if (!file.is_open()) {
+    return false;
+  }
+  std::ostringstream oss;
+  oss << file.rdbuf();
+  content = oss.str();
+  return true;
+}
+
+// 写入字符串到文件
+bool WriteStringToFile(const std::string &path, const std::string &content) {
+  std::ofstream file(path);
+  if (!file.is_open()) {
+    return false;
+  }
+  file << content;
+  return file.good();
+}
+
+// 去除字符串首尾空白字符
+std::string TrimString(const std::string &s) {
+  size_t start = s.find_first_not_of(" \t\r\n");
+  if (start == std::string::npos) {
+    return "";
+  }
+  size_t end = s.find_last_not_of(" \t\r\n");
+  return s.substr(start, end - start + 1);
+}
+
+// 从 pair_info 文本中提取指定设备的信息
+// pair_info 格式示例:
+//   dev_id=0 slot_id=0
+//   local_eid: 0x...
+//   remote_eid: 0x...
+//   local_eid: 0x...     (第二组)
+//   remote_eid: 0x...
+bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id,
+                            int32_t &slot_id, std::string &local_eid, std::string &remote_eid) {
+  std::istringstream iss(pair_info_content);
+  std::string line;
+  std::string found_slot_id;
+  std::vector<std::string> local_eids;
+  std::vector<std::string> remote_eids;
+
+  while (std::getline(iss, line)) {
+    line = TrimString(line);
+    if (line.empty()) {
+      continue;
+    }
+
+    // 解析 slot_id: 查找匹配 dev_id 的行
+    if (line.find("dev_id=") != std::string::npos) {
+      size_t pos = line.find("slot_id=");
+      if (pos != std::string::npos) {
+        found_slot_id = line.substr(pos + std::strlen("slot_id="));
+        found_slot_id = TrimString(found_slot_id);
+      }
+    }
+
+    // 解析 local_eid
+    if (line.find("local_eid:") != std::string::npos || line.find("local_eid :") != std::string::npos) {
+      size_t pos = line.find(':');
+      if (pos != std::string::npos) {
+        std::string eid_val = TrimString(line.substr(pos + 1));
+        // 去掉冒号后缀
+        size_t colon_pos = eid_val.find(':');
+        if (colon_pos != std::string::npos) {
+          eid_val = eid_val.substr(0, colon_pos);
+        }
+        eid_val = TrimString(eid_val);
+        if (!eid_val.empty()) {
+          local_eids.push_back(eid_val);
+        }
+      }
+    }
+
+    // 解析 remote_eid
+    if (line.find("remote_eid:") != std::string::npos || line.find("remote_eid :") != std::string::npos) {
+      size_t pos = line.find(':');
+      if (pos != std::string::npos) {
+        std::string eid_val = TrimString(line.substr(pos + 1));
+        // 去掉冒号后缀
+        size_t colon_pos = eid_val.find(':');
+        if (colon_pos != std::string::npos) {
+          eid_val = eid_val.substr(0, colon_pos);
+        }
+        eid_val = TrimString(eid_val);
+        if (!eid_val.empty()) {
+          remote_eids.push_back(eid_val);
+        }
+      }
+    }
+  }
+
+  if (found_slot_id.empty()) {
+    HIXL_LOGW("ParsePairInfo: no slot_id found for npu_id=%d", npu_id);
+    return false;
+  }
+
+  // 根据 npu_id 在组内的偏移选择 EID 索引
+  int32_t group_offset = npu_id % 8;
+  size_t eid_idx = (group_offset < 4) ? 0 : 1;  // 前4个用第一组，后4个用第二组
+
+  // 提取 slot_id 的数值
+  try {
+    slot_id = std::stoi(found_slot_id);
+  } catch (...) {
+    slot_id = npu_id;
+  }
+
+  // 提取 EID（需要去除 0x 前缀）
+  auto FormatEid = [](const std::string &eid) -> std::string {
+    std::string result = eid;
+    // 去掉 0x 前缀
+    if (result.size() >= 2 && result[0] == '0' && (result[1] == 'x' || result[1] == 'X')) {
+      result = result.substr(2);
+    }
+    return result;
+  };
+
+  if (eid_idx < local_eids.size()) {
+    local_eid = FormatEid(local_eids[eid_idx]);
+  }
+  if (eid_idx < remote_eids.size()) {
+    remote_eid = FormatEid(remote_eids[eid_idx]);
+  }
+
+  return (!local_eid.empty() || !remote_eid.empty());
+}
+
+// 通过 procfs 获取路由数据（当 /lib/route.conf 不存在时的 fallback）
+int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids,
+                                    RouteData &route_data) {
+  route_data.entries.clear();
+
+  std::string proc_base = FindProcBasePath();
+  if (proc_base.empty()) {
+    HIXL_LOGE(FAILED, "Neither /proc/ascend_ub nor /proc/asdrv_ub found");
+    return FAILED;
+  }
+  HIXL_LOGI("Using procfs base path: %s", proc_base.c_str());
+
+  std::string dev_id_path = proc_base + "/" + kProcDevIdFile;
+  std::string pair_info_path = proc_base + "/" + kProcPairInfoFile;
+
+  for (int32_t npu_id : related_npu_ids) {
+    // 写入 dev_id 选择设备
+    std::ostringstream dev_id_ss;
+    dev_id_ss << npu_id;
+    if (!WriteStringToFile(dev_id_path, dev_id_ss.str())) {
+      HIXL_LOGW("Failed to write npu_id=%d to %s", npu_id, dev_id_path.c_str());
+      continue;
+    }
+
+    // 短暂延时确保内核更新
+    usleep(100000);  // 100ms
+
+    // 读取 pair_info
+    std::string pair_info_content;
+    if (!ReadFileToString(pair_info_path, pair_info_content)) {
+      HIXL_LOGW("Failed to read pair_info for npu_id=%d", npu_id);
+      continue;
+    }
+
+    // 解析 pair_info
+    int32_t slot_id = npu_id;
+    std::string local_eid;
+    std::string remote_eid;
+    if (!ParsePairInfoForDevice(pair_info_content, npu_id, slot_id, local_eid, remote_eid)) {
+      HIXL_LOGW("Failed to parse pair_info for npu_id=%d", npu_id);
+      continue;
+    }
+
+    int32_t device_id = npu_id % 8;
+
+    // 为 D2H 方向生成 RouteEntry（Device → Host）
+    // 在 route.conf 中，local_eid = device EID，remote_eid = host EID
+    // D2H 使用 remote_eid 作为 comm_id
+    if (!remote_eid.empty()) {
+      RouteEntry entry_d2h;
+      entry_d2h.device_id = device_id;
+      entry_d2h.local_eid = local_eid;
+      entry_d2h.remote_eid = remote_eid;
+      route_data.entries.push_back(entry_d2h);
+      HIXL_LOGI("Procfs RouteEntry: npu_id=%d, device_id=%d, slot_id=%d, "
+                "local_eid=%s, remote_eid=%s [D2H]",
+                npu_id, device_id, slot_id,
+                local_eid.empty() ? "(none)" : local_eid.c_str(),
+                remote_eid.c_str());
+    }
+
+    // 为 H2D 方向生成 RouteEntry（Host → Device）
+    // H2D 使用 local_eid 作为 comm_id
+    if (!local_eid.empty()) {
+      RouteEntry entry_h2d;
+      entry_h2d.device_id = device_id;
+      entry_h2d.local_eid = local_eid;
+      entry_h2d.remote_eid = remote_eid;
+      route_data.entries.push_back(entry_h2d);
+      HIXL_LOGI("Procfs RouteEntry: npu_id=%d, device_id=%d, slot_id=%d, "
+                "local_eid=%s, remote_eid=%s [H2D]",
+                npu_id, device_id, slot_id,
+                local_eid.c_str(),
+                remote_eid.empty() ? "(none)" : remote_eid.c_str());
+    }
+  }
+
+  if (route_data.entries.empty()) {
+    HIXL_LOGE(FAILED, "No route entries generated from procfs");
+    return FAILED;
+  }
+
+  HIXL_LOGI("Generated %zu route entries from procfs", route_data.entries.size());
+  return SUCCESS;
 }
 
 }  // anonymous namespace
@@ -689,13 +933,19 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
     return ret;
   }
   RouteData route_data;
+  std::set<int32_t> related_npu_ids = CollectRelatedNpuIds(phy_dev_id);
   ret = ParseRouteFile(route_path, route_data);
   if (ret != SUCCESS) {
-    return ret;
+    // Fallback: 通过 procfs 获取路由数据
+    HIXL_LOGW("ParseRouteFile failed (path=%s), trying procfs fallback", route_path.c_str());
+    ret = GenerateRouteDataFromProcfs(related_npu_ids, route_data);
+    if (ret != SUCCESS) {
+      HIXL_LOGE(FAILED, "Both route.conf and procfs fallback failed");
+      return ret;
+    }
   }
 
   // 4. 构建 NpuRootInfo
-  std::set<int32_t> related_npu_ids = CollectRelatedNpuIds(phy_dev_id);
   std::map<int32_t, NpuRootInfo> npu_rootinfos;
   ret = BuildNpuRootinfos(related_npu_ids, is_server, npu_rootinfos);
   if (ret != SUCCESS) {
