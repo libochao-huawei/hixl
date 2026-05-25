@@ -69,6 +69,11 @@ class VirtualMemoryManagerTest : public ::testing::Test {
 
   std::shared_ptr<llm::AclRuntimeStub> mock_runtime_;
   std::unique_ptr<ScopedRuntimeMockForVmManager> scoped_mock_;
+
+  void InstallRuntimeMock(const std::shared_ptr<llm::AclRuntimeStub> &mock) {
+    scoped_mock_.reset();
+    scoped_mock_ = std::make_unique<ScopedRuntimeMockForVmManager>(mock);
+  }
 };
 
 TEST_F(VirtualMemoryManagerTest, GetInstance_ReturnsSameInstance) {
@@ -87,7 +92,7 @@ TEST_F(VirtualMemoryManagerTest, Initialize_Success) {
 TEST_F(VirtualMemoryManagerTest, ReserveMemAddress_UsesNoUCMemoryOnA3) {
   auto mock = std::make_shared<MockVmAclRuntimeStub>();
   mock->soc_name_ = "Ascend910_9391";
-  scoped_mock_ = std::make_unique<ScopedRuntimeMockForVmManager>(mock);
+  InstallRuntimeMock(mock);
 
   VirtualMemoryManager &manager = VirtualMemoryManager::GetInstance();
   void *addr = nullptr;
@@ -100,7 +105,7 @@ TEST_F(VirtualMemoryManagerTest, ReserveMemAddress_UsesNoUCMemoryOnA3) {
 TEST_F(VirtualMemoryManagerTest, ReserveMemAddress_UsesReserveMemAddressOnNonA3) {
   auto mock = std::make_shared<MockVmAclRuntimeStub>();
   mock->soc_name_ = "Ascend910B1";
-  scoped_mock_ = std::make_unique<ScopedRuntimeMockForVmManager>(mock);
+  InstallRuntimeMock(mock);
 
   VirtualMemoryManager &manager = VirtualMemoryManager::GetInstance();
   void *addr = nullptr;
