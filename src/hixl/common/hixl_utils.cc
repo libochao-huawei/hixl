@@ -86,7 +86,7 @@ Status GetIpAddressFromHccnTool(uint32_t phy_device_id, std::string &ip) {
 
 struct CommResourceConfig {
   std::vector<std::string> protocol_desc;
-  std::string qos;
+  int64_t qos;
 };
 
 void from_json(const nlohmann::json &j, CommResourceConfig &config) {
@@ -346,14 +346,10 @@ Status ParseConfigQos(const std::map<AscendString, AscendString> &options, int8_
 
     constexpr int8_t qos_min_value = 0;
     constexpr int8_t qos_max_value = 7;
-    int8_t qos_input = 0;
-    HIXL_CHK_STATUS_RET(ToNumber(config.qos, qos_input),
-      "comm_resource_config.qos value [%s] is invalid, should be in range [%d, %d] as number",
-      config.qos.c_str(), qos_min_value, qos_max_value);
-    HIXL_CHK_BOOL_RET_STATUS((qos_input >= qos_min_value && qos_input <= qos_max_value), PARAM_INVALID,
-      "comm_resource_config.qos value [%s] is invalid, should be in range [%d, %d] as number",
-      config.qos.c_str(), qos_min_value, qos_max_value);
-    qos = qos_input;
+    HIXL_CHK_BOOL_RET_STATUS((config.qos >= qos_min_value && config.qos <= qos_max_value), PARAM_INVALID,
+      "comm_resource_config.qos value [%ld] is invalid, should be in range [%d, %d] as number",
+      config.qos, qos_min_value, qos_max_value);
+    qos = static_cast<int8_t>(config.qos);
     HIXL_LOGD("set qos to input value=%u.", qos);
   }
   return SUCCESS;
