@@ -42,7 +42,6 @@ KV_TRANSPORT_BY_PLATFORM: dict[str, str] = {
     "a5": "fabric_mem",
 }
 
-
 def default_kv_transport(platform_id: str) -> str:
     return KV_TRANSPORT_BY_PLATFORM.get(platform_id, "rdma")
 
