@@ -1,0 +1,550 @@
+{
+  "skill_name": "gitcode-pr",
+  "version": "2.0.0",
+  "last_run": null,
+  "description": "GitCode PR API v5 完整生命周期测试用例。测试 agent 执行 PR 操作的能力，包括创建、评论、回复、删除、关闭等完整流程。",
+  "execution_order": "sequential",
+  "context_passing": {
+    "enabled": true,
+    "description": "用例间传递 PR 编号、评论 ID 等上下文，形成链式依赖"
+  },
+  "cleanup_policy": {
+    "on_success": "最后一个用例关闭 PR",
+    "on_failure": "记录失败用例，手动清理残留 PR"
+  },
+  "evals": [
+    {
+      "id": "lifecycle-01",
+      "eval_name": "create-test-pr",
+      "prompt": "创建一个测试 PR：\n1. 在当前仓库创建新分支 test-pr-api-v5-{timestamp}\n2. 在 docs/ 目录下创建文件 test_api_v5.txt，内容为：GitCode API v5 测试时间戳：{timestamp}\n3. 提交并推送该分支\n4. 使用 v5 API 创建 PR，标题为：[TEST] API v5 功能测试\n5. 记录创建的 PR 编号\n\n注意：确保使用 POST /api/v5/repos/{owner}/{repo}/pulls 创建 PR。",
+      "expected_output": "成功创建 PR，返回 PR 编号",
+      "depends_on": [],
+      "input_variables": [],
+      "files": [],
+      "assertions": [
+        {
+          "name": "pr-created-successfully",
+          "description": "PR 创建成功",
+          "check": "API 返回状态码 201，PR 编号有效（数字）"
+        },
+        {
+          "name": "pr-title-has-test-prefix",
+          "description": "PR 标题格式正确",
+          "check": "标题以 [TEST] 开头"
+        },
+        {
+          "name": "pr-state-is-open",
+          "description": "PR 状态为 open",
+          "check": "state 字段为 'open'"
+        },
+        {
+          "name": "records-pr-number",
+          "description": "记录 PR 编号",
+          "check": "输出中明确记录 PR 编号（如：PR #2854）"
+        },
+        {
+          "name": "uses-v5-api",
+          "description": "使用 v5 API",
+          "check": "调用 POST /api/v5/repos/{owner}/{repo}/pulls"
+        }
+      ],
+      "validation_steps": [
+        "GET /api/v5/repos/{owner}/{repo}/pulls/{number} - 验证 PR 存在且状态为 open",
+        "检查 PR 标题是否包含 [TEST]",
+        "检查 head 分支名称是否包含 test-pr-api-v5"
+      ],
+      "cleanup": "最后一个用例会关闭此 PR",
+      "output_variables": ["pr_number"],
+      "last_result": null
+    },
+    {
+      "id": "lifecycle-02",
+      "eval_name": "add-normal-comment",
+      "prompt": "在 PR #{pr_number} 上添加普通评论：\n1. 评论内容为：[TEST] 这是一条普通评论测试 - {timestamp}\n2. 使用 v5 API 创建评论\n3. 记录评论的 ID 和 discussion_id\n\n注意：评论内容必须以 [TEST] 开头，使用 POST /api/v5/repos/{owner}/{repo}/pulls/{number}/comments。",
+      "expected_output": "成功添加普通评论，返回评论 ID 和 discussion_id",
+      "depends_on": ["lifecycle-01"],
+      "input_variables": ["pr_number"],
+      "files": [],
+      "assertions": [
+        {
+          "name": "comment-created-successfully",
+          "description": "评论创建成功",
+          "check": "API 返回状态码 201，评论 ID 有效"
+        },
+        {
+          "name": "comment-body-has-test-prefix",
+          "description": "评论内容格式正确",
+          "check": "body 以 [TEST] 开头"
+        },
+        {
+          "name": "comment-type-is-pr-comment",
+          "description": "评论类型为普通评论",
+          "check": "comment_type 为 'pr_comment'"
+        },
+        {
+          "name": "records-comment-id",
+          "description": "记录评论 ID",
+          "check": "输出中明确记录评论 ID 和 discussion_id"
+        },
+        {
+          "name": "uses-v5-api",
+          "description": "使用 v5 API",
+          "check": "调用 POST /api/v5/repos/{owner}/{repo}/pulls/{number}/comments"
+        }
+      ],
+      "validation_steps": [
+        "GET /api/v5/repos/{owner}/{repo}/pulls/comments/{id} - 验证评论存在",
+        "检查 comment_type 是否为 pr_comment",
+        "检查 body 是否包含 [TEST]"
+      ],
+      "cleanup": "用例 lifecycle-07 会删除此评论",
+      "output_variables": ["normal_comment_id", "normal_discussion_id"],
+      "last_result": null
+    },
+    {
+      "id": "lifecycle-03",
+      "eval_name": "add-inline-comment",
+      "prompt": "在 PR #{pr_number} 上添加行内评论：\n1. 获取 PR 的文件变更列表（使用 files.json）\n2. 选择 docs/test_api_v5.txt 文件\n3. 在第 1 行添加行内评论：[TEST] 这是一条行内评论测试 - {timestamp}\n4. 使用 v5 API 创建评论\n5. 记录评论 ID 和 discussion_id\n\n注意：评论内容必须以 [TEST] 开头，使用 POST /api/v5/repos/{owner}/{repo}/pulls/{number}/comments，包含 path 和 position 参数。",
+      "expected_output": "成功添加行内评论，返回评论 ID 和 discussion_id",
+      "depends_on": ["lifecycle-01"],
+      "input_variables": ["pr_number"],
+      "files": [],
+      "assertions": [
+        {
+          "name": "comment-created-successfully",
+          "description": "评论创建成功",
+          "check": "API 返回状态码 201，评论 ID 有效"
+        },
+        {
+          "name": "comment-is-diff-note",
+          "description": "评论类型为行内评论",
+          "check": "comment_type 为 'DiffNote'"
+        },
+        {
+          "name": "comment-position-correct",
+          "description": "评论位置正确",
+          "check": "验证单条评论接口，position.new_path 为 docs/test_api_v5.txt，new_line 为 1"
+        },
+        {
+          "name": "comment-body-has-test-prefix",
+          "description": "评论内容格式正确",
+          "check": "body 以 [TEST] 开头"
+        },
+        {
+          "name": "uses-v5-api",
+          "description": "使用 v5 API",
+          "check": "调用 POST /api/v5/repos/{owner}/{repo}/pulls/{number}/comments，包含 path 和 position 参数"
+        }
+      ],
+      "validation_steps": [
+        "GET /api/v5/repos/{owner}/{repo}/pulls/comments/{id} - 获取完整评论信息",
+        "检查 position.new_path 是否为 docs/test_api_v5.txt",
+        "检查 position.new_line 是否为 1",
+        "检查 comment_type 是否为 DiffNote"
+      ],
+      "cleanup": "用例 lifecycle-07 会删除此评论",
+      "output_variables": ["inline_comment_id", "inline_discussion_id"],
+      "last_result": null
+    },
+    {
+      "id": "lifecycle-04",
+      "eval_name": "get-all-comments",
+      "prompt": "获取 PR #{pr_number} 的所有评论：\n1. 使用 v5 API 获取评论列表\n2. 输出评论总数\n3. 输出每条评论的 ID、discussion_id、类型（comment_type）、内容摘要（前 50 字符）\n4. 验证列表中包含之前创建的普通评论（ID: {normal_comment_id}）和行内评论（ID: {inline_comment_id}）\n\n注意：使用 GET /api/v5/repos/{owner}/{repo}/pulls/{number}/comments。",
+      "expected_output": "返回评论列表，包含至少 2 条评论",
+      "depends_on": ["lifecycle-02", "lifecycle-03"],
+      "input_variables": ["pr_number", "normal_comment_id", "inline_comment_id"],
+      "files": [],
+      "assertions": [
+        {
+          "name": "comments-retrieved-successfully",
+          "description": "成功获取评论列表",
+          "check": "API 返回状态码 200，返回数组"
+        },
+        {
+          "name": "comments-count-correct",
+          "description": "评论数量正确",
+          "check": "评论总数至少为 2（包含之前创建的评论）"
+        },
+        {
+          "name": "list-contains-normal-comment",
+          "description": "列表包含普通评论",
+          "check": "评论列表中包含 comment_type 为 'pr_comment' 的评论，且 ID 匹配 normal_comment_id"
+        },
+        {
+          "name": "list-contains-inline-comment",
+          "description": "列表包含行内评论",
+          "check": "评论列表中包含 comment_type 为 'DiffNote' 的评论，且 ID 匹配 inline_comment_id"
+        },
+        {
+          "name": "uses-v5-api",
+          "description": "使用 v5 API",
+          "check": "调用 GET /api/v5/repos/{owner}/{repo}/pulls/{number}/comments"
+        }
+      ],
+      "validation_steps": [
+        "GET /api/v5/repos/{owner}/{repo}/pulls/{number}/comments",
+        "检查返回数组长度 >= 2",
+        "检查是否存在 comment_type: 'pr_comment' 且 ID 匹配",
+        "检查是否存在 comment_type: 'DiffNote' 且 ID 匹配"
+      ],
+      "cleanup": "无需清理（只获取评论）",
+      "output_variables": ["comments_count"],
+      "last_result": null
+    },
+    {
+      "id": "lifecycle-05",
+      "eval_name": "reply-to-comment",
+      "prompt": "回复 PR #{pr_number} 的评论：\n1. 使用 discussion_id: {inline_discussion_id}（行内评论的讨论 ID）\n2. 回复内容：[TEST] 这是回复评论测试 - {timestamp}\n3. 使用 v5 API 的 discussions 端点回复\n4. 记录回复评论的 ID 和 discussion_id\n5. 验证回复是否成功关联到原讨论\n\n注意：必须使用 POST /api/v5/repos/{owner}/{repo}/pulls/{number}/discussions/{discussion_id}/comments 端点，不能使用 /comments 端点。",
+      "expected_output": "成功回复评论，返回回复评论 ID",
+      "depends_on": ["lifecycle-03"],
+      "input_variables": ["pr_number", "inline_discussion_id"],
+      "files": [],
+      "assertions": [
+        {
+          "name": "reply-created-successfully",
+          "description": "回复创建成功",
+          "check": "API 返回状态码 201，回复评论 ID 有效"
+        },
+        {
+          "name": "reply-linked-to-discussion",
+          "description": "回复关联到原讨论",
+          "check": "返回的 discussion_id 与输入的 inline_discussion_id 相同"
+        },
+        {
+          "name": "reply-type-is-diff-note",
+          "description": "回复类型正确",
+          "check": "comment_type 为 'DiffNote'（因为是回复行内评论）"
+        },
+        {
+          "name": "reply-body-has-test-prefix",
+          "description": "回复内容格式正确",
+          "check": "body 以 [TEST] 开头"
+        },
+        {
+          "name": "uses-discussions-endpoint",
+          "description": "使用正确的端点",
+          "check": "调用 POST /api/v5/repos/{owner}/{repo}/pulls/{number}/discussions/{discussion_id}/comments"
+        }
+      ],
+      "validation_steps": [
+        "POST /api/v5/repos/{owner}/{repo}/pulls/{number}/discussions/{inline_discussion_id}/comments",
+        "GET /api/v5/repos/{owner}/{repo}/pulls/comments/{reply_id} - 验证 discussion_id 匹配",
+        "验证 comment_type 为 DiffNote",
+        "验证 discussion_id 与 inline_discussion_id 相同"
+      ],
+      "cleanup": "用例 lifecycle-06 会删除此回复",
+      "output_variables": ["reply_comment_id", "reply_discussion_id"],
+      "last_result": null
+    },
+    {
+      "id": "lifecycle-06",
+      "eval_name": "delete-reply-comment",
+      "prompt": "删除 PR #{pr_number} 的回复评论：\n1. 使用 comment_id: {reply_comment_id}\n2. 使用 v5 API 删除评论\n3. 验证删除是否成功（尝试获取该评论应返回 404 或 'note not found'）\n4. 验证原讨论仍然存在（原行内评论 inline_comment_id 未被删除）\n\n注意：使用 DELETE /api/v5/repos/{owner}/{repo}/pulls/comments/{id} 端点。",
+      "expected_output": "成功删除回复评论",
+      "depends_on": ["lifecycle-05"],
+      "input_variables": ["pr_number", "reply_comment_id", "inline_comment_id"],
+      "files": [],
+      "assertions": [
+        {
+          "name": "reply-deleted-successfully",
+          "description": "回复删除成功",
+          "check": "DELETE API 返回成功（空响应或状态码 204/200）"
+        },
+        {
+          "name": "reply-not-found-after-delete",
+          "description": "删除后评论不存在",
+          "check": "GET /pulls/comments/{reply_comment_id} 返回 404 或 'note not found'"
+        },
+        {
+          "name": "original-comment-still-exists",
+          "description": "原评论仍然存在",
+          "check": "GET /pulls/comments/{inline_comment_id} 返回成功，评论仍然存在"
+        },
+        {
+          "name": "uses-v5-delete-api",
+          "description": "使用 v5 API",
+          "check": "调用 DELETE /api/v5/repos/{owner}/{repo}/pulls/comments/{reply_comment_id}"
+        }
+      ],
+      "validation_steps": [
+        "DELETE /api/v5/repos/{owner}/{repo}/pulls/comments/{reply_comment_id}",
+        "GET /api/v5/repos/{owner}/{repo}/pulls/comments/{reply_comment_id} - 验证返回 404",
+        "GET /api/v5/repos/{owner}/{repo}/pulls/comments/{inline_comment_id} - 验证原评论存在"
+      ],
+      "cleanup": "无需额外清理（已删除回复）",
+      "output_variables": ["reply_deleted"],
+      "last_result": null
+    },
+    {
+      "id": "lifecycle-07",
+      "eval_name": "delete-comments",
+      "prompt": "删除 PR #{pr_number} 的普通评论和行内评论：\n1. 先删除普通评论（ID: {normal_comment_id}）\n2. 再删除行内评论（ID: {inline_comment_id}）\n3. 每次删除后验证是否成功（GET 应返回 404）\n4. 最后验证 PR 上已无我们创建的评论\n\n注意：删除顺序不重要，但需要验证每条删除都成功。使用 DELETE /api/v5/repos/{owner}/{repo}/pulls/comments/{id}。",
+      "expected_output": "成功删除两条评论",
+      "depends_on": ["lifecycle-06"],
+      "input_variables": ["pr_number", "normal_comment_id", "inline_comment_id"],
+      "files": [],
+      "assertions": [
+        {
+          "name": "normal-comment-deleted",
+          "description": "普通评论删除成功",
+          "check": "DELETE API 返回成功，GET 返回 404"
+        },
+        {
+          "name": "inline-comment-deleted",
+          "description": "行内评论删除成功",
+          "check": "DELETE API 返回成功，GET 返回 404"
+        },
+        {
+          "name": "both-deletions-verified",
+          "description": "两条删除都已验证",
+          "check": "输出中确认两条评论都已删除且验证失败（404）"
+        },
+        {
+          "name": "pr-comments-clean",
+          "description": "PR 评论已清理",
+          "check": "获取 PR 评论列表，确认不包含已删除的评论 ID"
+        },
+        {
+          "name": "uses-v5-delete-api",
+          "description": "使用 v5 API",
+          "check": "调用 DELETE /api/v5/repos/{owner}/{repo}/pulls/comments/{id}（两次）"
+        }
+      ],
+      "validation_steps": [
+        "DELETE /api/v5/repos/{owner}/{repo}/pulls/comments/{normal_comment_id}",
+        "GET /api/v5/repos/{owner}/{repo}/pulls/comments/{normal_comment_id} - 验证 404",
+        "DELETE /api/v5/repos/{owner}/{repo}/pulls/comments/{inline_comment_id}",
+        "GET /api/v5/repos/{owner}/{repo}/pulls/comments/{inline_comment_id} - 验证 404",
+        "GET /api/v5/repos/{owner}/{repo}/pulls/{pr_number}/comments - 确认不包含已删除 ID"
+      ],
+      "cleanup": "无需额外清理（已删除评论）",
+      "output_variables": ["comments_deleted"],
+      "last_result": null
+    },
+    {
+      "id": "lifecycle-08",
+      "eval_name": "get-pr-files",
+      "prompt": "获取 PR #{pr_number} 的改动文件：\n1. 使用 files.json 端点获取文件列表\n2. 输出改动文件数量\n3. 输出每个文件的路径、改动类型（新增/修改/删除）、改动行数（如果有）\n4. 验证 docs/test_api_v5.txt 在文件列表中\n5. 输出 diff_refs（base_sha、head_sha、start_sha）\n\n注意：使用 GET /api/v5/repos/{owner}/{repo}/pulls/{number}/files.json 端点。",
+      "expected_output": "成功获取文件列表，包含 docs/test_api_v5.txt",
+      "depends_on": ["lifecycle-01"],
+      "input_variables": ["pr_number"],
+      "files": [],
+      "assertions": [
+        {
+          "name": "files-retrieved-successfully",
+          "description": "成功获取文件列表",
+          "check": "API 返回状态码 200，diffs 数组存在"
+        },
+        {
+          "name": "test-file-in-list",
+          "description": "测试文件在列表中",
+          "check": "diffs 中包含 new_path 为 docs/test_api_v5.txt 的条目"
+        },
+        {
+          "name": "file-change-type-correct",
+          "description": "文件改动类型正确",
+          "check": "docs/test_api_v5.txt 的改动类型为 'added' 或类似"
+        },
+        {
+          "name": "diff-refs-present",
+          "description": "diff_refs 存在",
+          "check": "diff_refs 包含 base_sha、head_sha、start_sha"
+        },
+        {
+          "name": "uses-files-json-endpoint",
+          "description": "使用正确的端点",
+          "check": "调用 GET /api/v5/repos/{owner}/{repo}/pulls/{pr_number}/files.json"
+        }
+      ],
+      "validation_steps": [
+        "GET /api/v5/repos/{owner}/{repo}/pulls/{pr_number}/files.json",
+        "检查 diffs 数组长度",
+        "检查是否存在 statistic.new_path == 'docs/test_api_v5.txt'",
+        "验证 diff_refs.base_sha、diff_refs.head_sha、diff_refs.start_sha"
+      ],
+      "cleanup": "无需清理（只获取文件列表）",
+      "output_variables": ["files_count", "test_file_path", "base_sha", "head_sha"],
+      "last_result": null
+    },
+    {
+      "id": "lifecycle-09",
+      "eval_name": "close-pr",
+      "prompt": "关闭 PR #{pr_number}：\n1. 使用 v5 API 更新 PR 状态为 'closed'\n2. 验证关闭是否成功（GET PR 验证 state 为 'closed'）\n3. 输出关闭时间、PR 最终状态\n4. 建议清理远程测试分支（可选，需要用户手动执行）\n\n注意：使用 PATCH /api/v5/repos/{owner}/{repo}/pulls/{number}，请求体包含 state: 'closed'。不要使用 DELETE。",
+      "expected_output": "成功关闭 PR，状态为 closed",
+      "depends_on": ["lifecycle-07", "lifecycle-08"],
+      "input_variables": ["pr_number"],
+      "files": [],
+      "assertions": [
+        {
+          "name": "pr-closed-successfully",
+          "description": "PR 关闭成功",
+          "check": "PATCH API 返回成功，state 为 'closed'"
+        },
+        {
+          "name": "pr-state-verified",
+          "description": "PR 状态已验证",
+          "check": "GET PR 返回 state: 'closed'"
+        },
+        {
+          "name": "pr-closed-at-present",
+          "description": "关闭时间存在",
+          "check": "返回中包含 closed_at 时间戳"
+        },
+        {
+          "name": "uses-v5-patch-api",
+          "description": "使用 v5 API",
+          "check": "调用 PATCH /api/v5/repos/{owner}/{repo}/pulls/{pr_number}，body 包含 state: 'closed'"
+        },
+        {
+          "name": "cleanup-branch-suggested",
+          "description": "建议清理分支",
+          "check": "输出中建议删除远程测试分支（可选）"
+        }
+      ],
+      "validation_steps": [
+        "PATCH /api/v5/repos/{owner}/{repo}/pulls/{pr_number} -d '{\"state\": \"closed\"}'",
+        "GET /api/v5/repos/{owner}/{repo}/pulls/{pr_number} - 验证 state == 'closed'",
+        "验证 closed_at 时间戳"
+      ],
+      "cleanup": "PR 已关闭，测试周期结束",
+      "output_variables": ["pr_closed", "closed_at"],
+      "last_result": null
+    }
+  ],
+  "legacy_evals": [
+    {
+      "id": 1,
+      "eval_name": "basic-pr-review",
+      "prompt": "检视 https://gitcode.com/cann/ge/pull/1437，找出代码中的 Bug，输出审查摘要。注意：此用例只做审查，不要发布评论。",
+      "expected_output": "识别出 hcom_graph_optimizer.cc 中第 844 行的条件判断逻辑错误（it == end() 时尝试解引用）",
+      "files": [],
+      "cleanup": "无需清理（此用例不发布评论）",
+      "last_result": {
+        "status": "passed",
+        "with_skill": {
+          "bug_identified": true,
+          "correct_file": true,
+          "line_number": 844,
+          "duration_ms": 172814
+        },
+        "without_skill": {
+          "bug_identified": true,
+          "correct_file": true,
+          "line_number": 841,
+          "duration_ms": 198708
+        }
+      },
+      "assertions": [
+        {
+          "name": "identifies-bug-in-condition",
+          "description": "能够识别出条件判断 it == end() 的逻辑错误",
+          "check": "输出中应指出 it == end() 表示没找到元素，但代码却尝试使用 it->second"
+        },
+        {
+          "name": "correct-file-location",
+          "description": "正确定位问题文件",
+          "check": "输出中应提及 hcom_graph_optimizer.cc 文件"
+        },
+        {
+          "name": "no-comment-published",
+          "description": "不应发布评论（只做审查）",
+          "check": "输出中不应包含已发布评论的确认"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "eval_name": "line-number-accuracy",
+      "prompt": "审查 PR #1437 的代码变更，找出 if (it == (itMap->second).end()) 这行代码的准确行号，并说明如何获取的。注意：此用例只定位行号，不要发布评论。",
+      "expected_output": "准确定位到第 844 行，并说明通过 raw 文件验证或 grep -n 获取",
+      "files": [],
+      "cleanup": "无需清理（此用例不发布评论）",
+      "last_result": {
+        "status": "passed",
+        "with_skill": {
+          "correct_line": 844,
+          "method": "curl raw.gitcode.com + grep -n",
+          "duration_ms": 126774
+        },
+        "without_skill": {
+          "correct_line": 844,
+          "method": "git show + grep -n",
+          "duration_ms": 232885
+        }
+      },
+      "assertions": [
+        {
+          "name": "correct-line-number",
+          "description": "准确定位行号",
+          "check": "输出中应指出问题代码在第 844 行（不是 843 行）"
+        },
+        {
+          "name": "explains-method",
+          "description": "解释行号获取方法",
+          "check": "输出中应说明通过 raw 文件验证或 grep -n 命令获取行号"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "eval_name": "review-and-comment",
+      "prompt": "审查 https://gitcode.com/cann/ge/pull/1437，发现问题后发布行内评论到 PR。重要：评论内容必须以 [TEST] 开头，并在测试完成后记录评论 ID 以便清理。",
+      "expected_output": "成功发布行内评论到 hcom_graph_optimizer.cc 第 844 行附近，评论以 [TEST] 开头",
+      "files": [],
+      "cleanup": "删除已发布的测试评论。使用以下命令获取并删除：curl -s -H \"PRIVATE-TOKEN: $GITCODE_API_TOKEN\" \"https://api.gitcode.com/api/v4/projects/cann%2Fge/merge_requests/1437/discussions\" | jq -r '.[].notes[] | select(.body | startswith(\"[TEST]\")) | .id' | while read id; do curl -s -X DELETE \"https://api.gitcode.com/api/v5/repos/cann/ge/pulls/comments/$id?access_token=$GITCODE_API_TOKEN\"; done",
+      "last_result": {
+        "status": "skipped",
+        "reason": "跳过以避免向真实 PR 发布测试评论"
+      },
+      "assertions": [
+        {
+          "name": "comment-has-test-prefix",
+          "description": "评论以 [TEST] 开头",
+          "check": "发布的评论内容必须以 [TEST] 开头，便于识别和清理"
+        },
+        {
+          "name": "publishes-inline-comment",
+          "description": "发布行内评论到正确位置",
+          "check": "应成功调用 GitCode API 发布行内评论到正确文件和行号"
+        },
+        {
+          "name": "records-comment-id",
+          "description": "记录评论 ID",
+          "check": "输出中应记录已发布评论的 ID，以便后续清理"
+        }
+      ]
+    }
+  ],
+  "benchmark_summary": {
+    "lifecycle_tests": {
+      "description": "完整生命周期测试（v5 API）",
+      "total_evals": 9,
+      "status": "pending",
+      "last_run": null
+    },
+    "legacy_tests": {
+      "iteration_1": {
+        "date": "2026-03-24",
+        "evals_run": 2,
+        "evals_passed": 2,
+        "with_skill_avg_duration_ms": 149794,
+        "without_skill_avg_duration_ms": 215796,
+        "findings": {
+          "with_skill_strengths": [
+            "使用标准化流程（review.md 步骤）",
+            "准确定位行号 (844)",
+            "清晰的 Bug 分析和影响说明"
+          ],
+          "without_skill_strengths": [
+            "发现更多潜在问题 (5个 vs 1个)",
+            "更详细的审查摘要"
+          ],
+          "improvements_needed": [
+            "with_skill 可以输出更全面的审查",
+            "eval-3 需要在测试环境运行"
+          ]
+        }
+      }
+    }
+  }
+}
