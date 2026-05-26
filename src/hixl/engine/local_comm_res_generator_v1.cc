@@ -300,13 +300,16 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids,
   std::string pair_info_path = proc_base + "/" + kProcPairInfoFile;
 
   for (int32_t npu_id : related_npu_ids) {
+    HIXL_LOGI("[Procfs] Processing npu_id=%d", npu_id);
+
     // 写入 dev_id 选择设备
     std::ostringstream dev_id_ss;
     dev_id_ss << npu_id;
     if (!WriteStringToFile(dev_id_path, dev_id_ss.str())) {
-      HIXL_LOGW("Failed to write npu_id=%d to %s", npu_id, dev_id_path.c_str());
+      HIXL_LOGW("[Procfs] Failed to write npu_id=%d to %s", npu_id, dev_id_path.c_str());
       continue;
     }
+    HIXL_LOGI("[Procfs] Wrote npu_id=%d to %s", npu_id, dev_id_path.c_str());
 
     // 短暂延时确保内核更新
     usleep(100000);  // 100ms
@@ -314,18 +317,22 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids,
     // 读取 pair_info
     std::string pair_info_content;
     if (!ReadFileToString(pair_info_path, pair_info_content)) {
-      HIXL_LOGW("Failed to read pair_info for npu_id=%d", npu_id);
+      HIXL_LOGW("[Procfs] Failed to read pair_info for npu_id=%d", npu_id);
       continue;
     }
+    HIXL_LOGI("[Procfs] pair_info for npu_id=%d:\n%s", npu_id, pair_info_content.c_str());
 
     // 解析 pair_info
     int32_t slot_id = npu_id;
     std::string local_eid;
     std::string remote_eid;
     if (!ParsePairInfoForDevice(pair_info_content, npu_id, slot_id, local_eid, remote_eid)) {
-      HIXL_LOGW("Failed to parse pair_info for npu_id=%d", npu_id);
+      HIXL_LOGW("[Procfs] Failed to parse pair_info for npu_id=%d", npu_id);
       continue;
     }
+
+    HIXL_LOGI("[Procfs] Parsed: npu_id=%d, slot_id=%d, local_eid=[%s], remote_eid=[%s]",
+               npu_id, slot_id, local_eid.c_str(), remote_eid.c_str());
 
     int32_t device_id = npu_id % 8;
 
@@ -338,8 +345,8 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids,
       entry_d2h.local_eid = local_eid;
       entry_d2h.remote_eid = remote_eid;
       route_data.entries.push_back(entry_d2h);
-      HIXL_LOGI("Procfs RouteEntry: npu_id=%d, device_id=%d, slot_id=%d, "
-                "local_eid=%s, remote_eid=%s [D2H]",
+      HIXL_LOGI("[Procfs] RouteEntry D2H: npu_id=%d, device_id=%d, slot_id=%d, "
+                "local_eid=%s, remote_eid=%s",
                 npu_id, device_id, slot_id,
                 local_eid.empty() ? "(none)" : local_eid.c_str(),
                 remote_eid.c_str());
@@ -353,8 +360,8 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids,
       entry_h2d.local_eid = local_eid;
       entry_h2d.remote_eid = remote_eid;
       route_data.entries.push_back(entry_h2d);
-      HIXL_LOGI("Procfs RouteEntry: npu_id=%d, device_id=%d, slot_id=%d, "
-                "local_eid=%s, remote_eid=%s [H2D]",
+      HIXL_LOGI("[Procfs] RouteEntry H2D: npu_id=%d, device_id=%d, slot_id=%d, "
+                "local_eid=%s, remote_eid=%s",
                 npu_id, device_id, slot_id,
                 local_eid.c_str(),
                 remote_eid.empty() ? "(none)" : remote_eid.c_str());
@@ -366,7 +373,13 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids,
     return FAILED;
   }
 
-  HIXL_LOGI("Generated %zu route entries from procfs", route_data.entries.size());
+  HIXL_LOGI("[Procfs] Generated %zu route entries from procfs:", route_data.entries.size());
+  for (size_t i = 0; i < route_data.entries.size(); ++i) {
+    const auto &entry = route_data.entries[i];
+    HIXL_LOGI("[Procfs]   [%zu] device_id=%d, local_eid=[%s], remote_eid=[%s]",
+               i, entry.device_id, entry.local_eid.c_str(), entry.remote_eid.c_str());
+  }
+
   return SUCCESS;
 }
 
