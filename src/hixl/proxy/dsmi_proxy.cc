@@ -28,6 +28,12 @@ struct dsmi_board_info_stru {
 
 using DsmiGetBoardInfoFn = int (*)(int device_id, struct dsmi_board_info_stru *pboard_info);
 
+// 用于替代 reinterpret_cast 的 union 类型
+union DlsymResult {
+  void *ptr;
+  DsmiGetBoardInfoFn fn;
+};
+
 struct LibDrvdsmiHostLoader {
   void *handle = nullptr;
   DsmiGetBoardInfoFn dsmi_get_board_info = nullptr;
@@ -63,15 +69,18 @@ Status EnsureLibDrvdsmiHostLoaded() {
     return FAILED;
   }
 
-  auto *get_board_info_fn = reinterpret_cast<DsmiGetBoardInfoFn>(mmDlsym(dsmi_handle, "dsmi_get_board_info"));
-  if (get_board_info_fn == nullptr) {
+  DlsymResult result = { mmDlsym(dsmi_handle, "dsmi_get_board_info") };
+  if (result.ptr == nullptr) {
     HIXL_LOGE(FAILED, "[DsmiProxy] mmDlsym dsmi_get_board_info failed: %s", mmDlerror());
-    (void)mmDlclose(dsmi_handle);
+    int32_t dlclose_ret = mmDlclose(dsmi_handle);
+    if (dlclose_ret != 0) {
+      HIXL_LOGW("[DsmiProxy] mmDlclose failed after dlsym error: %d", dlclose_ret);
+    }
     return FAILED;
   }
 
   ldr.handle = dsmi_handle;
-  ldr.dsmi_get_board_info = get_board_info_fn;
+  ldr.dsmi_get_board_info = result.fn;
   return SUCCESS;
 }
 
