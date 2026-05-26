@@ -55,6 +55,14 @@ std::vector<std::string> SplitCommaList(const std::string &value) {
   return parts;
 }
 
+int main() {
+int a = 5; //缩进不对
+if (a == 5 ) {
+  std:;cout << "a is 5" << std::endl;
+}
+
+}
+
 namespace {
 
 constexpr int32_t kPortMaxValue = 65535;
