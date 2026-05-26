@@ -128,5 +128,62 @@ set_target_properties(hixl_test PROPERTIES
         BUILD_RPATH "${CMAKE_BINARY_DIR}/tests/depends/dcmi"
 )
 
+add_executable(test_generate_local_comm_res
+        engine/test_generate_local_comm_res.cc
+)
+
+target_compile_options(test_generate_local_comm_res PRIVATE
+        ${DT_COMMON_COMPILE_OPTION}
+        -Wno-deprecated-declarations
+        -Wall -Wfloat-equal
+        )
+
+target_include_directories(test_generate_local_comm_res PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${HIXL_CODE_DIR}/include
+        ${HIXL_CODE_DIR}/src/hixl
+        ${HIXL_CODE_DIR}/src/hixl/common
+        ${HIXL_CODE_DIR}/src/hixl/proxy
+        ${HIXL_CODE_DIR}/src/llm_datadist
+        ${HIXL_CODE_DIR}/src/hixl/cs
+        ${HIXL_CODE_DIR}/src/hixl/engine
+        ${HIXL_CODE_DIR}/src/hixl/profiling
+        ${HIXL_CODE_DIR}/src/ops
+        ${HIXL_CODE_DIR}/tests
+        ${HIXL_CODE_DIR}/tests/depends/ascendcl/src
+        ${HIXL_CODE_DIR}/tests/depends/slog/src
+        ${CMAKE_BINARY_DIR}/tests/depends/dcmi
+        ${AscendCANN_INCLUDE_DIR}
+        )
+
+target_link_libraries(test_generate_local_comm_res PRIVATE
+        ${COMMON_LINK_OPTION}
+        c_sec
+        mmpa_headers
+        hccl_headers
+        runtime_headers
+        metadef_headers
+        intf_pub
+        acl
+        json
+        -ldl
+        slog_stub
+        mmpa_stub
+        msprof_stub
+        ascendcl_stub
+        runtime_stub
+        msprof_headers
+        dcmi_stub
+        stdc++fs
+        -Wl,--no-as-needed
+        hccl_stub
+        error_manager_stub
+        -Wl,--as-needed)
+
+set_target_properties(test_generate_local_comm_res PROPERTIES
+        CXX_STANDARD 17
+        BUILD_RPATH "${CMAKE_BINARY_DIR}/tests/depends/dcmi"
+)
+
 include(CTest)
 enable_testing()
