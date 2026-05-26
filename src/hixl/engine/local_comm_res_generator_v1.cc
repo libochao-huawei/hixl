@@ -197,8 +197,10 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
   std::string found_slot_id;
   std::vector<std::string> local_eids;
   std::vector<std::string> remote_eids;
+  int line_count = 0;
 
   while (std::getline(iss, line)) {
+    ++line_count;
     line = TrimString(line);
     if (line.empty()) {
       continue;
@@ -210,6 +212,7 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
       if (pos != std::string::npos) {
         found_slot_id = line.substr(pos + std::strlen("slot_id="));
         found_slot_id = TrimString(found_slot_id);
+        HIXL_LOGD("[ParsePairInfo] npu_id=%d, line=%d, found_slot_id=[%s]", npu_id, line_count, found_slot_id.c_str());
       }
     }
 
@@ -218,14 +221,9 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
       size_t pos = line.find(':');
       if (pos != std::string::npos) {
         std::string eid_val = TrimString(line.substr(pos + 1));
-        // 去掉冒号后缀
-        size_t colon_pos = eid_val.find(':');
-        if (colon_pos != std::string::npos) {
-          eid_val = eid_val.substr(0, colon_pos);
-        }
-        eid_val = TrimString(eid_val);
         if (!eid_val.empty()) {
           local_eids.push_back(eid_val);
+          HIXL_LOGD("[ParsePairInfo] npu_id=%d, line=%d, local_eid=[%s]", npu_id, line_count, eid_val.c_str());
         }
       }
     }
@@ -235,27 +233,37 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
       size_t pos = line.find(':');
       if (pos != std::string::npos) {
         std::string eid_val = TrimString(line.substr(pos + 1));
-        // 去掉冒号后缀
-        size_t colon_pos = eid_val.find(':');
-        if (colon_pos != std::string::npos) {
-          eid_val = eid_val.substr(0, colon_pos);
-        }
-        eid_val = TrimString(eid_val);
         if (!eid_val.empty()) {
           remote_eids.push_back(eid_val);
+          HIXL_LOGD("[ParsePairInfo] npu_id=%d, line=%d, remote_eid=[%s]", npu_id, line_count, eid_val.c_str());
         }
       }
     }
   }
 
+  HIXL_LOGD("[ParsePairInfo] npu_id=%d, lines_parsed=%d, slot_id=[%s], local_eids_count=%zu, remote_eids_count=%zu",
+               npu_id, line_count, found_slot_id.c_str(), local_eids.size(), remote_eids.size());
+
   if (found_slot_id.empty()) {
-    HIXL_LOGW("ParsePairInfo: no slot_id found for npu_id=%d", npu_id);
+    HIXL_LOGW("[ParsePairInfo] npu_id=%d: no slot_id found", npu_id);
+    return false;
+  }
+
+  if (local_eids.empty() || remote_eids.empty()) {
+    HIXL_LOGW("[ParsePairInfo] npu_id=%d: no eids found (local=%zu, remote=%zu)", npu_id, local_eids.size(), remote_eids.size());
     return false;
   }
 
   // 根据 npu_id 在组内的偏移选择 EID 索引
+  // 注意：pair_info 中每组只有 1 个 EID 对，head -1 和 tail -1 结果相同
+  // 因此当选择的索引超出范围时，fallback 到 index 0
   int32_t group_offset = npu_id % 8;
   size_t eid_idx = (group_offset < 4) ? 0 : 1;  // 前4个用第一组，后4个用第二组
+  if (eid_idx >= local_eids.size() || eid_idx >= remote_eids.size()) {
+    HIXL_LOGW("[ParsePairInfo] npu_id=%d: eid_idx=%zu out of range (local=%zu, remote=%zu), fallback to index 0",
+               npu_id, eid_idx, local_eids.size(), remote_eids.size());
+    eid_idx = 0;
+  }
 
   // 提取 slot_id 的数值
   try {
@@ -264,13 +272,15 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
     slot_id = npu_id;
   }
 
-  // 提取 EID（需要去除 0x 前缀）
+  // 提取 EID（需要去除 0x 前缀和所有冒号）
   auto FormatEid = [](const std::string &eid) -> std::string {
     std::string result = eid;
     // 去掉 0x 前缀
     if (result.size() >= 2 && result[0] == '0' && (result[1] == 'x' || result[1] == 'X')) {
       result = result.substr(2);
     }
+    // 去掉所有冒号（EID 格式为 0000:0000:...:XXXX，需要转为 00000000...XXXX）
+    result.erase(std::remove(result.begin(), result.end(), ':'), result.end());
     return result;
   };
 
