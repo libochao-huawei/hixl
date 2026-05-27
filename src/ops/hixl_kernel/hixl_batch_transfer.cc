@@ -28,10 +28,17 @@ int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param) {
       descs[i].transferInfo.read.len = op_list[i].len;
       descs[i].transferInfo.read.dst = op_list[i].local_buf;
       descs[i].transferInfo.read.src = op_list[i].remote_buf;
+
+      HIXL_LOGI("before BatchTransferOnThread: i=%u, transType=%d, dst=%p, src=%p, len=%lu.", i, descs[i].transType,
+                descs[i].transferInfo.read.dst, descs[i].transferInfo.read.src, descs[i].transferInfo.read.len);
     } else {
       descs[i].transferInfo.write.len = op_list[i].len;
       descs[i].transferInfo.write.dst = op_list[i].remote_buf;
       descs[i].transferInfo.write.src = op_list[i].local_buf;
+
+      HIXL_LOGI("before BatchTransferOnThread: i=%u, transType=%d, write dst=%p, src=%p, len=%lu.", i,
+                descs[i].transType, descs[i].transferInfo.write.dst, descs[i].transferInfo.write.src,
+                descs[i].transferInfo.write.len);
     }
   }
 
@@ -39,6 +46,8 @@ int32_t TransferWithBatch(bool is_read, HixlOneSideOpParam *param) {
   uint32_t offset = 0;
   while (offset < param->list_num) {
     uint32_t batch_size = std::min(kMaxBatchSize, param->list_num - offset);
+    HIXL_LOGI("before BatchTransferOnThread: transfer_desc_num=%zu, sizeof(HcommBatchTransferDesc)=%zu.", descs.size(),
+              sizeof(HcommBatchTransferDesc));
     ret = HcommProxy::BatchTransferOnThread(param->thread, param->channel, descs.data() + offset, batch_size);
     if (ret != 0) {
       if (ret == HCCL_E_NOT_SUPPORT) {

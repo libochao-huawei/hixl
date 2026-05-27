@@ -1038,10 +1038,14 @@ Status HixlCSClient::ConvertHostRegisterAddr(bool is_server, const char *name, v
 
 Status HixlCSClient::ConvertUboeDescs(uint32_t list_num, HixlOneSideOpDesc *desc_list) {
   for (uint32_t i = 0; i < list_num; i++) {
+    HIXL_LOGI("before convert: i=%u, local_buf=%p, remote_buf=%p, len=%lu.", i, desc_list[i].local_buf,
+              desc_list[i].remote_buf, desc_list[i].len);
     HIXL_CHK_STATUS_RET(ConvertHostRegisterAddr(true, "remote", desc_list[i].remote_buf),
                         "[HixlClient][UBOE] Convert remote addr failed");
     HIXL_CHK_STATUS_RET(ConvertHostRegisterAddr(false, "local", desc_list[i].local_buf),
                         "[HixlClient][UBOE] Convert local addr failed");
+    HIXL_LOGI("after convert: i=%u, local_buf=%p, remote_buf=%p, len=%lu.", i, desc_list[i].local_buf,
+              desc_list[i].remote_buf, desc_list[i].len);
   }
   return SUCCESS;
 }
