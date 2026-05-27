@@ -1,0 +1,1282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HIXL UBG 需求前置学习指南</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #5b6472;
+      --border: #d9dee8;
+      --accent: #235bd8;
+      --accent-soft: #e9efff;
+      --warn: #8a5a00;
+      --warn-soft: #fff7db;
+      --ok: #0f766e;
+      --ok-soft: #e7f7f4;
+      --code: #111827;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.65;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1d4ed8, #0f766e);
+      color: #fff;
+      padding: 44px 32px;
+    }
+
+    header h1 {
+      margin: 0 0 10px;
+      font-size: 34px;
+      line-height: 1.25;
+    }
+
+    header p {
+      margin: 0;
+      max-width: 980px;
+      color: #e8eefc;
+      font-size: 17px;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 24px 64px;
+      display: grid;
+      grid-template-columns: 270px minmax(0, 1fr);
+      gap: 24px;
+    }
+
+    nav {
+      position: sticky;
+      top: 20px;
+      align-self: start;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+    }
+
+    nav h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+
+    nav a {
+      display: block;
+      padding: 7px 0;
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    nav a:hover {
+      text-decoration: underline;
+    }
+
+    article {
+      min-width: 0;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 26px;
+      margin-bottom: 22px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 24px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+
+    h3 {
+      margin: 24px 0 10px;
+      font-size: 18px;
+    }
+
+    p {
+      margin: 10px 0;
+    }
+
+    ul,
+    ol {
+      padding-left: 24px;
+    }
+
+    li {
+      margin: 6px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f1f5f9;
+      text-align: left;
+    }
+
+    code {
+      background: #eef2f7;
+      color: var(--code);
+      padding: 2px 5px;
+      border-radius: 5px;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      overflow: auto;
+      background: #0f172a;
+      color: #e5e7eb;
+      padding: 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    pre code {
+      background: transparent;
+      color: inherit;
+      padding: 0;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      background: var(--accent-soft);
+      padding: 12px 14px;
+      border-radius: 10px;
+      margin: 16px 0;
+    }
+
+    .warn {
+      border-left-color: var(--warn);
+      background: var(--warn-soft);
+    }
+
+    .ok {
+      border-left-color: var(--ok);
+      background: var(--ok-soft);
+    }
+
+    .flow {
+      border: 1px dashed var(--border);
+      background: #fbfcff;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin: 14px 0;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+    }
+
+    .tag {
+      display: inline-block;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 2px 9px;
+      margin: 2px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin: 16px 0;
+    }
+
+    .grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      background: #fbfcff;
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .card h3,
+    .card h4 {
+      margin: 0 0 8px;
+    }
+
+    .card p {
+      margin: 6px 0;
+    }
+
+    .badge {
+      display: inline-block;
+      margin-bottom: 8px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .lane {
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      gap: 10px;
+      align-items: stretch;
+      margin: 10px 0;
+    }
+
+    .lane-title {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      border-radius: 10px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .lane-body {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+      margin: 16px 0;
+    }
+
+    .steps li {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      margin: 12px 0;
+      align-items: start;
+    }
+
+    .steps li::before {
+      content: counter(step);
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .decision {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 14px 0;
+    }
+
+    .decision-row {
+      display: grid;
+      grid-template-columns: 210px 1fr 180px;
+      border-top: 1px solid var(--border);
+    }
+
+    .decision-row:first-child {
+      border-top: 0;
+    }
+
+    .decision-row > div {
+      padding: 12px;
+      border-left: 1px solid var(--border);
+    }
+
+    .decision-row > div:first-child {
+      border-left: 0;
+      background: #f8fafc;
+      font-weight: 700;
+    }
+
+    .code-map {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .code-item {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      background: #fff;
+    }
+
+    .code-item strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .checklist {
+      list-style: none;
+      padding-left: 0;
+    }
+
+    .checklist li {
+      position: relative;
+      padding-left: 30px;
+      margin: 10px 0;
+    }
+
+    .checklist li::before {
+      content: "□";
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    @media (max-width: 900px) {
+      main {
+        display: block;
+      }
+
+      nav {
+        position: static;
+        margin-bottom: 22px;
+      }
+
+      .grid,
+      .grid.three,
+      .lane,
+      .decision-row {
+        grid-template-columns: 1fr;
+      }
+
+      .decision-row > div {
+        border-left: 0;
+        border-top: 1px solid var(--border);
+      }
+
+      .decision-row > div:first-child {
+        border-top: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>HIXL UBG 需求前置学习指南</h1>
+    <p>面向 HIXL 仓库初学者，按“概念 - 现有 UBoE 逻辑 - 建链与传输流程 - UBG 改动点 - 推荐阅读顺序”组织，帮助你在开发 UBG 单边通信需求前快速建立代码地图。</p>
+  </header>
+
+  <main>
+    <nav>
+      <h2>目录</h2>
+      <a href="#goal">1. 你要先理解什么</a>
+      <a href="#overview">2. 一页总览</a>
+      <a href="#terms">3. 核心概念速查</a>
+      <a href="#architecture">4. HIXL 代码分层</a>
+      <a href="#resource">5. 通信资源与 endpoint</a>
+      <a href="#uboe">6. UBoE 现有业务逻辑</a>
+      <a href="#eid">7. DCMI/URMA 与 EID</a>
+      <a href="#connect">8. 建链流程</a>
+      <a href="#memory">9. Host 内存与 VA 转换</a>
+      <a href="#selection">10. 协议选择逻辑</a>
+      <a href="#ubg">11. UBG 需求改动点</a>
+      <a href="#walkthrough">12. 端到端开发视图</a>
+      <a href="#code-map">13. 代码热区地图</a>
+      <a href="#tasks">14. 开发任务拆解</a>
+      <a href="#tests">15. 测试建议</a>
+      <a href="#reading">16. 推荐读代码顺序</a>
+    </nav>
+
+    <article>
+      <section id="goal">
+        <h2>1. 你要先理解什么</h2>
+        <p>这个需求不是单纯新增一个字符串 <code>ubg</code>。它会穿过 HIXL 的三条主线：</p>
+        <ul>
+          <li><strong>资源生成</strong>：从用户配置和设备信息生成本端 <code>endpoint_list</code>。</li>
+          <li><strong>建链选择</strong>：Client 从 Server 获取对端 endpoint 后，决定用 UBoE、UBG、UB、HCCS 还是 RoCE。</li>
+          <li><strong>单边传输</strong>：Host 内存需要先映射成 Device VA，再把 Device VA 注册给 Hcomm，并在传输前做地址翻译。</li>
+        </ul>
+        <div class="callout">
+          初学时建议不要从底层 Hcomm 开始钻。先看 <code>EndpointConfig</code>、<code>EndpointGenerator</code>、<code>EndpointMatcher::MatchEndpoints</code> 和 UBoE Host 内存注册路径，能更快理解 UBG 应该接在哪些点上。
+        </div>
+      </section>
+
+      <section id="overview">
+        <h2>2. 一页总览</h2>
+        <p>可以先把这个需求想象成“给 HIXL 新增一种 ScaleOut 协议资源”。它不是替换 UBoE，而是在 UBoE 已有框架旁边新增 UBG，并让自动选链知道什么时候应该用它。</p>
+
+        <div class="grid three">
+          <div class="card">
+            <span class="badge">输入</span>
+            <h3>用户配置</h3>
+            <p><code>GlobalResourceConfig</code> 写 <code>ubg:device</code>，或者 <code>LocalCommRes</code> 显式给出 <code>protocol=ubg</code>。</p>
+          </div>
+          <div class="card">
+            <span class="badge">设备探测</span>
+            <h3>类型判断 + EID 获取</h3>
+            <p>先判断 ScaleOut 口 <code>InterconType</code> 是否为 UBG；是 UBG 后通过 DCMI/URMA 查询 EID 列表，再按 UBG 建链语义选择目标 EID。</p>
+          </div>
+          <div class="card">
+            <span class="badge">输出</span>
+            <h3>Endpoint</h3>
+            <p>生成 <code>protocol=ubg</code>、<code>comm_id=EID</code>、<code>placement=device</code> 的 endpoint。</p>
+          </div>
+        </div>
+
+        <div class="lane">
+          <div class="lane-title">资源生成</div>
+          <div class="lane-body">
+            <code>EndpointGenerator</code> 负责把 options 变成本端 <code>endpoint_list</code>。UBG 主要新增 <code>ubg:device</code> 识别、ScaleOut 类型判断，并复用现有 DCMI/URMA EID 查询能力生成默认 UBG endpoint。
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">协议选链</div>
+          <div class="lane-body">
+            <code>HixlClient</code> 获取对端 endpoint 后，把匹配交给 <code>EndpointMatcher::MatchEndpoints</code>。UBG 主要新增 ScaleOut 匹配和三张优先级表。
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">CS 建链</div>
+          <div class="lane-body">
+            <code>HixlCSClient</code> 向 Server 发 <code>MatchEndpointReq</code>，Server 侧 <code>EndpointStore::MatchEndpoint</code> 用底层 <code>EndpointDesc</code> 找 endpoint。
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-title">内存传输</div>
+          <div class="lane-body">
+            Host 内存先 <code>aclrtHostRegister</code> 映射成 Device VA，再注册给 Hcomm；传输前 <code>ConvertUboeDescs</code> 类逻辑把 Host VA 转成 Device VA。UBG 要复用并泛化这条路径。
+          </div>
+        </div>
+
+        <div class="callout ok">
+          <strong>一句话记忆：</strong>UBG 开发要同时改“资源从哪里来”“链路怎么选”“Host 内存怎么给 Hcomm 用”这三件事。
+        </div>
+      </section>
+
+      <section id="terms">
+        <h2>3. 核心概念速查</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>概念</th>
+              <th>你可以怎么理解</th>
+              <th>和 UBG 的关系</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>EndpointConfig</code></td>
+              <td>HIXL Engine 层使用的“通信资源描述”。字段包括 <code>protocol</code>、<code>comm_id</code>、<code>placement</code>、<code>plane</code>、<code>dst_eid</code>、<code>net_instance_id</code>。</td>
+              <td>新增 <code>protocol="ubg"</code>，<code>comm_id</code> 填 UBG EID。</td>
+            </tr>
+            <tr>
+              <td><code>EndpointDesc</code></td>
+              <td>CS/Hcomm 层使用的底层 endpoint 描述，比 <code>EndpointConfig</code> 更接近 Hcomm 接口。</td>
+              <td>UBG 需要新增协议枚举，并把 EID 解析到 <code>commAddr</code>。</td>
+            </tr>
+            <tr>
+              <td><code>comm_id</code></td>
+              <td>不同协议的通信标识。RoCE/UBoE 常是 IP，UB/UBG 常是 EID，HCCS 是 device id。</td>
+              <td>UBG 的 <code>comm_id</code> 是 DCMI/URMA 查询后按 UBG 语义选择出的 EID。</td>
+            </tr>
+            <tr>
+              <td><code>placement</code></td>
+              <td>endpoint 在 host 还是 device 侧。</td>
+              <td>UBG 自动生成时固定为 <code>device</code>。</td>
+            </tr>
+            <tr>
+              <td><code>net_instance_id</code></td>
+              <td>超节点归属标识，用来判断本端和对端是否同超节点。</td>
+              <td>影响协议优先级：同超节点和跨超节点走不同选链表。</td>
+            </tr>
+            <tr>
+              <td>ScaleOut 口</td>
+              <td>超节点间扩展通信口，可配置为 UBoE 或 UBG。</td>
+              <td>UBG 需要先确认 ScaleOut 口类型为 UBG，再获取 EID。</td>
+            </tr>
+            <tr>
+              <td><code>InterconType</code></td>
+              <td>驱动接口返回的互联类型。</td>
+              <td>需要判断 ScaleOut 口是否配置为 UBG，查询有效代表物理链路可用。</td>
+            </tr>
+            <tr>
+              <td>DCMI / URMA</td>
+              <td>用于加载 DCMI、查询逻辑 ID、URMA 设备数量和 EID 列表的接口链路。</td>
+              <td>UBG 自动生成 endpoint 时通过它获取 EID 候选。</td>
+            </tr>
+            <tr>
+              <td>Mesh EID / CLOS PG EID</td>
+              <td>Mesh EID 按 die/port 筛选；CLOS PG EID 是跨 Group 通信全局 EID 候选。</td>
+              <td>现有筛选服务 UB-CTP/CLOS local comm res，UBG 最终 <code>comm_id</code> 选哪类 EID 仍需结合建链语义确认。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="architecture">
+        <h2>4. HIXL 代码分层</h2>
+        <p>开发 UBG 时，最容易混淆的是 Engine 层和 CS 层。可以按下面理解：</p>
+        <table>
+          <thead>
+            <tr>
+              <th>层级</th>
+              <th>关键文件</th>
+              <th>职责</th>
+              <th>UBG 要改什么</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>配置与公共类型</td>
+              <td><code>include/hixl/hixl_types.h</code><br><code>src/hixl/common/hixl_inner_types.h</code></td>
+              <td>定义 option key、协议字符串、endpoint 内部结构。</td>
+              <td>新增 <code>kProtocolUbg</code>，扩展配置说明。</td>
+            </tr>
+            <tr>
+              <td>资源生成</td>
+              <td><code>src/hixl/engine/endpoint_generator.cc</code></td>
+              <td>从 <code>LocalCommRes</code> / <code>GlobalResourceConfig</code> 生成 endpoint。</td>
+              <td>新增 <code>ubg:device</code> 解析、ScaleOut 类型判断，并复用现有 DCMI/URMA EID 查询能力生成默认 UBG endpoint。</td>
+            </tr>
+            <tr>
+              <td>Engine 建链选择</td>
+              <td><code>src/hixl/engine/hixl_client.cc</code><br><code>src/hixl/engine/endpoint_matcher.cc</code><br><code>src/hixl/engine/client_handler.h</code></td>
+              <td>Client 获取 Server endpoint 后，调用 <code>EndpointMatcher::MatchEndpoints</code> 决定创建 <code>DIRECT</code> 还是 <code>UB</code> handler。</td>
+              <td>新增 UBG 匹配和新优先级表。</td>
+            </tr>
+            <tr>
+              <td>CS endpoint 匹配</td>
+              <td><code>src/hixl/cs/endpoint_store.cc</code><br><code>src/hixl/cs/hixl_cs_client.cc</code></td>
+              <td>CS Client 创建 channel 前，Server 根据 <code>EndpointDesc</code> 查找本端 endpoint。</td>
+              <td>确认 UBG <code>EndpointDesc</code> 等价规则。</td>
+            </tr>
+            <tr>
+              <td>内存注册与传输</td>
+              <td><code>src/hixl/cs/endpoint.cc</code><br><code>src/hixl/cs/hixl_cs_client.cc</code><br><code>src/hixl/cs/hixl_mem_store.h</code></td>
+              <td>注册内存、记录远端内存、校验访问、下发传输。</td>
+              <td>把 UBoE Host 映射逻辑泛化到 UBG。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="resource">
+        <h2>5. 通信资源与 endpoint</h2>
+        <h3>5.1 手动配置：LocalCommRes</h3>
+        <p><code>LocalCommRes</code> 是用户显式告诉 HIXL“本端有哪些通信资源”。1.3 格式核心是：</p>
+        <pre><code>{
+  "version": "1.3",
+  "net_instance_id": "superpod1_1",
+  "endpoint_list": [
+    {
+      "protocol": "roce",
+      "comm_id": "192.168.1.10",
+      "placement": "device"
+    }
+  ]
+}</code></pre>
+
+        <h3>5.2 自动配置：GlobalResourceConfig</h3>
+        <p>UBoE 当前已经支持通过 <code>GlobalResourceConfig</code> 自动生成 endpoint：</p>
+        <pre><code>{
+  "comm_resource_config.protocol_desc": ["uboe:device"]
+}</code></pre>
+        <p>UBG 需求要新增：</p>
+        <pre><code>{
+  "comm_resource_config.protocol_desc": ["ubg:device"]
+}</code></pre>
+
+        <h3>5.3 UBG endpoint 长什么样</h3>
+        <pre><code>{
+  "version": "1.3",
+  "net_instance_id": "superpod1_1",
+  "endpoint_list": [
+    {
+      "protocol": "ubg",
+      "comm_id": "000000000000004000100000dfdf1672",
+      "placement": "device"
+    }
+  ]
+}</code></pre>
+        <div class="callout warn">
+          <strong>注意：</strong>UBG 的 <code>comm_id</code> 是 EID，不是 IP。后续 <code>ConvertToEndpointDesc</code> 应把它按 EID 解析，<code>EndpointDesc.commAddr.type</code> 建议设置为 <code>COMM_ADDR_TYPE_EID</code>。
+        </div>
+      </section>
+
+      <section id="uboe">
+        <h2>6. UBoE 现有业务逻辑</h2>
+        <p>UBG 和 UBoE 很像，最值得先学的是 UBoE 现有路径。它已经解决了两个关键问题：自动资源生成和 Host 内存映射注册。</p>
+
+        <h3>6.1 UBoE 自动资源生成</h3>
+        <div class="flow">用户 options
+  -> ParseConfigProtocolDesc()
+  -> 检查 protocol_desc 是否包含 "uboe:device"
+  -> BuildEndpointListFromLocalCommRes()
+  -> 若没有显式 endpoint_list，则 GenDefaultUboeEndpointConfig()
+  -> GetUboeIp()
+  -> GetBondIpAddress()
+  -> 生成 protocol=uboe, comm_id=bond IP, placement=device</div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>函数/位置</th>
+              <th>用途</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ParseConfigProtocolDesc</code><br><code>src/hixl/common/hixl_utils.cc</code></td>
+              <td>解析 <code>GlobalResourceConfig</code> 中的 <code>comm_resource_config.protocol_desc</code>。</td>
+            </tr>
+            <tr>
+              <td><code>EndpointGenerator::BuildEndpointListFromOptions</code><br><code>src/hixl/engine/endpoint_generator.cc</code></td>
+              <td>统一构建本端 endpoint 列表。</td>
+            </tr>
+            <tr>
+              <td><code>GenDefaultUboeEndpointConfig</code></td>
+              <td>生成默认 UBoE endpoint。</td>
+            </tr>
+            <tr>
+              <td><code>GetBondIpAddress</code><br><code>src/hixl/common/hixl_utils.cc</code></td>
+              <td>调用 <code>hccn_tool -g -ip -i &lt;phy_id&gt; -d bond&lt;phy_id&gt;</code> 获取 Bond IP。</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>6.2 UBoE Host 内存注册</h3>
+        <div class="flow">用户注册 Host 内存
+  -> Endpoint::RegisterMem()
+  -> protocol == COMM_PROTOCOL_UBOE && mem.type == HOST
+  -> HostRegisterProxy::RegisterByDev()
+  -> 得到 registered_dev_mem
+  -> HcommProxy::MemReg() 注册 Device VA
+  -> HixlMemDesc.registered_dev_mem 记录映射后的 Device VA</div>
+
+        <p>这段逻辑在 <code>src/hixl/cs/endpoint.cc</code>。UBG 要复用这条路径，推荐把判断条件从“只认 UBoE”泛化为“需要 Host 映射的 ScaleOut 协议集合”。</p>
+      </section>
+
+      <section id="eid">
+        <h2>7. DCMI/URMA 与 EID</h2>
+        <p>UBG endpoint 的核心资源是 EID。这里要区分两个动作：先确认 ScaleOut 口类型是 UBG，再通过 DCMI/URMA 查询 EID 列表。现有代码里的 Mesh/CLOS PG 筛选主要服务 UB-CTP/CLOS local comm res，UBG 可以复用查询和解析能力，但最终写入 <code>comm_id</code> 的 EID 仍要按 UBG 建链语义确认。</p>
+
+        <h3>7.1 EID 获取调用链</h3>
+        <div class="flow">GenerateLocalCommRes
+  -> BuildNpuRootinfos(related_npu_ids)
+  -> for each npu_id:
+       BuildNpuRootInfo(npu_id, is_server, root_info)
+         -> GetUrmaDeviceList(npu_id)
+         -> LoadUrmaDevicesFromDcmi(npu_id)
+              -> DcmiProxy::LoadDcmi()
+              -> DcmiProxy::GetLogicIdFromPhyId(npu_id, &logic_id)
+              -> DcmiProxy::GetUrmaDeviceCnt(logic_id, &dev_cnt)
+              -> for each urma_dev_index:
+                   DcmiProxy::GetEidList(logic_id, urma_dev_index, eid_list, &eid_cnt)</div>
+
+        <h3>7.2 DCMI 接口职责</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>接口</th>
+              <th>功能</th>
+              <th>参数说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>LoadDcmi()</code></td>
+              <td>加载 <code>libdcmi.so</code></td>
+              <td>通过 <code>dlopen</code> 动态加载。</td>
+            </tr>
+            <tr>
+              <td><code>GetLogicIdFromPhyId(phy_id, &logic_id)</code></td>
+              <td>物理 ID 转逻辑 ID</td>
+              <td>输入物理 NPU ID，输出逻辑 ID。</td>
+            </tr>
+            <tr>
+              <td><code>GetUrmaDeviceCnt(logic_id, &dev_cnt)</code></td>
+              <td>获取 URMA 设备数量</td>
+              <td>输入逻辑 ID，输出 URMA 设备数量。</td>
+            </tr>
+            <tr>
+              <td><code>GetEidList(logic_id, urma_dev_index, eid_list, &eid_cnt)</code></td>
+              <td>获取 EID 列表</td>
+              <td>输入逻辑 ID 和 URMA 设备索引，输出 EID 数组。</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>7.3 EID 数据结构与字符串</h3>
+        <pre><code>union DcmiUrmaEid {
+  unsigned char raw[16];
+  struct {
+    unsigned long subnet_prefix;
+    unsigned long interface_id;
+  } in6;
+};
+
+struct DcmiUrmaEidInfo {
+  DcmiUrmaEid eid;
+  unsigned int eid_index;
+};</code></pre>
+        <p>DCMI 返回 16 字节原始 EID。HIXL 侧应按原始字节序转换为 32 位十六进制字符串，不带冒号分隔符。</p>
+        <div class="flow">原始显示: 0000:0000:007f:0200:0010:0000:df00:9001
+字符串:   00000000007f020000100000df009001</div>
+
+        <h3>7.4 现有 EID 筛选逻辑</h3>
+        <div class="grid">
+          <div class="card">
+            <span class="badge">byte6</span>
+            <h4>从字符串索引 10-11 取第 6 字节</h4>
+            <p>例如 <code>f2</code> 转为 <code>0xf2</code>，高半字节用于判断 die/PG，低半字节表示 port。</p>
+          </div>
+          <div class="card">
+            <span class="badge">die_id</span>
+            <h4>高半字节 bit2</h4>
+            <p><code>die_id = (high_nibble & 0x4) ? 1 : 0</code>。</p>
+          </div>
+          <div class="card">
+            <span class="badge">PG EID</span>
+            <h4>高半字节 0x3 或 0x7</h4>
+            <p>满足 <code>high_nibble == 0x3 || high_nibble == 0x7</code> 时为 PG EID。</p>
+          </div>
+          <div class="card">
+            <span class="badge">port</span>
+            <h4>低半字节</h4>
+            <p><code>port = low_nibble</code>。</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>EID 类型</th>
+              <th>筛选条件</th>
+              <th>用途</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Mesh EID</td>
+              <td>非 PG EID，且 <code>die_id == mesh_die_id</code>。Pod 0-3 组用 die0，4-7 组用 die1；Server 固定 die1。</td>
+              <td>写入 <code>port_to_eid["die/port"]</code>。</td>
+            </tr>
+            <tr>
+              <td>CLOS PG EID</td>
+              <td>PG EID。</td>
+              <td>作为跨 Group 通信的全局 EID 候选，写入 <code>clos_pg_eids</code>。</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <pre><code>struct NpuRootInfo {
+  std::map&lt;std::string, std::string&gt; port_to_eid; // "die/port" -> Mesh EID
+  std::vector&lt;ClosPgEid&gt; clos_pg_eids;            // CLOS PG EID 列表
+};</code></pre>
+
+        <div class="callout warn">
+          <strong>待确认：</strong>UBG endpoint 的 <code>comm_id</code> 最终应该选择 Mesh EID、CLOS PG EID、DCMI 返回的其他 UBG 专用 EID，还是按场景生成多个 endpoint。现有 <code>CollectMeshPorts</code> / <code>CollectClosPgEids</code> 可作为候选策略参考，但不能直接作为 UBG 的最终结论。
+        </div>
+      </section>
+
+      <section id="connect">
+        <h2>8. 建链流程</h2>
+        <h3>8.1 Engine 层：选协议</h3>
+        <div class="flow">HixlEngine::Connect()
+  -> ClientManager::CreateClient()
+  -> HixlClient::Initialize()
+  -> Client socket 请求 Server endpoint_list
+  -> EndpointMatcher::MatchEndpoints()
+  -> ClientHandlerFactory::Create()
+  -> 创建 DIRECT 或 UB handler</div>
+
+        <p>当前 <code>EndpointMatcher::MatchEndpoints</code> 的实际逻辑：</p>
+        <ol>
+          <li>先尝试 UBoE：<code>TryMatchUboe()</code>。</li>
+          <li>如果 <code>MustUseRoce()</code> 命中，强制匹配 RoCE 并返回。</li>
+          <li>否则尝试 UB：<code>TryMatchUb()</code>。</li>
+          <li>UB 无匹配时尝试 HCCS：<code>TryMatchHccs()</code>。</li>
+        </ol>
+        <div class="callout warn">
+          <strong>容易误解：</strong>RoCE 不是普通同超节点路径的第二优先级，而是 <code>HCCL_INTRA_ROCE_ENABLE=1</code> 或 <code>net_instance_id</code> 不同触发的强制分支。UBG 需求会重新定义跨超节点和同超节点的遍历表。
+        </div>
+
+        <h3>8.2 CS 层：匹配 EndpointDesc 并创建 channel</h3>
+        <div class="flow">HixlCSClient::Connect()
+  -> SendMatchEndpointRequest(remote_endpoint_)
+  -> Server: EndpointStore::MatchEndpoint()
+  -> 返回 remote endpoint handle
+  -> SendCreateChannelRequest()
+  -> Endpoint::CreateChannel()</div>
+
+        <p>Engine 层选择的是“用哪种协议建链”，CS 层匹配的是“这个底层 endpoint 是否存在”。UBG 开发时两层都要考虑。</p>
+
+        <h3>8.3 一次 Connect 的完整时序</h3>
+        <ol class="steps">
+          <li>
+            <div>
+              <strong>Server 初始化 endpoint</strong>
+              <p><code>HixlServer</code> 把本端 <code>endpoint_list</code> 转成 <code>EndpointDesc</code>，交给 CS 层创建 endpoint，并保存在 <code>EndpointStore</code>。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Client 获取对端资源</strong>
+              <p><code>HixlClient::Initialize</code> 通过控制面 socket 发 <code>GetEndpointInfoReq</code>，Server 返回序列化后的 <code>endpoint_list</code>。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Engine 层匹配协议</strong>
+              <p><code>EndpointMatcher::MatchEndpoints</code> 根据本端和对端 <code>EndpointConfig</code> 决定匹配结果，例如 UBG 对 UBG、UBoE 对 UBoE、RoCE 对 RoCE。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>创建 handler</strong>
+              <p><code>ClientHandlerFactory</code> 根据匹配结果创建 <code>DIRECT</code> 或 <code>UB</code> handler。UBG 属于 ScaleOut direct 类协议，预期走 direct handler。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>CS 层匹配底层 endpoint</strong>
+              <p><code>HixlCSClient</code> 发送 <code>MatchEndpointReq</code>，Server 侧 <code>EndpointStore::MatchEndpoint</code> 用 <code>EndpointDesc</code> 查找实际 endpoint。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>创建 channel</strong>
+              <p>匹配成功后再发 <code>CreateChannelReq</code>，底层 <code>Endpoint::CreateChannel</code> 创建 Hcomm channel，之后才能注册远端内存并传输。</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="memory">
+        <h2>9. Host 内存与 VA 转换</h2>
+        <p>UBG 单边通信需求中最核心的传输要求是：Host 内存要映射到 Device 侧，再把 Device VA 注册给 Hcomm，传输前还要把用户传入的 Host VA 翻译成 Device VA。</p>
+
+        <h3>9.1 数据结构</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>结构/字段</th>
+              <th>用途</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>HixlMemDesc::registered_dev_mem</code></td>
+              <td>记录 Host 内存映射后的 Device VA，当前 UBoE 场景有效，UBG 可复用。</td>
+            </tr>
+            <tr>
+              <td><code>MemoryRegion::register_dev_addr</code></td>
+              <td><code>HixlMemStore</code> 中记录某段注册内存对应的 Device VA。</td>
+            </tr>
+            <tr>
+              <td><code>HixlOneSideOpDesc</code></td>
+              <td>CS Client 传输时使用的单边操作描述，包含 <code>remote_buf</code>、<code>local_buf</code> 和长度。</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>9.2 UBoE 当前转换路径</h3>
+        <div class="flow">BatchTransfer() / BatchTransferSync()
+  -> ValidateAddress() 仍用用户 Host VA 校验
+  -> Device endpoint 且 protocol == UBOE
+  -> ConvertUboeDescs()
+  -> ConvertHostRegisterAddr()
+  -> device_addr = register_dev_addr + (host_addr - region.addr)
+  -> BatchTransferDevice() / BatchTransferDeviceSync()
+  -> 下发 AICPU kernel</div>
+
+        <p>UBG 应把这里的协议判断从 <code>COMM_PROTOCOL_UBOE</code> 扩展为 UBoE/UBG 共同判断，函数可以考虑泛化为 <code>ConvertScaleOutDescs</code>。</p>
+
+        <h3>9.3 Host 内存为什么要映射成 Device VA</h3>
+        <div class="grid">
+          <div class="card">
+            <span class="badge">用户视角</span>
+            <h4>API 里仍然传 Host VA</h4>
+            <p>上层调用注册和传输时，看到的是原始 Host 地址。这保证业务侧不用感知 Device VA。</p>
+          </div>
+          <div class="card">
+            <span class="badge">Hcomm 视角</span>
+            <h4>底层要使用 Device VA</h4>
+            <p>UBoE/UBG 这类 Device endpoint 传输时，Hcomm/AICPU kernel 需要能在 Device 侧访问这段内存。</p>
+          </div>
+          <div class="card">
+            <span class="badge">注册阶段</span>
+            <h4>记录映射关系</h4>
+            <p><code>Endpoint::RegisterMem</code> 通过 <code>HostRegisterProxy::RegisterByDev</code> 得到 <code>registered_dev_mem</code>，并保存在内存描述中。</p>
+          </div>
+          <div class="card">
+            <span class="badge">传输阶段</span>
+            <h4>按 offset 转换地址</h4>
+            <p><code>ConvertHostRegisterAddr</code> 查到注册区域后，用 <code>registered_dev_mem + offset</code> 替换传输描述中的地址。</p>
+          </div>
+        </div>
+
+        <div class="flow">举例：
+Host 注册基址 region.addr        = 0x10000000
+Host 传输地址 remote_buf         = 0x10001000
+映射后 Device 基址 register_dev_addr = 0x80000000
+offset = 0x10001000 - 0x10000000 = 0x1000
+最终下发给 Hcomm/AICPU 的地址       = 0x80000000 + 0x1000 = 0x80001000</div>
+      </section>
+
+      <section id="selection">
+        <h2>10. 协议选择逻辑</h2>
+        <p>需求指定的新优先级应按场景理解：</p>
+        <table>
+          <thead>
+            <tr>
+              <th>场景</th>
+              <th>优先级</th>
+              <th>解释</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>指定 RoCE 环境</td>
+              <td><code>RoCE</code></td>
+              <td><code>HCCL_INTRA_ROCE_ENABLE=1</code> 或业务明确指定 RoCE 时，直接只走 RoCE。</td>
+            </tr>
+            <tr>
+              <td>超节点间</td>
+              <td><code>UBoE / UBG / RoCE</code></td>
+              <td>未命中强制 RoCE 时，跨超节点优先尝试 ScaleOut 协议，最后 RoCE。</td>
+            </tr>
+            <tr>
+              <td>超节点内</td>
+              <td><code>UB / HCCS / UBoE / UBG / RoCE</code></td>
+              <td>同超节点优先走超节点内 UB，失败后 HCCS，再尝试 ScaleOut，最后 RoCE。</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout ok">
+          已确认策略：指定 RoCE 优先级最高。命中后即使业务显式配置 UBG/UBoE，也只尝试 RoCE。
+        </div>
+
+        <h3>10.1 新优先级决策表</h3>
+        <div class="decision">
+          <div class="decision-row">
+            <div>第一问</div>
+            <div>是否指定 RoCE 环境？例如 <code>HCCL_INTRA_ROCE_ENABLE=1</code>。</div>
+            <div><strong>是：</strong>只匹配 RoCE</div>
+          </div>
+          <div class="decision-row">
+            <div>第二问</div>
+            <div>是否显式指定 UBG/UBoE？注意第一问为“否”时才看这里。</div>
+            <div><strong>是：</strong>只匹配指定协议</div>
+          </div>
+          <div class="decision-row">
+            <div>第三问</div>
+            <div>本端与对端 <code>net_instance_id</code> 是否不同？</div>
+            <div><strong>是：</strong>UBoE / UBG / RoCE</div>
+          </div>
+          <div class="decision-row">
+            <div>第四问</div>
+            <div>同超节点普通场景。</div>
+            <div><strong>走：</strong>UB / HCCS / UBoE / UBG / RoCE</div>
+          </div>
+        </div>
+
+        <h3>UB 匹配规则</h3>
+        <p>当前 UB 匹配通过 <code>BuildMatchMap()</code> 和 <code>TryMatchUb()</code> 实现。对端 map key 是 <code>{dst_eid, plane, placement}</code>，本端查询 key 是 <code>{comm_id, plane, placement}</code>。这等价于优先满足“对端 <code>dst_eid</code> 匹配本端 <code>comm_id</code>”。</p>
+        <p>如果拆分为 <code>TryMatchUbByDstEid</code> 和 <code>TryMatchUbByPlane</code>，要保持 <code>MatchKey::Matches</code> 中 <code>dst_eid</code> 为空时按 plane/placement 降级的通配语义。</p>
+      </section>
+
+      <section id="ubg">
+        <h2>11. UBG 需求改动点</h2>
+        <h3>11.1 配置和资源自动获取</h3>
+        <ul>
+          <li>新增协议字符串 <code>kProtocolUbg = "ubg"</code>。</li>
+          <li><code>GlobalResourceConfig</code> 支持 <code>"ubg:device"</code>。</li>
+          <li><code>EndpointGenerator</code> 新增 UBG 默认 endpoint 生成逻辑。</li>
+          <li>新增 ScaleOut 类型判断 wrapper：查询 <code>InterconType</code>，确认 ScaleOut 口为 UBG。</li>
+          <li>复用现有 DCMI/URMA EID 获取、字符串转换和 byte6 解析逻辑；Mesh/CLOS PG 筛选策略需按 UBG 语义确认后再接入。</li>
+          <li>配置 <code>ubg:device</code> 但 InterconType 返回非 UBG 时，返回可诊断错误。</li>
+        </ul>
+
+        <h3>11.2 EndpointDesc 转换</h3>
+        <ul>
+          <li>新增 <code>COMM_PROTOCOL_UBG</code>，具体枚举值需要和 Hcomm/驱动确认。</li>
+          <li><code>protocol=ubg</code> 映射到 <code>COMM_PROTOCOL_UBG</code>。</li>
+          <li><code>comm_id</code> 按 EID 解析，<code>commAddr.type</code> 应设置为 <code>COMM_ADDR_TYPE_EID</code>。</li>
+          <li><code>placement=device</code> 时填充物理 device 信息。</li>
+        </ul>
+
+        <h3>11.3 建链匹配</h3>
+        <ul>
+          <li>Engine 层新增 UBG 匹配函数，例如 <code>TryMatchUbg()</code> 或泛化 <code>TryMatchScaleOut()</code>。</li>
+          <li>按“指定 RoCE / 超节点间 / 超节点内”三张表重构 <code>EndpointMatcher::MatchEndpoints()</code>。</li>
+          <li>ScaleOut 匹配要求本端与对端 protocol 一致：UBG 对 UBG，UBoE 对 UBoE。</li>
+          <li>当前设计不要求两端 EID 相等；EID 传给 Hcomm，是否按 EID 关系匹配待驱动语义确认。</li>
+        </ul>
+
+        <h3>11.4 Host 内存与传输</h3>
+        <ul>
+          <li><code>Endpoint::RegisterMem()</code> 中，把 UBoE Host register 条件泛化到 UBG。</li>
+          <li><code>HixlCSClient::BatchTransferAsync()</code> 和 <code>BatchTransferSync()</code> 中，把 UBoE 地址转换条件泛化到 UBG，并将 <code>ConvertUboeDescs</code> 泛化为 <code>ConvertScaleOutDescs</code>。</li>
+          <li><code>HixlMemStore</code> 已具备记录 Host 内存和 Device 映射地址的字段，优先复用。</li>
+        </ul>
+
+        <h3>11.5 CS 层 EndpointStore</h3>
+        <p><code>EndpointStore::MatchEndpoint()</code> 当前对 HCCS、UB、RoCE 做专门地址比较，其它协议在 protocol 一致后直接匹配。UBG 初期可沿用 protocol-only 行为，避免错误要求两端本端 EID 相等；若驱动后续明确 EID 对端关系，再增加 UBG 专属比较。</p>
+      </section>
+
+      <section id="walkthrough">
+        <h2>12. 端到端开发视图</h2>
+        <p>下面按一次“自动获取 UBG 资源并完成 Host 内存传输”的路径，把你需要改的点串起来。</p>
+
+        <ol class="steps">
+          <li>
+            <div>
+              <strong>配置进入 HIXL</strong>
+              <p>业务设置 <code>GlobalResourceConfig={"comm_resource_config.protocol_desc":["ubg:device"]}</code>。你需要让解析逻辑识别 <code>ubg:device</code>，并避免和 <code>uboe:device</code> 同时出现。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>生成本端 UBG endpoint</strong>
+              <p><code>EndpointGenerator</code> 判断没有显式 <code>endpoint_list</code> 后，先查询 <code>InterconType</code>，再通过 DCMI/URMA 获取 EID，并按 UBG 语义选择目标 EID，生成 <code>protocol=ubg</code> 的 <code>EndpointConfig</code>。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Server 初始化底层 endpoint</strong>
+              <p><code>ConvertToEndpointDesc</code> 把 <code>protocol=ubg</code> 转为 <code>COMM_PROTOCOL_UBG</code>，把 EID 写入 <code>commAddr</code>，再交给 CS Server 创建 endpoint。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Client 获取对端 endpoint 并选链</strong>
+              <p><code>HixlClient</code> 拉取 Server endpoint 后，<code>EndpointMatcher::MatchEndpoints</code> 按新优先级表选择 UBG、UBoE、UB、HCCS 或 RoCE。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>CS 层确认 endpoint 存在</strong>
+              <p><code>HixlCSClient</code> 在创建 channel 前发送 <code>MatchEndpointReq</code>。Server 侧 <code>EndpointStore::MatchEndpoint</code> 确认对应 UBG endpoint 存在。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>Host 内存注册</strong>
+              <p>用户注册 Host 内存时，UBG 和 UBoE 一样先 <code>aclrtHostRegister</code> 得到 Device VA，再把 Device VA 注册给 Hcomm，并保存 <code>registered_dev_mem</code>。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>传输前地址转换</strong>
+              <p>传输时 <code>ConvertScaleOutDescs</code> 根据 <code>HixlMemStore</code> 中记录的区域，把 <code>remote_buf</code> 和 <code>local_buf</code> 中的 Host VA 转成 Device VA。</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <strong>AICPU kernel 执行传输</strong>
+              <p>转换后的地址随 <code>HixlOneSideOpDesc</code> 下发给 Device 路径，最终由 AICPU kernel 调用 Hcomm 完成单边读写。</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section id="code-map">
+        <h2>13. 代码热区地图</h2>
+        <p>如果你准备开始开发，可以按这个地图逐个改。每个热区都对应一个明确的需求点。</p>
+
+        <div class="code-map">
+          <div class="code-item">
+            <strong>1. 协议字符串与 endpoint 结构</strong>
+            <p><code>src/hixl/common/hixl_inner_types.h</code></p>
+            <p>新增 <code>kProtocolUbg</code>。无需新增 <code>EndpointConfig</code> 字段，UBG 复用 <code>protocol</code>、<code>comm_id</code>、<code>placement</code>、<code>net_instance_id</code>。</p>
+          </div>
+          <div class="code-item">
+            <strong>2. GlobalResourceConfig 解析</strong>
+            <p><code>src/hixl/common/hixl_utils.cc</code></p>
+            <p>当前已有 <code>ParseConfigProtocolDesc</code>。你要新增 <code>ubg:device</code> 识别和非法组合校验。</p>
+          </div>
+          <div class="code-item">
+            <strong>3. UBG 自动 endpoint 生成</strong>
+            <p><code>src/hixl/engine/endpoint_generator.cc</code></p>
+            <p>新增 <code>IsUbgProtocolDescEnabled</code>、<code>GenDefaultUbgEndpointConfig</code>、InterconType 查询封装，并把现有 DCMI/URMA EID 查询、字符串转换和 byte6 解析能力接入 <code>BuildEndpointListFromOptions</code>。Mesh/CLOS PG 筛选策略需按 UBG 语义确认后复用。</p>
+          </div>
+          <div class="code-item">
+            <strong>4. EndpointDesc 转换</strong>
+            <p><code>src/hixl/engine/endpoint_generator.cc</code></p>
+            <p><code>ConvertToEndpointDesc</code> 新增 <code>protocol=ubg</code> 分支：设置 <code>COMM_PROTOCOL_UBG</code>，按 EID 解析 <code>comm_id</code>，填充 device loc 信息。</p>
+          </div>
+          <div class="code-item">
+            <strong>5. Engine 层协议匹配</strong>
+            <p><code>src/hixl/engine/endpoint_matcher.cc</code></p>
+            <p>新增 UBG direct protocol 识别，扩展 <code>MatchEndpoints</code> 的优先级表，并确认 <code>HandlerCreateArgs::HandlerType::DIRECT</code> 能承载 UBG。</p>
+          </div>
+          <div class="code-item">
+            <strong>6. CommType 与 handler</strong>
+            <p><code>src/hixl/engine/client_handler.h</code>、<code>src/hixl/engine/client_handler_factory.cc</code>、<code>src/hixl/engine/direct_client_handler.*</code></p>
+            <p>新增 <code>COMM_TYPE_UBG</code>，更新 <code>CommTypeToString</code>，确认 direct handler 对 UBG endpoint pair 的注册、连接、传输路径。</p>
+          </div>
+          <div class="code-item">
+            <strong>7. Hcomm 协议枚举</strong>
+            <p><code>src/hixl/proxy/hcomm/hcomm_res_defs.h</code></p>
+            <p>新增 <code>COMM_PROTOCOL_UBG</code>。枚举值必须与 Hcomm/驱动确认，不能自己随意填。</p>
+          </div>
+          <div class="code-item">
+            <strong>8. CS 层 endpoint 匹配</strong>
+            <p><code>src/hixl/cs/endpoint_store.cc</code></p>
+            <p>初期可沿用 protocol-only 逻辑；如果驱动明确 EID 对端关系，再新增 UBG 专属比较分支。</p>
+          </div>
+          <div class="code-item">
+            <strong>9. Host register 和地址转换</strong>
+            <p><code>src/hixl/cs/endpoint.cc</code>、<code>src/hixl/cs/hixl_cs_client.cc</code></p>
+            <p>把 UBoE 专用条件泛化为 UBoE/UBG；把 <code>ConvertUboeDescs</code> 泛化为 <code>ConvertScaleOutDescs</code>。</p>
+          </div>
+          <div class="code-item">
+            <strong>10. 测试</strong>
+            <p><code>tests/cpp/hixl/engine/endpoint_generator_ut.cc</code>、<code>tests/cpp/hixl/engine/hixl_engine_unittest.cc</code>、CS 相关 UT</p>
+            <p>优先覆盖自动资源生成、优先级表、Host VA 转换、InterconType 非 UBG、DCMI 加载失败、URMA 设备数量为 0、EID 列表为空、EID 筛选失败、ScaleOut 协议不一致。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="tasks">
+        <h2>14. 开发任务拆解</h2>
+        <p>下面这份清单更适合开发时逐项打勾。建议按顺序推进，因为后面的选链和传输测试依赖前面的类型和 endpoint 转换。</p>
+        <ul class="checklist">
+          <li>新增 <code>kProtocolUbg</code> 和 <code>COMM_PROTOCOL_UBG</code>，确认 Hcomm 枚举值。</li>
+          <li>新增 <code>COMM_TYPE_UBG</code> 和 <code>CommTypeToString</code> 分支。</li>
+          <li>扩展 <code>ParseConfigProtocolDesc</code> 使用方，识别 <code>ubg:device</code>。</li>
+          <li>封装 ScaleOut 类型判断：先 mock，等驱动确认 <code>InterconType</code> 查询命令和返回结构。</li>
+          <li>复用已有 DCMI/URMA EID 获取：加载 DCMI，查询逻辑 ID、URMA 设备数量、EID 列表。</li>
+          <li>复用已有 EID 字符串转换和 byte6 解析；确认 Mesh/CLOS PG EID 筛选是否适用于 UBG。</li>
+          <li>实现 <code>GenDefaultUbgEndpointConfig</code>，生成 <code>protocol=ubg</code> endpoint。</li>
+          <li>扩展 <code>ConvertToEndpointDesc</code>，把 UBG EID 转为 <code>COMM_ADDR_TYPE_EID</code>。</li>
+          <li>重构 <code>EndpointMatcher::MatchEndpoints</code>，接入指定 RoCE、超节点间、超节点内三张表。</li>
+          <li>确认 <code>ClientHandlerFactory</code> 和 direct handler 能处理 <code>COMM_TYPE_UBG</code>。</li>
+          <li>泛化 <code>Endpoint::RegisterMem</code> 的 UBoE Host register 条件。</li>
+          <li>泛化 <code>ConvertUboeDescs</code>，让 UBG 也能完成 Host VA 到 Device VA 转换。</li>
+          <li>补齐 endpoint generator、matcher、CS 内存转换和异常路径测试。</li>
+        </ul>
+
+        <h3>14.1 更细的任务说明</h3>
+        <ol>
+          <li><strong>新增类型与常量</strong>：协议字符串、Hcomm 协议枚举、<code>src/hixl/engine/client_handler.h</code> 中的 <code>CommType</code>。</li>
+          <li><strong>接入配置解析</strong>：识别 <code>ubg:device</code>，校验不支持同时配置 UBoE/UBG。</li>
+          <li><strong>接入 InterconType wrapper</strong>：先做封装和 mock，真实命令字和返回结构等驱动确认后替换。</li>
+          <li><strong>接入 DCMI/URMA EID 获取</strong>：复用已有 EID 列表查询、字符串转换和 byte6 解析；Mesh/CLOS PG 筛选需在 UBG 语义确认后接入。</li>
+          <li><strong>生成 UBG endpoint</strong>：构造 <code>protocol=ubg</code>、<code>comm_id=EID</code>、<code>placement=device</code>。</li>
+          <li><strong>转换 EndpointDesc</strong>：UBG EID 解析成 <code>COMM_ADDR_TYPE_EID</code>。</li>
+          <li><strong>重构选链优先级</strong>：在 <code>EndpointMatcher::MatchEndpoints</code> 中实现强制 RoCE 最高，跨超节点 UBoE/UBG/RoCE，超节点内 UB/HCCS/UBoE/UBG/RoCE。</li>
+          <li><strong>泛化 Host 内存注册与地址转换</strong>：UBoE 专用判断改为 ScaleOut Host 映射协议判断。</li>
+          <li><strong>补测试和文档</strong>：覆盖资源生成、建链优先级、Host 内存、异常路径。</li>
+        </ol>
+      </section>
+
+      <section id="tests">
+        <h2>15. 测试建议</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>测试方向</th>
+              <th>建议位置</th>
+              <th>覆盖点</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>资源生成</td>
+              <td><code>tests/cpp/hixl/engine/endpoint_generator_ut.cc</code></td>
+              <td><code>ubg:device</code> 解析、InterconType mock、DCMI/URMA EID mock、EID 写入 <code>comm_id</code>、非 UBG 返回失败。</td>
+            </tr>
+            <tr>
+              <td>Engine 初始化</td>
+              <td>建议新增 <code>tests/cpp/hixl/engine/hixl_engine_ubg_unittest.cc</code></td>
+              <td>显式 UBG、自动 UBG、混合 UBG/RoCE、非法配置。</td>
+            </tr>
+            <tr>
+              <td>协议优先级</td>
+              <td><code>tests/cpp/hixl/engine/hixl_engine_unittest.cc</code></td>
+              <td>指定 RoCE、跨超节点、超节点内、显式 UBG/UBoE。</td>
+            </tr>
+            <tr>
+              <td>Host 内存映射</td>
+              <td><code>tests/cpp/hixl/cs/hixl_mem_store_uboe_ut.cc</code> 或新增 UBG UT</td>
+              <td>Host VA 到 Device VA 的 offset 转换、未注册地址失败。</td>
+            </tr>
+            <tr>
+              <td>CS endpoint 匹配</td>
+              <td>建议新增或扩展 endpoint store UT</td>
+              <td>UBG protocol-only 匹配，后续 EID 关系匹配待驱动确认。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="reading">
+        <h2>16. 推荐读代码顺序</h2>
+        <ol>
+          <li><code>src/hixl/common/hixl_inner_types.h</code>：先熟悉 <code>EndpointConfig</code> 字段。</li>
+          <li><code>src/hixl/common/hixl_utils.cc</code>：看 <code>ParseConfigProtocolDesc</code>、<code>GetBondIpAddress</code>、IP/EID 解析相关函数。</li>
+          <li><code>src/hixl/engine/endpoint_generator.cc</code>：看 UBoE 自动 endpoint 是怎么生成的，并预留 UBG EID 获取接入点。</li>
+          <li>优先阅读已有 DCMI wrapper 相关代码：理解 <code>LoadDcmi</code>、逻辑 ID 转换、URMA device 数量和 EID 列表查询。</li>
+          <li><code>src/hixl/engine/hixl_client.cc</code>：看 Client 如何拿对端 endpoint，并把匹配交给 <code>EndpointMatcher</code>。</li>
+          <li><code>src/hixl/engine/endpoint_matcher.cc</code>：看 Engine 层协议优先级和 UB 匹配规则。</li>
+          <li><code>src/hixl/engine/client_handler.h</code>、<code>src/hixl/engine/client_handler_factory.cc</code>：看 <code>CommType</code> 和 handler 创建。</li>
+          <li><code>src/hixl/cs/endpoint_store.cc</code>：看 CS 层如何匹配底层 endpoint。</li>
+          <li><code>src/hixl/cs/endpoint.cc</code>：看 UBoE Host 内存如何先映射成 Device VA 再注册。</li>
+          <li><code>src/hixl/cs/hixl_cs_client.cc</code>：看 <code>ConvertUboeDescs</code>、<code>ConvertHostRegisterAddr</code> 和 AICPU 传输路径。</li>
+          <li><code>tests/cpp/hixl/engine/hixl_engine_uboe_unittest.cc</code>、<code>tests/cpp/hixl/cs/hixl_mem_store_uboe_ut.cc</code>：参考 UBoE 测试写法。</li>
+        </ol>
+
+        <div class="callout ok">
+          学习路线建议：先跑通“配置生成 endpoint”的心智模型，再看“endpoint 怎么选链”，最后看“Host 内存为什么要映射和转换”。这样比从 AICPU kernel 或 Hcomm API 开始读更容易建立全局视角。
+        </div>
+      </section>
+    </article>
+  </main>
+</body>
+</html>
