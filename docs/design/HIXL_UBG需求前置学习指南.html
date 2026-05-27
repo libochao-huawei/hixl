@@ -446,18 +446,18 @@
 
       <section id="overview">
         <h2>2. 一页总览</h2>
-        <p>可以先把这个需求想象成“给 HIXL 新增一种 ScaleOut 协议资源”。它不是替换 UBoE，而是在 UBoE 已有框架旁边新增 UBG，并让自动选链知道什么时候应该用它。</p>
+        <p>可以先把这个需求想象成“在 PC16 液冷服务器上，基于 UBoE 已有框架新增 UBG 能力”。它不是重做一套链路，而是尽量复用 UBoE 的资源生成、建链和 Host 内存映射路径，并让自动选链知道什么时候应该用 UBG。</p>
 
         <div class="grid three">
           <div class="card">
             <span class="badge">输入</span>
             <h3>用户配置</h3>
-            <p><code>GlobalResourceConfig</code> 写 <code>ubg:device</code>，或者 <code>LocalCommRes</code> 显式给出 <code>protocol=ubg</code>。</p>
+            <p><code>GlobalResourceConfig</code> 写 <code>ubg:device</code>、<code>LocalCommRes</code> 显式给出 <code>protocol=ubg</code>，或者完全未配置时由 DSMI <code>InterconType</code> 自动探测 UBoE/UBG。</p>
           </div>
           <div class="card">
             <span class="badge">设备探测</span>
             <h3>类型判断 + EID 获取</h3>
-            <p>先判断 ScaleOut 口 <code>InterconType</code> 是否为 UBG；是 UBG 后通过 DCMI/URMA 查询 EID 列表，再按 UBG 建链语义选择目标 EID。</p>
+            <p>先判断 ScaleOut 口 <code>InterconType</code> 是 UBoE 还是 UBG；是 UBG 后调用已有 DCMI/URMA EID 查询接口，把获取到的 EID 放入 local comm res。</p>
           </div>
           <div class="card">
             <span class="badge">输出</span>
@@ -469,7 +469,7 @@
         <div class="lane">
           <div class="lane-title">资源生成</div>
           <div class="lane-body">
-            <code>EndpointGenerator</code> 负责把 options 变成本端 <code>endpoint_list</code>。UBG 主要新增 <code>ubg:device</code> 识别、ScaleOut 类型判断，并复用现有 DCMI/URMA EID 查询能力生成默认 UBG endpoint。
+            <code>EndpointGenerator</code> 负责把 options 变成本端 <code>endpoint_list</code>。UBG 主要新增 <code>ubg:device</code> 识别、无配置时的 <code>InterconType</code> 自动探测，并复用现有 DCMI/URMA EID 查询能力生成默认 UBG endpoint。
           </div>
         </div>
         <div class="lane">
@@ -487,7 +487,7 @@
         <div class="lane">
           <div class="lane-title">内存传输</div>
           <div class="lane-body">
-            Host 内存先 <code>aclrtHostRegister</code> 映射成 Device VA，再注册给 Hcomm；传输前 <code>ConvertUboeDescs</code> 类逻辑把 Host VA 转成 Device VA。UBG 要复用并泛化这条路径。
+            Host 内存先 <code>aclrtHostRegister</code> 映射成 Device VA，再注册给 Hcomm；传输前 <code>ConvertUboeDescs</code> 类逻辑把 Host VA 转成 Device VA。UBG 与 UBoE 一致，建议抽象成“协议是否需要 Host 映射”的能力判断。
           </div>
         </div>
 
@@ -520,7 +520,7 @@
             <tr>
               <td><code>comm_id</code></td>
               <td>不同协议的通信标识。RoCE/UBoE 常是 IP，UB/UBG 常是 EID，HCCS 是 device id。</td>
-              <td>UBG 的 <code>comm_id</code> 是 DCMI/URMA 查询后按 UBG 语义选择出的 EID。</td>
+              <td>UBG 的 <code>comm_id</code> 是调用已有 DCMI/URMA EID 查询接口获取到的 EID。</td>
             </tr>
             <tr>
               <td><code>placement</code></td>
@@ -550,7 +550,7 @@
             <tr>
               <td>Mesh EID / CLOS PG EID</td>
               <td>Mesh EID 按 die/port 筛选；CLOS PG EID 是跨 Group 通信全局 EID 候选。</td>
-              <td>现有筛选服务 UB-CTP/CLOS local comm res，UBG 最终 <code>comm_id</code> 选哪类 EID 仍需结合建链语义确认。</td>
+              <td>现有筛选服务 UB-CTP/CLOS local comm res；PC16 UBG 优先复用已有 EID 查询与解析链路，需确认返回 EID 可直接用于 UBG。</td>
             </tr>
           </tbody>
         </table>
@@ -628,8 +628,54 @@
         <pre><code>{
   "comm_resource_config.protocol_desc": ["ubg:device"]
 }</code></pre>
+        <div class="callout">
+          如果业务什么都不配置，HIXL 也会按 DSMI <code>InterconType</code> 自动探测 ScaleOut 口类型：UBoE 取值生成 UBoE local comm res，UBG 取值生成 UBG local comm res。当前 RoCE 类取值不做无配置自动生成。
+        </div>
 
-        <h3>5.3 UBG endpoint 长什么样</h3>
+        <h3>5.3 InterconType 取值</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>取值</th>
+              <th>含义</th>
+              <th>无配置自动生成策略</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>0</td>
+              <td>RoCE over DPU</td>
+              <td>当前不自动生成 RoCE</td>
+            </tr>
+            <tr>
+              <td>1</td>
+              <td>RoCE over CPU</td>
+              <td>当前不自动生成 RoCE</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>UBoE over NPU，David 直连出 UBoE</td>
+              <td>生成 UBoE local comm res</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>UBoE over SWITCH，Host 网卡出 RoCE</td>
+              <td>生成 UBoE local comm res</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td>UBoE over DPU</td>
+              <td>生成 UBoE local comm res</td>
+            </tr>
+            <tr>
+              <td>待新增</td>
+              <td>UBG</td>
+              <td>生成 UBG local comm res</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>5.4 UBG endpoint 长什么样</h3>
         <pre><code>{
   "version": "1.3",
   "net_instance_id": "superpod1_1",
@@ -701,7 +747,7 @@
 
       <section id="eid">
         <h2>7. DCMI/URMA 与 EID</h2>
-        <p>UBG endpoint 的核心资源是 EID。这里要区分两个动作：先确认 ScaleOut 口类型是 UBG，再通过 DCMI/URMA 查询 EID 列表。现有代码里的 Mesh/CLOS PG 筛选主要服务 UB-CTP/CLOS local comm res，UBG 可以复用查询和解析能力，但最终写入 <code>comm_id</code> 的 EID 仍要按 UBG 建链语义确认。</p>
+        <p>UBG endpoint 的核心资源是 EID。PC16 UBG 基于 UBoE 增加能力，自动 local comm res 生成应复用已有 DCMI/URMA EID 查询链路：先确认 ScaleOut 口类型是 UBG，再调用 <code>GetEidList</code> 获取 EID，并写入 UBG <code>comm_id</code>。</p>
 
         <h3>7.1 EID 获取调用链</h3>
         <div class="flow">GenerateLocalCommRes
@@ -818,7 +864,7 @@ struct DcmiUrmaEidInfo {
 };</code></pre>
 
         <div class="callout warn">
-          <strong>待确认：</strong>UBG endpoint 的 <code>comm_id</code> 最终应该选择 Mesh EID、CLOS PG EID、DCMI 返回的其他 UBG 专用 EID，还是按场景生成多个 endpoint。现有 <code>CollectMeshPorts</code> / <code>CollectClosPgEids</code> 可作为候选策略参考，但不能直接作为 UBG 的最终结论。
+          <strong>注意：</strong>现有 <code>CollectMeshPorts</code> / <code>CollectClosPgEids</code> 服务 UB-CTP/CLOS local comm res。UBG 优先复用已有 DCMI EID 查询、字符串转换和 byte6 解析能力；若直接复用筛选结果，需要和底层确认该 EID 可直接作为 UBG <code>comm_id</code>。
         </div>
       </section>
 
@@ -933,7 +979,7 @@ struct DcmiUrmaEidInfo {
   -> BatchTransferDevice() / BatchTransferDeviceSync()
   -> 下发 AICPU kernel</div>
 
-        <p>UBG 应把这里的协议判断从 <code>COMM_PROTOCOL_UBOE</code> 扩展为 UBoE/UBG 共同判断，函数可以考虑泛化为 <code>ConvertScaleOutDescs</code>。</p>
+        <p>UBG 应把这里的协议判断从 <code>COMM_PROTOCOL_UBOE</code> 扩展为统一能力判断，例如 <code>IsHostRegisterMappedProtocol</code>。初始集合包含 UBoE 和 UBG，后续有新协议需要 Host 映射时直接加入集合；函数可以考虑泛化为 <code>ConvertScaleOutDescs</code>。</p>
 
         <h3>9.3 Host 内存为什么要映射成 Device VA</h3>
         <div class="grid">
@@ -1038,7 +1084,7 @@ offset = 0x10001000 - 0x10000000 = 0x1000
           <li><code>GlobalResourceConfig</code> 支持 <code>"ubg:device"</code>。</li>
           <li><code>EndpointGenerator</code> 新增 UBG 默认 endpoint 生成逻辑。</li>
           <li>新增 ScaleOut 类型判断 wrapper：查询 <code>InterconType</code>，确认 ScaleOut 口为 UBG。</li>
-          <li>复用现有 DCMI/URMA EID 获取、字符串转换和 byte6 解析逻辑；Mesh/CLOS PG 筛选策略需按 UBG 语义确认后再接入。</li>
+          <li>复用现有 DCMI/URMA EID 获取、字符串转换和 byte6 解析逻辑；将获取到的 EID 写入 UBG <code>comm_id</code>。</li>
           <li>配置 <code>ubg:device</code> 但 InterconType 返回非 UBG 时，返回可诊断错误。</li>
         </ul>
 
@@ -1083,7 +1129,7 @@ offset = 0x10001000 - 0x10000000 = 0x1000
           <li>
             <div>
               <strong>生成本端 UBG endpoint</strong>
-              <p><code>EndpointGenerator</code> 判断没有显式 <code>endpoint_list</code> 后，先查询 <code>InterconType</code>，再通过 DCMI/URMA 获取 EID，并按 UBG 语义选择目标 EID，生成 <code>protocol=ubg</code> 的 <code>EndpointConfig</code>。</p>
+              <p><code>EndpointGenerator</code> 判断没有显式 <code>endpoint_list</code> 后，先查询 <code>InterconType</code>，再通过 DCMI/URMA 获取并校验 EID，生成 <code>protocol=ubg</code> 的 <code>EndpointConfig</code>。</p>
             </div>
           </li>
           <li>
@@ -1143,7 +1189,7 @@ offset = 0x10001000 - 0x10000000 = 0x1000
           <div class="code-item">
             <strong>3. UBG 自动 endpoint 生成</strong>
             <p><code>src/hixl/engine/endpoint_generator.cc</code></p>
-            <p>新增 <code>IsUbgProtocolDescEnabled</code>、<code>GenDefaultUbgEndpointConfig</code>、InterconType 查询封装，并把现有 DCMI/URMA EID 查询、字符串转换和 byte6 解析能力接入 <code>BuildEndpointListFromOptions</code>。Mesh/CLOS PG 筛选策略需按 UBG 语义确认后复用。</p>
+            <p>新增 <code>IsUbgProtocolDescEnabled</code>、<code>GenDefaultUbgEndpointConfig</code>、InterconType 查询封装，并把现有 DCMI/URMA EID 查询、字符串转换和 byte6 解析能力接入 <code>BuildEndpointListFromOptions</code>。</p>
           </div>
           <div class="code-item">
             <strong>4. EndpointDesc 转换</strong>
@@ -1178,7 +1224,7 @@ offset = 0x10001000 - 0x10000000 = 0x1000
           <div class="code-item">
             <strong>10. 测试</strong>
             <p><code>tests/cpp/hixl/engine/endpoint_generator_ut.cc</code>、<code>tests/cpp/hixl/engine/hixl_engine_unittest.cc</code>、CS 相关 UT</p>
-            <p>优先覆盖自动资源生成、优先级表、Host VA 转换、InterconType 非 UBG、DCMI 加载失败、URMA 设备数量为 0、EID 列表为空、EID 筛选失败、ScaleOut 协议不一致。</p>
+            <p>优先覆盖自动资源生成、优先级表、Host VA 转换、InterconType 非 UBG、RoCE 取值不自动生成、DCMI 加载失败、URMA 设备数量为 0、EID 列表为空、ScaleOut 协议不一致。</p>
           </div>
         </div>
       </section>
@@ -1192,7 +1238,7 @@ offset = 0x10001000 - 0x10000000 = 0x1000
           <li>扩展 <code>ParseConfigProtocolDesc</code> 使用方，识别 <code>ubg:device</code>。</li>
           <li>封装 ScaleOut 类型判断：先 mock，等驱动确认 <code>InterconType</code> 查询命令和返回结构。</li>
           <li>复用已有 DCMI/URMA EID 获取：加载 DCMI，查询逻辑 ID、URMA 设备数量、EID 列表。</li>
-          <li>复用已有 EID 字符串转换和 byte6 解析；确认 Mesh/CLOS PG EID 筛选是否适用于 UBG。</li>
+          <li>复用已有 EID 字符串转换和 byte6 解析，校验获取到的 EID 可写入 UBG <code>comm_id</code>。</li>
           <li>实现 <code>GenDefaultUbgEndpointConfig</code>，生成 <code>protocol=ubg</code> endpoint。</li>
           <li>扩展 <code>ConvertToEndpointDesc</code>，把 UBG EID 转为 <code>COMM_ADDR_TYPE_EID</code>。</li>
           <li>重构 <code>EndpointMatcher::MatchEndpoints</code>，接入指定 RoCE、超节点间、超节点内三张表。</li>
@@ -1207,7 +1253,7 @@ offset = 0x10001000 - 0x10000000 = 0x1000
           <li><strong>新增类型与常量</strong>：协议字符串、Hcomm 协议枚举、<code>src/hixl/engine/client_handler.h</code> 中的 <code>CommType</code>。</li>
           <li><strong>接入配置解析</strong>：识别 <code>ubg:device</code>，校验不支持同时配置 UBoE/UBG。</li>
           <li><strong>接入 InterconType wrapper</strong>：先做封装和 mock，真实命令字和返回结构等驱动确认后替换。</li>
-          <li><strong>接入 DCMI/URMA EID 获取</strong>：复用已有 EID 列表查询、字符串转换和 byte6 解析；Mesh/CLOS PG 筛选需在 UBG 语义确认后接入。</li>
+          <li><strong>接入 DCMI/URMA EID 获取</strong>：复用已有 EID 列表查询、字符串转换和 byte6 解析，并将 EID 写入 UBG <code>comm_id</code>。</li>
           <li><strong>生成 UBG endpoint</strong>：构造 <code>protocol=ubg</code>、<code>comm_id=EID</code>、<code>placement=device</code>。</li>
           <li><strong>转换 EndpointDesc</strong>：UBG EID 解析成 <code>COMM_ADDR_TYPE_EID</code>。</li>
           <li><strong>重构选链优先级</strong>：在 <code>EndpointMatcher::MatchEndpoints</code> 中实现强制 RoCE 最高，跨超节点 UBoE/UBG/RoCE，超节点内 UB/HCCS/UBoE/UBG/RoCE。</li>
