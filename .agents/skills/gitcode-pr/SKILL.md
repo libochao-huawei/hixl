@@ -439,7 +439,18 @@ git push hgjupstream fix/gcc13-link-error -u
 - **默认合入 `develop` 分支**（日常开发、新功能、bugfix）
 - 仅当用户明确要求时，才合入其他分支（如 `master`、`release/x.y`）
 
-使用 GitCode API 创建 PR：
+#### 10.1 读取 PR 模板
+
+**重要**：PR 描述必须严格遵循仓库中的模板文件，不要使用硬编码模板。
+
+```bash
+# 读取仓库 PR 模板
+cat .gitcode/PULL_REQUEST_TEMPLATE.zh-CN.md
+```
+
+模板文件路径固定为 `.gitcode/PULL_REQUEST_TEMPLATE.zh-CN.md`。根据模板结构填充各字段内容。
+
+#### 10.2 使用 API 创建 PR
 
 ```bash
 curl -s -X POST "https://gitcode.com/api/v5/repos/${owner}/${repo}/pulls" \
@@ -449,7 +460,7 @@ curl -s -X POST "https://gitcode.com/api/v5/repos/${owner}/${repo}/pulls" \
     "title": "docs: 优化文档描述(#32)",
     "head": "username:fix/issue-32-description",
     "base": "develop",
-    "body": "PR描述内容（见下方模板）"
+    "body": "按模板填充的PR描述"
   }'
 ```
 
@@ -457,7 +468,7 @@ curl -s -X POST "https://gitcode.com/api/v5/repos/${owner}/${repo}/pulls" \
 - `title`: PR 标题（必填）
 - `head`: 源分支，格式 `username:branch`（必填）
 - `base`: 目标分支，**默认为 `develop`**，除非用户明确要求合入其他分支
-- `body`: PR 描述（Markdown 格式）
+- `body`: PR 描述（Markdown 格式，按 `.gitcode/PULL_REQUEST_TEMPLATE.zh-CN.md` 模板填充）
 
 ### 11. PR URL 格式
 
@@ -507,43 +518,16 @@ https://gitcode.com/${owner}/${repo}/pull/<PR_NUMBER>
 
 ## PR 描述模板
 
-创建 PR 时使用以下模板格式化描述。
+创建 PR 时**必须读取并使用**仓库中的模板文件：`.gitcode/PULL_REQUEST_TEMPLATE.zh-CN.md`
 
-**重要**：
-- **变更类型**：根据实际变更内容，将对应选项的 `[ ]` 改为 `[x]` 勾选
-- **核对清单**：提交 PR 前所有项都应满足，默认全部勾选 `[x]`
+**步骤**：
+1. 使用 `read` 工具读取 `.gitcode/PULL_REQUEST_TEMPLATE.zh-CN.md` 文件内容
+2. 根据实际变更填充模板中的各字段（描述、测试项、测试结果等）
+3. 将对应选项的 `[ ]` 改为 `[x]` 勾选
+4. Checklist 默认全部勾选 `[x]`
+5. 将填充后的模板内容作为 `body` 参数传入创建 PR 的 API
 
-```markdown
-# Pull Request
-
-## 描述
-<!-- 根据代码变更内容填写描述 -->
-
-## 变更类型
-请选择本次引入的变更类型（勾选对应项）：
-- [ ] 🐛 Bug 修复
-- [ ] ✨ 新功能
-- [ ] 💄 代码风格更新（格式化，局部变量）
-- [ ] ♻️ 重构（既不修复错误也不增加功能的代码变动）
-- [ ] 📦 构建过程或辅助工具的变动
-- [ ] 📝 文档内容更新
-
-## 关联的Issue
-Closes #<issue_number>
-
-## 如何测试
-描述测试此变更的步骤和前提条件：
-
-## 核对清单
-- [ ] 我的代码遵循了项目的代码风格
-- [ ] 我已对代码进行了自测
-- [ ] 我已更新了相关的文档
-- [ ] 我在标题中使用了合适的类型标签（如：`feat:`, `fix:`）
-- [ ] 我已经详细阅读了贡献指南（CONTRIBUTING.md）
-
-## 其他信息
-在此添加任何其他关于本次 PR 的说明。
-```
+**不要使用硬编码的模板内容**，始终以仓库中的模板文件为准。
 
 ---
 
