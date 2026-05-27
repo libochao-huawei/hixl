@@ -24,16 +24,26 @@ _MAX_UINT64 = ctypes.c_uint64(2**64 - 1).value
 
 def check_inner(arg_name, arg_value, inner_class):
     for val in arg_value:
-        if not isinstance(val, inner_class):
+        if not check_type(val, inner_class):
             raise TypeError(f"{arg_name} inner type only support {[inner_class]}, but got {format(type(val))}.")
+
+
+def check_type(obj, cls):
+    if isinstance(obj, cls):
+        return True
+    target_name = cls.__name__
+    for clz in type(obj).__mro__:
+        if clz.__name__ == target_name:
+            return True
+    return False
 
 
 def check_dict(arg_name, arg_value: dict, k_class, v_class, v_inner_class=None):
     for k, v in arg_value.items():
-        if not isinstance(k, k_class):
+        if not check_type(k, k_class):
             raise TypeError(
                 f"{arg_name} dict key only support {k_class}, but got {format(type(k))}.")
-        if not isinstance(v, v_class):
+        if not check_type(v, v_class):
             raise TypeError(
                 f"{arg_name} dict value only support {v_class}, but got {format(type(v))}.")
         elif v_inner_class is not None:
@@ -43,11 +53,11 @@ def check_dict(arg_name, arg_value: dict, k_class, v_class, v_inner_class=None):
 def check_isinstance(arg_name, arg_value, classes, inner_class=None, extra_fmt="", allow_none: bool = True):
     if allow_none and arg_value is None:
         return arg_value
-    if not isinstance(classes, list):
+    if not check_type(classes, list):
         classes = [classes]
     check = False
     for clazz in classes:
-        if isinstance(arg_value, clazz):
+        if check_type(arg_value, clazz):
             if inner_class:
                 check_inner(arg_name, arg_value, inner_class)
             check = True

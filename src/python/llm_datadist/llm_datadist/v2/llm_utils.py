@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from threading import Thread
 from typing import Dict, List, Optional, Union, Tuple
 from llm_datadist.utils import log
-from llm_datadist.utils.utils import check_isinstance, check_list_uint64, check_uint64, check_uint32
+from llm_datadist.utils.utils import check_isinstance, check_list_uint64, check_uint64, check_uint32, check_type
 from llm_datadist.status import LLMException, LLMStatusCode, raise_if_false, code_2_status, raise_if_true
 from llm_datadist.data_type import DataType, python_dtype_2_dwrapper_dtype
 from llm_datadist.v2.llm_types import CacheDesc, KvCache, CacheKey, CacheKeyByIdAndIndex, BlocksCacheKey, Placement, \
@@ -152,7 +152,7 @@ class TransferCacheJob:
         self._num_layers = 0
         self._rets: Dict[int, LLMStatusCode] = {}
         self._timeout_in_millis: Optional[int] = None
-        self._is_data_cache_engine = isinstance(params.src_cache, Cache)
+        self._is_data_cache_engine = check_type(params.src_cache, Cache)
         self._layer_synchronizer = layer_synchronizer
         self._transfer_cache_func = transfer_cache_func
 
@@ -193,18 +193,18 @@ class TransferCacheJob:
 
     def transfer_layer(self, src_layer_index: int, dst_layer_idx,
                        transfer_config: Union[TransferConfig, TransferWithCacheKeyConfig]) -> LLMStatusCode:
-        if isinstance(transfer_config, TransferConfig):
+        if check_type(transfer_config, TransferConfig):
             dst_layer_index = src_layer_index - transfer_config.src_layer_range.start
             dst_addrs = transfer_config.dst_addrs[dst_layer_index * _NUM_TENSORS_PER_LAYER:
                                                   dst_layer_index * _NUM_TENSORS_PER_LAYER + _NUM_TENSORS_PER_LAYER]
             transfer_config = (self._cache_id, transfer_config.src_batch_index, src_layer_index, dst_addrs,
                                transfer_config.dst_cluster_id, 0, 0, PushType.NO_CACHE_KEY.value, src_layer_index, 2)
         else:
-            if isinstance(transfer_config.cache_key, BlocksCacheKey):
+            if check_type(transfer_config.cache_key, BlocksCacheKey):
                 transfer_config = (self._cache_id, 0, src_layer_index, [], transfer_config.cache_key.cluster_id,
                                    transfer_config.cache_key.model_id, 0, PushType.BLOCKS_CACHE_KEY.value,
                                    dst_layer_idx, 2)
-            elif isinstance(transfer_config.cache_key, CacheKeyByIdAndIndex):
+            elif check_type(transfer_config.cache_key, CacheKeyByIdAndIndex):
                 transfer_config = (self._cache_id, transfer_config.src_batch_index, src_layer_index, [],
                                    transfer_config.cache_key.cluster_id, transfer_config.cache_key.cache_id,
                                    transfer_config.cache_key.batch_index, PushType.CACHE_KEY_BY_ID.value,
@@ -230,7 +230,7 @@ class TransferCacheJob:
             transfer_config.src_layer_range, self._num_layers)
         num_tensors_to_transfer = ((transfer_config.src_layer_range.stop - transfer_config.src_layer_range.start)
                                    * _NUM_TENSORS_PER_LAYER)
-        if isinstance(transfer_config, TransferConfig):
+        if check_type(transfer_config, TransferConfig):
             raise_if_false(len(transfer_config.dst_addrs) == num_tensors_to_transfer,
                            "expect {0} dst_addrs, but len(dst_addrs) = {1}, range = {2}",
                            num_tensors_to_transfer, len(transfer_config.dst_addrs), transfer_config.src_layer_range)

@@ -14,7 +14,7 @@ from typing import List, Optional, Tuple, Union, Dict
 
 from llm_datadist.status import handle_llm_status, raise_if_false, raise_if_true
 from llm_datadist.utils import log
-from llm_datadist.utils.utils import check_isinstance, check_dict, check_uint32, check_int64, check_uint64
+from llm_datadist.utils.utils import check_isinstance, check_dict, check_uint32, check_int64, check_uint64, check_type
 from llm_datadist.v2.llm_types import CacheDesc, Cache, CacheKey, CacheKeyByIdAndIndex, BlocksCacheKey, Placement, \
     TransferConfig, CacheTask, LayerSynchronizer, TransferWithCacheKeyConfig, PushType, check_layer_range, MemInfo, \
     Memtype
@@ -241,15 +241,15 @@ class CacheManager(object):
         raise_if_false(tensor_num_per_layer > 0,
                        '[pull_blocks] param check failed, tensor_num_per_layer ({0}) is invalid, should [1, {1}]',
                        tensor_num_per_layer, dst_cache.cache_desc.num_tensors)
-        if isinstance(src_cache_key, BlocksCacheKey):
+        if check_type(src_cache_key, BlocksCacheKey):
             raise_if_false(len(src_blocks) > 0, "src_blocks can not be empty.")
             packed_cache_key = pack_block_cache_key(src_cache_key)
         else:
-            if isinstance(src_cache_key, CacheKey):
+            if check_type(src_cache_key, CacheKey):
                 CacheManager.check_cache_key(src_cache_key)
             raise_if_false(len(src_blocks) == 0,
                            "src_blocks should be empty when src_cache_key is not instance of BlocksCacheKey.")
-            packed_cache_key = pack_cache_key(src_cache_key) if isinstance(src_cache_key, CacheKey) \
+            packed_cache_key = pack_cache_key(src_cache_key) if check_type(src_cache_key, CacheKey) \
                 else pack_cache_key_by_id(src_cache_key)
 
         log.info('[pull_blocks] start, target cache_id = %d, cache_key = %s, '
@@ -296,7 +296,7 @@ class CacheManager(object):
         raise_if_false(tensor_num_per_layer > 0,
                        '[pull_cache] param check failed, tensor_num_per_layer ({0}) is invalid, should [1, {1}]',
                        tensor_num_per_layer, cache.cache_desc.num_tensors)
-        if isinstance(cache_key, CacheKey):
+        if check_type(cache_key, CacheKey):
             CacheManager.check_cache_key(cache_key)
             packed_cache_key = pack_cache_key(cache_key)
         else:
@@ -405,15 +405,15 @@ class CacheManager(object):
         Args:
             mem_infos: Union[MemInfo, list[MemInfo]]
         """
-        raise_if_false(isinstance(mem_infos, list) or isinstance(mem_infos, MemInfo),
+        raise_if_false(check_type(mem_infos, list) or check_type(mem_infos, MemInfo),
                        f"mem_infos type only support list of MemInfo or MemInfo, but got {format(type(mem_infos))}.")
-        if not isinstance(mem_infos, list):
+        if not check_type(mem_infos, list):
             mem_info_list = [mem_infos]
         else:
             mem_info_list = mem_infos
 
         for i, mem_info in enumerate(mem_info_list):
-            raise_if_false(isinstance(mem_info, MemInfo),
+            raise_if_false(check_type(mem_info, MemInfo),
                            f"mem_infos[{i}] type only support MemInfo, but got {format(type(mem_info))}.")
             raise_if_false(mem_info.mem_type == Memtype.MEM_TYPE_DEVICE,
                            f'check mem_info.mem_type failed, only support Memtype.MEM_TYPE_DEVICE, index={i}.')
