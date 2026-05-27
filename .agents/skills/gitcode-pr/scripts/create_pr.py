@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# ----------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# ----------------------------------------------------------------------------
 """
 使用 GitCode API 创建 Pull Request
 
@@ -9,10 +19,13 @@
     python create_pr.py --title "PR标题" --head "user:branch" --base "develop" --body "完整描述"
 """
 
-import requests
-import sys
-import os
 import argparse
+import os
+import sys
+from dataclasses import dataclass
+from typing import Optional
+
+import requests
 
 
 def load_pr_template(template_path=None):
@@ -27,30 +40,26 @@ def load_pr_template(template_path=None):
     return None
 
 
-def create_pull_request(
-    owner,
-    repo,
-    title,
-    head,
-    base,
-    token,
-    body=None,
-    issue=None,
-    description=None,
-):
+@dataclass
+class PRConfig:
+    """Pull Request 配置参数"""
+    owner: str
+    repo: str
+    title: str
+    head: str
+    base: str
+    token: str
+    body: Optional[str] = None
+    issue: Optional[str] = None
+    description: Optional[str] = None
+
+
+def create_pull_request(config: PRConfig):
     """
     创建 Pull Request
 
     Args:
-        owner: 仓库所有者
-        repo: 仓库名称
-        title: PR 标题
-        head: 源分支 (格式: "username:branch")
-        base: 目标分支
-        token: GitCode 访问令牌
-        body: PR 描述完整内容
-        issue: 关联的 issue 编号 (如 "#32")
-        description: PR 描述摘要 (用于填充模板)
+        config: PR 配置参数
 
     Returns:
         PR 信息字典，失败返回 None
@@ -60,38 +69,39 @@ def create_pull_request(
     base_url = "https://gitcode.com/api/v5"
 
     # 处理 body 参数
+    body = config.body
     if body is None:
-        if issue and description:
+        if config.issue and config.description:
             # 使用模板
             template = load_pr_template()
             if template:
-                body = template.replace('{{issue}}', issue).replace('{{description}}', description)
+                body = template.replace('{{issue}}', config.issue).replace('{{description}}', config.description)
         else:
             body = ""
 
     # PR 信息
     pr_data = {
-        "title": title,
-        "head": head,
-        "base": base,
+        "title": config.title,
+        "head": config.head,
+        "base": config.base,
         "body": body
     }
 
     print("正在创建 Pull Request...")
-    print(f"目标仓库: {owner}/{repo}")
-    print(f"源分支: {head}")
-    print(f"目标分支: {base}")
+    print(f"目标仓库: {config.owner}/{config.repo}")
+    print(f"源分支: {config.head}")
+    print(f"目标分支: {config.base}")
     print("-" * 50)
 
     # 设置请求头
     headers = {
-        'Authorization': f'Bearer {token}',
+        'Authorization': f'Bearer {config.token}',
         'Content-Type': 'application/json',
         'Accept': 'application/json'
     }
 
     try:
-        url = f"{base_url}/repos/{owner}/{repo}/pulls"
+        url = f"{base_url}/repos/{config.owner}/{config.repo}/pulls"
         response = requests.post(url, headers=headers, json=pr_data, timeout=30)
 
         # GitCode API 返回 200 也表示成功
@@ -127,7 +137,7 @@ def main():
 
     args = parser.parse_args()
 
-    result = create_pull_request(
+    config = PRConfig(
         owner=args.owner,
         repo=args.repo,
         title=args.title,
@@ -138,6 +148,8 @@ def main():
         description=args.description or "",
         token=args.token
     )
+
+    result = create_pull_request(config)
 
     if result:
         print("\n" + "=" * 50)
