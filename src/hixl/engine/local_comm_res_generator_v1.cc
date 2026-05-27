@@ -61,9 +61,12 @@ constexpr const char *kPlanePg1 = "plane_pg_1";
 constexpr const char *kNetInstancePrefix = "superpod_";
 
 // 默认路径常量
-constexpr const char *kDefaultTopoDir = "/etc/";
-constexpr const char *kDefaultTopoSuffix = "noroce.json";
+constexpr const char *kDefaultTopoDir = "/usr/local/Ascend/driver/topo/950/";
 constexpr const char *kDefaultRoutePath = "/lib/route.conf";
+
+// topo 文件名前缀
+constexpr const char *kTopoPrefixAtlas950 = "atlas_950_";
+constexpr const char *kTopoPrefixAtlas850 = "atlas_850_";
 
 // Procfs 路径常量
 constexpr const char *kProcPathAscendUb = "/proc/ascend_ub";
@@ -100,38 +103,59 @@ struct EdgeCollectInput {
   const std::string &plane_pg_1_eid;
 };
 
-// 在 /etc/ 目录下模糊匹配以 noroce.json 结尾的文件，返回修改时间最新的一个
-std::string FindLatestTopoFile() {
-  DIR *dir = opendir(kDefaultTopoDir);
+// 根据 mainboard_id 获取产品形态对应的 topo 文件名前缀
+// Pod 产品（0x3/0x5/0x7）：atlas_950_
+// Server 产品（0x21-0x46）：atlas_850_
+bool MatchProductForm(uint32_t mainboard_id, std::string &topo_prefix) {
+  if (mainboard_id == kMainboardIdPod1 || mainboard_id == kMainboardIdPod2 || mainboard_id == kMainboardIdPod3) {
+    topo_prefix = kTopoPrefixAtlas950;
+    return true;
+  }
+  if (mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax2) {
+    topo_prefix = kTopoPrefixAtlas850;
+    return true;
+  }
+  return false;
+}
+
+// 在指定目录下查找匹配产品形态的 topo 文件
+std::string FindTopoFileByMainboardId(const std::string &topo_dir, uint32_t mainboard_id) {
+  std::string topo_prefix;
+  if (!MatchProductForm(mainboard_id, topo_prefix)) {
+    HIXL_LOGW("Unknown product form for mainboard_id=0x%x", mainboard_id);
+    return "";
+  }
+  HIXL_LOGI("mainboard_id=0x%x, topo_prefix=%s", mainboard_id, topo_prefix.c_str());
+
+  DIR *dir = opendir(topo_dir.c_str());
   if (dir == nullptr) {
-    HIXL_LOGW("Failed to open /etc/ for topo file scan");
+    HIXL_LOGW("Failed to open topo dir: %s", topo_dir.c_str());
     return "";
   }
 
-  std::string latest_file;
-  time_t latest_mtime = 0;
+  std::string matched_file;
   struct dirent *entry = nullptr;
   while ((entry = readdir(dir)) != nullptr) {
     std::string name(entry->d_name);
-    if (name.size() < std::strlen(kDefaultTopoSuffix)) {
+    // 必须以 .json 结尾
+    if (name.size() < 5 || name.compare(name.size() - 5, 5, ".json") != 0) {
       continue;
     }
-    if (name.compare(name.size() - std::strlen(kDefaultTopoSuffix), std::strlen(kDefaultTopoSuffix),
-                     kDefaultTopoSuffix) != 0) {
+    // 必须匹配产品形态前缀
+    if (name.compare(0, topo_prefix.size(), topo_prefix) != 0) {
       continue;
     }
-
-    std::string full_path = std::string(kDefaultTopoDir) + name;
-    struct stat st;
-    if (stat(full_path.c_str(), &st) == 0) {
-      if (st.st_mtime > latest_mtime) {
-        latest_mtime = st.st_mtime;
-        latest_file = full_path;
-      }
-    }
+    matched_file = topo_dir + name;
+    break;  // 取第一个匹配的文件
   }
   closedir(dir);
-  return latest_file;
+
+  if (matched_file.empty()) {
+    HIXL_LOGW("No topo file matching '%s*.json' in %s", topo_prefix.c_str(), topo_dir.c_str());
+  } else {
+    HIXL_LOGI("Matched topo file: %s", matched_file.c_str());
+  }
+  return matched_file;
 }
 
 // 检查指定路径的文件是否存在
@@ -930,10 +954,15 @@ void CollectAllEdges(const EdgeCollectInput &input, std::vector<EndpointConfig> 
 }
 
 int32_t GenerateLocalCommRes(int32_t phy_dev_id, LocalCommRes &local_comm_res) {
-  // 1. 使用默认路径
-  std::string topo_path = FindLatestTopoFile();
+  // 1. 获取 mainboard_id，根据产品形态选择 topo 文件
+  uint32_t mainboard_id = 0;
+  int32_t ret = GetMainboardId(phy_dev_id, mainboard_id);
+  if (ret != SUCCESS) {
+    return ret;
+  }
+  std::string topo_path = FindTopoFileByMainboardId(kDefaultTopoDir, mainboard_id);
   if (topo_path.empty()) {
-    HIXL_LOGE(PARAM_INVALID, "No topo file found in /etc/");
+    HIXL_LOGE(PARAM_INVALID, "No topo file found for mainboard_id=0x%x in %s", mainboard_id, kDefaultTopoDir);
     return PARAM_INVALID;
   }
   std::string route_path = kDefaultRoutePath;
