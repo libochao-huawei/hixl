@@ -36,6 +36,32 @@ namespace {
 using MockLocCommResMmpaStub = test::TestMmpaStub;
 using MockLocCommResAclRuntimeStub = endpoint_test::MockAclRuntimeStub;
 constexpr const char kHccnToolPath[] = "/usr/local/Ascend/driver/tools/hccn_tool";
+constexpr const char kEmptyPathDir[] = "/tmp/loc_comm_res_empty_path";
+
+class ScopedPathGuard {
+ public:
+  explicit ScopedPathGuard(const std::string &path) {
+    const char *old_path = std::getenv("PATH");
+    had_path_ = old_path != nullptr;
+    old_path_ = had_path_ ? old_path : "";
+    setenv("PATH", path.c_str(), 1);
+  }
+
+  ~ScopedPathGuard() {
+    if (had_path_) {
+      setenv("PATH", old_path_.c_str(), 1);
+    } else {
+      unsetenv("PATH");
+    }
+  }
+
+  ScopedPathGuard(const ScopedPathGuard &) = delete;
+  ScopedPathGuard &operator=(const ScopedPathGuard &) = delete;
+
+ private:
+  bool had_path_ = false;
+  std::string old_path_;
+};
 
 class UboeMmpaStub : public test::TestMmpaStub {
  public:
@@ -244,8 +270,8 @@ TEST_F(EndpointGeneratorUTest, BuildRoceEndpointSuccess) {
 TEST_F(EndpointGeneratorUTest, BuildRoceEndpointEmptyIpFailed) {
   mmpa_stub_->real_path_ok_ = false;
   mmpa_stub_->access_ok_ = false;
-  setenv("PATH", "/tmp/loc_comm_res_empty_path", 1);
-  mkdir("/tmp/loc_comm_res_empty_path", 0755);
+  mkdir(kEmptyPathDir, 0755);
+  ScopedPathGuard path_guard(kEmptyPathDir);
 
   EndpointGenerator::EndpointInfo endpoint{};
   EXPECT_EQ(EndpointGenerator::BuildRoceEndpoint(3, endpoint), FAILED);
@@ -524,6 +550,9 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsPrefersHixlOptionOver
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsEmptyLocalCommRes) {
+  mkdir(kEmptyPathDir, 0755);
+  ScopedPathGuard path_guard(kEmptyPathDir);
+
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_LOCAL_COMM_RES] = AscendString("");
 
