@@ -71,8 +71,9 @@ encoded_repo=$(printf '%s' "${owner}/${repo}" | jq -sRr @uri)
 | `scripts/gp-api-retry.sh` | API retry 重跑指定流水线（需传 content id） | ~1KB → ~3B | 默认 |
 | `scripts/gp-analyze-failure.sh` | 一键分析失败：自动穿透子流水线获取失败Job和日志 | 多次API调用 → 失败摘要 | 默认 |
 | `scripts/gp-retry.sh` | 评论触发CI + 自动轮询直到完成 | 多次轮询 → 最终结果 | 默认 |
+| `scripts/gp-wait.sh` | 循环轮询流水线状态直到完成 | 每 60 秒输出状态 | **60 分钟** |
 
-所有脚本兼容 Windows/Linux/Mac（依赖 bash + jq + curl）。**注意**：`gp-list.sh` 用于轮询流水线状态时需设置 20 分钟超时。
+所有脚本兼容 Windows/Linux/Mac（依赖 bash + jq + curl）。**注意**：`gp-wait.sh` 用于轮询流水线状态时需设置 60 分钟超时。
 
 ### 步骤 1：检查 PR Label（CI 通过状态的权威判断）
 
@@ -140,13 +141,13 @@ bash scripts/gp-trigger.sh <PR_NUMBER>
 
 ### 步骤 4：循环查询流水线状态
 
-每隔 60 秒执行一次 `gp-list.sh`，直到状态为 `success`、`failed` 或 `canceled`。
+使用 `gp-wait.sh` 脚本自动轮询，直到状态为 `success`、`failed` 或 `canceled`。
 
 **超时配置**：
-调用 `gp-list.sh` 脚本时，必须设置超时时间为 **20 分钟（1200000 ms）**，避免因流水线长时间运行导致 bash 命令超时中断。
+调用 `gp-wait.sh` 脚本时，必须设置超时时间为 **60 分钟（3600000 ms）**，避免因流水线长时间运行导致 bash 命令超时中断。
 
 ```bash
-bash scripts/gp-list.sh <PR_NUMBER>  # timeout: 1200000ms (20分钟)
+bash scripts/gp-wait.sh <PR_NUMBER>  # timeout: 3600000ms (60分钟)
 ```
 
 **轮询完成后反馈**：
