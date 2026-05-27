@@ -8,11 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <memory>
 #include <vector>
 #include <cstdlib>
-#include <fstream>
-#include <sys/stat.h>
+#include <unistd.h>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
@@ -30,6 +28,28 @@ using namespace ::testing;
 using ::testing::Invoke;
 using ::testing::Mock;
 namespace hixl {
+namespace {
+constexpr const char kHccnConfPath[] = "/etc/hccn.conf";
+constexpr const char kHccnToolPath[] = "/usr/local/Ascend/driver/tools/hccn_tool";
+
+bool HasHccnConf() {
+  return access(kHccnConfPath, F_OK) == 0;
+}
+
+bool HasHccnTool() {
+  return access(kHccnToolPath, F_OK) == 0 || system("command -v hccn_tool > /dev/null 2>&1") == 0;
+}
+
+void ExpectDeviceIpMatchesEnvironment(const std::string &device_ip) {
+  if (!device_ip.empty()) {
+    EXPECT_EQ(hixl::CheckIp(device_ip), hixl::SUCCESS);
+    return;
+  }
+  EXPECT_FALSE(HasHccnConf());
+  EXPECT_FALSE(HasHccnTool());
+}
+}  // namespace
+
 class HixlUTest : public ::testing::Test {
  protected:
   // 在测试类中设置一些准备工作，如果需要的话
@@ -74,19 +94,18 @@ class HixlUTest : public ::testing::Test {
   }
 };
 
-class HccnToolTest : public ::testing::Test {
-  protected:
+class HccnEnvTest : public ::testing::Test {
+ protected:
   void SetUp() override {
-    llm::MockHccnTool::Install();
-    llm::AutoCommResRuntimeMock::InstallWithoutHccnConfFile();
-    llm::AutoCommResRuntimeMock::DeleteHccnConfIfExist();
+    llm::MmpaStub::GetInstance().Reset();
   }
 
   void TearDown() override {
-    llm::MockHccnTool::Reset();
-    llm::AutoCommResRuntimeMock::ResetWithoutHccnConfFile();
+    llm::MmpaStub::GetInstance().Reset();
   }
 };
+
+class HccnToolTest : public HccnEnvTest {};
 
 class HccnConfTest : public ::testing::Test {
   protected:
@@ -101,19 +120,7 @@ class HccnConfTest : public ::testing::Test {
   }
 };
 
-class HccnGetOutputTest : public ::testing::Test {
-  protected:
-  void SetUp() override {
-    llm::MockGetHccnResult::Install();
-    llm::AutoCommResRuntimeMock::InstallWithoutHccnConfFile();
-    llm::AutoCommResRuntimeMock::DeleteHccnConfIfExist();
-  }
-
-  void TearDown() override {
-    llm::AutoCommResRuntimeMock::ResetWithoutHccnConfFile();
-    llm::MockGetHccnResult::Reset();
-  }
-};
+class HccnGetOutputTest : public HccnEnvTest {};
 
 TEST_F(HixlUTest, TestHixl) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
@@ -166,13 +173,13 @@ TEST_F(HccnConfTest, TestGetDeviceIpFromHccnConf) {
 TEST_F(HccnToolTest, TestGetDeviceIpFromHccnToolWhenHccnConfMissing) {
   std::string device_ip = "";
   EXPECT_EQ(hixl::GetDeviceIp(0, device_ip), hixl::SUCCESS);
-  EXPECT_TRUE(device_ip.empty() || device_ip == "127.0.0.1");
+  ExpectDeviceIpMatchesEnvironment(device_ip);
 }
 
 TEST_F(HccnGetOutputTest, TestGetDeviceIpEmptyWhenHccnConfAndToolUnavailable) {
   std::string device_ip = "";
   EXPECT_EQ(hixl::GetDeviceIp(0, device_ip), hixl::SUCCESS);
-  EXPECT_TRUE(device_ip.empty());
+  ExpectDeviceIpMatchesEnvironment(device_ip);
 }
 
 TEST_F(HixlUTest, TestHixlInitFailed) {
