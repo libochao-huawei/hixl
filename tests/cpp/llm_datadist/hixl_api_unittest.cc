@@ -11,8 +11,7 @@
 #include <memory>
 #include <vector>
 #include <cstdlib>
-#include <fstream>
-#include <sys/stat.h>
+#include <unistd.h>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
@@ -30,6 +29,48 @@ using namespace ::testing;
 using ::testing::Invoke;
 using ::testing::Mock;
 namespace hixl {
+namespace {
+class HccnToolPathGuard {
+ public:
+  explicit HccnToolPathGuard(const std::string &test_name)
+      : old_path_(getenv("PATH") == nullptr ? "" : getenv("PATH")),
+        temp_dir_template_("/tmp/hixl_api_unittest_" + test_name + "_XXXXXX") {
+  }
+
+  ~HccnToolPathGuard() {
+    RestorePath();
+    if (!temp_dir_.empty()) {
+      (void)rmdir(temp_dir_.c_str());
+    }
+  }
+
+  bool UseEmptyPath() {
+    if (temp_dir_.empty()) {
+      char *dir = mkdtemp(temp_dir_template_.data());
+      if (dir == nullptr) {
+        return false;
+      }
+      temp_dir_ = dir;
+    }
+    setenv("PATH", temp_dir_.c_str(), 1);
+    return true;
+  }
+
+ private:
+  void RestorePath() const {
+    if (old_path_.empty()) {
+      unsetenv("PATH");
+      return;
+    }
+    setenv("PATH", old_path_.c_str(), 1);
+  }
+
+  std::string old_path_;
+  std::string temp_dir_template_;
+  std::string temp_dir_;
+};
+}  // namespace
+
 class HixlUTest : public ::testing::Test {
  protected:
   // 在测试类中设置一些准备工作，如果需要的话
@@ -74,19 +115,26 @@ class HixlUTest : public ::testing::Test {
   }
 };
 
-class HccnToolTest : public ::testing::Test {
-  protected:
+class HccnToolUnavailableTest : public ::testing::Test {
+ protected:
   void SetUp() override {
-    llm::MockHccnTool::Install();
+    path_guard_ = std::make_unique<HccnToolPathGuard>("hccn_tool_unavailable");
+    ASSERT_TRUE(path_guard_->UseEmptyPath());
+    llm::MockGetHccnResult::Install();
     llm::AutoCommResRuntimeMock::InstallWithoutHccnConfFile();
     llm::AutoCommResRuntimeMock::DeleteHccnConfIfExist();
   }
 
   void TearDown() override {
-    llm::MockHccnTool::Reset();
     llm::AutoCommResRuntimeMock::ResetWithoutHccnConfFile();
+    llm::MockGetHccnResult::Reset();
+    path_guard_.reset();
   }
+
+  std::unique_ptr<HccnToolPathGuard> path_guard_;
 };
+
+class HccnToolTest : public HccnToolUnavailableTest {};
 
 class HccnConfTest : public ::testing::Test {
   protected:
@@ -101,19 +149,7 @@ class HccnConfTest : public ::testing::Test {
   }
 };
 
-class HccnGetOutputTest : public ::testing::Test {
-  protected:
-  void SetUp() override {
-    llm::MockGetHccnResult::Install();
-    llm::AutoCommResRuntimeMock::InstallWithoutHccnConfFile();
-    llm::AutoCommResRuntimeMock::DeleteHccnConfIfExist();
-  }
-
-  void TearDown() override {
-    llm::AutoCommResRuntimeMock::ResetWithoutHccnConfFile();
-    llm::MockGetHccnResult::Reset();
-  }
-};
+class HccnGetOutputTest : public HccnToolUnavailableTest {};
 
 TEST_F(HixlUTest, TestHixl) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
@@ -166,7 +202,7 @@ TEST_F(HccnConfTest, TestGetDeviceIpFromHccnConf) {
 TEST_F(HccnToolTest, TestGetDeviceIpFromHccnToolWhenHccnConfMissing) {
   std::string device_ip = "";
   EXPECT_EQ(hixl::GetDeviceIp(0, device_ip), hixl::SUCCESS);
-  EXPECT_TRUE(device_ip.empty() || device_ip == "127.0.0.1");
+  EXPECT_TRUE(device_ip.empty());
 }
 
 TEST_F(HccnGetOutputTest, TestGetDeviceIpEmptyWhenHccnConfAndToolUnavailable) {
