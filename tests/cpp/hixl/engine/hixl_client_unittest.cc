@@ -255,7 +255,12 @@ const std::string MockHixlServer::kRoceEndpointJson = R"({
       "dst_eid": "",
       "plane": "",
       "placement": "device",
-      "net_instance_id": "superpod1-1"
+      "net_instance_id": "superpod1-1",
+      "device_info": {
+        "phy_device_id": 12,
+        "super_device_id": -1,
+        "super_pod_id": -1
+      }
     })";
 
 const std::string MockHixlServer::kUbCtpHostEndpointJson = R"({
@@ -273,7 +278,12 @@ const std::string MockHixlServer::kUbCtpDeviceEndpointJson = R"({
       "dst_eid" : "000000000000000000000000c0a80763",
       "plane": "",
       "placement" : "device",
-      "net_instance_id" : "superpod1-1"
+      "net_instance_id" : "superpod1-1",
+      "device_info": {
+        "phy_device_id": 12,
+        "super_device_id": -1,
+        "super_pod_id": -1
+      }
     })";
 
 const std::string MockHixlServer::kUbCtpPlaneAEndpointJson = R"({
@@ -282,7 +292,12 @@ const std::string MockHixlServer::kUbCtpPlaneAEndpointJson = R"({
       "dst_eid": "",
       "plane" : "plane-a",
       "placement" : "device",
-      "net_instance_id" : "superpod1-1"
+      "net_instance_id" : "superpod1-1",
+      "device_info": {
+        "phy_device_id": 12,
+        "super_device_id": -1,
+        "super_pod_id": -1
+      }
     })";
 
 const std::string MockHixlServer::kUbTpPlaneBEndpointJson = R"({
@@ -416,6 +431,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.comm_id = "127.0.0.1";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -465,6 +481,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.dst_eid = "000000000000000000000000c0a80763";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -475,6 +492,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.plane = "plane-a";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -485,6 +503,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.plane = "plane-a";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -495,6 +514,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.plane = "plane-b";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -728,7 +748,6 @@ TEST_F(HixlClientUTest, Initialize4UBTest) {
   local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
   Status st = client_->Initialize(local_endpoint_list);
   EXPECT_EQ(st, SUCCESS);
-  EXPECT_TRUE(client_->has_local_device_client_);
 }
 
 // Initialize 接口测试：正常场景 创建 ub 链路2条
@@ -884,7 +903,6 @@ TEST_F(HixlClientUTest, InitializeHostOnlyDirectClientSkipsDeviceQueries) {
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
   EXPECT_EQ(acl_stub_->get_phy_device_call_count_, 0U);
-  EXPECT_FALSE(client_->has_local_device_client_);
   st = client_->Finalize();
   EXPECT_EQ(st, SUCCESS);
   server_->DestroyServerAndUnreg();

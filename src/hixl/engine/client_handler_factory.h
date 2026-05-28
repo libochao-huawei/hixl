@@ -26,8 +26,6 @@ struct HandlerCreateArgs {
   uint32_t server_port;
   uint8_t rdma_tc;
   uint8_t rdma_sl;
-  bool has_local_device_resource = false;
-  uint32_t local_dev_phy_id = 0;
 
   enum class HandlerType { DIRECT, UB };
   HandlerType handler_type;

@@ -47,11 +47,9 @@ class EndpointGenerator {
 
   static Status BuildEndpointListFromOptions(const std::map<AscendString, AscendString> &options,
                                              const std::string &local_engine,
-                                             std::string &local_comm_res,
                                              std::vector<EndpointConfig> &endpoint_list);
   static Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config,
-                                      EndpointDesc &endpoint,
-                                      uint32_t dev_phy_id = 0);
+                                      EndpointDesc &endpoint);
   static Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str);
   static Status DeserializeEndpointConfigList(const std::string &json_str,
                                               std::vector<EndpointConfig> &endpoint_list);
@@ -86,17 +84,15 @@ class EndpointGenerator {
   static Status ParseEndpointListFromLocalCommRes(const std::map<AscendString, AscendString> &options,
                                                   std::string &local_comm_res,
                                                   std::vector<EndpointConfig> &endpoint_list);
-  static Status GenEndpointFromProtocolDesc(const std::map<AscendString, AscendString> &options,
-                                            std::vector<EndpointConfig> &endpoint_list);
-  static Status BuildEndpointListFromLocalCommRes(const nlohmann::json &config,
-                                                  const std::string &local_engine,
-                                                  std::vector<EndpointConfig> &endpoint_list,
-                                                  LocalRuntimeContext &runtime_ctx,
-                                                  bool &runtime_ctx_resolved);
+  static Status AutoGenerateEndpointList(const std::map<AscendString, AscendString> &options,
+                                         const std::string &local_engine,
+                                         std::vector<EndpointConfig> &endpoint_list);
+  static Status GenerateEndpointList(const LocalDeviceResource &resource, const std::string &local_engine,
+                                     std::vector<EndpointConfig> &endpoint_list);
   static Status ParseLocalCommRes(const nlohmann::json &config, std::vector<EndpointConfig> &endpoint_list);
   static Status QueryLocalDeviceCount(uint32_t &count);
   static Status QueryLocalDeviceResource(LocalDeviceResource &resource);
-  static Status FillDeviceInfoIfNeeded(const LocalDeviceResource &resource, std::vector<EndpointConfig> &endpoint_list);
+  static Status FillDeviceInfo(const LocalDeviceResource &resource, std::vector<EndpointConfig> &endpoint_list);
   static Status BuildEndpointList(int32_t phy_device_id, std::vector<EndpointInfo> &endpoint_list);
   static Status BuildRoceEndpoint(int32_t phy_device_id, EndpointInfo &endpoint);
   static Status BuildHccsEndpoint(int32_t phy_device_id, EndpointInfo &endpoint);
