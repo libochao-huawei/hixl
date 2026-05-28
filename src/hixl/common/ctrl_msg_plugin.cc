@@ -26,6 +26,7 @@ constexpr int32_t kKeepAlive = 1;  // 启用 keepalive 机制
 constexpr int32_t kTcpKeepIdle = 60;  // 连接空闲 60 秒后开始发送 keepalive 探测包
 constexpr int32_t kTcpKeepIntvl = 10;  // keepalive 探测包发送间隔
 constexpr int32_t kTcpKeepCnt = 6;  // 连续 6 次探测失败后认为连接断开
+constexpr Status kNoNeedRetry = 2U;
 }  // namespace
 void CtrlMsgPlugin::Initialize() {
   (void) std::signal(SIGPIPE, SIG_IGN);
@@ -246,6 +247,10 @@ Status CtrlMsgPlugin::Send(int32_t fd, const void *buf, size_t len) {
       HIXL_LOGI("Socket write need to eagain");
       continue;
     } else if (rc <= 0) {
+      if (errno == EPIPE || errno == EBADF) {
+        HIXL_LOGW("Socket write broken pipe/bad fd, errno:%d", errno);
+        return kNoNeedRetry;
+      }
       HIXL_LOGE(FAILED, "Socket write failed, error msg:%s, errno:%d", strerror(errno), errno);
       return FAILED;
     }

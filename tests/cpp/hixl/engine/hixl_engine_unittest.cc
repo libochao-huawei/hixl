@@ -14,6 +14,7 @@
 #include <thread>
 #include <gtest/gtest.h>
 #include <sys/socket.h>
+#include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include "ascendcl_stub.h"
@@ -22,6 +23,7 @@
 #include "engine/hixl_engine.h"
 #undef private
 #include "hixl/hixl_types.h"
+#include "common/ctrl_msg_plugin.h"
 #include "cs/hixl_cs_client.h"
 #include "hixl/hixl.h"
 #include "slog_stub.h"
@@ -952,5 +954,103 @@ TEST_F(HixlEngineTest, TestInitializeAutoGenerateForV3FillsDeviceInfo) {
   EXPECT_EQ(hccs_ep.device_info.super_pod_id, 67);
 
   engine.Finalize();
+}
+
+class MockClientHandler : public IClientHandler {
+ public:
+  Status Connect(uint32_t) override { return SUCCESS; }
+  Status RegisterMem(const MemInfo &) override { return SUCCESS; }
+  Status TransferAsync(const std::vector<TransferOpDesc> &, TransferOp, TransferReq &) override { return SUCCESS; }
+  Status TransferSync(const std::vector<TransferOpDesc> &, TransferOp, uint32_t) override { return SUCCESS; }
+  Status GetTransferStatus(const TransferReq &, TransferStatus &) override { return SUCCESS; }
+  Status Finalize() override { return SUCCESS; }
+};
+
+static ClientPtr CreateMockClient() {
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16000";
+  auto client = std::make_shared<HixlClient>("127.0.0.1", 16000, config);
+  auto handler = std::make_unique<MockClientHandler>();
+  client->client_handler_ = std::move(handler);
+  client->is_connected_ = true;
+  return client;
+}
+
+static bool AttachClosedCtrlSocket(const ClientPtr &client) {
+  int32_t fds[2] = {-1, -1};
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, fds) != 0) {
+    return false;
+  }
+  client->ctrl_socket_ = fds[0];
+  close(fds[1]);
+  return true;
+}
+
+TEST(ClientManagerTest, HeartbeatInitializeStartsAndStopsThread) {
+  ClientManager manager;
+  EXPECT_EQ(manager.Initialize(true), SUCCESS);
+  EXPECT_TRUE(manager.heartbeat_sender_.joinable());
+  EXPECT_EQ(manager.Finalize(), SUCCESS);
+}
+
+TEST(ClientManagerTest, HeartbeatSendNoRetryStopsHeartbeat) {
+  ClientManager manager;
+  EXPECT_EQ(manager.Initialize(false), SUCCESS);
+
+  CtrlMsgPlugin::Initialize();
+  auto client = CreateMockClient();
+  ASSERT_TRUE(AttachClosedCtrlSocket(client));
+  manager.clients_["127.0.0.1:16000"] = client;
+
+  manager.SendHeartbeats();
+
+  EXPECT_TRUE(client->heartbeat_stopped_.load());
+  EXPECT_EQ(manager.Finalize(), SUCCESS);
+}
+
+TEST(ClientManagerTest, HeartbeatTransientFailureNoDestroy) {
+  ClientManager manager;
+  EXPECT_EQ(manager.Initialize(false), SUCCESS);
+
+  auto client = CreateMockClient();
+  manager.clients_["127.0.0.1:16000"] = client;
+
+  manager.SendHeartbeats();
+
+  EXPECT_FALSE(client->heartbeat_stopped_.load());
+  EXPECT_NE(manager.GetClient("127.0.0.1:16000"), nullptr);
+  EXPECT_EQ(manager.Finalize(), SUCCESS);
+}
+
+TEST(ClientManagerTest, HeartbeatNoRetryAutoConnectDestroysClient) {
+  ClientManager manager;
+  EXPECT_EQ(manager.Initialize(true), SUCCESS);
+
+  CtrlMsgPlugin::Initialize();
+  auto client = CreateMockClient();
+  ASSERT_TRUE(AttachClosedCtrlSocket(client));
+  manager.clients_["127.0.0.1:16000"] = client;
+
+  manager.SendHeartbeats();
+
+  EXPECT_TRUE(client->heartbeat_stopped_.load());
+  EXPECT_EQ(manager.GetClient("127.0.0.1:16000"), nullptr);
+  EXPECT_EQ(manager.Finalize(), SUCCESS);
+}
+
+TEST(ClientManagerTest, HeartbeatNoRetryNoAutoConnectKeepsClient) {
+  ClientManager manager;
+  EXPECT_EQ(manager.Initialize(false), SUCCESS);
+
+  CtrlMsgPlugin::Initialize();
+  auto client = CreateMockClient();
+  ASSERT_TRUE(AttachClosedCtrlSocket(client));
+  manager.clients_["127.0.0.1:16000"] = client;
+
+  manager.SendHeartbeats();
+
+  EXPECT_TRUE(client->heartbeat_stopped_.load());
+  EXPECT_NE(manager.GetClient("127.0.0.1:16000"), nullptr);
+  EXPECT_EQ(manager.Finalize(), SUCCESS);
 }
 }  // namespace hixl

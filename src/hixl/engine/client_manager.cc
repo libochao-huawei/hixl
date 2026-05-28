@@ -15,6 +15,21 @@
 #include "client_manager.h"
 
 namespace hixl {
+
+Status ClientManager::Initialize(bool auto_connect) {
+  auto_connect_ = auto_connect;
+  stop_signal_.store(false);
+  heartbeat_sender_ = std::thread([this]() {
+    std::unique_lock<std::mutex> lock(cv_mutex_);
+    while (!stop_signal_.load()) {
+      SendHeartbeats();
+      cv_.wait_for(lock, std::chrono::milliseconds(kHeartbeatIntervalMs),
+                   [this] { return stop_signal_.load(); });
+    }
+  });
+  return SUCCESS;
+}
+
 Status ClientManager::CreateClient(const ClientConfig &config, ClientPtr &client_ptr) {
   std::string ip;
   int32_t port = 0;
@@ -40,14 +55,17 @@ ClientPtr ClientManager::GetClient(const std::string &remote_engine) {
 
 Status ClientManager::DestroyClient(const std::string &remote_engine) {
   auto ret = NOT_CONNECTED;
-  std::lock_guard<std::mutex> lock(mutex_);
-  const auto &it = clients_.find(remote_engine);
-  if (it != clients_.end()) {
-    auto client = it->second;
-    ret = client->Finalize();
-    clients_.erase(it);
-    HIXL_LOGI("Destroy client end, remote_engine=%s", remote_engine.c_str());
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto &it = clients_.find(remote_engine);
+    if (it != clients_.end()) {
+      auto client = it->second;
+      ret = client->Finalize();
+      clients_.erase(it);
+      HIXL_LOGI("Destroy client end, remote_engine=%s", remote_engine.c_str());
+    }
   }
+  DestroyClientMutex(remote_engine);
   return ret;
 }
 
@@ -75,7 +93,40 @@ bool ClientManager::IsEmpty() {
   return clients_.empty();
 }
 
+void ClientManager::SendHeartbeats() {
+  std::map<std::string, ClientPtr> clients_copy;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    clients_copy = clients_;
+  }
+
+  std::vector<std::string> dead_clients;
+  for (const auto &[name, client] : clients_copy) {
+    bool need_retry = true;
+    Status ret = client->SendHeartbeat(need_retry);
+    if (ret == SUCCESS && !need_retry) {
+      client->StopHeartbeat();
+      HIXL_LOGW("Heartbeat broken pipe for remote_engine:%s, heartbeat stopped", name.c_str());
+      dead_clients.push_back(name);
+    } else if (ret != SUCCESS) {
+      HIXL_LOGW("Heartbeat send failed for remote_engine:%s, ret:%u", name.c_str(), static_cast<uint32_t>(ret));
+    }
+  }
+
+  if (auto_connect_) {
+    for (const auto &name : dead_clients) {
+      HIXL_LOGI("Heartbeat broken pipe, destroying client for auto reconnect: %s", name.c_str());
+      (void)DestroyClient(name);
+    }
+  }
+}
+
 Status ClientManager::Finalize() {
+  stop_signal_.store(true);
+  cv_.notify_all();
+  if (heartbeat_sender_.joinable()) {
+    heartbeat_sender_.join();
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   for (auto &it : clients_) {
     if (it.second->Finalize() != SUCCESS) {

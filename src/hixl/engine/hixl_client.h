@@ -38,7 +38,7 @@ class HixlClient {
    * @param [in] server_ip  服务端监听 IPv4 地址
    * @param [in] server_port  服务端监听端口号
    */
-  HixlClient(const std::string &server_ip, uint32_t server_port, const ClientConfig &config)
+   HixlClient(const std::string &server_ip, uint32_t server_port, const ClientConfig &config)
       : server_ip_(server_ip), server_port_(server_port), rdma_tc_(config.rdma_tc), rdma_sl_(config.rdma_sl) {}
   ~HixlClient() = default;
 
@@ -97,11 +97,16 @@ class HixlClient {
 
   Status SendNotify(const NotifyDesc &notify, int32_t timeout_ms);
 
+  Status SendHeartbeat(bool &need_retry);
+
+  void StopHeartbeat();
+
  private:
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const;
   void WaitBatchCsSyncInflightDrain();
   Status RecvNotifyAck(int32_t fd, int32_t timeout_ms);
+  void CloseCtrlSocketLocked();
 
   std::string server_ip_;
   uint32_t server_port_;
@@ -112,7 +117,10 @@ class HixlClient {
   bool finalize_pending_{
       false};  // Finalize 置位后拒绝新 TransferSync；在析构 CS client 前等待为 0（与 TransferSync 内 fetch_add 配对）
   std::atomic<int> batch_cs_sync_inflight_{0};
+  std::atomic<bool> heartbeat_stopped_{false};
+  int32_t ctrl_socket_{-1};
   std::unique_ptr<IClientHandler> client_handler_;
+  std::mutex ctrl_socket_mutex_;
   std::mutex status_mutex_;  // 保护 is_connected_、is_finalized_、finalize_pending_；TransferSync 与 Finalize 在此与
                              // inflight 配对
 };

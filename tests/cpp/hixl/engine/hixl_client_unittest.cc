@@ -16,6 +16,8 @@
 #include <chrono>
 #include <fstream>
 #include <cstdio>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "cs/hixl_cs.h"
@@ -1168,6 +1170,81 @@ TEST_F(HixlClientUTest, EndpointMatcherAllDstEidNonEmptyTest) {
   std::vector<EndpointConfig> local = {MakeUbEp("l1_eid", "remote_1", "device"),
                                        MakeUbEp("l2_eid", "remote_2", "host")};
   MatchAndVerify(local, remote, 2U, HandlerCreateArgs::HandlerType::UB);
+}
+
+TEST_F(HixlClientUTest, SendHeartbeatWritesControlSocket) {
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16001";
+  HixlClient client("127.0.0.1", kServerPort, config);
+  int32_t fds[2] = {-1, -1};
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+  client.ctrl_socket_ = fds[0];
+
+  bool need_retry = true;
+  Status ret = client.SendHeartbeat(need_retry);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_TRUE(need_retry);
+
+  CtrlMsgHeader header{};
+  ASSERT_EQ(read(fds[1], &header, sizeof(header)), static_cast<ssize_t>(sizeof(header)));
+  EXPECT_EQ(header.magic, kMagicNumber);
+  EXPECT_EQ(header.body_size, sizeof(CtrlMsgType));
+  CtrlMsgType msg_type{};
+  ASSERT_EQ(read(fds[1], &msg_type, sizeof(msg_type)), static_cast<ssize_t>(sizeof(msg_type)));
+  EXPECT_EQ(msg_type, CtrlMsgType::kHeartBeat);
+
+  EXPECT_EQ(client.Finalize(), SUCCESS);
+  close(fds[1]);
+}
+
+TEST_F(HixlClientUTest, SendHeartbeatBrokenPipeReturnsNoRetry) {
+  CtrlMsgPlugin::Initialize();
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16001";
+  HixlClient client("127.0.0.1", kServerPort, config);
+  int32_t fds[2] = {-1, -1};
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+  client.ctrl_socket_ = fds[0];
+  close(fds[1]);
+
+  bool need_retry = true;
+  Status ret = client.SendHeartbeat(need_retry);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_FALSE(need_retry);
+  EXPECT_EQ(client.ctrl_socket_, -1);
+}
+
+TEST_F(HixlClientUTest, SendHeartbeatInvalidControlSocketFails) {
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16001";
+  HixlClient client("127.0.0.1", kServerPort, config);
+
+  bool need_retry = true;
+  Status ret = client.SendHeartbeat(need_retry);
+  EXPECT_EQ(ret, FAILED);
+  EXPECT_TRUE(need_retry);
+}
+
+TEST_F(HixlClientUTest, SendHeartbeatReturnsNoRetryAfterStop) {
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16001";
+  HixlClient client("127.0.0.1", kServerPort, config);
+
+  client.StopHeartbeat();
+  bool need_retry = true;
+  Status ret = client.SendHeartbeat(need_retry);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_FALSE(need_retry);
+}
+
+TEST_F(HixlClientUTest, StopHeartbeatSetsFlag) {
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16001";
+  HixlClient client("127.0.0.1", kServerPort, config);
+
+  EXPECT_FALSE(client.heartbeat_stopped_.load());
+  client.StopHeartbeat();
+  EXPECT_TRUE(client.heartbeat_stopped_.load());
 }
 
 }  // namespace hixl

@@ -14,6 +14,8 @@
 #include <chrono>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "cs/hixl_cs.h"
@@ -21,6 +23,9 @@
 #include "common/ctrl_msg.h"
 #include "common/ctrl_msg_plugin.h"
 #include "slog_stub.h"
+#define private public
+#include "cs/hixl_cs_server.h"
+#undef private
 
 using namespace std;
 using namespace ::testing;
@@ -28,6 +33,10 @@ using ::testing::Invoke;
 using ::testing::Mock;
 
 namespace hixl {
+namespace {
+constexpr Status kNoNeedRetry = 2U;
+}  // namespace
+
 static constexpr uint32_t kPort = 16000;
 static constexpr uint32_t kEpAddrId0 = 1U;
 static constexpr uint32_t kEpAddrId1 = 2U;
@@ -301,5 +310,40 @@ TEST_F(HixlCSTest, TestHixlCSServerDisconnectionCleanup) {
 TEST_F(HixlCSTest, TestStructSize) {
   EXPECT_EQ(sizeof(HixlClientDesc), 128) << "HixlClientDesc size should be 128 bytes";
   EXPECT_EQ(sizeof(HixlServerDesc), 128) << "HixlServerDesc size should be 128 bytes";
+}
+
+TEST_F(HixlCSTest, HeartbeatProcessorRegistered) {
+  HixlServerConfig config{};
+  HixlServerHandle server_handle = nullptr;
+  HixlServerDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = kPort + 1;
+  desc.endpoint_list = &default_eps[0];
+  desc.endpoint_list_num = default_eps.size();
+  auto ret = HixlCSServerCreate(&desc, &config, &server_handle);
+  EXPECT_EQ(ret, SUCCESS);
+
+  auto *server = static_cast<HixlCSServer *>(server_handle);
+  auto it = server->msg_handler_.processors_.find(CtrlMsgType::kHeartBeat);
+  ASSERT_NE(it, server->msg_handler_.processors_.end());
+
+  EXPECT_EQ(it->second(0, nullptr, 0), SUCCESS);
+
+  ret = HixlCSServerDestroy(server_handle);
+  EXPECT_EQ(ret, SUCCESS);
+}
+
+TEST_F(HixlCSTest, CtrlMsgPluginSendEpipe) {
+  int fds[2];
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+  close(fds[1]);
+
+  CtrlMsgHeader header{};
+  header.magic = kMagicNumber;
+  header.body_size = sizeof(CtrlMsgType);
+  Status ret = CtrlMsgPlugin::Send(fds[0], &header, sizeof(header));
+  EXPECT_EQ(ret, kNoNeedRetry);
+
+  close(fds[0]);
 }
 }  // namespace hixl

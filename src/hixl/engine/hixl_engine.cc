@@ -60,6 +60,8 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
   HIXL_CHK_STATUS_RET(InitServer(),
                       "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
                       local_engine_.c_str(), local_comm_res.c_str());
+  HIXL_CHK_STATUS_RET(client_manager_.Initialize(auto_connect_),
+                      "[HixlEngine] Failed to initialize client manager");
   is_initialized_ = true;
   HIXL_LOGI("[HixlEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
   return SUCCESS;
