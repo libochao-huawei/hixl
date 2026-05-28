@@ -27,8 +27,10 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <cerrno>
 #include <set>
 #include <dirent.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include "common/hixl_log.h"
@@ -173,12 +175,6 @@ std::string FindTopoFileByMainboardId(const std::string &topo_dir, uint32_t main
   return matched_file;
 }
 
-// 检查指定路径的文件是否存在
-bool IsFileExists(const std::string &path) {
-  struct stat st;
-  return (stat(path.c_str(), &st) == 0);
-}
-
 // 查找可用的 proc 基路径（ascend_ub 或 asdrv_ub）
 std::string FindProcBasePath() {
   if (IsFileExists(std::string(kProcPathAscendUb) + "/" + kProcDevIdFile)) {
@@ -202,14 +198,24 @@ bool ReadFileToString(const std::string &path, std::string &content) {
   return true;
 }
 
-// 写入字符串到文件
+// 写入字符串到文件（使用低级 I/O，确保 procfs 写入生效）
 bool WriteStringToFile(const std::string &path, const std::string &content) {
-  std::ofstream file(path);
-  if (!file.is_open()) {
+  int fd = open(path.c_str(), O_WRONLY);
+  if (fd < 0) {
+    HIXL_LOGW("[WriteStringToFile] Failed to open %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
     return false;
   }
-  file << content;
-  return file.good();
+  ssize_t written = write(fd, content.c_str(), content.size());
+  if (written < 0) {
+    HIXL_LOGW("[WriteStringToFile] write() failed for %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
+  }
+  close(fd);
+  if (written != static_cast<ssize_t>(content.size())) {
+    HIXL_LOGW("[WriteStringToFile] Incomplete write to %s: written=%zd, expected=%zu", path.c_str(), written,
+              content.size());
+    return false;
+  }
+  return true;
 }
 
 // 去除字符串首尾空白字符
@@ -349,16 +355,23 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, Ro
   std::string pair_info_path = proc_base + "/" + kProcPairInfoFile;
 
   for (int32_t npu_id : related_npu_ids) {
-    HIXL_LOGI("[Procfs] Processing npu_id=%d", npu_id);
+    int32_t device_id = npu_id % kNpuGroupSize;
+    HIXL_LOGI("[Procfs] Processing npu_id=%d, device_id=%d", npu_id, device_id);
 
-    // 写入 dev_id 选择设备
+    // 写入 device_id（组内相对 ID）选择设备，添加换行符匹配 echo 行为
     std::ostringstream dev_id_ss;
-    dev_id_ss << npu_id;
+    dev_id_ss << device_id << "\n";
     if (!WriteStringToFile(dev_id_path, dev_id_ss.str())) {
-      HIXL_LOGW("[Procfs] Failed to write npu_id=%d to %s", npu_id, dev_id_path.c_str());
+      HIXL_LOGW("[Procfs] Failed to write device_id=%d to %s", device_id, dev_id_path.c_str());
       continue;
     }
-    HIXL_LOGI("[Procfs] Wrote npu_id=%d to %s", npu_id, dev_id_path.c_str());
+    HIXL_LOGI("[Procfs] Wrote device_id=%d to %s", device_id, dev_id_path.c_str());
+
+    // 读回 dev_id 验证写入是否生效
+    std::string verify_content;
+    if (ReadFileToString(dev_id_path, verify_content)) {
+      HIXL_LOGI("[Procfs] Verify dev_id after write: read back=[%s]", TrimString(verify_content).c_str());
+    }
 
     // 短暂延时确保内核更新
     usleep(100000);  // 100ms
@@ -383,36 +396,14 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, Ro
     HIXL_LOGI("[Procfs] Parsed: npu_id=%d, slot_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id, slot_id,
               local_eid.c_str(), remote_eid.c_str());
 
-    int32_t device_id = npu_id % 8;
-
-    // 为 D2H 方向生成 RouteEntry（Device → Host）
-    // 在 route.conf 中，local_eid = device EID，remote_eid = host EID
-    // D2H 使用 remote_eid 作为 comm_id
-    if (!remote_eid.empty()) {
-      RouteEntry entry_d2h;
-      entry_d2h.device_id = device_id;
-      entry_d2h.local_eid = local_eid;
-      entry_d2h.remote_eid = remote_eid;
-      route_data.entries.push_back(entry_d2h);
-      HIXL_LOGI(
-          "[Procfs] RouteEntry D2H: npu_id=%d, device_id=%d, slot_id=%d, "
-          "local_eid=%s, remote_eid=%s",
-          npu_id, device_id, slot_id, local_eid.empty() ? "(none)" : local_eid.c_str(), remote_eid.c_str());
-    }
-
-    // 为 H2D 方向生成 RouteEntry（Host → Device）
-    // H2D 使用 local_eid 作为 comm_id
-    if (!local_eid.empty()) {
-      RouteEntry entry_h2d;
-      entry_h2d.device_id = device_id;
-      entry_h2d.local_eid = local_eid;
-      entry_h2d.remote_eid = remote_eid;
-      route_data.entries.push_back(entry_h2d);
-      HIXL_LOGI(
-          "[Procfs] RouteEntry H2D: npu_id=%d, device_id=%d, slot_id=%d, "
-          "local_eid=%s, remote_eid=%s",
-          npu_id, device_id, slot_id, local_eid.c_str(), remote_eid.empty() ? "(none)" : remote_eid.c_str());
-    }
+    // 只生成 H2D 方向的 RouteEntry，D2H 由 GenerateD2HEdges 从同一份 route_data 生成
+    RouteEntry entry;
+    entry.device_id = device_id;
+    entry.local_eid = local_eid;
+    entry.remote_eid = remote_eid;
+    route_data.entries.push_back(entry);
+    HIXL_LOGI("[Procfs] RouteEntry H2D: npu_id=%d, device_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id,
+              device_id, local_eid.c_str(), remote_eid.c_str());
   }
 
   if (route_data.entries.empty()) {
