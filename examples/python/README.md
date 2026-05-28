@@ -4,9 +4,8 @@
 - [样例介绍](#样例介绍)
 - [目录结构](#目录结构)
 - [环境准备](#环境准备)
+- [样例配置说明](#样例配置说明)
 - [样例运行](#样例运行)
-  - [执行前准备](#执行前准备)
-  - [执行](#执行)
 
 ## 样例介绍
 
@@ -37,12 +36,11 @@
 - 安装**pytorch**与**torch_npu**包
 
   根据使用的python版本，参照[版本配套说明](https://gitcode.com/Ascend/pytorch)，下载安装对应版本的`pytorch`和`torch_npu`，安装方法请参考[软件安装指南](https://gitcode.com/Ascend/pytorch/blob/v2.7.1/docs/zh/installation_guide/menu_installation_guide.md)，下面给出python 3.13的配套版本的`pytorch、torch_npu`及其安装方式，其他版本参考版本配置说明和安装指导。
-  
-  | PyTorch版本 | torch_npu插件版本 | Python版本 | 系统架构 | CANN版本 | 安装方式        | 安装命令                                                     |
-  | ----------- | ----------------- | ---------- | -------- | -------- | --------------- | ------------------------------------------------------------ |
-  | 2.7.1 | 26.0.0 | Python 3.13 | AArch64 | 9.0.0 | 离线安装（Whl） | # 下载安装PyTorch框架 wget [https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp313-cp313-manylinux_2_28_aarch64.whl](https://link.gitcode.com/?target=https%3A%2F%2Fdownload.pytorch.org%2Fwhl%2Fcpu%2Ftorch-2.7.1%2Bcpu-cp313-cp313-manylinux_2_28_aarch64.whl&from=https%3A%2F%2Fgitcode.com%2FAscend%2Fpytorch%2Fblob%2Fv2.7.1%2Fdocs%2Fzh%2Finstallation_guide%2Finstallation_via_binary_package.md&lang=zh&theme=white) pip3 install torch-2.7.1+cpu-cp313-cp313-manylinux_2_28_aarch64.whl  # 下载并安装torch_npu插件 wget https://gitcode.com/Ascend/pytorch/releases/download/v26.0.0-pytorch2.7.1/torch_npu-2.7.1.post4-cp313-cp313-manylinux_2_28_aarch64.whl pip3 install torch_npu-2.7.1.post4-cp313-cp313-manylinux_2_28_aarch64.whl |
-  | 2.7.1 | 26.0.0 | Python 3.13 | X86_64  | 9.0.0 | 离线安装（Whl） | # 下载安装PyTorch框架 wget [https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp313-cp313-manylinux_2_28_x86_64.whl](https://link.gitcode.com/?target=https%3A%2F%2Fdownload.pytorch.org%2Fwhl%2Fcpu%2Ftorch-2.7.1%2Bcpu-cp313-cp313-manylinux_2_28_x86_64.whl&from=https%3A%2F%2Fgitcode.com%2FAscend%2Fpytorch%2Fblob%2Fv2.7.1%2Fdocs%2Fzh%2Finstallation_guide%2Finstallation_via_binary_package.md&lang=zh&theme=white) pip3 install torch-2.7.1+cpu-cp313-cp313-manylinux_2_28_x86_64.whl  # 下载并安装torch_npu插件 wget https://gitcode.com/Ascend/pytorch/releases/download/v26.0.0-pytorch2.7.1/torch_npu-2.7.1.post4-cp313-cp313-manylinux_2_28_x86_64.whl pip3 install torch_npu-2.7.1.post4-cp313-cp313-manylinux_2_28_x86_64.whl
 
+| PyTorch版本 | torch_npu插件版本 | Python版本  | 系统架构 | CANN版本 | 安装方式        | 安装命令                                                     |
+| ----------- | ----------------- | ----------- | -------- | -------- | --------------- | ------------------------------------------------------------ |
+| 2.7.1       | 26.0.0            | Python 3.13 | AArch64  | 9.0.0    | 离线安装（Whl） | # 下载安装PyTorch框架 <br/> `wget https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp313-cp313-manylinux_2_28_aarch64.whl `<br>`pip3 install torch-2.7.1+cpu-cp313-cp313-manylinux_2_28_aarch64.whl ` # 下载并安装torch_npu插件 <br> `wget https://gitcode.com/Ascend/pytorch/releases/download/v26.0.0-pytorch2.7.1/torch_npu-2.7.1.post4-cp313-cp313-manylinux_2_28_aarch64.whl`<br> ` pip3 install torch_npu-2.7.1.post4-cp313-cp313-manylinux_2_28_aarch64.whl` |
+| 2.7.1       | 26.0.0            | Python 3.13 | X86_64   | 9.0.0    | 离线安装（Whl） | # 下载安装PyTorch框架  <br/> ` wget https://download.pytorch.org/whl/cpu/torch-2.7.1%2Bcpu-cp313-cp313-manylinux_2_28_x86_64.whl`<br> `pip3 install torch-2.7.1+cpu-cp313-cp313-manylinux_2_28_x86_64.whl ` # 下载并安装torch_npu插件<br> ` wget https://gitcode.com/Ascend/pytorch/releases/download/v26.0.0-pytorch2.7.1/torch_npu-2.7.1.post4-cp313-cp313-manylinux_2_28_x86_64.whl` <br>  `pip3 install torch_npu-2.7.1.post4-cp313-cp313-manylinux_2_28_x86_64.whl` |
 ## 样例配置说明
 
 以下所有用例运行均需正确设置Ascend环境变量，所有双机示例需尽量保证同步执行。
@@ -70,7 +68,7 @@ source ${HOME}/Ascend/cann/set_env.sh
 ## 样例运行
 - 执行pull cache样例程序，此样例程序展示了配置内存池场景下，使用allocate_cache，双向建链，并从远端pull_cache
   - 说明：
-    本示例必须使用双机，参考[执行前准备](#执行前准备)
+    本示例必须使用双机，参考[样例配置说明](#样例配置说明)
 
   分别在Prompt主机与Decoder主机，执行样例程序，其中device_id为要使用的device_id，cluster_id为集群ID且在所有参与建链的范围内需要确保唯一：
     ```
@@ -81,7 +79,7 @@ source ${HOME}/Ascend/cann/set_env.sh
     ```
 - 执行pull blocks样例程序，此样例程序使用torch自行申请内存，双向建链，并从远端pull_cache
   - 说明：
-    本示例必须使用双机，参考[执行前准备](#执行前准备)
+    本示例必须使用双机，参考[样例配置说明](#样例配置说明)
 
   分别在Prompt主机与Decoder主机，执行样例程序，其中device_id为要使用的device_id，cluster_id为集群ID且在所有参与建链的范围内需要确保唯一：
     ```
@@ -92,7 +90,7 @@ source ${HOME}/Ascend/cann/set_env.sh
     ```
 - 执行pull_from_cache_to_blocks样例程序：
   - 说明：
-    本示例必须使用双机，参考[执行前准备](#执行前准备)
+    本示例必须使用双机，参考[样例配置说明](#样例配置说明)
 
   分别在Prompt主机与Decoder主机，执行样例程序，其中device_id为要使用的device_id，cluster_id为集群ID且在所有参与建链的范围内需要确保唯一：
     ```
