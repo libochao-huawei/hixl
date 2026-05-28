@@ -13,28 +13,6 @@
 #include "common/ctrl_msg.h"
 
 namespace hixl {
-Status OptionalAclContext::CaptureIfNeeded() {
-  uint32_t device_count = 0U;
-  HIXL_CHK_ACL_RET(aclrtGetDeviceCount(&device_count), "aclrtGetDeviceCount failed");
-  enabled_ = (device_count > 0U);
-  ctx_ = nullptr;
-  if (!enabled_) {
-    return SUCCESS;
-  }
-  HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&ctx_));
-  HIXL_LOGI("aclrtGetCurrentContext ctx=%p", ctx_);
-  return SUCCESS;
-}
-
-Status OptionalAclContext::SetOnCurrentThreadIfNeeded() const {
-  if (!enabled_ || ctx_ == nullptr) {
-    return SUCCESS;
-  }
-  HIXL_CHK_ACL_RET(aclrtSetCurrentContext(ctx_));
-  HIXL_LOGI("aclrtSetCurrentContext ctx=%p", ctx_);
-  return SUCCESS;
-}
-
 void MsgHandler::SubmitMsg(int32_t fd, const CtrlMsgPtr &msg) {
   {
     std::lock_guard<std::mutex> lock(req_mutex_);
@@ -49,7 +27,7 @@ Status MsgHandler::Initialize() {
   thread_pool_ = MakeUnique<ThreadPool>("cs_server", kMinThreadPoolSize, kMaxThreadPoolSize);
   HIXL_CHECK_NOTNULL(thread_pool_);
   running_ = true;
-  HIXL_CHK_STATUS_RET(acl_context_.CaptureIfNeeded(), "Failed to capture acl context");
+  HIXL_CHK_STATUS_RET(aclrt_context_.GetCurrentContext(), "Failed to capture acl context");
   listener_ = std::thread([this]() {
     HandleMsg();
   });
@@ -112,7 +90,7 @@ void MsgHandler::HandleMsg() {
     }
     auto proc = it->second;
     (void)thread_pool_->commit([this, req, proc]() -> void {
-      HIXL_CHK_STATUS(acl_context_.SetOnCurrentThreadIfNeeded(), "Failed to set acl context");
+      HIXL_CHK_STATUS(aclrt_context_.SetCurrentContext(), "Failed to set acl context");
       (void)HandleMsg(req.first, req.second, proc);
     });
   }
