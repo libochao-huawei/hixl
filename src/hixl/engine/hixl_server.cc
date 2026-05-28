@@ -31,16 +31,9 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
                               const std::vector<EndpointConfig> &data_endpoint_config_list) {
   data_endpoint_config_list_ = data_endpoint_config_list;
   std::vector<EndpointDesc> data_end_point_list;
-  uint32_t dev_phy_id = 0;
-  EndpointGenerator::LocalRuntimeContext ctx{};
-  HIXL_CHK_STATUS_RET(EndpointGenerator::ResolveLocalRuntimeContext(data_endpoint_config_list, ctx),
-                      "ResolveLocalRuntimeContext failed");
-  if (ctx.need_device_context) {
-    dev_phy_id = static_cast<uint32_t>(ctx.device_resource.phy_device_id);
-  }
-  for (const auto &it : data_endpoint_config_list) {
+  for (const auto &it : data_endpoint_config_list_) {
     EndpointDesc end_point_info{};
-    HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(it, end_point_info, dev_phy_id),
+    HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(it, end_point_info),
                         "Failed to convert endpoint config to endpoint info.");
     data_end_point_list.emplace_back(end_point_info);
   }
@@ -53,7 +46,7 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
   server_desc.server_ip = ip.c_str();
   server_desc.server_port = static_cast<uint32_t>(port);
   server_desc.endpoint_list = endpoints;
-  server_desc.endpoint_list_num = static_cast<uint32_t>(data_endpoint_config_list.size());
+  server_desc.endpoint_list_num = static_cast<uint32_t>(data_endpoint_config_list_.size());
   HIXL_CHK_STATUS_RET(HixlCSServerCreate(&server_desc, &config, &server_handle_),
                       "Failed to create hixl server, ip:%s, port:%d.", ip.c_str(), port);
   // port > 0 初始化hixl server，否则作为hixl client注册内存用

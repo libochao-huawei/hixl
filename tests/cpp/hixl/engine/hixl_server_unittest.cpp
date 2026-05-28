@@ -33,6 +33,9 @@ class HixlServerTest : public ::testing::Test {
     ep0.protocol = "roce";
     ep0.comm_id = "192.168.1.2";
     ep0.placement = "device";
+    ep0.device_info.phy_device_id = 12;
+    ep0.device_info.super_device_id = 9;
+    ep0.device_info.super_pod_id = 8;
     EndpointConfig ep1;
     ep1.protocol = "roce";
     ep1.comm_id = "192.168.1.1";
@@ -203,7 +206,6 @@ TEST_F(HixlServerTest, InitializeHostOnlySkipsDeviceQueries) {
 }
 
 TEST_F(HixlServerTest, InitializeFailsWhenDeviceEndpointHasNoLocalDeviceResource) {
-  acl_stub_->get_device_failed_ = true;
   std::vector<EndpointConfig> device_eps;
   EndpointConfig ep{};
   ep.protocol = "hccs";
@@ -212,6 +214,6 @@ TEST_F(HixlServerTest, InitializeFailsWhenDeviceEndpointHasNoLocalDeviceResource
   device_eps.emplace_back(ep);
 
   EXPECT_NE(server_.Initialize(ip_, port_, device_eps), SUCCESS);
-  EXPECT_EQ(acl_stub_->get_device_call_count_, 1U);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
 }
 }  // namespace hixl
