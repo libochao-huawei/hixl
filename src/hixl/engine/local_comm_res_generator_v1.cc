@@ -25,9 +25,12 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <array>
 #include <cstring>
+#include <cerrno>
 #include <set>
 #include <dirent.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include "common/hixl_log.h"
@@ -64,6 +67,20 @@ constexpr const char *kNetInstancePrefix = "superpod_";
 constexpr const char *kDefaultTopoDir = "/usr/local/Ascend/driver/topo/950/";
 constexpr const char *kDefaultRoutePath = "/lib/route.conf";
 
+// 文件路径校验辅助函数
+inline bool IsFileExists(const std::string &path) {
+  struct stat buffer;
+  return (stat(path.c_str(), &buffer) == 0);
+}
+
+// 魔法数字常量
+constexpr size_t kHexPrefixLength = 2;    // "0x" 前缀长度
+constexpr size_t kNpuGroupSize = 8;       // NPU 分组大小
+constexpr size_t kPgEidSecondIndex = 1;   // PG EID 第二索引
+constexpr size_t kSecondElementSize = 2;  // 第二元素 size 检查
+constexpr uint32_t kOddParity = 1;        // 奇校验
+constexpr uint32_t kEvenParity = 0;       // 偶校验
+
 // topo 文件名前缀
 constexpr const char *kTopoPrefixAtlas950 = "atlas_950_";
 constexpr const char *kTopoPrefixAtlas850 = "atlas_850_";
@@ -76,12 +93,12 @@ constexpr const char *kProcDevIdFile = "dev_id";
 constexpr const char *kProcPairInfoFile = "pair_info";
 
 // DCMI 主命令和子命令
-enum DcmiMainCmd {
-  DCMI_MAIN_CMD_CHIP_INF = 12,
+enum class DcmiMainCmd {
+  CHIP_INF = 12,
 };
 
-enum DcmiChipInfoSubCmd {
-  DCMI_CHIP_INFO_SUB_CMD_SPOD_INFO = 1,
+enum class DcmiChipInfoSubCmd {
+  SPOD_INFO = 1,
 };
 
 // D2D 边匹配输入参数封装（入参过多，合并为结构体）
@@ -158,12 +175,6 @@ std::string FindTopoFileByMainboardId(const std::string &topo_dir, uint32_t main
   return matched_file;
 }
 
-// 检查指定路径的文件是否存在
-bool IsFileExists(const std::string &path) {
-  struct stat st;
-  return (stat(path.c_str(), &st) == 0);
-}
-
 // 查找可用的 proc 基路径（ascend_ub 或 asdrv_ub）
 std::string FindProcBasePath() {
   if (IsFileExists(std::string(kProcPathAscendUb) + "/" + kProcDevIdFile)) {
@@ -187,14 +198,24 @@ bool ReadFileToString(const std::string &path, std::string &content) {
   return true;
 }
 
-// 写入字符串到文件
+// 写入字符串到文件（使用低级 I/O，确保 procfs 写入生效）
 bool WriteStringToFile(const std::string &path, const std::string &content) {
-  std::ofstream file(path);
-  if (!file.is_open()) {
+  int fd = open(path.c_str(), O_WRONLY);
+  if (fd < 0) {
+    HIXL_LOGW("[WriteStringToFile] Failed to open %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
     return false;
   }
-  file << content;
-  return file.good();
+  ssize_t written = write(fd, content.c_str(), content.size());
+  if (written < 0) {
+    HIXL_LOGW("[WriteStringToFile] write() failed for %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
+  }
+  close(fd);
+  if (written != static_cast<ssize_t>(content.size())) {
+    HIXL_LOGW("[WriteStringToFile] Incomplete write to %s: written=%zd, expected=%zu", path.c_str(), written,
+              content.size());
+    return false;
+  }
+  return true;
 }
 
 // 去除字符串首尾空白字符
@@ -214,8 +235,8 @@ std::string TrimString(const std::string &s) {
 //   remote_eid: 0x...
 //   local_eid: 0x...     (第二组)
 //   remote_eid: 0x...
-bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id,
-                            int32_t &slot_id, std::string &local_eid, std::string &remote_eid) {
+bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id, int32_t &slot_id,
+                            std::string &local_eid, std::string &remote_eid) {
   std::istringstream iss(pair_info_content);
   std::string line;
   std::string found_slot_id;
@@ -266,7 +287,7 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
   }
 
   HIXL_LOGD("[ParsePairInfo] npu_id=%d, lines_parsed=%d, slot_id=[%s], local_eids_count=%zu, remote_eids_count=%zu",
-               npu_id, line_count, found_slot_id.c_str(), local_eids.size(), remote_eids.size());
+            npu_id, line_count, found_slot_id.c_str(), local_eids.size(), remote_eids.size());
 
   if (found_slot_id.empty()) {
     HIXL_LOGW("[ParsePairInfo] npu_id=%d: no slot_id found", npu_id);
@@ -274,7 +295,8 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
   }
 
   if (local_eids.empty() || remote_eids.empty()) {
-    HIXL_LOGW("[ParsePairInfo] npu_id=%d: no eids found (local=%zu, remote=%zu)", npu_id, local_eids.size(), remote_eids.size());
+    HIXL_LOGW("[ParsePairInfo] npu_id=%d: no eids found (local=%zu, remote=%zu)", npu_id, local_eids.size(),
+              remote_eids.size());
     return false;
   }
 
@@ -285,7 +307,7 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
   size_t eid_idx = (group_offset < 4) ? 0 : 1;  // 前4个用第一组，后4个用第二组
   if (eid_idx >= local_eids.size() || eid_idx >= remote_eids.size()) {
     HIXL_LOGW("[ParsePairInfo] npu_id=%d: eid_idx=%zu out of range (local=%zu, remote=%zu), fallback to index 0",
-               npu_id, eid_idx, local_eids.size(), remote_eids.size());
+              npu_id, eid_idx, local_eids.size(), remote_eids.size());
     eid_idx = 0;
   }
 
@@ -319,8 +341,7 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
 }
 
 // 通过 procfs 获取路由数据（当 /lib/route.conf 不存在时的 fallback）
-int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids,
-                                    RouteData &route_data) {
+int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, RouteData &route_data) {
   route_data.entries.clear();
 
   std::string proc_base = FindProcBasePath();
@@ -334,16 +355,23 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids,
   std::string pair_info_path = proc_base + "/" + kProcPairInfoFile;
 
   for (int32_t npu_id : related_npu_ids) {
-    HIXL_LOGI("[Procfs] Processing npu_id=%d", npu_id);
+    int32_t device_id = npu_id % kNpuGroupSize;
+    HIXL_LOGI("[Procfs] Processing npu_id=%d, device_id=%d", npu_id, device_id);
 
-    // 写入 dev_id 选择设备
+    // 写入 device_id（组内相对 ID）选择设备，添加换行符匹配 echo 行为
     std::ostringstream dev_id_ss;
-    dev_id_ss << npu_id;
+    dev_id_ss << device_id << "\n";
     if (!WriteStringToFile(dev_id_path, dev_id_ss.str())) {
-      HIXL_LOGW("[Procfs] Failed to write npu_id=%d to %s", npu_id, dev_id_path.c_str());
+      HIXL_LOGW("[Procfs] Failed to write device_id=%d to %s", device_id, dev_id_path.c_str());
       continue;
     }
-    HIXL_LOGI("[Procfs] Wrote npu_id=%d to %s", npu_id, dev_id_path.c_str());
+    HIXL_LOGI("[Procfs] Wrote device_id=%d to %s", device_id, dev_id_path.c_str());
+
+    // 读回 dev_id 验证写入是否生效
+    std::string verify_content;
+    if (ReadFileToString(dev_id_path, verify_content)) {
+      HIXL_LOGI("[Procfs] Verify dev_id after write: read back=[%s]", TrimString(verify_content).c_str());
+    }
 
     // 短暂延时确保内核更新
     usleep(100000);  // 100ms
@@ -365,41 +393,17 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids,
       continue;
     }
 
-    HIXL_LOGI("[Procfs] Parsed: npu_id=%d, slot_id=%d, local_eid=[%s], remote_eid=[%s]",
-               npu_id, slot_id, local_eid.c_str(), remote_eid.c_str());
+    HIXL_LOGI("[Procfs] Parsed: npu_id=%d, slot_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id, slot_id,
+              local_eid.c_str(), remote_eid.c_str());
 
-    int32_t device_id = npu_id % 8;
-
-    // 为 D2H 方向生成 RouteEntry（Device → Host）
-    // 在 route.conf 中，local_eid = device EID，remote_eid = host EID
-    // D2H 使用 remote_eid 作为 comm_id
-    if (!remote_eid.empty()) {
-      RouteEntry entry_d2h;
-      entry_d2h.device_id = device_id;
-      entry_d2h.local_eid = local_eid;
-      entry_d2h.remote_eid = remote_eid;
-      route_data.entries.push_back(entry_d2h);
-      HIXL_LOGI("[Procfs] RouteEntry D2H: npu_id=%d, device_id=%d, slot_id=%d, "
-                "local_eid=%s, remote_eid=%s",
-                npu_id, device_id, slot_id,
-                local_eid.empty() ? "(none)" : local_eid.c_str(),
-                remote_eid.c_str());
-    }
-
-    // 为 H2D 方向生成 RouteEntry（Host → Device）
-    // H2D 使用 local_eid 作为 comm_id
-    if (!local_eid.empty()) {
-      RouteEntry entry_h2d;
-      entry_h2d.device_id = device_id;
-      entry_h2d.local_eid = local_eid;
-      entry_h2d.remote_eid = remote_eid;
-      route_data.entries.push_back(entry_h2d);
-      HIXL_LOGI("[Procfs] RouteEntry H2D: npu_id=%d, device_id=%d, slot_id=%d, "
-                "local_eid=%s, remote_eid=%s",
-                npu_id, device_id, slot_id,
-                local_eid.c_str(),
-                remote_eid.empty() ? "(none)" : remote_eid.c_str());
-    }
+    // 只生成 H2D 方向的 RouteEntry，D2H 由 GenerateD2HEdges 从同一份 route_data 生成
+    RouteEntry entry;
+    entry.device_id = device_id;
+    entry.local_eid = local_eid;
+    entry.remote_eid = remote_eid;
+    route_data.entries.push_back(entry);
+    HIXL_LOGI("[Procfs] RouteEntry H2D: npu_id=%d, device_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id,
+              device_id, local_eid.c_str(), remote_eid.c_str());
   }
 
   if (route_data.entries.empty()) {
@@ -410,8 +414,8 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids,
   HIXL_LOGI("[Procfs] Generated %zu route entries from procfs:", route_data.entries.size());
   for (size_t i = 0; i < route_data.entries.size(); ++i) {
     const auto &entry = route_data.entries[i];
-    HIXL_LOGI("[Procfs]   [%zu] device_id=%d, local_eid=[%s], remote_eid=[%s]",
-               i, entry.device_id, entry.local_eid.c_str(), entry.remote_eid.c_str());
+    HIXL_LOGI("[Procfs]   [%zu] device_id=%d, local_eid=[%s], remote_eid=[%s]", i, entry.device_id,
+              entry.local_eid.c_str(), entry.remote_eid.c_str());
   }
 
   return SUCCESS;
@@ -473,11 +477,11 @@ void AddRouteEntriesForDevice(const std::map<std::string, std::string> &kv_map, 
       entry.local_eid = local_it->second;
       entry.remote_eid = remote_it->second;
       // 去掉 "0x" 前缀
-      if (entry.local_eid.size() >= 2 && entry.local_eid[0] == '0' && entry.local_eid[1] == 'x') {
-        entry.local_eid = entry.local_eid.substr(2);
+      if (entry.local_eid.size() >= kHexPrefixLength && entry.local_eid[0] == '0' && entry.local_eid[1] == 'x') {
+        entry.local_eid = entry.local_eid.substr(kHexPrefixLength);
       }
-      if (entry.remote_eid.size() >= 2 && entry.remote_eid[0] == '0' && entry.remote_eid[1] == 'x') {
-        entry.remote_eid = entry.remote_eid.substr(2);
+      if (entry.remote_eid.size() >= kHexPrefixLength && entry.remote_eid[0] == '0' && entry.remote_eid[1] == 'x') {
+        entry.remote_eid = entry.remote_eid.substr(kHexPrefixLength);
       }
       route_data.entries.push_back(entry);
     }
@@ -556,8 +560,8 @@ int32_t GetClosNetInstanceId(int32_t phy_dev_id, std::string &net_instance_id) {
 
   DcmiSpodInfo spod_info = {};
   uint32_t buf_size = sizeof(DcmiSpodInfo);
-  int32_t ret =
-      DcmiProxy::GetDeviceInfo(logic_id, DCMI_MAIN_CMD_CHIP_INF, DCMI_CHIP_INFO_SUB_CMD_SPOD_INFO, &spod_info, &buf_size);
+  int32_t ret = DcmiProxy::GetDeviceInfo(logic_id, static_cast<int32_t>(DcmiMainCmd::CHIP_INF),
+                                         static_cast<int32_t>(DcmiChipInfoSubCmd::SPOD_INFO), &spod_info, &buf_size);
   if (ret != 0) {
     HIXL_LOGE(FAILED, "Failed to get device info, ret=%d", ret);
     return FAILED;
@@ -602,6 +606,10 @@ static int32_t ParseSingleLink(const nlohmann::json &edge, TopoLink &link) {
 }
 
 static int32_t ParseTopoJson(const std::string &topo_path, nlohmann::json &j) {
+  if (!IsFileExists(topo_path)) {
+    HIXL_LOGE(PARAM_INVALID, "Topo file does not exist: %s", topo_path.c_str());
+    return PARAM_INVALID;
+  }
   std::ifstream file(topo_path);
   if (!file.is_open()) {
     HIXL_LOGE(PARAM_INVALID, "Failed to open topo file: %s", topo_path.c_str());
@@ -649,6 +657,10 @@ int32_t ParseTopoFile(const std::string &topo_path, TopoData &topo_data) {
 
 int32_t ParseRouteFile(const std::string &route_path, RouteData &route_data) {
   route_data.entries.clear();
+  if (!IsFileExists(route_path)) {
+    HIXL_LOGE(PARAM_INVALID, "Route file does not exist: %s", route_path.c_str());
+    return PARAM_INVALID;
+  }
   std::ifstream file(route_path);
   if (!file.is_open()) {
     HIXL_LOGE(PARAM_INVALID, "Failed to open route file: %s", route_path.c_str());
@@ -667,7 +679,7 @@ int32_t ParseRouteFile(const std::string &route_path, RouteData &route_data) {
 
 // ============ 边生成实现 ============
 
-bool ShouldSkipD2DLink(const TopoLink &link, size_t skip_reason[4]) {
+bool ShouldSkipD2DLink(const TopoLink &link, std::array<size_t, 4> &skip_reason) {
   if (link.net_layer != 0) {
     ++skip_reason[0];
     return true;
@@ -729,7 +741,7 @@ int32_t GenerateD2DEdges(const TopoData &topo_data, const std::map<int32_t, NpuR
   HIXL_LOGI("D2D: phy_id=%d, topo_links=%zu, self_rootinfo_size=%zu", phy_id, topo_data.links.size(),
             self_rootinfo.port_to_eid.size());
 
-  size_t skip_reason[4] = {0, 0, 0, 0};
+  std::array<size_t, 4> skip_reason = {0, 0, 0, 0};
   size_t no_rootinfo_peer = 0;
   size_t no_port_match_local = 0;
   size_t no_port_match_peer = 0;
@@ -835,17 +847,18 @@ bool IsProductPod(uint32_t mainboard_id) {
 }
 
 bool IsProductServer(uint32_t mainboard_id) {
-  return (
-      (mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax1 && (mainboard_id % 2 == 1)) ||
-      (mainboard_id >= kMainboardIdServerMin2 && mainboard_id <= kMainboardIdServerMax2 && (mainboard_id % 2 == 0)));
+  return ((mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax1 &&
+           (mainboard_id % 2 == kOddParity)) ||
+          (mainboard_id >= kMainboardIdServerMin2 && mainboard_id <= kMainboardIdServerMax2 &&
+           (mainboard_id % 2 == kEvenParity)));
 }
 
 std::set<int32_t> CollectRelatedNpuIds(int32_t phy_dev_id) {
-  // NPU 按 8 个一组划分，找出 phy_dev_id 所在组的所有 NPU
-  int32_t group_start = (phy_dev_id / 8) * 8;
+  // NPU 按 kNpuGroupSize 个一组划分，找出 phy_dev_id 所在组的所有 NPU
+  int32_t group_start = static_cast<int32_t>((phy_dev_id / kNpuGroupSize) * kNpuGroupSize);
   std::set<int32_t> related_npu_ids;
-  for (int32_t i = 0; i < 8; ++i) {
-    related_npu_ids.insert(group_start + i);
+  for (size_t i = 0; i < kNpuGroupSize; ++i) {
+    related_npu_ids.insert(group_start + static_cast<int32_t>(i));
   }
   HIXL_LOGI("phy_dev_id=%d, group_start=%d, Related NPU IDs: %s", phy_dev_id, group_start,
             ToString(related_npu_ids).c_str());
@@ -881,8 +894,8 @@ void CollectClosPgEids(const std::map<int32_t, NpuRootInfo> &npu_rootinfos, int3
   if (!pg_eids.empty()) {
     plane_pg_0_eid = pg_eids[0].eid;
   }
-  if (pg_eids.size() >= 2) {
-    plane_pg_1_eid = pg_eids[1].eid;
+  if (pg_eids.size() >= kSecondElementSize) {
+    plane_pg_1_eid = pg_eids[kPgEidSecondIndex].eid;
   }
   HIXL_LOGI("Mesh die_id=%d", mesh_die_id);
   HIXL_LOGI("plane_pg_0_eid=%s", plane_pg_0_eid.empty() ? "(none)" : plane_pg_0_eid.c_str());
