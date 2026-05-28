@@ -18,9 +18,17 @@
 
 namespace llm {
 namespace rank_table_json {
-inline void LoadOptionalDeviceNetworkFields(const nlohmann::json &j,
-                                            std::string &device_ip,
-                                            std::string &device_port) {
+constexpr size_t kMaxCommResSizeInBytes = 64U * 1024U;
+
+inline bool IsCommResJsonSizeValid(const std::string &comm_res) {
+  return comm_res.size() <= kMaxCommResSizeInBytes;
+}
+
+inline nlohmann::json ParseCommResJson(const std::string &comm_res) {
+  return nlohmann::json::parse(comm_res);
+}
+
+inline void LoadOptionalDeviceNetworkFields(const nlohmann::json &j, std::string &device_ip, std::string &device_port) {
   if (j.contains("device_ip")) {
     j.at("device_ip").get_to(device_ip);
   }
@@ -29,8 +37,7 @@ inline void LoadOptionalDeviceNetworkFields(const nlohmann::json &j,
   }
 }
 
-inline void StoreOptionalDeviceNetworkFields(nlohmann::json &j,
-                                             const std::string &device_ip,
+inline void StoreOptionalDeviceNetworkFields(nlohmann::json &j, const std::string &device_ip,
                                              const std::string &device_port) {
   if (!device_ip.empty()) {
     j["device_ip"] = device_ip;
@@ -40,27 +47,22 @@ inline void StoreOptionalDeviceNetworkFields(nlohmann::json &j,
   }
 }
 
-inline bool LessDeviceNetworkEndpoint(const std::string &device_ip,
-                                      const std::string &device_port,
-                                      const std::string &other_ip,
-                                      const std::string &other_port) {
+inline bool LessDeviceNetworkEndpoint(const std::string &device_ip, const std::string &device_port,
+                                      const std::string &other_ip, const std::string &other_port) {
   if (device_ip != other_ip) {
     return device_ip < other_ip;
   }
   return device_port < other_port;
 }
 
-template<typename DeviceInfo>
-inline void FromJsonServerInfo(const nlohmann::json &j,
-                               std::string &server_id,
-                               std::vector<DeviceInfo> &device_list) {
+template <typename DeviceInfo>
+inline void FromJsonServerInfo(const nlohmann::json &j, std::string &server_id, std::vector<DeviceInfo> &device_list) {
   j.at("server_id").get_to(server_id);
   j.at("device").get_to(device_list);
 }
 
-template<typename DeviceInfo>
-inline void ToJsonServerInfo(nlohmann::json &j,
-                             const std::string &server_id,
+template <typename DeviceInfo>
+inline void ToJsonServerInfo(nlohmann::json &j, const std::string &server_id,
                              const std::vector<DeviceInfo> &device_list) {
   j = nlohmann::json{};
   j["server_id"] = server_id;

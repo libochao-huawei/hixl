@@ -9,15 +9,14 @@
  */
 
 #include "utils/task_batcher.h"
+#include "common/llm_log.h"
 
 namespace llm {
 namespace {
 constexpr int32_t kMaxTaskNumInBatch = 64;
 
 }  // namespace
-void TaskBatcher::Initialize(uint32_t num_tensors,
-                             uint32_t block_size,
-                             size_t num_transfer_infos,
+void TaskBatcher::Initialize(uint32_t num_tensors, uint32_t block_size, size_t num_transfer_infos,
                              const TransferInfo *transfer_infos) {
   num_tensors_ = num_tensors;
   block_size_ = block_size;
@@ -27,6 +26,10 @@ void TaskBatcher::Initialize(uint32_t num_tensors,
 
 std::vector<BufferSlice> TaskBatcher::NextBatch(uint32_t max_transfer_info_num) {
   std::vector<BufferSlice> ret;
+  if ((buffer_size_ == 0U) || (num_transfer_infos_ == 0U)) {
+    LLMLOGW("invalid batcher state, buffer_size=%u, num_transfer_infos=%u", buffer_size_, num_transfer_infos_);
+    return ret;
+  }
   uint32_t buffer_offset = 0;
   uint32_t remaining_buffer_len = buffer_size_;
   uint64_t prev_block_end_offset = UINT64_MAX;
@@ -49,9 +52,13 @@ std::vector<BufferSlice> TaskBatcher::NextBatch(uint32_t max_transfer_info_num) 
     uint64_t data_offset = 0U;
     uint64_t data_size_cur_task = 0U;
     GetOffsetAndLength(remaining_buffer_len, data_offset, data_size_cur_task);
+    if (data_size_cur_task == 0U) {
+      LLMLOGW("zero buffer_len at transfer_info_index=%u, tensor_index=%u", current_transfer_info_index_,
+              current_tensor_index_);
+      break;
+    }
     const auto data_size = static_cast<uint32_t>(data_size_cur_task);
-    if ((current_tensor_index_ == prev_tensor_index) &&
-        (data_offset == prev_block_end_offset) &&
+    if ((current_tensor_index_ == prev_tensor_index) && (data_offset == prev_block_end_offset) &&
         ((ret.back().data_size + data_size) <= max_block_size_)) {
       ret.back().data_size += data_size;
     } else {
@@ -99,6 +106,10 @@ void TaskBatcher::GetOffsetAndLength(uint32_t remaining_buffer_len, uint64_t &da
 
 void TaskBatcher::UpdateIndices() {
   if (remaining_data_len_ == 0) {
+    if (num_transfer_infos_ == 0U) {
+      current_tensor_index_ += 1U;
+      return;
+    }
     const auto is_tail_block = current_transfer_info_index_ == (num_transfer_infos_ - 1);
     if (is_tail_block) {
       current_transfer_info_index_ = 0U;
