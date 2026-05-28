@@ -9,13 +9,10 @@
 # ----------------------------------------------------------------------------
 
 if (NOT ENABLE_TEST)
-    execute_process(
-        COMMAND ${Python3_EXECUTABLE} -c
-                "import pybind11; print(pybind11.get_cmake_dir())"
-        OUTPUT_VARIABLE pybind11_DIR
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-    find_package(pybind11 CONFIG REQUIRED)
+    add_library(pybind11::headers IMPORTED INTERFACE)
+    set_target_properties(pybind11::headers PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${pybind11_INCLUDE_DIR}")
+    include(${CANN_3RD_LIB_PATH}/pybind11/tools/pybind11Common.cmake)
 
     set(CMAKE_SKIP_RPATH TRUE)
     pybind11_add_module(hixl hixl_py.cpp)
