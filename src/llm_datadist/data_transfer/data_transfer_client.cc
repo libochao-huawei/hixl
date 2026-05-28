@@ -11,6 +11,7 @@
 #include "data_transfer/data_transfer_client.h"
 #include "data_transfer/d2d_data_transfer_job.h"
 #include "common/llm_utils.h"
+#include "common/transfer_message_limits.h"
 
 #include <cinttypes>
 
@@ -112,9 +113,11 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
   uint32_t is_pull_block = 0U;
   LLM_CHK_STATUS_RET(SetBufferInfoCount(pull_cache_param, buffer_info_count, is_pull_block, contiguous_blocks_pair),
                     "set buffer_info_count failed");
-  uint64_t request_size =
-      sizeof(TransferCacheReq) + sizeof(TransferInfo) * (static_cast<uint64_t>(buffer_info_count) * kSrcAndDstNum +
-                                                         cache_entry.cache_addrs.size());
+  const uint32_t dst_addr_count = pull_cache_param.dst_tensor_indices.empty()
+                                      ? static_cast<uint32_t>(cache_entry.cache_addrs.size())
+                                      : static_cast<uint32_t>(pull_cache_param.dst_tensor_indices.size());
+  const uint64_t request_size = transfer_message_limits::CalcMinRequestSize(
+      dst_addr_count, buffer_info_count, static_cast<uint32_t>(kSrcAndDstNum));
   TransferCacheReq *request_ptr = nullptr;
   LLM_CHK_STATUS_RET(comm_entity_->GetTransferCacheReq(request_size, request_ptr),
                      "Failed to get transfer cache req");
@@ -125,9 +128,7 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
   request.req_id = cache_key.req_id;
   request.prefix_id = cache_key.prefix_id;
   request.model_id = cache_key.model_id;
-  request.dst_addr_count = pull_cache_param.dst_tensor_indices.empty()
-                               ? static_cast<uint32_t>(cache_entry.cache_addrs.size())
-                               : static_cast<uint32_t>(pull_cache_param.dst_tensor_indices.size());
+  request.dst_addr_count = dst_addr_count;
   request.buffer_info_count = buffer_info_count;
   request.is_pull_block = is_pull_block;
   request.dst_placement = 1;
@@ -146,6 +147,7 @@ ge::Status DataTransferClient::ConstructTransferInfo(const PullCacheParam &pull_
   SetDstAddr(pull_cache_param, cache_entry, request);
   LLM_CHK_STATUS_RET(SetBufferInfo(pull_cache_param, cache_entry, contiguous_blocks_pair, request),
                     "Failed to set buffer info");
+  request.req_size = request_size;
   return ge::SUCCESS;
 }
 
@@ -163,9 +165,11 @@ ge::Status DataTransferClient::GetResponseInfo() const {
 
 ge::Status DataTransferClient::SendCacheInfoToRemote() const {
   const auto &request = *PtrToPtr<uint8_t, TransferCacheReq>(comm_entity_->GetEntityInfo().send_buffer_req_ptr);
-  uint64_t request_size = sizeof(TransferCacheReq) +
-                          sizeof(TransferInfo) * (static_cast<uint64_t>(request.buffer_info_count) * kSrcAndDstNum +
-                                                  request.dst_addr_count);
+  const uint64_t request_size = transfer_message_limits::CalcMinRequestSize(
+      request.dst_addr_count, request.buffer_info_count, static_cast<uint32_t>(kSrcAndDstNum));
+  LLM_CHK_BOOL_RET_STATUS(request.req_size == request_size, ge::LLM_PARAM_INVALID,
+                         "req_size:%lu mismatches expected:%lu, dst_addr_count:%u, buffer_info_count:%u",
+                         request.req_size, request_size, request.dst_addr_count, request.buffer_info_count);
   LLMLOGI("transfer_cache_req size:%lu", request_size);
   auto fill_req_func = [request_size](TransferCacheReq &request, uint64_t &size) -> void {
     // request already filled, just set size

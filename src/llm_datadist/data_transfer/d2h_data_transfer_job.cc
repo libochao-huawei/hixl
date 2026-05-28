@@ -10,7 +10,9 @@
 
 #include "data_transfer/d2h_data_transfer_job.h"
 #include <numeric>
+#include "common/llm_checker.h"
 #include "common/llm_thread_pool.h"
+#include "common/transfer_message_limits.h"
 
 namespace llm {
 namespace {
@@ -23,6 +25,27 @@ constexpr int32_t kTaskTypeEndBlock = 2;
 constexpr int32_t kTimeoutOffset = 500;
 constexpr size_t kCopyThreadNum = 8U;
 constexpr size_t kMaxBlockNum = 60 * 1024U;
+
+ge::Status ValidateD2HClientPullLayout(uint32_t dst_addr_count, size_t prompt_block_count, uint64_t &request_size) {
+  using namespace transfer_message_limits;
+  LLM_CHK_BOOL_RET_STATUS(dst_addr_count > 0U, ge::LLM_PARAM_INVALID, "dst_addr_count is 0");
+  LLM_CHK_BOOL_RET_STATUS(prompt_block_count <= kMaxBlockNum, ge::LLM_PARAM_INVALID,
+                         "number of prompt blocks (%zu) out of bound, at most %zu is supported", prompt_block_count,
+                         kMaxBlockNum);
+  const uint64_t max_prompt_blocks = MaxD2hPromptBlocksForDstCount(dst_addr_count);
+  LLM_CHK_BOOL_RET_STATUS(prompt_block_count <= max_prompt_blocks, ge::LLM_PARAM_INVALID,
+                         "number of prompt blocks (%zu) exceeds request buffer limit (%lu), dst_addr_count:%u",
+                         prompt_block_count, max_prompt_blocks, dst_addr_count);
+  const uint64_t transfer_info_count = static_cast<uint64_t>(dst_addr_count) + prompt_block_count;
+  LLM_CHK_BOOL_RET_STATUS(transfer_info_count <= kMaxTransferInfoCount, ge::LLM_PARAM_INVALID,
+                         "transfer info count:%lu exceeds max:%lu", transfer_info_count, kMaxTransferInfoCount);
+  request_size = CalcMinRequestSize(dst_addr_count, static_cast<uint32_t>(prompt_block_count), kBufferInfoMultiplierD2h);
+  LLM_CHK_BOOL_RET_STATUS(request_size <= kMaxRequestPayloadSize, ge::LLM_PARAM_INVALID,
+                         "request size:%lu exceeds max:%lu (buffer:%lu - flag:%lu), dst_addr_count:%u, prompt_blocks:%zu",
+                         request_size, kMaxRequestPayloadSize, kDefaultReqBufferSize, kMsgFlagSize, dst_addr_count,
+                         prompt_block_count);
+  return ge::SUCCESS;
+}
 }  // namespace
 
 D2HDataTransferJob::~D2HDataTransferJob() {
@@ -35,7 +58,7 @@ ge::Status D2HDataTransferJob::Initialize(const CacheEntry &cache_entry, CommEnt
   stream_ = comm_entity.GetStream();
   buffered_sender_.Initialize(comm_entity);
   const auto &req = comm_entity.GetRequest();
-  auto resp_len = sizeof(ResponseInfo) + req.dst_addr_count * sizeof(uint64_t);
+  const auto resp_len = transfer_message_limits::CalcResponseSize(req.dst_addr_count);
   auto *local_recv_flag_addr_base = PtrToPtr<void, uint8_t>(comm_entity.GetEntityInfo().local_resp_ptr) + resp_len;
   auto *remote_recv_flag_addr_base =
       PtrToPtr<void, uint8_t>(comm_entity.GetEntityInfo().remote_req_ptr) + req.req_size;
@@ -413,9 +436,9 @@ ge::Status D2HDataTransferClient::Prepare(const CacheEntry &cache_entry,
   bool is_blocks_to_cont = (!pull_cache_param.prompt_blocks.empty()) && pull_cache_param.decoder_blocks.empty();
   LLM_CHK_BOOL_RET_STATUS((!is_blocks_to_cont), ge::LLM_PARAM_INVALID,
                          "Blocks to continuous memory is not supported by D2H data transfer");
-  LLM_CHK_BOOL_RET_STATUS(pull_cache_param.prompt_blocks.size() <= kMaxBlockNum, ge::LLM_PARAM_INVALID,
-                         "number of prompt blocks (%zu) out of bound, at most %zu is supported",
-                         pull_cache_param.prompt_blocks.size(), kMaxBlockNum);
+  LLM_CHK_STATUS_RET(
+      ValidateD2HClientPullLayout(num_buffers_, pull_cache_param.prompt_blocks.size(), validated_request_size_),
+      "Invalid D2H pull request layout");
   buffer_size_ = kDefaultBufferSize;
   auto recv_flag_base = PtrToPtr<void, uint8_t>(comm_entity_->GetEntityInfo().local_req_ptr) +
                         sizeof(TransferCacheReq) +
@@ -517,7 +540,7 @@ void D2HDataTransferClient::FillRequest(const CacheEntry &cache_entry,
                                         const PullCacheParam &pull_cache_param,
                                         TransferCacheReq &request,
                                         uint64_t &size) const {
-  size = sizeof(TransferCacheReq) + sizeof(TransferInfo) * (buffers_.size() + pull_cache_param.prompt_blocks.size());
+  size = validated_request_size_;
   request.req_size = size;
   request.is_pull_block = static_cast<uint32_t>(!pull_cache_param.prompt_blocks.empty());
   request.num_tensors = pull_cache_param.dst_tensor_indices.empty()

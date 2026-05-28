@@ -50,7 +50,7 @@ struct EntityInfo {
   void *remote_resp_ptr;
 };
 
-using FillRequestFunc = std::function<void(TransferCacheReq&, uint64_t &size)>;
+using FillRequestFunc = std::function<void(TransferCacheReq &, uint64_t &size)>;
 using FillResponseFunc = std::function<void(ResponseInfo &, uint64_t &size)>;
 
 class DataTransferJob;
