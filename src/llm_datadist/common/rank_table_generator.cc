@@ -34,8 +34,8 @@ std::unique_ptr<RankTableGenerator> RankTableGeneratorFactory::Create(const std:
   std::string local_version;
   std::string peer_version;
   try {
-    local_res = nlohmann::json::parse(local_comm_res);
-    peer_res = nlohmann::json::parse(peer_comm_res);
+    local_res = rank_table_json::ParseCommResJson(local_comm_res);
+    peer_res = rank_table_json::ParseCommResJson(peer_comm_res);
     LLMUtils::AssignRequired(local_version, kConfigVersion, local_res);
     LLMUtils::AssignRequired(peer_version, kConfigVersion, peer_res);
   } catch (const nlohmann::json::exception &e) {

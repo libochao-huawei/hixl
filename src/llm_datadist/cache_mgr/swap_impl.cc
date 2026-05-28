@@ -13,19 +13,73 @@
 #include "common/llm_log.h"
 #include "common/llm_checker.h"
 #include "common/llm_scope_guard.h"
+#include "utils/extern_math_util.h"
 
 namespace llm {
 namespace {
 constexpr int32_t kSwapOut = 1;
 constexpr int32_t kHbmBufferNum = 4;
+
+ge::Status CheckBlockIndexInRange(int64_t block_index, uint64_t num_blocks, const char *index_name) {
+  LLM_CHK_BOOL_RET_STATUS(num_blocks > 0U, ge::LLM_PARAM_INVALID, "%s num_blocks is 0", index_name);
+  LLM_CHK_BOOL_RET_STATUS(block_index >= 0, ge::LLM_PARAM_INVALID, "%s block index[%ld] must be >= 0", index_name,
+                         block_index);
+  LLM_CHK_BOOL_RET_STATUS(static_cast<uint64_t>(block_index) < num_blocks, ge::LLM_PARAM_INVALID,
+                         "%s block index[%ld] is out of range [0, %lu)", index_name, block_index, num_blocks);
+  return ge::SUCCESS;
+}
+
+ge::Status CheckCopyRange(uintptr_t base_addr, int64_t block_index, uint64_t block_size, uint64_t contiguous_block_num) {
+  LLM_CHK_BOOL_RET_STATUS(block_index >= 0, ge::LLM_PARAM_INVALID, "block index[%ld] must be >= 0", block_index);
+  uint64_t copy_size = 0U;
+  LLM_CHK_BOOL_RET_STATUS(!ge::MulOverflow(block_size, contiguous_block_num, copy_size), ge::LLM_PARAM_INVALID,
+                         "copy_size overflow, block_size:%lu, block_num:%lu", block_size, contiguous_block_num);
+  uint64_t block_offset = 0U;
+  LLM_CHK_BOOL_RET_STATUS(!ge::MulOverflow(static_cast<uint64_t>(block_index), block_size, block_offset),
+                         ge::LLM_PARAM_INVALID, "block offset overflow, block index:%ld, block_size:%lu", block_index,
+                         block_size);
+  uintptr_t copy_addr = 0U;
+  LLM_CHK_BOOL_RET_STATUS(!ge::AddOverflow(base_addr, block_offset, copy_addr), ge::LLM_PARAM_INVALID,
+                         "copy address overflow, base_addr:%lu, block_offset:%lu", base_addr, block_offset);
+  uintptr_t copy_end = 0U;
+  LLM_CHK_BOOL_RET_STATUS(!ge::AddOverflow(copy_addr, copy_size, copy_end), ge::LLM_PARAM_INVALID,
+                         "copy end address overflow, copy_addr:%lu, copy_size:%lu", copy_addr, copy_size);
+  return ge::SUCCESS;
+}
+
+ge::Status ValidateBlockMapping(const std::vector<std::pair<int64_t, int64_t>> &block_mapping,
+                                const std::vector<std::vector<std::pair<int64_t, int64_t>>> &ordered_block_mapping,
+                                uint64_t block_size, uint64_t src_num_blocks, uint64_t dst_num_blocks,
+                                uintptr_t src_addr, uintptr_t dst_addr) {
+  LLM_CHK_BOOL_RET_STATUS(block_size > 0U, ge::LLM_PARAM_INVALID, "block_size must be > 0, got:%lu", block_size);
+  for (const auto &pair : block_mapping) {
+    LLM_CHK_STATUS_RET(CheckBlockIndexInRange(pair.first, src_num_blocks, "src"));
+    LLM_CHK_STATUS_RET(CheckBlockIndexInRange(pair.second, dst_num_blocks, "dst"));
+  }
+  for (const auto &ordered_block : ordered_block_mapping) {
+    LLM_CHK_BOOL_RET_STATUS(!ordered_block.empty(), ge::LLM_PARAM_INVALID, "ordered block must not be empty");
+    const int64_t src_index = ordered_block.front().first;
+    const int64_t dst_index = ordered_block.front().second;
+    LLM_CHK_STATUS_RET(CheckCopyRange(src_addr, src_index, block_size, ordered_block.size()));
+    LLM_CHK_STATUS_RET(CheckCopyRange(dst_addr, dst_index, block_size, ordered_block.size()));
+  }
+  return ge::SUCCESS;
+}
 }  // namespace
 
 ge::Status SwapImpl::SwapBlocks(const std::vector<uintptr_t> &src_addrs, const std::vector<uintptr_t> &dst_addrs,
                                 const uint64_t block_size,
                                 const std::vector<std::pair<int64_t, int64_t>> &block_mapping,
-                                const CopyInfo &copy_info) {
+                                const CopyInfo &copy_info, uint64_t src_num_blocks, uint64_t dst_num_blocks) {
   std::vector<std::vector<std::pair<int64_t, int64_t>>> ordered_block_mapping;
   LLM_CHK_STATUS_RET(LLMUtils::FindContiguousBlockIndexPair(block_mapping, ordered_block_mapping));
+  LLM_CHK_BOOL_RET_STATUS((src_addrs.size() == dst_addrs.size()) && !src_addrs.empty(), ge::LLM_PARAM_INVALID,
+                         "src_addrs and dst_addrs must be non-empty and have the same size");
+  for (size_t i = 0U; i < src_addrs.size(); ++i) {
+    LLM_CHK_STATUS_RET(ValidateBlockMapping(block_mapping, ordered_block_mapping, block_size, src_num_blocks,
+                                           dst_num_blocks, src_addrs[i], dst_addrs[i]),
+                      "validate block mapping failed for tensor %zu", i);
+  }
   const auto start = std::chrono::steady_clock::now();
   LLMThreadPool swap_out_pool("ge_llm_swap", kHbmBufferNum);
   aclrtContext aclrt_context = nullptr;
@@ -39,6 +93,7 @@ ge::Status SwapImpl::SwapBlocks(const std::vector<uintptr_t> &src_addrs, const s
                                                       &aclrt_context, &aclrt_copy_time, &copy_info]() -> ge::Status {
       LLM_CHK_ACL_RET(aclrtSetCurrentContext(aclrt_context));
       for (const auto &ordered_block : ordered_block_mapping) {
+        // copy_size and address ranges are validated in ValidateBlockMapping before async commit.
         const int64_t src_index = ordered_block.front().first;
         const int64_t dst_index = ordered_block.front().second;
         const uint64_t copy_size = block_size * ordered_block.size();
@@ -73,16 +128,17 @@ ge::Status SwapImpl::SwapBlocks(const std::vector<uintptr_t> &src_addrs, const s
 }
 
 ge::Status SwapImpl::SwapBlocksV2(const Cache &src, const Cache &dst, const uint64_t block_size, const uint32_t type,
-                                  const std::vector<std::pair<int64_t, int64_t>> &block_mapping) const {
+                                  const std::vector<std::pair<int64_t, int64_t>> &block_mapping,
+                                  uint64_t src_num_blocks, uint64_t dst_num_blocks) const {
   LLM_CHK_STATUS_RET(CheckParam(src, dst), "check param failed");
   const auto &src_addrs = src.per_device_tensor_addrs;
   const auto &dst_addrs = dst.per_device_tensor_addrs;
   LLMLOGI("Begin swap blocks, cache num:%zu, swap block num:%zu, swap type:%u", src_addrs.front().size(),
          block_mapping.size(), type);
   aclrtMemcpyKind kind = (type == kSwapOut) ? ACL_MEMCPY_DEVICE_TO_HOST : ACL_MEMCPY_HOST_TO_DEVICE;
-  LLM_CHK_STATUS_RET(
-      SwapBlocks(src_addrs.front(), dst_addrs.front(), block_size, block_mapping, CopyInfo{CopyType::kMemcpy, kind}),
-      "swap blocks failed, kind:%d", kind);
+  LLM_CHK_STATUS_RET(SwapBlocks(src_addrs.front(), dst_addrs.front(), block_size, block_mapping,
+                                CopyInfo{CopyType::kMemcpy, kind}, src_num_blocks, dst_num_blocks),
+                     "swap blocks failed, kind:%d", kind);
   LLMLOGI("swap blocks success, kind:%d", kind);
   return ge::SUCCESS;
 }

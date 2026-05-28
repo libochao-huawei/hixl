@@ -100,6 +100,7 @@ ge::Status DataCacheEngine::Register(const llm::CacheDesc &cache_desc, const std
 
 ge::Status DataCacheEngine::Unregister(int64_t cache_id) {
   const auto start = std::chrono::steady_clock::now();
+  std::lock_guard<std::mutex> lock(mu_);
   LLM_CHK_STATUS_RET(comm_mem_manager_->UnregisterCacheMem(cache_id),
                     "Unregister cache addr failed, cache_id = %ld.", cache_id);
   LLM_CHK_STATUS_RET(cache_manager_->UnregisterCacheEntry(cache_id),
@@ -163,8 +164,26 @@ ge::Status DataCacheEngine::PullCache(int64_t cache_id, const CacheKey &cache_ke
 ge::Status DataCacheEngine::SwapBlocks(const Cache &src, const Cache &dst, const uint64_t block_size,
                                        const uint32_t type,
                                        const std::vector<std::pair<int64_t, int64_t>> &block_mapping) const {
+  LLM_CHK_BOOL_RET_STATUS(src.cache_id >= 0, ge::LLM_PARAM_INVALID, "invalid src cache id:%ld", src.cache_id);
+  LLM_CHK_BOOL_RET_STATUS(dst.cache_id >= 0, ge::LLM_PARAM_INVALID, "invalid dst cache id:%ld", dst.cache_id);
+
+  CacheEntry src_cache_entry;
+  LLM_CHK_BOOL_RET_STATUS(cache_manager_->GetCacheEntry(src.cache_id, src_cache_entry), ge::LLM_KV_CACHE_NOT_EXIST,
+                         "src cache id:%ld not found", src.cache_id);
+  const uint64_t src_num_blocks = src_cache_entry.num_blocks > 0U ? src_cache_entry.num_blocks
+                                                                  : static_cast<uint64_t>(src_cache_entry.batch_size);
+  LLM_CHK_BOOL_RET_STATUS(src_num_blocks > 0U, ge::LLM_PARAM_INVALID, "src cache id:%ld has no blocks", src.cache_id);
+
+  CacheEntry dst_cache_entry;
+  LLM_CHK_BOOL_RET_STATUS(cache_manager_->GetCacheEntry(dst.cache_id, dst_cache_entry), ge::LLM_KV_CACHE_NOT_EXIST,
+                         "dst cache id:%ld not found", dst.cache_id);
+  const uint64_t dst_num_blocks = dst_cache_entry.num_blocks > 0U ? dst_cache_entry.num_blocks
+                                                                  : static_cast<uint64_t>(dst_cache_entry.batch_size);
+  LLM_CHK_BOOL_RET_STATUS(dst_num_blocks > 0U, ge::LLM_PARAM_INVALID, "dst cache id:%ld has no blocks", dst.cache_id);
+
   SwapImpl swap_impl(device_id_);
-  LLM_CHK_STATUS_RET(swap_impl.SwapBlocksV2(src, dst, block_size, type, block_mapping));
+  LLM_CHK_STATUS_RET(
+      swap_impl.SwapBlocksV2(src, dst, block_size, type, block_mapping, src_num_blocks, dst_num_blocks));
   return ge::SUCCESS;
 }
 

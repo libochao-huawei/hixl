@@ -86,7 +86,7 @@ static void to_json(nlohmann::json &j, const RankTableInfo &r) {
 }
 
 rank_table_v2::RankTableInfo RankTableGeneratorV2::LoadFromJsonStr(const std::string &rank_table) {
-  auto j = nlohmann::json::parse(rank_table);
+  auto j = rank_table_json::ParseCommResJson(rank_table);
   return j.get<rank_table_v2::RankTableInfo>();
 }
 
