@@ -18,6 +18,7 @@
 #include "data_transfer/d2d_data_transfer_job.h"
 #include "common/llm_checker.h"
 #include "common/llm_scope_guard.h"
+#include "common/transfer_message_limits.h"
 
 namespace llm {
 namespace {
@@ -25,6 +26,48 @@ constexpr int32_t kTransferTypeD2D = 0;
 constexpr int32_t kTransferTypeD2H = 1;
 constexpr int32_t kTransferTypeH2D = 2;
 constexpr int32_t kDefaultTimeoutInMs = 1800 * 1000;  // 1800s
+
+ge::Status ValidateBufferInfoLens(const TransferCacheReq &request, uint32_t buffer_info_multiplier) {
+  using namespace transfer_message_limits;
+  if (request.buffer_info_count == 0U) {
+    return ge::SUCCESS;
+  }
+  for (uint32_t i = 0U; i < request.buffer_info_count; ++i) {
+    const auto &src_buffer_info = request.transfer_infos[request.dst_addr_count + i].buffer_info;
+    LLM_CHK_BOOL_RET_STATUS(src_buffer_info.buffer_len > 0U, ge::LLM_PARAM_INVALID,
+                           "src buffer_info[%u].buffer_len is 0", i);
+    if (buffer_info_multiplier > kBufferInfoMultiplierD2h) {
+      const auto &dst_buffer_info =
+          request.transfer_infos[request.dst_addr_count + request.buffer_info_count + i].buffer_info;
+      LLM_CHK_BOOL_RET_STATUS(dst_buffer_info.buffer_len > 0U, ge::LLM_PARAM_INVALID,
+                             "dst buffer_info[%u].buffer_len is 0", i);
+    }
+  }
+  return ge::SUCCESS;
+}
+
+ge::Status ValidateTransferRequest(const TransferCacheReq &request, int32_t transfer_type) {
+  using namespace transfer_message_limits;
+  LLM_CHK_BOOL_RET_STATUS(request.dst_addr_count > 0U, ge::LLM_PARAM_INVALID, "dst_addr_count is 0");
+  LLM_CHK_BOOL_RET_STATUS(request.dst_addr_count <= kMaxDstAddrCount, ge::LLM_PARAM_INVALID,
+                         "dst_addr_count:%u exceeds max:%u", request.dst_addr_count, kMaxDstAddrCount);
+
+  const uint32_t buffer_info_multiplier =
+      (transfer_type == kTransferTypeD2H) ? kBufferInfoMultiplierD2h : kBufferInfoMultiplierD2dH2d;
+  const uint64_t transfer_info_count = static_cast<uint64_t>(request.dst_addr_count) +
+                                       static_cast<uint64_t>(request.buffer_info_count) * buffer_info_multiplier;
+  LLM_CHK_BOOL_RET_STATUS(transfer_info_count <= kMaxTransferInfoCount, ge::LLM_PARAM_INVALID,
+                         "transfer info count:%lu exceeds max:%lu, dst_addr_count:%u, buffer_info_count:%u",
+                         transfer_info_count, kMaxTransferInfoCount, request.dst_addr_count, request.buffer_info_count);
+
+  const uint64_t expected_req_size =
+      CalcMinRequestSize(request.dst_addr_count, request.buffer_info_count, buffer_info_multiplier);
+  LLM_CHK_BOOL_RET_STATUS(request.req_size == expected_req_size, ge::LLM_PARAM_INVALID,
+                         "req_size:%lu mismatches expected:%lu for dst_addr_count:%u, buffer_info_count:%u",
+                         request.req_size, expected_req_size, request.dst_addr_count, request.buffer_info_count);
+  LLM_CHK_STATUS_RET(ValidateBufferInfoLens(request, buffer_info_multiplier), "Failed to validate buffer info lens");
+  return ge::SUCCESS;
+}
 }  // namespace
 ge::Status SendState::Preprocess(CommEntity &entity) {
   auto ret = Prepare(entity);
@@ -52,6 +95,7 @@ ge::Status SendState::Prepare(CommEntity &entity) {
   LLMLOGI("transfer type = %d", transfer_type);
   LLM_CHK_BOOL_RET_STATUS(transfer_type >= 0, ge::LLM_FEATURE_NOT_ENABLED, "dst_placement = %d, src_placement = %d is not supported",
                          entity.GetRequest().dst_placement, static_cast<int32_t>(cache_entry.placement));
+  LLM_CHK_STATUS_RET(ValidateTransferRequest(request, transfer_type), "Failed to validate transfer request");
   if (transfer_type == kTransferTypeD2H) {
     entity.SetDataTransferJob(MakeUnique<D2HDataTransferJob>());
   } else if (transfer_type == kTransferTypeH2D) {

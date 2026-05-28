@@ -126,6 +126,7 @@ class D2HDataTransferClient {
   uint8_t *send_dev_flag_ = nullptr;
   uint32_t buffer_size_ = 0U;
   uint32_t num_buffers_ = 2U;
+  uint64_t validated_request_size_ = 0U;
   uint32_t block_size_ = 0U;
   int64_t timeout_in_ms_ = 1000;
   std::chrono::steady_clock::time_point timeout_tp_;
