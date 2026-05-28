@@ -20,15 +20,9 @@ DirectClientHandler::DirectClientHandler(HixlClientHandle handle) : handle_(hand
 
 Status DirectClientHandler::Create(const HandlerCreateArgs &args, std::unique_ptr<DirectClientHandler> &out) {
   const auto &pair = args.matched_pairs[0];
-  uint32_t dev_phy_id = 0;
-  if (pair.local.placement == kPlacementDevice) {
-    HIXL_CHK_BOOL_RET_STATUS(args.has_local_device_resource, FAILED,
-                             "local device endpoint requires local device resource");
-    dev_phy_id = args.local_dev_phy_id;
-  }
   EndpointDesc local_endpoint{};
   EndpointDesc remote_endpoint{};
-  HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(pair.local, local_endpoint, dev_phy_id));
+  HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(pair.local, local_endpoint));
   HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(pair.remote, remote_endpoint));
   HixlClientDesc desc{};
   desc.server_ip = args.server_ip.c_str();
