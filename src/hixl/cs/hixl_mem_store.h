@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <mutex>
 #include "hixl/hixl_types.h"
+#include "cs/hixl_cs.h"
 
 namespace hixl {
 struct MemoryRegion {
@@ -60,10 +61,13 @@ class HixlMemStore {
    */
   Status ValidateMemoryAccess(const void *server_addr, size_t mem_size, const void *client_addr);
   bool CheckMemoryForRegister(bool is_server, const void *check_addr, size_t check_size);
-  Status FindMemoryRegion(bool is_server, const void *addr, MemoryRegion &region) const;
+  Status ValidateMemoryAccessBatch(uint32_t list_num, const HixlOneSideOpDesc *desc_list);
+  Status ConvertHostAddrBatch(uint32_t list_num, HixlOneSideOpDesc *desc_list) const;
 
  private:
   bool CheckMemoryForAccess(bool is_server, const void *check_addr, size_t check_size);
+  Status FindMemoryRegion(bool is_server, const void *addr, MemoryRegion &region) const;
+  Status ConvertHostAddr(HixlOneSideOpDesc &desc) const;
   bool CheckMergedRegionsAccess(const std::map<const void *, MemoryRegion> &regions, uintptr_t s, uintptr_t e,
                                 typename std::map<const void *, MemoryRegion>::const_iterator it);
   // 内存区域信息结构体
