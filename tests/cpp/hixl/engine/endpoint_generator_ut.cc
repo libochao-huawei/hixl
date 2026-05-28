@@ -813,6 +813,32 @@ TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceHccsInvalidCommIdTest)
   EXPECT_EQ(EndpointGenerator::ConvertToEndpointDesc(ep, endpoint, 10U), PARAM_INVALID);
 }
 
+TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceHccsRejectsLongCommIdTest) {
+  EndpointConfig ep;
+  ep.protocol = kProtocolHccs;
+  ep.comm_id = std::string(10000U, '1');
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = 2;
+  ep.device_info.super_device_id = 4;
+  ep.device_info.super_pod_id = 8;
+
+  EndpointDesc endpoint{};
+  EXPECT_EQ(EndpointGenerator::ConvertToEndpointDesc(ep, endpoint, 10U), PARAM_INVALID);
+}
+
+TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceHccsRejectsOutOfRangeCommIdTest) {
+  EndpointConfig ep;
+  ep.protocol = kProtocolHccs;
+  ep.comm_id = "4294967296";
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = 2;
+  ep.device_info.super_device_id = 4;
+  ep.device_info.super_pod_id = 8;
+
+  EndpointDesc endpoint{};
+  EXPECT_EQ(EndpointGenerator::ConvertToEndpointDesc(ep, endpoint, 10U), PARAM_INVALID);
+}
+
 TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceUbParsesEidTest) {
   EndpointConfig ep;
   ep.protocol = kProtocolUbCtp;

@@ -19,6 +19,7 @@
 #include "utils/sync_flag.h"
 #include "common/llm_checker.h"
 #include "common/llm_scope_guard.h"
+#include "common/transfer_message_limits.h"
 
 #include <cinttypes>
 
@@ -663,6 +664,11 @@ ge::Status CommEntity::SendResponse(const FillResponseFunc &fill_response_func) 
   uint64_t resp_size = 0U;
   auto &resp_info = *PtrToPtr<void, ResponseInfo>(info_.send_buffer_resp_ptr);
   fill_response_func(resp_info, resp_size);
+  LLM_CHK_BOOL_RET_STATUS(
+      resp_size <= transfer_message_limits::kMaxResponsePayloadSize, ge::LLM_PARAM_INVALID,
+      "resp_size:%lu exceeds max:%lu (buffer:%lu - flag:%lu)", resp_size,
+      transfer_message_limits::kMaxResponsePayloadSize, transfer_message_limits::kDefaultRespBufferSize,
+      transfer_message_limits::kMsgFlagSize);
   auto *local_sync_flag_ptr = PtrToPtr<void, int8_t>(info_.send_buffer_resp_flag_ptr);
   *local_sync_flag_ptr = 1;
   LLM_CHK_ACL_RET(aclrtMemcpyAsync(info_.send_dev_buffer_resp_flag_ptr,

@@ -31,10 +31,11 @@ Status MsgReceiver::RecvHeader() {
   recv_state_ = RecvState::WAITING_FOR_BODY;
   if (received_size_ > sizeof(CtrlMsgHeader)) {
     size_t remaining = received_size_ - sizeof(CtrlMsgHeader);
-    auto ret = memmove_s(recv_buffer_.data(), remaining, recv_buffer_.data() + sizeof(CtrlMsgHeader), remaining);
+    const size_t buffer_size = recv_buffer_.size();
+    auto ret = memmove_s(recv_buffer_.data(), buffer_size, recv_buffer_.data() + sizeof(CtrlMsgHeader), remaining);
     HIXL_CHK_BOOL_RET_STATUS(ret == EOK, FAILED,
                              "Call api:memmove_s failed, ret:%d, dst_addr:%p, dst_max:%zu, src_addr:%p, count:%zu",
-                             static_cast<int32_t>(ret), recv_buffer_.data(), remaining,
+                             static_cast<int32_t>(ret), recv_buffer_.data(), buffer_size,
                              recv_buffer_.data() + sizeof(CtrlMsgHeader), remaining);
     received_size_ = remaining;
   } else {
@@ -88,10 +89,11 @@ Status MsgReceiver::IRecv(std::vector<CtrlMsgPtr> &msgs) {
                 static_cast<int32_t>(ctrl_msg->msg_type), ctrl_msg->msg.size());
       if (received_size_ > expected_size_) {
         size_t remaining = received_size_ - expected_size_;
-        auto ret = memmove_s(recv_buffer_.data(), remaining, recv_buffer_.data() + expected_size_, remaining);
+        const size_t buffer_size = recv_buffer_.size();
+        auto ret = memmove_s(recv_buffer_.data(), buffer_size, recv_buffer_.data() + expected_size_, remaining);
         HIXL_CHK_BOOL_RET_STATUS(ret == EOK, FAILED,
                                  "Call api:memmove_s failed, ret:%d, dst_addr:%p, dst_max:%zu, src_addr:%p, count:%zu",
-                                 static_cast<int32_t>(ret), recv_buffer_.data(), remaining,
+                                 static_cast<int32_t>(ret), recv_buffer_.data(), buffer_size,
                                  recv_buffer_.data() + expected_size_, remaining);
         received_size_ = remaining;
         recv_state_ = RecvState::WAITING_FOR_HEADER;

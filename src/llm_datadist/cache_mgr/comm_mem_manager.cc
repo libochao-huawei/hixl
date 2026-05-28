@@ -80,6 +80,7 @@ ge::Status CommMemManager::RegisterCacheMem(int64_t cache_id,
     return ge::SUCCESS;
   }
 
+  std::lock_guard<std::mutex> lock(mutex_);
   RegisterMems mems{};
   for (const auto &addr : addrs) {
     LLM_CHK_BOOL_RET_STATUS(addr != 0U, ge::LLM_PARAM_INVALID, "The addr of cache can not be zero.");
@@ -100,7 +101,6 @@ ge::Status CommMemManager::RegisterCacheMem(int64_t cache_id,
     LLMLOGI("Register global mem[%p] success, size:%ld, placement:%u, handle:%p, cache_id:%ld",
            mem_ptr, tensor_size, cache_desc.placement, mem_handle, cache_id);
   }
-  std::lock_guard<std::mutex> lock(mutex_);
   cache_id_to_mems_[cache_id] = std::move(mems);
   return ge::SUCCESS;
 }

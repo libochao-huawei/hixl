@@ -63,7 +63,8 @@ TEST_F(ChannelManagerUnitTest, ProcessReceivedDataRejectsOversizedBodySize) {
   EXPECT_EQ(manager_.ProcessReceivedData(channel), FAILED);
   EXPECT_EQ(channel->recv_state_, RecvState::WAITING_FOR_HEADER);
   EXPECT_EQ(channel->expected_body_size_, 0U);
-  EXPECT_EQ(channel->bytes_received_, sizeof(ProtocolHeader));
+  EXPECT_EQ(channel->bytes_received_, 0U);
+  EXPECT_TRUE(channel->recv_buffer_.empty());
 }
 
 TEST_F(ChannelManagerUnitTest, ProcessReceivedDataRejectsInvalidMagicNumber) {
@@ -72,7 +73,8 @@ TEST_F(ChannelManagerUnitTest, ProcessReceivedDataRejectsInvalidMagicNumber) {
   EXPECT_EQ(manager_.ProcessReceivedData(channel), FAILED);
   EXPECT_EQ(channel->recv_state_, RecvState::WAITING_FOR_HEADER);
   EXPECT_EQ(channel->expected_body_size_, 0U);
-  EXPECT_EQ(channel->bytes_received_, sizeof(ProtocolHeader));
+  EXPECT_EQ(channel->bytes_received_, 0U);
+  EXPECT_TRUE(channel->recv_buffer_.empty());
 }
 
 TEST_F(ChannelManagerUnitTest, HandleNotifyMessage_WhenStorageLimitExceeded_ReturnsFailed) {

@@ -163,6 +163,11 @@ ge::Status RankTableGeneratorV2::Generate(int32_t local_device_id, std::string &
   rank_table_v2::RankTableInfo peer_rank_table{};
   LLMLOGI("Rank table generate begin, local comm res:%s, peer comm res:%s",
          local_comm_res_.c_str(), peer_comm_res_.c_str());
+  if (!rank_table_json::IsCommResJsonSizeValid(local_comm_res_) ||
+      !rank_table_json::IsCommResJsonSizeValid(peer_comm_res_)) {
+    LLMLOGE(ge::LLM_PARAM_INVALID, "comm_res size exceeds limit");
+    return ge::LLM_PARAM_INVALID;
+  }
   try {
     local_rank_table = RankTableGeneratorV2::LoadFromJsonStr(local_comm_res_);
     peer_rank_table = RankTableGeneratorV2::LoadFromJsonStr(peer_comm_res_);
