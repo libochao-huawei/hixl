@@ -22,6 +22,7 @@ extern "C" {
 #endif // __cplusplus
 
 static const uint32_t COMM_ADDR_EID_LEN = 16U;
+static const uint32_t HCOMM_NIC_PORT_MAX_NUM = 2U;
 static const uint32_t HCOMM_CHANNEL_MAGIC_WORD = 0x0fcf0f0fU;
 static const uint32_t HCOMM_CHANNEL_VERSION_ONE = 1U;
 static const uint32_t HCOMM_CHANNEL_VERSION = HCOMM_CHANNEL_VERSION_ONE;
@@ -91,20 +92,36 @@ typedef enum {
     COMM_ADDR_TYPE_IP_V6 = 1,     ///< IPv6地址类型
     COMM_ADDR_TYPE_ID = 2,        ///< ID地址类型
     COMM_ADDR_TYPE_EID = 3,       ///< EID地址类型
+    COMM_ADDR_TYPE_MULTI_PORT = 4, ///< 多端口地址类型
 } CommAddrType;
 
 /**
- * @brief 通信设备地址描述结构体
- * @note 支持CommAddrType的扩展，地址最大长度36字节
+ * @brief 多PORT通信设备地址描述结构体
+ * @note 最多支持双PORT
  */
 typedef struct {
-    CommAddrType type;         ///< 通信地址类别
+    uint8_t portNum;            ///< PORT数量，最大HCOMM_NIC_PORT_MAX_NUM，当前最多支持双PORT
+    int32_t family;             ///< 带外建链地址族
     union {
-        uint8_t raws[36];      ///< 通用数据
-        struct in_addr addr;   ///< IPv4地址结构
-        struct in6_addr addr6; ///< IPv6地址结构
-        uint32_t id;           ///< 标识
+        struct in_addr addr;    ///< IPv4地址结构
+        struct in6_addr addr6;  ///< IPv6地址结构
+    } linkAddr;                 ///< 带外建链地址
+    uint8_t eidList[HCOMM_NIC_PORT_MAX_NUM][COMM_ADDR_EID_LEN]; ///< 每个PORT对应的EID地址
+} MultiPortAddr;
+
+/**
+ * @brief 通信设备地址描述结构体
+ * @note 支持CommAddrType的扩展，raws长度随最大地址结构扩展
+ */
+typedef struct {
+    CommAddrType type;           ///< 通信地址类别
+    union {
+        uint8_t raws[56]; ///< 通用数据
+        struct in_addr addr;     ///< IPv4地址结构
+        struct in6_addr addr6;   ///< IPv6地址结构
+        uint32_t id;             ///< 标识
         uint8_t eid[COMM_ADDR_EID_LEN];  ///< EID地址类型
+        MultiPortAddr portsAddr; ///< 多PORT地址类型
     };
 } CommAddr;
 

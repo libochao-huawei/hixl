@@ -59,6 +59,15 @@ const EndpointConfig *EndpointMatcher::FindByProtocol(const std::vector<Endpoint
   return it != endpoints.end() ? &(*it) : nullptr;
 }
 
+const EndpointConfig *EndpointMatcher::FindByProtocolAndPlacement(const std::vector<EndpointConfig> &endpoints,
+                                                                  const std::string &protocol,
+                                                                  const std::string &placement) {
+  auto it = std::find_if(endpoints.begin(), endpoints.end(), [&protocol, &placement](const auto &e) {
+    return e.protocol == protocol && e.placement == placement;
+  });
+  return it != endpoints.end() ? &(*it) : nullptr;
+}
+
 void EndpointMatcher::BuildMatchMap(const std::vector<EndpointConfig> &endpoints,
                                     std::map<MatchKey, EndpointConfig> &out) {
   for (const auto &ep : endpoints) {
@@ -90,8 +99,17 @@ std::map<MatchKey, EndpointConfig>::const_iterator EndpointMatcher::FindMatching
 Status EndpointMatcher::TryMatchUboe(const std::vector<EndpointConfig> &local,
                                      const std::vector<EndpointConfig> &remote,
                                      std::vector<HandlerCreateArgs::EndpointPair> &pairs) {
-  auto *li = FindByProtocol(local, kProtocolUboe);
-  auto *ri = FindByProtocol(remote, kProtocolUboe);
+  // device uboe
+  auto *li = FindByProtocolAndPlacement(local, kProtocolUboe, kPlacementDevice);
+  auto *ri = FindByProtocolAndPlacement(remote, kProtocolUboe, kPlacementDevice);
+  if (li != nullptr && ri != nullptr) {
+    pairs.push_back({*li, *ri, CommType::COMM_TYPE_UBOE});
+    return SUCCESS;
+  }
+
+  // host uboe
+  li = FindByProtocolAndPlacement(local, kProtocolUboe, kPlacementHost);
+  ri = FindByProtocolAndPlacement(remote, kProtocolUboe, kPlacementHost);
   if (li != nullptr && ri != nullptr) {
     pairs.push_back({*li, *ri, CommType::COMM_TYPE_UBOE});
     return SUCCESS;
