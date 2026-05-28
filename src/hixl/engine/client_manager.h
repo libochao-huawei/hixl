@@ -11,9 +11,12 @@
 #ifndef HIXL_SRC_HIXL_ENGINE_CLIENT_MANAGER_H_
 #define HIXL_SRC_HIXL_ENGINE_CLIENT_MANAGER_H_
 
+#include <atomic>
+#include <condition_variable>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 #include "hixl_client.h"
@@ -26,7 +29,7 @@ class ClientManager {
  public:
   ClientManager() = default;
   ~ClientManager() = default;
-  Status Initialize();
+  Status Initialize(bool auto_connect);
   Status Finalize();
   Status CreateClient(const ClientConfig &config, ClientPtr &client_ptr);
   ClientPtr GetClient(const std::string &remote_engine);
@@ -36,10 +39,18 @@ class ClientManager {
   bool IsEmpty();
 
  private:
+  void SendHeartbeats();
+
   std::mutex mutex_;
   std::map<std::string, ClientPtr> clients_;
   std::mutex client_mutexes_mutex_;
   std::unordered_map<std::string, std::shared_ptr<std::mutex>> client_mutexes_;
+
+  std::thread heartbeat_sender_;
+  std::atomic<bool> stop_signal_{false};
+  std::mutex cv_mutex_;
+  std::condition_variable cv_;
+  bool auto_connect_{false};
 };
 }  // namespace hixl
 

@@ -152,6 +152,13 @@ Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list
                                     [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
                                       return this->DestroyChannel(fd, msg, msg_len);
                                     });
+  msg_handler_.RegisterMsgProcessor(CtrlMsgType::kHeartBeat,
+                                    [](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
+                                      (void)fd;
+                                      (void)msg;
+                                      (void)msg_len;
+                                      return SUCCESS;
+                                    });
   CtrlMsgPlugin::Initialize();
   msg_handler_.Initialize();
   HIXL_CHK_STATUS_RET(InitTransFinishedFlag(), "Failed to init trans finished flag");

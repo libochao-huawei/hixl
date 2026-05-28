@@ -29,6 +29,7 @@ struct ClientConfig {
   std::string remote_engine;
   uint8_t rdma_tc;
   uint8_t rdma_sl;
+  bool auto_connect{false};
 };
 
 class HixlClient {
@@ -39,7 +40,11 @@ class HixlClient {
    * @param [in] server_port  服务端监听端口号
    */
   HixlClient(const std::string &server_ip, uint32_t server_port, const ClientConfig &config)
-      : server_ip_(server_ip), server_port_(server_port), rdma_tc_(config.rdma_tc), rdma_sl_(config.rdma_sl) {}
+      : server_ip_(server_ip),
+        server_port_(server_port),
+        rdma_tc_(config.rdma_tc),
+        rdma_sl_(config.rdma_sl),
+        auto_connect_(config.auto_connect) {}
   ~HixlClient() = default;
 
   /**
@@ -97,22 +102,32 @@ class HixlClient {
 
   Status SendNotify(const NotifyDesc &notify, int32_t timeout_ms);
 
+  Status SendHeartbeat(bool &need_retry);
+
+  void StopHeartbeat();
+
  private:
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const;
   void WaitBatchCsSyncInflightDrain();
   Status RecvNotifyAck(int32_t fd, int32_t timeout_ms);
+  void CloseCtrlSocketLocked();
+  Status EnsureCtrlSocketLocked();
 
   std::string server_ip_;
   uint32_t server_port_;
   uint8_t rdma_tc_{kRdmaTrafficClass};
   uint8_t rdma_sl_{kRdmaServiceLevel};
+  bool auto_connect_{false};
   bool is_connected_{false};  // true为已建链；false未建链
   bool is_finalized_{false};
   bool finalize_pending_{
       false};  // Finalize 置位后拒绝新 TransferSync；在析构 CS client 前等待为 0（与 TransferSync 内 fetch_add 配对）
   std::atomic<int> batch_cs_sync_inflight_{0};
+  std::atomic<bool> heartbeat_stopped_{false};
+  int32_t ctrl_socket_{-1};
   std::unique_ptr<IClientHandler> client_handler_;
+  std::mutex ctrl_socket_mutex_;
   std::mutex status_mutex_;  // 保护 is_connected_、is_finalized_、finalize_pending_；TransferSync 与 Finalize 在此与
                              // inflight 配对
 };

@@ -60,6 +60,8 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
   HIXL_CHK_STATUS_RET(InitServer(),
                       "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
                       local_engine_.c_str(), local_comm_res.c_str());
+  HIXL_CHK_STATUS_RET(client_manager_.Initialize(auto_connect_),
+                      "[HixlEngine] Failed to initialize client manager");
   is_initialized_ = true;
   HIXL_LOGI("[HixlEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
   return SUCCESS;
@@ -158,11 +160,14 @@ Status HixlEngine::ConnectLocked(const AscendString &remote_engine, int32_t time
 
 Status HixlEngine::Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis) {
   std::string engine_key(remote_engine.GetString());
-  auto client_mutex = client_manager_.GetClientMutex(engine_key);
-  std::lock_guard<std::mutex> client_lock(*client_mutex);
-  HIXL_LOGI("[HixlEngine] Disconnection started, local_engine:%s, remote_engine:%s, timeout:%d ms",
-            local_engine_.c_str(), engine_key.c_str(), timeout_in_millis);
-  Status ret = client_manager_.DestroyClient(engine_key);
+  Status ret;
+  {
+    auto client_mutex = client_manager_.GetClientMutex(engine_key);
+    std::lock_guard<std::mutex> client_lock(*client_mutex);
+    HIXL_LOGI("[HixlEngine] Disconnection started, local_engine:%s, remote_engine:%s, timeout:%d ms",
+              local_engine_.c_str(), engine_key.c_str(), timeout_in_millis);
+    ret = client_manager_.DestroyClient(engine_key);
+  }
   client_manager_.DestroyClientMutex(engine_key);
   HIXL_CHK_STATUS_RET(ret, "[HixlEngine] Failed to disconnect, local_engine:%s, remote_engine:%s, timeout:%d ms",
                       local_engine_.c_str(), engine_key.c_str(), timeout_in_millis);

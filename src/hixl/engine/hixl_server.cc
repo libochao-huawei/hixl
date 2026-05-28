@@ -85,9 +85,9 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
     };
     HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetEndpointInfoReq, send_endpoint_cb),
                         "Failed to register send endpoint info processor.");
+    HIXL_CHK_STATUS_RET(RegisterNotifyHandlers(), "Failed to register notify handlers.");
     HIXL_CHK_STATUS_RET(HixlCSServerListen(server_handle_, kDefaultBackLog),
                         "HixlServer listen failed, backlog:%u.", kDefaultBackLog);
-    HIXL_CHK_STATUS_RET(RegisterNotifyHandlers(), "Failed to register notify handlers.");
   }
   return SUCCESS;
 }
