@@ -55,7 +55,7 @@ static void to_json(nlohmann::json &j, const RankTableInfo &r) {
   j["server_list"] = r.server_list;
   j["status"] = r.status;
 }
-}
+}  // namespace rank_table_v1
 
 rank_table_v1::RankTableInfo RankTableGeneratorV1::LoadFromJsonStr(const std::string &rank_table) {
   auto j = nlohmann::json::parse(rank_table);
@@ -69,21 +69,20 @@ ge::Status RankTableGeneratorV1::MergeRankTable(int32_t local_device_id,
   std::map<std::string, std::set<rank_table_v1::DeviceInfo>> merged_info;
   for (const auto &server : local_rank_table.server_list) {
     LLM_CHK_BOOL_RET_STATUS(server.device_list.size() == 1U, ge::LLM_PARAM_INVALID,
-                           "Please check local option:%s, it only supports one device that is used.",
-                           llm_datadist::OPTION_LOCAL_COMM_RES);
+                            "Please check local option:%s, it only supports one device that is used.",
+                            llm_datadist::OPTION_LOCAL_COMM_RES);
     int32_t phy_device_id = 0U;
     LLM_CHK_RT_RET(aclrtGetPhyDevIdByLogicDevId(local_device_id, &phy_device_id));
-    LLM_CHK_BOOL_RET_STATUS(std::to_string(phy_device_id) == server.device_list[0].device_id,
-                           ge::LLM_PARAM_INVALID,
-                           "Please check local option:%s, device_id:%s should be %u, logic device id:%d.",
-                           llm_datadist::OPTION_LOCAL_COMM_RES, server.device_list[0].device_id.c_str(),
-                           phy_device_id, local_device_id);
+    LLM_CHK_BOOL_RET_STATUS(std::to_string(phy_device_id) == server.device_list[0].device_id, ge::LLM_PARAM_INVALID,
+                            "Please check local option:%s, device_id:%s should be %u, logic device id:%d.",
+                            llm_datadist::OPTION_LOCAL_COMM_RES, server.device_list[0].device_id.c_str(), phy_device_id,
+                            local_device_id);
     merged_info[server.server_id].emplace(server.device_list[0]);
   }
   for (const auto &server : peer_rank_table.server_list) {
     LLM_CHK_BOOL_RET_STATUS(server.device_list.size() == 1U, ge::LLM_PARAM_INVALID,
-                           "Please check peer option:%s, it only supports one device that is used.",
-                           llm_datadist::OPTION_LOCAL_COMM_RES);
+                            "Please check peer option:%s, it only supports one device that is used.",
+                            llm_datadist::OPTION_LOCAL_COMM_RES);
     auto peer_device = server.device_list[0];
     peer_device.is_local = false;
     merged_info[server.server_id].emplace(peer_device);
@@ -97,7 +96,7 @@ ge::Status RankTableGeneratorV1::MergeRankTable(int32_t local_device_id,
     const auto &device_set = it.second;
     rank_table_v1::ServerInfo server_info{};
     server_info.server_id = server_id;
-    for (const auto& device : device_set) {
+    for (const auto &device : device_set) {
       auto device_info = device;
       device_info.rank_id = rank_id;
       rank_id++;
@@ -111,8 +110,13 @@ ge::Status RankTableGeneratorV1::MergeRankTable(int32_t local_device_id,
 ge::Status RankTableGeneratorV1::Generate(int32_t local_device_id, std::string &rank_table) {
   rank_table_v1::RankTableInfo local_rank_table{};
   rank_table_v1::RankTableInfo peer_rank_table{};
-  LLMLOGI("Rank table generate begin, local comm res:%s, peer comm res:%s",
-         local_comm_res_.c_str(), peer_comm_res_.c_str());
+  LLMLOGI("Rank table generate begin, local comm res:%s, peer comm res:%s", local_comm_res_.c_str(),
+          peer_comm_res_.c_str());
+  if (!rank_table_json::IsCommResJsonSizeValid(local_comm_res_) ||
+      !rank_table_json::IsCommResJsonSizeValid(peer_comm_res_)) {
+    LLMLOGE(ge::LLM_PARAM_INVALID, "comm_res size exceeds limit");
+    return ge::LLM_PARAM_INVALID;
+  }
   try {
     local_rank_table = RankTableGeneratorV1::LoadFromJsonStr(local_comm_res_);
     peer_rank_table = RankTableGeneratorV1::LoadFromJsonStr(peer_comm_res_);
@@ -121,7 +125,7 @@ ge::Status RankTableGeneratorV1::Generate(int32_t local_device_id, std::string &
     return ge::LLM_PARAM_INVALID;
   }
   LLM_CHK_STATUS_RET(MergeRankTable(local_device_id, local_rank_table, peer_rank_table, merged_rank_table_),
-                    "Failed to merge rank table");
+                     "Failed to merge rank table");
   try {
     nlohmann::json j = merged_rank_table_;
     rank_table = j.dump();
@@ -155,8 +159,7 @@ int32_t RankTableGeneratorV1::GetPeerRankId() {
   return -1;
 }
 
-ge::Status RankTableGeneratorV1::GenerateLocalCommRes(const std::string &server_id,
-                                                      int32_t device_id,
+ge::Status RankTableGeneratorV1::GenerateLocalCommRes(const std::string &server_id, int32_t device_id,
                                                       std::string &local_comm_res,
                                                       std::optional<uint32_t> device_port) {
   rank_table_v1::RankTableInfo local_rank_table{};
@@ -167,8 +170,8 @@ ge::Status RankTableGeneratorV1::GenerateLocalCommRes(const std::string &server_
   int32_t phy_device_id = 0U;
   LLM_CHK_RT_RET(aclrtGetPhyDevIdByLogicDevId(device_id, &phy_device_id));
   device_info.device_id = std::to_string(phy_device_id);
-  LLM_CHK_HIXL_RET(hixl::GetDeviceIp(phy_device_id, device_info.device_ip),
-                   "Failed to get device_ip, phy_device_id:%u", phy_device_id);
+  LLM_CHK_HIXL_RET(hixl::GetDeviceIp(phy_device_id, device_info.device_ip), "Failed to get device_ip, phy_device_id:%u",
+                   phy_device_id);
   if (device_port.has_value()) {
     device_info.device_port = std::to_string(device_port.value());
   }
