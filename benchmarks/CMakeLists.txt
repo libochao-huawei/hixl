@@ -47,6 +47,61 @@ target_link_libraries(benchmark PRIVATE
 )
 target_link_ascend_hal(benchmark)
 
+add_executable(ub_normal ub_normal.cpp "${CMAKE_CURRENT_SOURCE_DIR}/common/tcp_client_server.cpp")
+target_include_directories(ub_normal PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${HIXL_INC_DIR}
+    ${CANN_INSTALL_PATH}/include
+)
+target_compile_options(ub_normal PRIVATE
+    -ftrapv
+    -O2
+    -fno-common
+    -Wfloat-equal
+    -Wall
+    -Werror
+    -Wextra
+)
+target_link_libraries(ub_normal PRIVATE
+    cann_hixl
+    acl_rt_headers
+    acl_rt
+    -lpthread
+    -lrt
+)
+target_link_ascend_hal(ub_normal)
+
+set(AUTO_CONNECT_HEARTBEAT_COMMON_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/common/benchmark_config.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/common/tcp_client_server.cpp"
+)
+
+add_executable(auto_connect_heartbeat_sample auto_connect_heartbeat_sample.cpp ${AUTO_CONNECT_HEARTBEAT_COMMON_SOURCES})
+target_include_directories(auto_connect_heartbeat_sample PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/common
+    ${HIXL_INC_DIR}
+    ${CANN_INSTALL_PATH}/include
+)
+target_compile_options(auto_connect_heartbeat_sample PRIVATE
+    -ftrapv
+    -O2
+    -fno-common
+    -Wfloat-equal
+    -Wall
+    -Werror
+    -Wextra
+)
+target_link_libraries(auto_connect_heartbeat_sample PRIVATE
+    cann_hixl
+    acl_rt_headers
+    acl_rt
+    -lpthread
+    -lrt
+)
+target_link_ascend_hal(auto_connect_heartbeat_sample)
+
 if(NOT TARGET fabric_mem_kv_benchmark)
     add_executable(fabric_mem_kv_benchmark fabric_mem_kv_benchmark.cpp)
     target_include_directories(fabric_mem_kv_benchmark PRIVATE

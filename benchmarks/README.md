@@ -7,6 +7,7 @@
 - [程序编译](#程序编译)
 - [执行前准备](#执行前准备)
 - [Benchmark运行](#benchmark运行)
+- [Auto Connect heartbeat sample](#auto-connect-heartbeat-sample)
 - [FabricMem KV benchmark](#fabricmem-kv-benchmark)
   - [推荐：使用脚本启动并汇总日志](#推荐使用脚本启动并汇总日志)
 - [FabricMem MEM_HOST two-rank probe](#fabricmem-mem_host-two-rank-probe)
@@ -22,6 +23,7 @@
 ├── benchmarks
 |   ├── common                                         // 公共函数目录
 |   ├── benchmark.cpp                                  // HIXL的数据传输benchmark用例
+|   ├── auto_connect_heartbeat_sample.cpp              // AutoConnect心跳断链验证样例
 |   ├── fabric_mem_kv_benchmark.cpp                    // FabricMem KV 块传输 benchmark（AdxlEngine）
 |   ├── fabric_mem_kv_benchmark_summary.awk            // 与运行脚本配套的日志汇总脚本
 |   ├── fabric_mem_tcp_2rank.cpp                       // FabricMem MEM_HOST 两rank TCP协调探测用例
@@ -80,7 +82,7 @@ for i in {0..7}; do hccn_tool -i $i -tls -s enable 0; done
 
 1. 参考[构建](../docs/build.md)里的**编译执行**章节，利用build.sh附加指定--examples参数进行编译。
 
-2. 编译结束后，在**build/benchmarks**目录下生成可执行文件 `benchmark`。
+2. 编译结束后，在**build/benchmarks**目录下生成可执行文件 `benchmark`、`auto_connect_heartbeat_sample` 等。
 
 ## Benchmark运行
 
@@ -166,6 +168,54 @@ for i in {0..7}; do hccn_tool -i $i -tls -s enable 0; done
 
     - Atlas 800I A2 推理产品/A200I A2 Box 异构组件，该场景下Server内采用HCCS传输协议时，仅支持d2d。
     - Atlas A3 训练/推理系列产品，该场景下采用HCCS传输协议时，不支持Host内存作为远端Cache。
+
+## Auto Connect heartbeat sample
+
+`auto_connect_heartbeat_sample`用于在真实环境验证：client开启`AutoConnect=1`后，server建链成功并退出，client通过心跳检测感知server不可用，并自动清理连接状态。
+
+该样例复用`benchmarks/common`中的参数解析与TCP地址交换逻辑。client会强制向`Hixl::Initialize`传入`AutoConnect=1`，完成一次传输后持续尝试`DeregisterMem`；若server存活或连接状态未清理，解注册会失败；心跳清理完成后解注册成功，client打印`[PASS] heartbeat cleanup observed`并退出。server侧在到达`--server_lifetime_s`后直接退出进程，不执行`Hixl::Finalize`，用于模拟服务进程异常消失。
+
+编译方式同本目录其他benchmark：
+
+```shell
+bash build.sh --examples
+cd build/benchmarks
+```
+
+推荐先启动server，再启动client。server在完成建链和地址交换后默认运行15秒自动退出；client默认等待45秒观察心跳清理。`--heartbeat_wait_s`建议大于`--server_lifetime_s`加至少两个心跳周期。
+
+```shell
+# server侧
+./auto_connect_heartbeat_sample \
+  --role=server \
+  --device_id=1 \
+  --local_engine=<server_hixl_ip>:16001 \
+  --tcp_port=20000 \
+  --server_lifetime_s=15 \
+  --transfer_mode=d2d \
+  --transfer_op=write
+
+# client侧
+./auto_connect_heartbeat_sample \
+  --role=client \
+  --device_id=0 \
+  --local_engine=<client_hixl_ip>:16000 \
+  --remote_engine=<server_hixl_ip>:16001 \
+  --tcp_port=20000 \
+  --heartbeat_wait_s=45 \
+  --transfer_mode=d2d \
+  --transfer_op=write
+```
+
+除`benchmark`已有参数外，该样例新增如下参数：
+
+| **参数名** | **可选/必选** | **描述** |
+|:-----------|:------------:|:------------|
+| `--server_lifetime_s` | 可选 | 仅server使用，完成TCP地址交换后的存活时间，默认15秒 |
+| `--heartbeat_wait_s` | 可选 | 仅client使用，等待心跳清理的最长时间，默认45秒 |
+| `--poll_interval_ms` | 可选 | 仅client使用，轮询`DeregisterMem`的间隔，默认1000毫秒 |
+
+若需要切换RDMA链路，可与普通benchmark一致设置`HCCL_INTRA_ROCE_ENABLE=1`。如需传入额外HIXL初始化选项，可继续使用`--hixl_option=KEY=VALUE`或`-H=KEY=VALUE`，client侧的`AutoConnect`会被样例强制覆盖为`1`。
 
 ## FabricMem KV benchmark
 
