@@ -18,6 +18,15 @@
 
 namespace llm {
 namespace rank_table_json {
+constexpr size_t kMaxCommResSizeInBytes = 64U * 1024U;
+
+inline nlohmann::json ParseCommResJson(const std::string &comm_res) {
+  if (comm_res.size() > kMaxCommResSizeInBytes) {
+    throw nlohmann::json::other_error(901, "comm_res size exceeds limit");
+  }
+  return nlohmann::json::parse(comm_res);
+}
+
 inline void LoadOptionalDeviceNetworkFields(const nlohmann::json &j,
                                             std::string &device_ip,
                                             std::string &device_port) {
