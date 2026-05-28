@@ -75,3 +75,40 @@ target_compile_options(metadef_wrapper_stub PRIVATE
         ${DT_COMMON_COMPILE_OPTION}
         -Xlinker -export-dynamic
 )
+
+add_library(hixl_stub MODULE
+        "${HIXL_CODE_DIR}/src/python/hixl/hixl_py.cpp"
+)
+
+target_include_directories(hixl_stub PRIVATE
+        ${HI_PYTHON_INC}
+        ${pybind11_INCLUDE_DIR}
+        ${HIXL_CODE_DIR}/include
+        ${HIXL_CODE_DIR}/src/hixl
+)
+
+target_compile_definitions(hixl_stub PRIVATE
+        PYBIND11_NO_ASSERT_GIL_HELD_INCREF_DECREF
+)
+
+target_link_libraries(hixl_stub PRIVATE
+        intf_pub
+        hccl_headers
+        metadef_headers
+        llm_datadist_base
+        error_manager_stub
+        -Wl,-as-needed
+        ${DT_COMMON_LINK_OPTION}
+)
+
+set_target_properties(hixl_stub
+        PROPERTIES
+        PREFIX ""
+)
+
+set_target_properties(hixl_stub PROPERTIES OUTPUT_NAME "hixl")
+
+target_compile_options(hixl_stub PRIVATE
+        ${DT_COMMON_COMPILE_OPTION}
+        -Xlinker -export-dynamic
+)

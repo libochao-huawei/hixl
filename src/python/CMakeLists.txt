@@ -11,4 +11,4 @@
 add_subdirectory(llm_datadist)
 add_subdirectory(llm_wrapper)
 add_subdirectory(metadef_wrapper)
-add_subdirectory(hixl_wrapper)
+add_subdirectory(hixl)

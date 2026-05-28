@@ -45,24 +45,30 @@ void HixlPy::initialize(const std::string &local_engine,
 
   pybind11::gil_scoped_release release;
   Status status = hixl_->Initialize(AscendString(local_engine.c_str()), ascend_options);
-  if (status == SUCCESS) {
-    initialized_ = true;
-  }
 
   pybind11::gil_scoped_acquire acquire;
+  if (status == SUCCESS) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    initialized_ = true;
+  }
   checkStatus(status, "Initialize failed");
 }
 
 void HixlPy::finalize() {
   std::lock_guard<std::mutex> guard(mutex_);
+  if (!initialized_) {
+    return;
+  }
+  initialized_ = false;
+
+  pybind11::gil_scoped_release release;
   for (auto &kv : mem_handles_) {
     hixl_->DeregisterMem(kv.second);
   }
   mem_handles_.clear();
+  req_handles_.clear();
 
-  pybind11::gil_scoped_release release;
   hixl_->Finalize();
-  initialized_ = false;
 }
 
 int64_t HixlPy::registerMem(const MemDesc &mem, MemType type) {
@@ -80,18 +86,24 @@ int64_t HixlPy::registerMem(const MemDesc &mem, MemType type) {
 }
 
 void HixlPy::deregisterMem(int64_t handle_id) {
-  std::lock_guard<std::mutex> guard(mutex_);
-  auto it = mem_handles_.find(handle_id);
-  if (it == mem_handles_.end()) {
-    throw std::runtime_error("Invalid mem handle id: " + std::to_string(handle_id));
+  MemHandle handle = nullptr;
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    auto it = mem_handles_.find(handle_id);
+    if (it == mem_handles_.end()) {
+      throw std::runtime_error("Invalid mem handle id: " + std::to_string(handle_id));
+    }
+    handle = it->second;
   }
-  MemHandle handle = it->second;
-  mem_handles_.erase(it);
 
   pybind11::gil_scoped_release release;
   Status status = hixl_->DeregisterMem(handle);
 
   pybind11::gil_scoped_acquire acquire;
+  if (status == SUCCESS) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    mem_handles_.erase(handle_id);
+  }
   checkStatus(status, "DeregisterMem failed");
 }
 
@@ -142,14 +154,14 @@ int64_t HixlPy::transferAsync(const std::string &remote_engine, TransferOp op,
 }
 
 TransferStatus HixlPy::getTransferStatus(int64_t req_id, bool auto_cleanup) {
-  std::lock_guard<std::mutex> guard(mutex_);
-  auto it = req_handles_.find(req_id);
-  if (it == req_handles_.end()) {
-    throw std::runtime_error("Invalid req handle id: " + std::to_string(req_id));
-  }
-  TransferReq req = it->second;
-  if (auto_cleanup) {
-    req_handles_.erase(it);
+  TransferReq req = nullptr;
+  {
+    std::lock_guard<std::mutex> guard(mutex_);
+    auto it = req_handles_.find(req_id);
+    if (it == req_handles_.end()) {
+      throw std::runtime_error("Invalid req handle id: " + std::to_string(req_id));
+    }
+    req = it->second;
   }
 
   TransferStatus ts = TransferStatus::WAITING;
@@ -158,6 +170,11 @@ TransferStatus HixlPy::getTransferStatus(int64_t req_id, bool auto_cleanup) {
 
   pybind11::gil_scoped_acquire acquire;
   checkStatus(status, "GetTransferStatus failed");
+
+  if (auto_cleanup) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    req_handles_.erase(req_id);
+  }
   return ts;
 }
 
