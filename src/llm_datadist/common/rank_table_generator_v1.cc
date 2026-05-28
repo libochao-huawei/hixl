@@ -58,6 +58,9 @@ static void to_json(nlohmann::json &j, const RankTableInfo &r) {
 }
 
 rank_table_v1::RankTableInfo RankTableGeneratorV1::LoadFromJsonStr(const std::string &rank_table) {
+  if (!rank_table_json::IsCommResJsonSizeValid(rank_table)) {
+    throw nlohmann::json::parse_error(101, 0, "comm_res size exceeds limit");
+  }
   auto j = nlohmann::json::parse(rank_table);
   return j.get<rank_table_v1::RankTableInfo>();
 }
