@@ -28,6 +28,7 @@
 #include <array>
 #include <cstring>
 #include <cerrno>
+#include <cstdio>
 #include <set>
 #include <dirent.h>
 #include <fcntl.h>
@@ -419,6 +420,136 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, Ro
   }
 
   return SUCCESS;
+}
+
+// ============ urma_admin show 相关函数 ============
+
+// 从格式化 EID（带冒号）中去掉冒号
+std::string FormatEidFromUrma(const std::string &eid_with_colons) {
+  std::string result;
+  for (char c : eid_with_colons) {
+    if (c != ':') {
+      result += c;
+    }
+  }
+  return result;
+}
+
+// urma_admin show 输出中的单条 EID 记录
+struct UrmaEidEntry {
+  std::string udma_name;  // "udma3"
+  int eid_index = 0;      // eid0, eid1, ...
+  std::string eid;        // 带冒号的原始 EID
+};
+
+// 执行 urma_admin show，解析输出，根据 route_data 选择 Host PG EID
+// 逻辑：找到 eid_count >= 8 的 UDMA 组（Host 侧），根据 route_data 中 remote_eid 的 die_id 选择匹配的 PG EID
+std::string GetHostPgEid(const RouteData &route_data) {
+  // 1. 执行 urma_admin show
+  FILE *pipe = popen("urma_admin show", "r");
+  if (pipe == nullptr) {
+    HIXL_LOGW("[GetHostPgEid] Failed to execute urma_admin show");
+    return "";
+  }
+
+  std::vector<UrmaEidEntry> all_entries;
+  char buf[512];
+  while (fgets(buf, sizeof(buf), pipe) != nullptr) {
+    std::string line(buf);
+    // 跳过表头和分隔线
+    if (line.find("num") != std::string::npos && line.find("ubep_dev") != std::string::npos) {
+      continue;
+    }
+    if (line.find("---") != std::string::npos) {
+      continue;
+    }
+    if (line.find("eid") == std::string::npos) {
+      continue;
+    }
+
+    // 解析格式: "0 udma3 UB eid1 0000:0000:003f:0600:0010:0000:df00:1001 ACTIVE"
+    std::istringstream iss(line);
+    std::string num_str, udma_name, tp_type, eid_name, eid_value, link_status;
+    iss >> num_str >> udma_name >> tp_type >> eid_name >> eid_value >> link_status;
+
+    if (udma_name.empty() || eid_name.empty() || eid_value.empty()) {
+      continue;
+    }
+
+    // 提取 eid_index: "eid1" → 1
+    int eid_index = 0;
+    try {
+      eid_index = std::stoi(eid_name.substr(3));
+    } catch (...) {
+      continue;
+    }
+
+    UrmaEidEntry entry;
+    entry.udma_name = udma_name;
+    entry.eid_index = eid_index;
+    entry.eid = eid_value;
+    all_entries.push_back(entry);
+  }
+  pclose(pipe);
+
+  if (all_entries.empty()) {
+    HIXL_LOGW("[GetHostPgEid] No entries from urma_admin show");
+    return "";
+  }
+
+  HIXL_LOGI("[GetHostPgEid] Parsed %zu entries from urma_admin show", all_entries.size());
+
+  // 2. 按 udma_name 分组，统计每个组的 eid_count
+  std::map<std::string, std::vector<UrmaEidEntry>> udma_groups;
+  for (const auto &entry : all_entries) {
+    udma_groups[entry.udma_name].push_back(entry);
+  }
+
+  // 3. 找到 eid_count >= 8 的 UDMA 组（Host 侧），建立 die_id → PG EID 的映射
+  std::map<int32_t, std::string> die_to_host_pg_eid;
+  for (const auto &[name, entries] : udma_groups) {
+    if (entries.size() < 8) {
+      continue;
+    }
+    HIXL_LOGI("[GetHostPgEid] Host UDMA group: %s (eid_count=%zu)", name.c_str(), entries.size());
+    for (const auto &entry : entries) {
+      std::string eid_no_colon = FormatEidFromUrma(entry.eid);
+      auto info = ParseEidByte6(eid_no_colon);
+      HIXL_LOGI("[GetHostPgEid]   %s eid%d: %s, die_id=%d", name.c_str(), entry.eid_index, entry.eid.c_str(),
+                info.die_id);
+      die_to_host_pg_eid[info.die_id] = entry.eid;
+    }
+  }
+
+  if (die_to_host_pg_eid.empty()) {
+    HIXL_LOGW("[GetHostPgEid] No Host PG EID found (no UDMA group with eid_count >= 8)");
+    return "";
+  }
+
+  // 4. 从 route_data 中获取当前 NPU 的 remote_eid（CPU EID），提取 die_id
+  for (const auto &entry : route_data.entries) {
+    if (entry.remote_eid.empty()) {
+      continue;
+    }
+    // remote_eid 已是去掉冒号的格式，直接用 ParseEidByte6 提取 die_id
+    auto info = ParseEidByte6(entry.remote_eid);
+    if (info.byte6 == 0) {
+      continue;
+    }
+    int32_t die_id = info.die_id;
+    HIXL_LOGI("[GetHostPgEid] Route entry device_id=%d, remote_eid=%s, die_id=%d", entry.device_id,
+              entry.remote_eid.c_str(), die_id);
+
+    auto it = die_to_host_pg_eid.find(die_id);
+    if (it != die_to_host_pg_eid.end()) {
+      std::string host_pg_eid = FormatEidFromUrma(it->second);
+      HIXL_LOGI("[GetHostPgEid] Selected Host PG EID: %s (die_id=%d)", host_pg_eid.c_str(), die_id);
+      return host_pg_eid;
+    }
+  }
+
+  HIXL_LOGW("[GetHostPgEid] No matching die_id found in route_data");
+  return "";
 }
 
 }  // anonymous namespace
@@ -922,12 +1053,19 @@ void GenerateD2UEdges(const std::string &plane_pg_0_eid, const std::string &plan
   }
 }
 
-void GenerateH2UEdges(const std::string &plane_pg_0_eid, const std::string &plane_pg_1_eid,
-                      std::vector<EndpointConfig> &h2u_edges) {
+void GenerateH2UEdges(const RouteData &route_data, const std::string &plane_pg_0_eid,
+                      const std::string &plane_pg_1_eid, std::vector<EndpointConfig> &h2u_edges) {
+  // 获取 Host PG EID（通过 urma_admin show + route_data die_id 选择）
+  std::string host_pg_eid = GetHostPgEid(route_data);
+  if (host_pg_eid.empty()) {
+    HIXL_LOGE(FAILED, "[H2U] Failed to get Host PG EID");
+    return;
+  }
+  HIXL_LOGI("[H2U] Using Host PG EID as comm_id: %s", host_pg_eid.c_str());
   if (!plane_pg_0_eid.empty()) {
     EndpointConfig edge;
     edge.protocol = kProtocolUbCtp;
-    edge.comm_id = plane_pg_0_eid;
+    edge.comm_id = host_pg_eid;
     edge.placement = kPlacementHost;
     edge.plane = kPlanePg0;
     h2u_edges.push_back(edge);
@@ -935,7 +1073,7 @@ void GenerateH2UEdges(const std::string &plane_pg_0_eid, const std::string &plan
   if (!plane_pg_1_eid.empty()) {
     EndpointConfig edge;
     edge.protocol = kProtocolUbCtp;
-    edge.comm_id = plane_pg_1_eid;
+    edge.comm_id = host_pg_eid;
     edge.placement = kPlacementHost;
     edge.plane = kPlanePg1;
     h2u_edges.push_back(edge);
@@ -953,7 +1091,7 @@ void CollectAllEdges(const EdgeCollectInput &input, std::vector<EndpointConfig> 
     GenerateD2UEdges(input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
     edges.clear();
-    GenerateH2UEdges(input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
+    GenerateH2UEdges(input.route_data, input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
   }
   if (!input.route_data.entries.empty()) {
