@@ -23,6 +23,7 @@
 
 #include "local_comm_res_generator_v1.h"
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <algorithm>
 #include <array>
@@ -39,6 +40,10 @@
 #include <nlohmann/json.hpp>
 
 namespace hixl {
+
+// urma_admin 命令执行函数指针（定义在匿名命名空间之后，此处为前置声明）
+using UrmaAdminExecFn = int32_t (*)(const std::string &cmd, std::string &output);
+extern UrmaAdminExecFn g_urma_admin_exec_fn;
 
 // ============ 文件内私有常量与辅助定义 ============
 
@@ -77,6 +82,7 @@ inline bool IsFileExists(const std::string &path) {
 // 魔法数字常量
 constexpr size_t kHexPrefixLength = 2;    // "0x" 前缀长度
 constexpr size_t kNpuGroupSize = 8;       // NPU 分组大小
+constexpr size_t kJsonExtLen = 5;         // ".json" 长度
 constexpr size_t kPgEidSecondIndex = 1;   // PG EID 第二索引
 constexpr size_t kSecondElementSize = 2;  // 第二元素 size 检查
 constexpr uint32_t kOddParity = 1;        // 奇校验
@@ -92,6 +98,9 @@ constexpr const char *kProcPathAsdrvUb = "/proc/asdrv_ub";
 constexpr const char *kProcNamespaceNode = "/proc/uda/namespace_node";
 constexpr const char *kProcDevIdFile = "dev_id";
 constexpr const char *kProcPairInfoFile = "pair_info";
+
+// Procfs 延时常量（微秒）
+constexpr useconds_t kProcfsWriteDelayUs = 100000;  // 100ms
 
 // DCMI 主命令和子命令
 enum class DcmiMainCmd {
@@ -121,15 +130,23 @@ struct EdgeCollectInput {
   const std::string &plane_pg_1_eid;
 };
 
+// 产品形态判定
+bool IsProductServer(uint32_t mainboard_id) {
+  return ((mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax1 &&
+           (mainboard_id % 2 == kOddParity)) ||
+          (mainboard_id >= kMainboardIdServerMin2 && mainboard_id <= kMainboardIdServerMax2 &&
+           (mainboard_id % 2 == kEvenParity)));
+}
+
 // 根据 mainboard_id 获取产品形态对应的 topo 文件名前缀
 // Pod 产品（0x3/0x5/0x7）：atlas_950_
-// Server 产品（0x21-0x46）：atlas_850_
+// Server 产品（0x21-0x2B 奇数, 0x40-0x46 偶数）：atlas_850_
 bool MatchProductForm(uint32_t mainboard_id, std::string &topo_prefix) {
   if (mainboard_id == kMainboardIdPod1 || mainboard_id == kMainboardIdPod2 || mainboard_id == kMainboardIdPod3) {
     topo_prefix = kTopoPrefixAtlas950;
     return true;
   }
-  if (mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax2) {
+  if (IsProductServer(mainboard_id)) {
     topo_prefix = kTopoPrefixAtlas850;
     return true;
   }
@@ -156,7 +173,7 @@ std::string FindTopoFileByMainboardId(const std::string &topo_dir, uint32_t main
   while ((entry = readdir(dir)) != nullptr) {
     std::string name(entry->d_name);
     // 必须以 .json 结尾
-    if (name.size() < 5 || name.compare(name.size() - 5, 5, ".json") != 0) {
+    if (name.size() < kJsonExtLen || name.compare(name.size() - kJsonExtLen, kJsonExtLen, ".json") != 0) {
       continue;
     }
     // 必须匹配产品形态前缀
@@ -211,6 +228,7 @@ bool WriteStringToFile(const std::string &path, const std::string &content) {
     HIXL_LOGW("[WriteStringToFile] write() failed for %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
   }
   close(fd);
+  fd = -1;
   if (written != static_cast<ssize_t>(content.size())) {
     HIXL_LOGW("[WriteStringToFile] Incomplete write to %s: written=%zd, expected=%zu", path.c_str(), written,
               content.size());
@@ -315,7 +333,7 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
   // 提取 slot_id 的数值
   try {
     slot_id = std::stoi(found_slot_id);
-  } catch (...) {
+  } catch (const std::exception &) {
     slot_id = npu_id;
   }
 
@@ -341,6 +359,49 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
   return (!local_eid.empty() || !remote_eid.empty());
 }
 
+// 处理单个 NPU 设备的 procfs 路由数据
+int32_t ProcessNpuProcfsRoute(int32_t npu_id, const std::string &dev_id_path,
+                               const std::string &pair_info_path, RouteEntry &entry) {
+  int32_t device_id = npu_id % kNpuGroupSize;
+  HIXL_LOGI("[Procfs] Processing npu_id=%d, device_id=%d", npu_id, device_id);
+
+  // 写入 device_id（组内相对 ID）选择设备
+  std::ostringstream dev_id_ss;
+  dev_id_ss << device_id << "\n";
+  if (!WriteStringToFile(dev_id_path, dev_id_ss.str())) {
+    HIXL_LOGW("[Procfs] Failed to write device_id=%d to %s", device_id, dev_id_path.c_str());
+    return FAILED;
+  }
+
+  // 短暂延时确保内核更新
+  usleep(kProcfsWriteDelayUs);
+
+  // 读取 pair_info
+  std::string pair_info_content;
+  if (!ReadFileToString(pair_info_path, pair_info_content)) {
+    HIXL_LOGW("[Procfs] Failed to read pair_info for npu_id=%d", npu_id);
+    return FAILED;
+  }
+
+  // 解析 pair_info
+  int32_t slot_id = npu_id;
+  std::string local_eid;
+  std::string remote_eid;
+  if (!ParsePairInfoForDevice(pair_info_content, npu_id, slot_id, local_eid, remote_eid)) {
+    HIXL_LOGW("[Procfs] Failed to parse pair_info for npu_id=%d", npu_id);
+    return FAILED;
+  }
+
+  HIXL_LOGI("[Procfs] Parsed: npu_id=%d, slot_id=%d, local_eid=[%s], remote_eid=[%s]",
+            npu_id, slot_id, local_eid.c_str(), remote_eid.c_str());
+
+  // 只生成 H2D 方向的 RouteEntry
+  entry.device_id = device_id;
+  entry.local_eid = local_eid;
+  entry.remote_eid = remote_eid;
+  return SUCCESS;
+}
+
 // 通过 procfs 获取路由数据（当 /lib/route.conf 不存在时的 fallback）
 int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, RouteData &route_data) {
   route_data.entries.clear();
@@ -356,55 +417,13 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, Ro
   std::string pair_info_path = proc_base + "/" + kProcPairInfoFile;
 
   for (int32_t npu_id : related_npu_ids) {
-    int32_t device_id = npu_id % kNpuGroupSize;
-    HIXL_LOGI("[Procfs] Processing npu_id=%d, device_id=%d", npu_id, device_id);
-
-    // 写入 device_id（组内相对 ID）选择设备，添加换行符匹配 echo 行为
-    std::ostringstream dev_id_ss;
-    dev_id_ss << device_id << "\n";
-    if (!WriteStringToFile(dev_id_path, dev_id_ss.str())) {
-      HIXL_LOGW("[Procfs] Failed to write device_id=%d to %s", device_id, dev_id_path.c_str());
-      continue;
-    }
-    HIXL_LOGI("[Procfs] Wrote device_id=%d to %s", device_id, dev_id_path.c_str());
-
-    // 读回 dev_id 验证写入是否生效
-    std::string verify_content;
-    if (ReadFileToString(dev_id_path, verify_content)) {
-      HIXL_LOGI("[Procfs] Verify dev_id after write: read back=[%s]", TrimString(verify_content).c_str());
-    }
-
-    // 短暂延时确保内核更新
-    usleep(100000);  // 100ms
-
-    // 读取 pair_info
-    std::string pair_info_content;
-    if (!ReadFileToString(pair_info_path, pair_info_content)) {
-      HIXL_LOGW("[Procfs] Failed to read pair_info for npu_id=%d", npu_id);
-      continue;
-    }
-    HIXL_LOGI("[Procfs] pair_info for npu_id=%d:\n%s", npu_id, pair_info_content.c_str());
-
-    // 解析 pair_info
-    int32_t slot_id = npu_id;
-    std::string local_eid;
-    std::string remote_eid;
-    if (!ParsePairInfoForDevice(pair_info_content, npu_id, slot_id, local_eid, remote_eid)) {
-      HIXL_LOGW("[Procfs] Failed to parse pair_info for npu_id=%d", npu_id);
-      continue;
-    }
-
-    HIXL_LOGI("[Procfs] Parsed: npu_id=%d, slot_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id, slot_id,
-              local_eid.c_str(), remote_eid.c_str());
-
-    // 只生成 H2D 方向的 RouteEntry，D2H 由 GenerateD2HEdges 从同一份 route_data 生成
     RouteEntry entry;
-    entry.device_id = device_id;
-    entry.local_eid = local_eid;
-    entry.remote_eid = remote_eid;
-    route_data.entries.push_back(entry);
-    HIXL_LOGI("[Procfs] RouteEntry H2D: npu_id=%d, device_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id,
-              device_id, local_eid.c_str(), remote_eid.c_str());
+    int32_t ret = ProcessNpuProcfsRoute(npu_id, dev_id_path, pair_info_path, entry);
+    if (ret == SUCCESS) {
+      route_data.entries.push_back(entry);
+      HIXL_LOGI("[Procfs] RouteEntry H2D: npu_id=%d, device_id=%d, local_eid=[%s], remote_eid=[%s]",
+                 npu_id, entry.device_id, entry.local_eid.c_str(), entry.remote_eid.c_str());
+    }
   }
 
   if (route_data.entries.empty()) {
@@ -416,7 +435,7 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, Ro
   for (size_t i = 0; i < route_data.entries.size(); ++i) {
     const auto &entry = route_data.entries[i];
     HIXL_LOGI("[Procfs]   [%zu] device_id=%d, local_eid=[%s], remote_eid=[%s]", i, entry.device_id,
-              entry.local_eid.c_str(), entry.remote_eid.c_str());
+               entry.local_eid.c_str(), entry.remote_eid.c_str());
   }
 
   return SUCCESS;
@@ -442,34 +461,14 @@ struct UrmaEidEntry {
   std::string eid;        // 带冒号的原始 EID
 };
 
-// 执行 urma_admin show，解析输出，根据 route_data 选择 Host PG EID
-// 逻辑：
-//   1. 执行 urma_admin show，解析 UDMA 组信息
-//   2. 找到 eid_count >= 8 的 UDMA 组（Host 侧），建立 die_id → PG EID 映射
-//   3. 从 route_data 中通过 device_id 找到当前 NPU 的 local_eid（CPU EID）
-//   4. 用 ParseEidByte6 从 CPU EID 提取 die_id，选择同 die 的 Host PG EID
-int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::string &host_pg_eid) {
-  host_pg_eid.clear();
-
-  // 1. 执行 urma_admin show
-  FILE *pipe = popen("urma_admin show", "r");
-  if (pipe == nullptr) {
-    HIXL_LOGE(FAILED, "[GetHostPgEid] Failed to execute urma_admin show");
-    return FAILED;
-  }
-
-  std::vector<UrmaEidEntry> all_entries;
-  char buf[512];
-  while (fgets(buf, sizeof(buf), pipe) != nullptr) {
-    std::string line(buf);
+// 解析 urma_admin show 输出，提取所有 EID 条目
+int32_t ParseUrmaAdminOutput(const std::string &cmd_output, std::vector<UrmaEidEntry> &all_entries) {
+  std::istringstream stream(cmd_output);
+  std::string line;
+  while (std::getline(stream, line)) {
     // 跳过表头和分隔线
-    if (line.find("num") != std::string::npos && line.find("ubep_dev") != std::string::npos) {
-      continue;
-    }
-    if (line.find("---") != std::string::npos) {
-      continue;
-    }
-    if (line.find("eid") == std::string::npos) {
+    if ((line.find("num") != std::string::npos && line.find("ubep_dev") != std::string::npos) ||
+        line.find("---") != std::string::npos || line.find("eid") == std::string::npos) {
       continue;
     }
 
@@ -486,7 +485,7 @@ int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::strin
     int eid_index = 0;
     try {
       eid_index = std::stoi(eid_name.substr(3));
-    } catch (...) {
+    } catch (const std::exception &) {
       continue;
     }
 
@@ -496,32 +495,35 @@ int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::strin
     entry.eid = eid_value;
     all_entries.push_back(entry);
   }
-  pclose(pipe);
 
   if (all_entries.empty()) {
     HIXL_LOGE(FAILED, "[GetHostPgEid] No entries from urma_admin show");
     return FAILED;
   }
+  return SUCCESS;
+}
 
-  HIXL_LOGI("[GetHostPgEid] Parsed %zu entries from urma_admin show", all_entries.size());
-
-  // 2. 按 udma_name 分组，找到 eid_count >= 8 的 UDMA 组（Host 侧），建立 die_id → PG EID 映射
+// 建立 die_id → Host PG EID 映射
+int32_t BuildDieToHostPgEidMap(const std::vector<UrmaEidEntry> &all_entries,
+                                 std::map<int32_t, std::string> &die_to_host_pg_eid) {
+  // 按 udma_name 分组
   std::map<std::string, std::vector<UrmaEidEntry>> udma_groups;
   for (const auto &entry : all_entries) {
     udma_groups[entry.udma_name].push_back(entry);
   }
 
-  std::map<int32_t, std::string> die_to_host_pg_eid;
+  // 找到 eid_count >= 8 的 UDMA 组（Host 侧）
   for (const auto &[name, entries] : udma_groups) {
-    if (entries.size() < 8) {
+    if (entries.size() < kNpuGroupSize) {
       continue;
     }
     HIXL_LOGI("[GetHostPgEid] Host UDMA group: %s (eid_count=%zu)", name.c_str(), entries.size());
     for (const auto &entry : entries) {
       std::string eid_no_colon = FormatEidFromUrma(entry.eid);
       auto info = ParseEidByte6(eid_no_colon);
-      HIXL_LOGI("[GetHostPgEid]   %s eid%d: %s, die_id=%d, is_pg=%s", name.c_str(), entry.eid_index,
-                entry.eid.c_str(), info.die_id, info.is_pg_eid ? "true" : "false");
+      HIXL_LOGI("[GetHostPgEid]   %s eid%d: %s, die_id=%d, is_pg=%s",
+                 name.c_str(), entry.eid_index, entry.eid.c_str(),
+                 info.die_id, info.is_pg_eid ? "true" : "false");
       // 只保存 PG EID（高 nibble 为 0x3 或 0x7）
       if (info.is_pg_eid) {
         die_to_host_pg_eid[info.die_id] = entry.eid;
@@ -533,16 +535,20 @@ int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::strin
     HIXL_LOGE(FAILED, "[GetHostPgEid] No Host PG EID found (no UDMA group with eid_count >= 8)");
     return FAILED;
   }
+  return SUCCESS;
+}
 
-  // 3. 从 route_data 中通过 device_id 找到当前 NPU 的 local_eid（CPU EID）
+// 从 route_data 获取 CPU EID
+int32_t GetCpuEidFromRouteData(int32_t phy_dev_id, const RouteData &route_data, std::string &cpu_eid) {
   uint32_t logic_id = 0;
   if (DcmiProxy::GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
     HIXL_LOGE(FAILED, "[GetHostPgEid] Failed to get logic id from phy id: %d", phy_dev_id);
     return FAILED;
   }
   int32_t target_device_id = static_cast<int32_t>(logic_id);
-  HIXL_LOGI("[GetHostPgEid] phy_dev_id=%d, logic_id=%u, target_device_id=%d", phy_dev_id, logic_id, target_device_id);
-  std::string cpu_eid;
+  HIXL_LOGI("[GetHostPgEid] phy_dev_id=%d, logic_id=%u, target_device_id=%d",
+             phy_dev_id, logic_id, target_device_id);
+
   for (const auto &entry : route_data.entries) {
     if (entry.device_id == target_device_id && !entry.local_eid.empty()) {
       cpu_eid = entry.local_eid;
@@ -551,12 +557,48 @@ int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::strin
   }
 
   if (cpu_eid.empty()) {
-    HIXL_LOGE(FAILED, "[GetHostPgEid] No local_eid found for device_id=%d (phy_dev_id=%d)", target_device_id,
-              phy_dev_id);
+    HIXL_LOGE(FAILED, "[GetHostPgEid] No local_eid found for device_id=%d (phy_dev_id=%d)",
+               target_device_id, phy_dev_id);
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+// 执行 urma_admin show，解析输出，根据 route_data 选择 Host PG EID
+int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::string &host_pg_eid) {
+  host_pg_eid.clear();
+
+  // 1. 执行 urma_admin show
+  std::string cmd_output;
+  int32_t ret = g_urma_admin_exec_fn("urma_admin show", cmd_output);
+  if (ret != SUCCESS) {
+    HIXL_LOGE(FAILED, "[GetHostPgEid] Failed to execute urma_admin show");
     return FAILED;
   }
 
-  // 4. 用 ParseEidByte6 从 CPU EID 提取 die_id，选择同 die 的 Host PG EID
+  // 2. 解析 urma_admin show 输出
+  std::vector<UrmaEidEntry> all_entries;
+  ret = ParseUrmaAdminOutput(cmd_output, all_entries);
+  if (ret != SUCCESS) {
+    return ret;
+  }
+  HIXL_LOGI("[GetHostPgEid] Parsed %zu entries from urma_admin show", all_entries.size());
+
+  // 3. 建立 die_id → PG EID 映射
+  std::map<int32_t, std::string> die_to_host_pg_eid;
+  ret = BuildDieToHostPgEidMap(all_entries, die_to_host_pg_eid);
+  if (ret != SUCCESS) {
+    return ret;
+  }
+
+  // 4. 从 route_data 获取 CPU EID
+  std::string cpu_eid;
+  ret = GetCpuEidFromRouteData(phy_dev_id, route_data, cpu_eid);
+  if (ret != SUCCESS) {
+    return ret;
+  }
+
+  // 5. 用 ParseEidByte6 从 CPU EID 提取 die_id，选择同 die 的 Host PG EID
   auto cpu_info = ParseEidByte6(cpu_eid);
   if (cpu_info.byte6 == 0) {
     HIXL_LOGE(FAILED, "[GetHostPgEid] Failed to parse CPU EID: %s", cpu_eid.c_str());
@@ -576,7 +618,28 @@ int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::strin
   return SUCCESS;
 }
 
+int32_t DefaultUrmaAdminExec(const std::string &cmd, std::string &output) {
+  FILE *raw_pipe = popen(cmd.c_str(), "r");
+  if (raw_pipe == nullptr) {
+    return FAILED;
+  }
+  auto pipe_deleter = [](FILE *f) { if (f) { pclose(f); } };
+  std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(raw_pipe, pipe_deleter);
+
+  char buf[512];
+  while (fgets(buf, sizeof(buf), pipe.get()) != nullptr) {
+    output += buf;
+  }
+  return SUCCESS;
+}
+
 }  // anonymous namespace
+
+UrmaAdminExecFn g_urma_admin_exec_fn = DefaultUrmaAdminExec;
+
+void SetUrmaAdminExecFn(UrmaAdminExecFn fn) {
+  g_urma_admin_exec_fn = (fn != nullptr) ? fn : DefaultUrmaAdminExec;
+}
 
 // ============ 文件解析辅助函数 ============
 
@@ -614,7 +677,7 @@ void AddRouteEntriesForDevice(const std::map<std::string, std::string> &kv_map, 
   if (chan_num_it != kv_map.end()) {
     try {
       chan_num = std::stoi(chan_num_it->second);
-    } catch (...) {
+    } catch (const std::exception &) {
       chan_num = 1;
     }
   }
@@ -653,7 +716,7 @@ int32_t BuildRouteEntries(const std::map<std::string, std::string> &kv_map, Rout
   int32_t pair_device_num = 0;
   try {
     pair_device_num = std::stoi(it->second);
-  } catch (...) {
+  } catch (const std::exception &) {
     HIXL_LOGE(FAILED, "Invalid pair_device_num value: %s", it->second.c_str());
     return FAILED;
   }
@@ -667,7 +730,7 @@ int32_t BuildRouteEntries(const std::map<std::string, std::string> &kv_map, Rout
     int32_t device_id = 0;
     try {
       device_id = std::stoi(dev_it->second);
-    } catch (...) {
+    } catch (const std::exception &) {
       HIXL_LOGW("Invalid dev_id value: %s", dev_it->second.c_str());
       continue;
     }
@@ -1001,13 +1064,6 @@ bool IsProductPod(uint32_t mainboard_id) {
   return (mainboard_id == kMainboardIdPod1 || mainboard_id == kMainboardIdPod2 || mainboard_id == kMainboardIdPod3);
 }
 
-bool IsProductServer(uint32_t mainboard_id) {
-  return ((mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax1 &&
-           (mainboard_id % 2 == kOddParity)) ||
-          (mainboard_id >= kMainboardIdServerMin2 && mainboard_id <= kMainboardIdServerMax2 &&
-           (mainboard_id % 2 == kEvenParity)));
-}
-
 std::set<int32_t> CollectRelatedNpuIds(int32_t phy_dev_id) {
   // NPU 按 kNpuGroupSize 个一组划分，找出 phy_dev_id 所在组的所有 NPU
   int32_t group_start = static_cast<int32_t>((phy_dev_id / kNpuGroupSize) * kNpuGroupSize);
@@ -1077,14 +1133,14 @@ void GenerateD2UEdges(const std::string &plane_pg_0_eid, const std::string &plan
   }
 }
 
-void GenerateH2UEdges(int32_t phy_dev_id, const RouteData &route_data, const std::string &plane_pg_0_eid,
-                      const std::string &plane_pg_1_eid, std::vector<EndpointConfig> &h2u_edges) {
+int32_t GenerateH2UEdges(int32_t phy_dev_id, const RouteData &route_data, const std::string &plane_pg_0_eid,
+                         const std::string &plane_pg_1_eid, std::vector<EndpointConfig> &h2u_edges) {
   // 获取 Host PG EID（通过 urma_admin show + route_data die_id 选择）
   std::string host_pg_eid;
   int32_t ret = GetHostPgEid(phy_dev_id, route_data, host_pg_eid);
   if (ret != SUCCESS) {
     HIXL_LOGE(ret, "[H2U] Failed to get Host PG EID");
-    return;
+    return ret;
   }
   HIXL_LOGI("[H2U] Using Host PG EID as comm_id: %s", host_pg_eid.c_str());
   if (!plane_pg_0_eid.empty()) {
@@ -1103,9 +1159,10 @@ void GenerateH2UEdges(int32_t phy_dev_id, const RouteData &route_data, const std
     edge.plane = kPlanePg1;
     h2u_edges.push_back(edge);
   }
+  return SUCCESS;
 }
 
-void CollectAllEdges(const EdgeCollectInput &input, std::vector<EndpointConfig> &all_edges) {
+int32_t CollectAllEdges(const EdgeCollectInput &input, std::vector<EndpointConfig> &all_edges) {
   if (!input.topo_data.links.empty() && !input.npu_rootinfos.empty()) {
     std::vector<EndpointConfig> edges;
     GenerateD2DEdges(input.topo_data, input.npu_rootinfos, input.phy_dev_id, edges);
@@ -1116,7 +1173,11 @@ void CollectAllEdges(const EdgeCollectInput &input, std::vector<EndpointConfig> 
     GenerateD2UEdges(input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
     edges.clear();
-    GenerateH2UEdges(input.phy_dev_id, input.route_data, input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
+    int32_t ret = GenerateH2UEdges(input.phy_dev_id, input.route_data, input.plane_pg_0_eid,
+                                   input.plane_pg_1_eid, edges);
+    if (ret != SUCCESS) {
+      return ret;
+    }
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
   }
   if (!input.route_data.entries.empty()) {
@@ -1127,6 +1188,57 @@ void CollectAllEdges(const EdgeCollectInput &input, std::vector<EndpointConfig> 
     GenerateD2HEdges(input.route_data, input.phy_dev_id, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
   }
+  return SUCCESS;
+}
+
+// 组装 LocalCommRes 结果的内部函数
+int32_t BuildLocalCommResResult(int32_t phy_dev_id, bool is_server, const TopoData &topo_data,
+                                 const RouteData &route_data, const std::set<int32_t> &related_npu_ids,
+                                 LocalCommRes &local_comm_res) {
+  // 构建 NpuRootInfo
+  std::map<int32_t, NpuRootInfo> npu_rootinfos;
+  int32_t ret = BuildNpuRootinfos(related_npu_ids, is_server, npu_rootinfos);
+  if (ret != SUCCESS) {
+    return ret;
+  }
+
+  // 收集 CLOS PG EIDs
+  std::string plane_pg_0_eid, plane_pg_1_eid;
+  int32_t mesh_die_id = 0;
+  CollectClosPgEids(npu_rootinfos, phy_dev_id, is_server, plane_pg_0_eid, plane_pg_1_eid, mesh_die_id);
+
+  // 生成所有边
+  std::vector<EndpointConfig> all_edges;
+  ret = CollectAllEdges({topo_data, route_data, npu_rootinfos, phy_dev_id, plane_pg_0_eid, plane_pg_1_eid},
+                         all_edges);
+  if (ret != SUCCESS) {
+    return ret;
+  }
+  if (all_edges.empty()) {
+    return PARAM_INVALID;
+  }
+
+  // 获取 net_instance_id 并组装结果
+  std::string net_instance_id;
+  ret = GetClosNetInstanceId(phy_dev_id, net_instance_id);
+  if (ret != SUCCESS) {
+    return ret;
+  }
+
+  local_comm_res.version = "1.3";
+  local_comm_res.net_instance_id = net_instance_id;
+  local_comm_res.endpoint_list = std::move(all_edges);
+  for (auto &ep : local_comm_res.endpoint_list) {
+    ep.net_instance_id = net_instance_id;
+  }
+
+  HIXL_LOGI("GenerateLocalCommRes result: version=%s, net_instance_id=%s, endpoints=%zu",
+             local_comm_res.version.c_str(), local_comm_res.net_instance_id.c_str(),
+             local_comm_res.endpoint_list.size());
+  LogEndpointList(local_comm_res.endpoint_list);
+
+  DcmiProxy::UnloadDcmi();
+  return SUCCESS;
 }
 
 int32_t GenerateLocalCommRes(int32_t phy_dev_id, LocalCommRes &local_comm_res) {
@@ -1142,7 +1254,28 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, LocalCommRes &local_comm_res) {
     return PARAM_INVALID;
   }
   std::string route_path = kDefaultRoutePath;
-  return GenerateLocalCommRes(phy_dev_id, topo_path, route_path, local_comm_res);
+  bool is_server = IsProductServer(mainboard_id);
+
+  // 2. 解析文件
+  TopoData topo_data;
+  ret = ParseTopoFile(topo_path, topo_data);
+  if (ret != SUCCESS) {
+    return ret;
+  }
+  RouteData route_data;
+  std::set<int32_t> related_npu_ids = CollectRelatedNpuIds(phy_dev_id);
+  ret = ParseRouteFile(route_path, route_data);
+  if (ret != SUCCESS) {
+    HIXL_LOGW("ParseRouteFile failed (path=%s), trying procfs fallback", route_path.c_str());
+    ret = GenerateRouteDataFromProcfs(related_npu_ids, route_data);
+    if (ret != SUCCESS) {
+      HIXL_LOGE(FAILED, "Both route.conf and procfs fallback failed");
+      return ret;
+    }
+  }
+
+  // 3. 组装结果
+  return BuildLocalCommResResult(phy_dev_id, is_server, topo_data, route_data, related_npu_ids, local_comm_res);
 }
 
 int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, const std::string &route_path,
@@ -1154,7 +1287,8 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
     return ret;
   }
   bool is_server = IsProductServer(mainboard_id);
-  // 3. 解析文件
+
+  // 2. 解析文件
   TopoData topo_data;
   ret = ParseTopoFile(topo_path, topo_data);
   if (ret != SUCCESS) {
@@ -1173,45 +1307,8 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
     }
   }
 
-  // 4. 构建 NpuRootInfo
-  std::map<int32_t, NpuRootInfo> npu_rootinfos;
-  ret = BuildNpuRootinfos(related_npu_ids, is_server, npu_rootinfos);
-  if (ret != SUCCESS) {
-    return ret;
-  }
-
-  std::string plane_pg_0_eid, plane_pg_1_eid;
-  int32_t mesh_die_id = 0;
-  CollectClosPgEids(npu_rootinfos, phy_dev_id, is_server, plane_pg_0_eid, plane_pg_1_eid, mesh_die_id);
-
-  // 5. 生成所有边
-  std::vector<EndpointConfig> all_edges;
-  CollectAllEdges({topo_data, route_data, npu_rootinfos, phy_dev_id, plane_pg_0_eid, plane_pg_1_eid}, all_edges);
-  if (all_edges.empty()) {
-    return PARAM_INVALID;
-  }
-
-  // 6. 获取 net_instance_id 并组装结果
-  std::string net_instance_id;
-  ret = GetClosNetInstanceId(phy_dev_id, net_instance_id);
-  if (ret != SUCCESS) {
-    return ret;
-  }
-
-  local_comm_res.version = "1.3";
-  local_comm_res.net_instance_id = net_instance_id;
-  local_comm_res.endpoint_list = std::move(all_edges);
-  for (auto &ep : local_comm_res.endpoint_list) {
-    ep.net_instance_id = net_instance_id;
-  }
-
-  HIXL_LOGI("GenerateLocalCommRes result: version=%s, net_instance_id=%s, endpoints=%zu",
-            local_comm_res.version.c_str(), local_comm_res.net_instance_id.c_str(),
-            local_comm_res.endpoint_list.size());
-  LogEndpointList(local_comm_res.endpoint_list);
-
-  DcmiProxy::UnloadDcmi();
-  return SUCCESS;
+  // 3. 组装结果
+  return BuildLocalCommResResult(phy_dev_id, is_server, topo_data, route_data, related_npu_ids, local_comm_res);
 }
 
 }  // namespace hixl
