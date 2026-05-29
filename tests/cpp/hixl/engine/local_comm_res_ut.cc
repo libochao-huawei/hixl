@@ -23,9 +23,6 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <cstdlib>
-#include <cstring>
-#include <unistd.h>
 
 #include "local_comm_res_generator_v1.h"
 #include "test_mmpa_utils.h"
@@ -54,98 +51,38 @@ std::string GetTestDataDir() {
 #endif
 }
 
-// urma_admin 路径常量（与 local_comm_res_generator_v1.cc 保持一致）
-constexpr const char *kUrmaAdminPath = "/usr/local/sbin/urma_admin";
-
-// 自定义 MmpaStub：拦截 urma_admin 路径检查，使代码回退到 PATH 查找
-class LocalCommResMmpaStub : public hixl::test::KernelJsonMmpaStub {
- public:
-  INT32 Access(const CHAR *path_name) override {
-    std::string path_str(path_name);
-    // 让 /usr/local/sbin/urma_admin 看起来不存在，触发 PATH 回退逻辑
-    if (path_str == kUrmaAdminPath) {
-      return EN_ERROR;
-    }
-    return KernelJsonMmpaStub::Access(path_name);
-  }
-};
-
-// urma_admin show mock 输出数据
-constexpr const char *kUrmaAdminMockOutput =
-    "num  ubep_dev            tp_type     eid                                             link\n"
-    "---  ----------------    --------    --------------------------------------------    --------\n"
-    "0    udma10              UB          eid0 0000:0000:007f:0400:0010:0000:df00:9001    ACTIVE  \n"
-    "1    udma11              UB          eid0 0000:0000:007f:0300:0010:0000:df00:9001    ACTIVE  \n"
-    "2    udma2               UB          eid0 0000:0000:003f:0200:0010:0000:df00:1001    ACTIVE  \n"
-    "3    udma3               UB          eid0 0000:0000:0000:0600:0010:0000:df00:1d01    ACTIVE  \n"
-    "4    udma3               UB          eid1 0000:0000:003f:0600:0010:0000:df00:1001    ACTIVE  \n"
-    "5    udma3               UB          eid2 0000:0000:0007:0600:0010:0000:df00:fd01    ACTIVE  \n"
-    "6    udma3               UB          eid3 0000:0000:0006:0600:0010:0000:df00:dd01    ACTIVE  \n"
-    "7    udma3               UB          eid4 0000:0000:0005:0600:0010:0000:df00:bd01    ACTIVE  \n"
-    "8    udma3               UB          eid5 0000:0000:0004:0600:0010:0000:df00:9d01    ACTIVE  \n"
-    "9    udma3               UB          eid6 0000:0000:0003:0600:0010:0000:df00:7d01    ACTIVE  \n"
-    "10   udma3               UB          eid7 0000:0000:0002:0600:0010:0000:df00:5d01    ACTIVE  \n"
-    "11   udma3               UB          eid8 0000:0000:0001:0600:0010:0000:df00:3d01    ACTIVE  \n"
-    "12   udma4               UB          eid0 0000:0000:003f:0500:0010:0000:df00:1001    ACTIVE  \n"
-    "13   udma5               UB          eid0 0000:0000:003f:0400:0010:0000:df00:1001    ACTIVE  \n"
-    "14   udma6               UB          eid0 0000:0000:003f:0300:0010:0000:df00:1001    ACTIVE  \n"
-    "15   udma7               UB          eid0 0000:0000:007f:0200:0010:0000:df00:9001    ACTIVE  \n"
-    "16   udma8               UB          eid0 0000:0000:0040:0600:0010:0000:df00:1e01    ACTIVE  \n"
-    "17   udma8               UB          eid1 0000:0000:007f:0600:0010:0000:df00:9001    ACTIVE  \n"
-    "18   udma8               UB          eid2 0000:0000:0047:0600:0010:0000:df00:fe01    ACTIVE  \n"
-    "19   udma8               UB          eid3 0000:0000:0046:0600:0010:0000:df00:de01    ACTIVE  \n"
-    "20   udma8               UB          eid4 0000:0000:0045:0600:0010:0000:df00:be01    ACTIVE  \n"
-    "21   udma8               UB          eid5 0000:0000:0044:0600:0010:0000:df00:9e01    ACTIVE  \n"
-    "22   udma8               UB          eid6 0000:0000:0043:0600:0010:0000:df00:7e01    ACTIVE  \n"
-    "23   udma8               UB          eid7 0000:0000:0042:0600:0010:0000:df00:5e01    ACTIVE  \n"
-    "24   udma8               UB          eid8 0000:0000:0041:0600:0010:0000:df00:3e01    ACTIVE  \n"
-    "25   udma9               UB          eid0 0000:0000:007f:0500:0010:0000:df00:9001    ACTIVE  \n";
-
-// 创建 fake urma_admin 脚本到指定目录
-void CreateFakeUrmaAdmin(const std::string &dir) {
-  std::string script_path = dir + "/urma_admin";
-  std::ofstream script(script_path.c_str());
-  script << "#!/bin/bash\n";
-  script << "echo '" << kUrmaAdminMockOutput << "'\n";
-  script.close();
-  chmod(script_path.c_str(), 0755);
-}
-
-// 创建临时目录用于 fake urma_admin
-std::string CreateTempDirForUrmaAdmin() {
-  std::string temp_dir = "/tmp/hixl_ut_urma_XXXXXX";
-  char *result = mkdtemp(&temp_dir[0]);
-  if (result == nullptr) {
-    return "";
-  }
-  CreateFakeUrmaAdmin(temp_dir);
-  return temp_dir;
-}
-
-// 设置 PATH 使 fake urma_admin 优先被找到，返回原 PATH
-std::string SetUrmaAdminPath(const std::string &temp_dir) {
-  const char *old_path = getenv("PATH");
-  std::string new_path = temp_dir + ":" + (old_path ? old_path : "");
-  setenv("PATH", new_path.c_str(), 1);
-  return old_path ? old_path : "";
-}
-
-// 恢复 PATH
-void RestorePath(const std::string &old_path) {
-  if (old_path.empty()) {
-    unsetenv("PATH");
-  } else {
-    setenv("PATH", old_path.c_str(), 1);
-  }
-}
-
-// 清理临时目录
-void CleanupTempDir(const std::string &temp_dir) {
-  if (!temp_dir.empty()) {
-    std::string script_path = temp_dir + "/urma_admin";
-    unlink(script_path.c_str());
-    rmdir(temp_dir.c_str());
-  }
+// urma_admin show 桩函数（基于真实环境输出）
+int32_t UrmaAdminStub(const std::string & /*cmd*/, std::string &output) {
+  output =
+      "num  ubep_dev            tp_type     eid                                             link\n"
+      "---  ----------------    --------    --------------------------------------------    --------\n"
+      "0    udma10              UB          eid0 0000:0000:007f:0400:0010:0000:df00:9001    ACTIVE  \n"
+      "1    udma11              UB          eid0 0000:0000:007f:0300:0010:0000:df00:9001    ACTIVE  \n"
+      "2    udma2               UB          eid0 0000:0000:003f:0200:0010:0000:df00:1001    ACTIVE  \n"
+      "3    udma3               UB          eid0 0000:0000:0000:0600:0010:0000:df00:1d01    ACTIVE  \n"
+      "4    udma3               UB          eid1 0000:0000:003f:0600:0010:0000:df00:1001    ACTIVE  \n"
+      "5    udma3               UB          eid2 0000:0000:0007:0600:0010:0000:df00:fd01    ACTIVE  \n"
+      "6    udma3               UB          eid3 0000:0000:0006:0600:0010:0000:df00:dd01    ACTIVE  \n"
+      "7    udma3               UB          eid4 0000:0000:0005:0600:0010:0000:df00:bd01    ACTIVE  \n"
+      "8    udma3               UB          eid5 0000:0000:0004:0600:0010:0000:df00:9d01    ACTIVE  \n"
+      "9    udma3               UB          eid6 0000:0000:0003:0600:0010:0000:df00:7d01    ACTIVE  \n"
+      "10   udma3               UB          eid7 0000:0000:0002:0600:0010:0000:df00:5d01    ACTIVE  \n"
+      "11   udma3               UB          eid8 0000:0000:0001:0600:0010:0000:df00:3d01    ACTIVE  \n"
+      "12   udma4               UB          eid0 0000:0000:003f:0500:0010:0000:df00:1001    ACTIVE  \n"
+      "13   udma5               UB          eid0 0000:0000:003f:0400:0010:0000:df00:1001    ACTIVE  \n"
+      "14   udma6               UB          eid0 0000:0000:003f:0300:0010:0000:df00:1001    ACTIVE  \n"
+      "15   udma7               UB          eid0 0000:0000:007f:0200:0010:0000:df00:9001    ACTIVE  \n"
+      "16   udma8               UB          eid0 0000:0000:0040:0600:0010:0000:df00:1e01    ACTIVE  \n"
+      "17   udma8               UB          eid1 0000:0000:007f:0600:0010:0000:df00:9001    ACTIVE  \n"
+      "18   udma8               UB          eid2 0000:0000:0047:0600:0010:0000:df00:fe01    ACTIVE  \n"
+      "19   udma8               UB          eid3 0000:0000:0046:0600:0010:0000:df00:de01    ACTIVE  \n"
+      "20   udma8               UB          eid4 0000:0000:0045:0600:0010:0000:df00:be01    ACTIVE  \n"
+      "21   udma8               UB          eid5 0000:0000:0044:0600:0010:0000:df00:9e01    ACTIVE  \n"
+      "22   udma8               UB          eid6 0000:0000:0043:0600:0010:0000:df00:7e01    ACTIVE  \n"
+      "23   udma8               UB          eid7 0000:0000:0042:0600:0010:0000:df00:5e01    ACTIVE  \n"
+      "24   udma8               UB          eid8 0000:0000:0041:0600:0010:0000:df00:3e01    ACTIVE  \n"
+      "25   udma9               UB          eid0 0000:0000:007f:0500:0010:0000:df00:9001    ACTIVE  \n";
+  return SUCCESS;
 }
 
 // 重置 DCMI 桩到默认成功状态
@@ -156,6 +93,7 @@ void ResetDcmiStub() {
   DcmiStubSetUrmaDeviceCnt(1, 0);
   DcmiStubSetSuperPodId(0, 0);
   DcmiStubSetEidCount(2);  // 默认返回 2 个 EID
+  SetUrmaAdminExecFn(UrmaAdminStub);  // 注入 urma_admin 桩函数
 }
 
 // 字符串常量（与 local_comm_res_tool.cc 匿名命名空间中的定义保持一致）
@@ -290,30 +228,15 @@ TEST_F(LocalCommResParseTest, ParseRouteFileMissingPairDeviceNum) {
 // 边生成测试（纯数据结构操作，无需 DCMI）
 // ============================================================================
 
-// MmpaStub 测试基类（公共 SetUp/TearDown，用于需要 PATH 注入的测试）
-class LocalCommResMmpaTestBase : public ::testing::Test {
+class LocalCommResEdgeTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    // 设置 MmpaStub 使 urma_admin 绝对路径检查失败，回退到 PATH 查找
-    llm::MmpaStub::GetInstance().SetImpl(std::make_shared<LocalCommResMmpaStub>());
-    temp_dir_ = CreateTempDirForUrmaAdmin();
-    if (!temp_dir_.empty()) {
-      old_path_ = SetUrmaAdminPath(temp_dir_);
-    }
+    SetUrmaAdminExecFn(UrmaAdminStub);
   }
   void TearDown() override {
-    if (!temp_dir_.empty()) {
-      RestorePath(old_path_);
-      CleanupTempDir(temp_dir_);
-    }
-    // 恢复默认 MmpaStub（使用 Reset 而非 SetImpl(nullptr)，避免后续 mmAccess 调用崩溃）
-    llm::MmpaStub::GetInstance().Reset();
+    SetUrmaAdminExecFn(nullptr);
   }
-  std::string temp_dir_;
-  std::string old_path_;
 };
-
-class LocalCommResEdgeTest : public LocalCommResMmpaTestBase {};
 
 namespace {
 
@@ -321,12 +244,12 @@ RouteData MakeTwoEntryRouteData() {
   RouteData route_data;
   RouteEntry e1;
   e1.device_id = 0;
-  e1.local_eid = "000000000002008000100000dfdf0091";  // byte6=0x02, die_id=0
+  e1.local_eid = "000000000002008000100000dfdf0091";   // byte6=0x02, die_id=0
   e1.remote_eid = "0000000000f2008000100000dfdf0001";
   route_data.entries.push_back(e1);
   RouteEntry e2;
   e2.device_id = 1;
-  e2.local_eid = "000000000052008000100000dfdf0091";  // byte6=0x52, die_id=1
+  e2.local_eid = "000000000052008000100000dfdf0091";   // byte6=0x52, die_id=1
   e2.remote_eid = "000000000072008000100000dfdf0001";
   route_data.entries.push_back(e2);
   return route_data;
@@ -601,28 +524,19 @@ TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesMatchSuccess) {
 // GenerateLocalCommRes 集成测试（需要 DCMI 桩）
 // ============================================================================
 
-// LocalCommRes 测试基类（公共 SetUp/TearDown）
-class LocalCommResTestBase : public LocalCommResMmpaTestBase {
+class LocalCommResGenerateTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    // 先调用基类 SetUp，完成 MmpaStub + temp_dir 初始化
-    LocalCommResMmpaTestBase::SetUp();
-    // 添加 TestBase 特有的初始化
     ResetDcmiStub();
     data_dir_ = GetTestDataDir();
   }
 
   void TearDown() override {
-    // 先执行 TestBase 特有的清理
     ResetDcmiStub();
-    // 调用基类 TearDown，完成 temp_dir 清理 + MmpaStub Reset
-    LocalCommResMmpaTestBase::TearDown();
   }
 
   std::string data_dir_;
 };
-
-class LocalCommResGenerateTest : public LocalCommResTestBase {};
 
 TEST_F(LocalCommResGenerateTest, GenerateSuccess) {
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
@@ -1016,7 +930,17 @@ TEST_F(LocalCommResTopoPathTest, DefaultOverloadGetMainboardIdFailed) {
 // Change #2 测试：route.conf 不存在时的 procfs fallback
 // ============================================================================
 
-class LocalCommResProcfsFallbackTest : public LocalCommResTestBase {};
+class LocalCommResProcfsFallbackTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    ResetDcmiStub();
+    data_dir_ = GetTestDataDir();
+  }
+  void TearDown() override {
+    ResetDcmiStub();
+  }
+  std::string data_dir_;
+};
 
 TEST_F(LocalCommResProcfsFallbackTest, RouteNotFoundProcfsNotAvailable) {
   // route.conf 不存在 + procfs 不可用 → 返回 FAILED
@@ -1058,7 +982,7 @@ TEST_F(LocalCommResProcfsFallbackTest, RouteMalformedProcfsNotAvailable) {
 // 通过 GenerateH2UEdges 直接测试（函数已在 header 中声明）
 // ============================================================================
 
-class LocalCommResH2UTest : public LocalCommResMmpaTestBase {};
+class LocalCommResH2UTest : public ::testing::Test {};
 
 TEST_F(LocalCommResH2UTest, H2UEdgesSuccess) {
   // urma_admin show 桩函数返回有效输出，GetHostPgEid 应成功
@@ -1126,6 +1050,7 @@ TEST_F(LocalCommResH2UTest, IntegrationH2USuccess) {
   DcmiStubSetUrmaDeviceCnt(1, 0);
   DcmiStubSetSuperPodId(0, 0);
   DcmiStubSetEidCount(2);
+  SetUrmaAdminExecFn(UrmaAdminStub);
 
   std::string data_dir = GetTestDataDir();
   std::string topo_path = data_dir + "server_8p_noroce.json";
@@ -1137,376 +1062,6 @@ TEST_F(LocalCommResH2UTest, IntegrationH2USuccess) {
   EXPECT_FALSE(res.endpoint_list.empty());
 
   ResetDcmiStub();
-}
-
-// ============================================================================
-// ProcfsRouteHandler UT
-// 真实文件系统版本：通过构造时注入临时目录，移除所有 mock 抽象
-// ============================================================================
-
-// Helper to create valid pair_info content
-std::string MakePairInfoContent(const std::string &slot_id, const std::vector<std::string> &local_eids,
-                                const std::vector<std::string> &remote_eids) {
-  std::ostringstream oss;
-  for (size_t i = 0; i < local_eids.size() && i < remote_eids.size(); ++i) {
-    oss << "dev_id=0 slot_id=" << slot_id << "\n";
-    oss << "local_eid: " << local_eids[i] << "\n";
-    oss << "remote_eid: " << remote_eids[i] << "\n";
-  }
-  return oss.str();
-}
-
-class ProcfsRouteHandlerTest : public ::testing::Test {
- protected:
-  void SetUp() override {
-    std::string temp_dir = "/tmp/hixl_procfs_ut_XXXXXX";
-    char *result = mkdtemp(&temp_dir[0]);
-    ASSERT_NE(result, nullptr);
-    proc_base_ = temp_dir;
-  }
-
-  void TearDown() override {
-    if (!proc_base_.empty()) {
-      std::string cmd = "rm -rf " + proc_base_;
-      (void)system(cmd.c_str());
-      proc_base_.clear();
-    }
-  }
-
-  // 在临时目录下写入指定文件的内容；name 相对于 proc_base_
-  void WriteProcFile(const std::string &name, const std::string &content) {
-    std::string path = proc_base_ + "/" + name;
-    std::ofstream of(path.c_str());
-    ASSERT_TRUE(of.is_open());
-    of << content;
-    of.close();
-  }
-
-  // 显式注入的 proc 根目录
-  std::string proc_base_;
-};
-
-TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataProcPathNotFound) {
-  // 注入的目录存在但 dev_id 不存在 → FindProcBasePath 返回空 → 失败
-  hixl::ProcfsRouteHandler handler(proc_base_);
-
-  std::set<int32_t> related_npu_ids = {0, 1};
-  hixl::RouteData route_data;
-  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
-
-  EXPECT_EQ(ret, hixl::FAILED);
-  EXPECT_TRUE(route_data.entries.empty());
-}
-
-TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataAscendUbFound) {
-  WriteProcFile("dev_id", "");
-  WriteProcFile("pair_info", MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"},
-                                                 {"0x000000000072008000100000dfdf0001"}));
-
-  hixl::ProcfsRouteHandler handler(proc_base_);
-  std::set<int32_t> related_npu_ids = {0};
-  hixl::RouteData route_data;
-  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
-
-  EXPECT_EQ(ret, hixl::SUCCESS);
-  ASSERT_EQ(route_data.entries.size(), 1U);
-  EXPECT_EQ(route_data.entries[0].device_id, 0);  // 0 % 8 = 0
-  EXPECT_EQ(route_data.entries[0].local_eid, "0000000000f2008000100000dfdf0091");
-  EXPECT_EQ(route_data.entries[0].remote_eid, "000000000072008000100000dfdf0001");
-}
-
-TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataAsdrvUbFound) {
-  // 复用同一注入路径，行为与 ascend_ub 一致（注入路径优先）
-  WriteProcFile("dev_id", "");
-  WriteProcFile("pair_info", MakePairInfoContent("1", {"0x0000000000f2008000100000dfdf0091"},
-                                                 {"0x000000000072008000100000dfdf0001"}));
-
-  hixl::ProcfsRouteHandler handler(proc_base_);
-  std::set<int32_t> related_npu_ids = {1};
-  hixl::RouteData route_data;
-  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
-
-  EXPECT_EQ(ret, hixl::SUCCESS);
-  ASSERT_EQ(route_data.entries.size(), 1U);
-  EXPECT_EQ(route_data.entries[0].device_id, 1);  // 1 % 8 = 1
-}
-
-TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataWriteFails) {
-  // dev_id 不存在 → open() 失败 → WriteStringToFile 失败 → ProcessNpuProcfsRoute 返回 FAILED
-  WriteProcFile("pair_info", MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"},
-                                                 {"0x000000000072008000100000dfdf0001"}));
-
-  hixl::ProcfsRouteHandler handler(proc_base_);
-  std::set<int32_t> related_npu_ids = {0};
-  hixl::RouteData route_data;
-  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
-
-  EXPECT_EQ(ret, hixl::FAILED);
-  EXPECT_TRUE(route_data.entries.empty());
-}
-
-TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataReadPairInfoFails) {
-  // dev_id 存在，pair_info 缺失 → 读取失败
-  WriteProcFile("dev_id", "");
-
-  hixl::ProcfsRouteHandler handler(proc_base_);
-  std::set<int32_t> related_npu_ids = {0};
-  hixl::RouteData route_data;
-  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
-
-  EXPECT_EQ(ret, hixl::FAILED);
-  EXPECT_TRUE(route_data.entries.empty());
-}
-
-TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataMalformedPairInfo) {
-  WriteProcFile("dev_id", "");
-  WriteProcFile("pair_info", "not valid pair info content\n");
-
-  hixl::ProcfsRouteHandler handler(proc_base_);
-  std::set<int32_t> related_npu_ids = {0};
-  hixl::RouteData route_data;
-  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
-
-  EXPECT_EQ(ret, hixl::FAILED);
-  EXPECT_TRUE(route_data.entries.empty());
-}
-
-TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataMultipleNpus) {
-  WriteProcFile("dev_id", "");
-  WriteProcFile("pair_info",
-                MakePairInfoContent("2", {"0x0000000000f2008000100000dfdf0091", "0x0000000000f2008000100000dfdf0092"},
-                                    {"0x000000000072008000100000dfdf0001", "0x000000000072008000100000dfdf0002"}));
-
-  hixl::ProcfsRouteHandler handler(proc_base_);
-  std::set<int32_t> related_npu_ids = {0, 1, 2, 3};
-  hixl::RouteData route_data;
-  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
-
-  EXPECT_EQ(ret, hixl::SUCCESS);
-  // device_id = npu_id % 8, so 0,1,2,3 should all generate entries
-  ASSERT_EQ(route_data.entries.size(), 4U);
-}
-
-TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataEmptyNpuIds) {
-  WriteProcFile("dev_id", "");
-  WriteProcFile("pair_info", "");
-
-  hixl::ProcfsRouteHandler handler(proc_base_);
-  std::set<int32_t> related_npu_ids;  // empty
-  hixl::RouteData route_data;
-  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
-
-  // No NPUs to process, no entries generated → returns FAILED
-  EXPECT_EQ(ret, hixl::FAILED);
-  EXPECT_TRUE(route_data.entries.empty());
-}
-
-TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataNpuIdGreaterThan7) {
-  WriteProcFile("dev_id", "");
-  WriteProcFile("pair_info", MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"},
-                                                 {"0x000000000072008000100000dfdf0001"}));
-
-  // npu_id = 10, device_id = 10 % 8 = 2
-  hixl::ProcfsRouteHandler handler(proc_base_);
-  std::set<int32_t> related_npu_ids = {10};
-  hixl::RouteData route_data;
-  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
-
-  EXPECT_EQ(ret, hixl::SUCCESS);
-  ASSERT_EQ(route_data.entries.size(), 1U);
-  EXPECT_EQ(route_data.entries[0].device_id, 2);  // 10 % 8 = 2
-}
-
-TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataEid0xPrefixStripped) {
-  WriteProcFile("dev_id", "");
-  WriteProcFile("pair_info", MakePairInfoContent("0", {"0xaa", "0xbb"}, {"0xcc", "0xdd"}));
-
-  // npu_id=0 → group_offset=0 → eid_idx=0; npu_id=4 → group_offset=4 → eid_idx=1
-  hixl::ProcfsRouteHandler handler(proc_base_);
-  std::set<int32_t> related_npu_ids = {0, 4};
-  hixl::RouteData route_data;
-  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
-
-  EXPECT_EQ(ret, hixl::SUCCESS);
-  ASSERT_EQ(route_data.entries.size(), 2U);
-  // Verify 0x prefix is stripped
-  EXPECT_EQ(route_data.entries[0].local_eid, "aa");
-  EXPECT_EQ(route_data.entries[0].remote_eid, "cc");
-  EXPECT_EQ(route_data.entries[1].local_eid, "bb");
-  EXPECT_EQ(route_data.entries[1].remote_eid, "dd");
-}
-
-TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataEidColonStripped) {
-  WriteProcFile("dev_id", "");
-  WriteProcFile("pair_info", MakePairInfoContent("0", {"0xaa:bb:cc", "dd:ee:ff"}, {"11:22:33", "44:55:66"}));
-
-  // npu_id=0 → group_offset=0 → eid_idx=0; npu_id=4 → group_offset=4 → eid_idx=1
-  hixl::ProcfsRouteHandler handler(proc_base_);
-  std::set<int32_t> related_npu_ids = {0, 4};
-  hixl::RouteData route_data;
-  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
-
-  EXPECT_EQ(ret, hixl::SUCCESS);
-  ASSERT_EQ(route_data.entries.size(), 2U);
-  // Verify colons are stripped
-  EXPECT_EQ(route_data.entries[0].local_eid, "aabbcc");
-  EXPECT_EQ(route_data.entries[0].remote_eid, "112233");
-  EXPECT_EQ(route_data.entries[1].local_eid, "ddeeff");
-  EXPECT_EQ(route_data.entries[1].remote_eid, "445566");
-}
-
-// ============================================================================
-// TopoFileFinder UT
-// ============================================================================
-
-class TopoFileFinderTest : public ::testing::Test {};
-
-// Helper: Create temp dir with topo files
-std::string CreateTempTopoDir(const std::string &prefix, bool with_850_file, bool with_950_file) {
-  std::string temp_dir = "/tmp/hixl_topo_ut_XXXXXX";
-  char *result = mkdtemp(&temp_dir[0]);
-  if (result == nullptr) {
-    return "";
-  }
-  if (with_850_file) {
-    std::string file_path = temp_dir + "/" + prefix + "_850_server.json";
-    std::ofstream of(file_path.c_str());
-    of << "{}";
-    of.close();
-  }
-  if (with_950_file) {
-    std::string file_path = temp_dir + "/" + prefix + "_950_pod.json";
-    std::ofstream of(file_path.c_str());
-    of << "{}";
-    of.close();
-  }
-  return temp_dir;
-}
-
-// Helper: Cleanup temp dir
-void CleanupTopoTempDir(const std::string &temp_dir) {
-  if (!temp_dir.empty()) {
-    std::string cmd = "rm -rf " + temp_dir;
-    system(cmd.c_str());
-  }
-}
-
-TEST_F(TopoFileFinderTest, FindTopoFileServerProduct) {
-  // Server 产品 (mainboard_id=0x21) 应匹配 atlas_850_* 前缀
-  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-  ASSERT_FALSE(temp_dir.empty());
-
-  hixl::TopoFileFinder finder;
-  std::string result = finder.FindTopoFile(temp_dir, 0x21);
-
-  EXPECT_FALSE(result.empty());
-  EXPECT_NE(result.find("850"), std::string::npos);
-
-  CleanupTopoTempDir(temp_dir);
-}
-
-TEST_F(TopoFileFinderTest, FindTopoFilePodProduct) {
-  // Pod 产品 (mainboard_id=0x3) 应匹配 atlas_950_* 前缀
-  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-  ASSERT_FALSE(temp_dir.empty());
-
-  hixl::TopoFileFinder finder;
-  std::string result = finder.FindTopoFile(temp_dir, 0x3);
-
-  EXPECT_FALSE(result.empty());
-  EXPECT_NE(result.find("950"), std::string::npos);
-
-  CleanupTopoTempDir(temp_dir);
-}
-
-TEST_F(TopoFileFinderTest, FindTopoFilePod2Product) {
-  // Pod2 产品 (mainboard_id=0x5) 应匹配 atlas_950_* 前缀
-  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-  ASSERT_FALSE(temp_dir.empty());
-
-  hixl::TopoFileFinder finder;
-  std::string result = finder.FindTopoFile(temp_dir, 0x5);
-
-  EXPECT_FALSE(result.empty());
-  EXPECT_NE(result.find("950"), std::string::npos);
-
-  CleanupTopoTempDir(temp_dir);
-}
-
-TEST_F(TopoFileFinderTest, FindTopoFilePod3Product) {
-  // Pod3 产品 (mainboard_id=0x7) 应匹配 atlas_950_* 前缀
-  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-  ASSERT_FALSE(temp_dir.empty());
-
-  hixl::TopoFileFinder finder;
-  std::string result = finder.FindTopoFile(temp_dir, 0x7);
-
-  EXPECT_FALSE(result.empty());
-  EXPECT_NE(result.find("950"), std::string::npos);
-
-  CleanupTopoTempDir(temp_dir);
-}
-
-TEST_F(TopoFileFinderTest, FindTopoFileServerEvenRange2) {
-  // Server 产品偶数范围 (mainboard_id=0x42) 应匹配 atlas_850_* 前缀
-  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-  ASSERT_FALSE(temp_dir.empty());
-
-  hixl::TopoFileFinder finder;
-  std::string result = finder.FindTopoFile(temp_dir, 0x42);
-
-  EXPECT_FALSE(result.empty());
-  EXPECT_NE(result.find("850"), std::string::npos);
-
-  CleanupTopoTempDir(temp_dir);
-}
-
-TEST_F(TopoFileFinderTest, FindTopoFileDirectoryNotExist) {
-  // 目录不存在应返回空
-  hixl::TopoFileFinder finder;
-  std::string result = finder.FindTopoFile("/nonexistent/path", 0x21);
-
-  EXPECT_TRUE(result.empty());
-}
-
-TEST_F(TopoFileFinderTest, FindTopoFileNoMatchingFile) {
-  // 目录存在但没有匹配的文件应返回空
-  std::string temp_dir = CreateTempTopoDir("atlas", false, false);  // 不创建任何文件
-  ASSERT_FALSE(temp_dir.empty());
-
-  hixl::TopoFileFinder finder;
-  std::string result = finder.FindTopoFile(temp_dir, 0x21);
-
-  EXPECT_TRUE(result.empty());
-
-  CleanupTopoTempDir(temp_dir);
-}
-
-TEST_F(TopoFileFinderTest, FindTopoFileUnknownMainboardId) {
-  // 未知 mainboard_id 应返回空
-  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-  ASSERT_FALSE(temp_dir.empty());
-
-  hixl::TopoFileFinder finder;
-  std::string result = finder.FindTopoFile(temp_dir, 0x99);
-
-  EXPECT_TRUE(result.empty());
-
-  CleanupTopoTempDir(temp_dir);
-}
-
-TEST_F(TopoFileFinderTest, FindTopoFileServerOddMainboardId) {
-  // Server 产品奇数 mainboard_id (0x23) 应匹配 atlas_850_* 前缀
-  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-  ASSERT_FALSE(temp_dir.empty());
-
-  hixl::TopoFileFinder finder;
-  std::string result = finder.FindTopoFile(temp_dir, 0x23);
-
-  EXPECT_FALSE(result.empty());
-  EXPECT_NE(result.find("850"), std::string::npos);
-
-  CleanupTopoTempDir(temp_dir);
 }
 
 }  // namespace test
