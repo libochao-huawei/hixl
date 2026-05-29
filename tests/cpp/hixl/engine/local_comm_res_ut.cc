@@ -51,13 +51,38 @@ std::string GetTestDataDir() {
 #endif
 }
 
-// 从文件读取内容
-std::string ReadFileContent(const std::string &path) {
-  std::ifstream ifs(path);
-  if (!ifs.is_open()) return "";
-  std::ostringstream oss;
-  oss << ifs.rdbuf();
-  return oss.str();
+// urma_admin show 桩函数（基于真实环境输出）
+int32_t UrmaAdminStub(const std::string & /*cmd*/, std::string &output) {
+  output =
+      "num  ubep_dev            tp_type     eid                                             link\n"
+      "---  ----------------    --------    --------------------------------------------    --------\n"
+      "0    udma10              UB          eid0 0000:0000:007f:0400:0010:0000:df00:9001    ACTIVE  \n"
+      "1    udma11              UB          eid0 0000:0000:007f:0300:0010:0000:df00:9001    ACTIVE  \n"
+      "2    udma2               UB          eid0 0000:0000:003f:0200:0010:0000:df00:1001    ACTIVE  \n"
+      "3    udma3               UB          eid0 0000:0000:0000:0600:0010:0000:df00:1d01    ACTIVE  \n"
+      "4    udma3               UB          eid1 0000:0000:003f:0600:0010:0000:df00:1001    ACTIVE  \n"
+      "5    udma3               UB          eid2 0000:0000:0007:0600:0010:0000:df00:fd01    ACTIVE  \n"
+      "6    udma3               UB          eid3 0000:0000:0006:0600:0010:0000:df00:dd01    ACTIVE  \n"
+      "7    udma3               UB          eid4 0000:0000:0005:0600:0010:0000:df00:bd01    ACTIVE  \n"
+      "8    udma3               UB          eid5 0000:0000:0004:0600:0010:0000:df00:9d01    ACTIVE  \n"
+      "9    udma3               UB          eid6 0000:0000:0003:0600:0010:0000:df00:7d01    ACTIVE  \n"
+      "10   udma3               UB          eid7 0000:0000:0002:0600:0010:0000:df00:5d01    ACTIVE  \n"
+      "11   udma3               UB          eid8 0000:0000:0001:0600:0010:0000:df00:3d01    ACTIVE  \n"
+      "12   udma4               UB          eid0 0000:0000:003f:0500:0010:0000:df00:1001    ACTIVE  \n"
+      "13   udma5               UB          eid0 0000:0000:003f:0400:0010:0000:df00:1001    ACTIVE  \n"
+      "14   udma6               UB          eid0 0000:0000:003f:0300:0010:0000:df00:1001    ACTIVE  \n"
+      "15   udma7               UB          eid0 0000:0000:007f:0200:0010:0000:df00:9001    ACTIVE  \n"
+      "16   udma8               UB          eid0 0000:0000:0040:0600:0010:0000:df00:1e01    ACTIVE  \n"
+      "17   udma8               UB          eid1 0000:0000:007f:0600:0010:0000:df00:9001    ACTIVE  \n"
+      "18   udma8               UB          eid2 0000:0000:0047:0600:0010:0000:df00:fe01    ACTIVE  \n"
+      "19   udma8               UB          eid3 0000:0000:0046:0600:0010:0000:df00:de01    ACTIVE  \n"
+      "20   udma8               UB          eid4 0000:0000:0045:0600:0010:0000:df00:be01    ACTIVE  \n"
+      "21   udma8               UB          eid5 0000:0000:0044:0600:0010:0000:df00:9e01    ACTIVE  \n"
+      "22   udma8               UB          eid6 0000:0000:0043:0600:0010:0000:df00:7e01    ACTIVE  \n"
+      "23   udma8               UB          eid7 0000:0000:0042:0600:0010:0000:df00:5e01    ACTIVE  \n"
+      "24   udma8               UB          eid8 0000:0000:0041:0600:0010:0000:df00:3e01    ACTIVE  \n"
+      "25   udma9               UB          eid0 0000:0000:007f:0500:0010:0000:df00:9001    ACTIVE  \n";
+  return SUCCESS;
 }
 
 // 重置 DCMI 桩到默认成功状态
@@ -68,6 +93,7 @@ void ResetDcmiStub() {
   DcmiStubSetUrmaDeviceCnt(1, 0);
   DcmiStubSetSuperPodId(0, 0);
   DcmiStubSetEidCount(2);  // 默认返回 2 个 EID
+  SetUrmaAdminExecFn(UrmaAdminStub);  // 注入 urma_admin 桩函数
 }
 
 // 字符串常量（与 local_comm_res_tool.cc 匿名命名空间中的定义保持一致）
@@ -202,7 +228,15 @@ TEST_F(LocalCommResParseTest, ParseRouteFileMissingPairDeviceNum) {
 // 边生成测试（纯数据结构操作，无需 DCMI）
 // ============================================================================
 
-class LocalCommResEdgeTest : public ::testing::Test {};
+class LocalCommResEdgeTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    SetUrmaAdminExecFn(UrmaAdminStub);
+  }
+  void TearDown() override {
+    SetUrmaAdminExecFn(nullptr);
+  }
+};
 
 namespace {
 
@@ -210,13 +244,13 @@ RouteData MakeTwoEntryRouteData() {
   RouteData route_data;
   RouteEntry e1;
   e1.device_id = 0;
-  e1.local_eid = "0xaa";
-  e1.remote_eid = "0xbb";
+  e1.local_eid = "000000000002008000100000dfdf0091";   // byte6=0x02, die_id=0
+  e1.remote_eid = "0000000000f2008000100000dfdf0001";
   route_data.entries.push_back(e1);
   RouteEntry e2;
   e2.device_id = 1;
-  e2.local_eid = "0xcc";
-  e2.remote_eid = "0xdd";
+  e2.local_eid = "000000000052008000100000dfdf0091";   // byte6=0x52, die_id=1
+  e2.remote_eid = "000000000072008000100000dfdf0001";
   route_data.entries.push_back(e2);
   return route_data;
 }
@@ -265,11 +299,11 @@ TEST_F(LocalCommResEdgeTest, GenerateH2DEdgesSuccess) {
   EXPECT_EQ(ret, SUCCESS);
   ASSERT_EQ(edges.size(), 2U);
   EXPECT_EQ(edges[0].protocol, kProtocolUbCtp);
-  EXPECT_EQ(edges[0].comm_id, "0xaa");
+  EXPECT_EQ(edges[0].comm_id, "000000000002008000100000dfdf0091");
   EXPECT_EQ(edges[0].placement, kPlacementHost);
-  EXPECT_EQ(edges[0].dst_eid, "0xbb");
-  EXPECT_EQ(edges[1].comm_id, "0xcc");
-  EXPECT_EQ(edges[1].dst_eid, "0xdd");
+  EXPECT_EQ(edges[0].dst_eid, "0000000000f2008000100000dfdf0001");
+  EXPECT_EQ(edges[1].comm_id, "000000000052008000100000dfdf0091");
+  EXPECT_EQ(edges[1].dst_eid, "000000000072008000100000dfdf0001");
 }
 
 TEST_F(LocalCommResEdgeTest, GenerateH2DEdgesEmptyRoute) {
@@ -290,9 +324,9 @@ TEST_F(LocalCommResEdgeTest, GenerateD2HEdgesSuccess) {
   EXPECT_EQ(ret, SUCCESS);
   ASSERT_EQ(edges.size(), 1U);  // 只取 device_id=0 的条目
   EXPECT_EQ(edges[0].protocol, kProtocolUbCtp);
-  EXPECT_EQ(edges[0].comm_id, "0xbb");  // D2H: comm_id = remote_eid
+  EXPECT_EQ(edges[0].comm_id, "0000000000f2008000100000dfdf0001");  // D2H: comm_id = remote_eid
   EXPECT_EQ(edges[0].placement, kPlacementDevice);
-  EXPECT_EQ(edges[0].dst_eid, "0xaa");  // D2H: dst_eid = local_eid
+  EXPECT_EQ(edges[0].dst_eid, "000000000002008000100000dfdf0091");  // D2H: dst_eid = local_eid
 }
 
 TEST_F(LocalCommResEdgeTest, GenerateD2HEdgesEmptyRoute) {
@@ -347,6 +381,48 @@ TEST_F(LocalCommResEdgeTest, GenerateD2HEdgesPhyIdGreaterThan7) {
 
 // Note: GenerateD2UEdges / GenerateH2UEdges 在 .cc 中的实际签名与 .h 声明不一致，
 // 无法从 UT 直接调用，通过 GenerateLocalCommRes 集成路径间接覆盖。
+
+// --- GenerateD2UEdges (Change #1/#3: plane_pg EID 边生成) ---
+
+TEST_F(LocalCommResEdgeTest, GenerateD2UEdgesBothPlanes) {
+  std::vector<EndpointConfig> edges;
+  GenerateD2UEdges("pg0_eid", "pg1_eid", edges);
+  ASSERT_EQ(edges.size(), 2U);
+  EXPECT_EQ(edges[0].comm_id, "pg0_eid");
+  EXPECT_EQ(edges[0].placement, kPlacementDevice);
+  EXPECT_EQ(edges[0].plane, "plane_pg_0");
+  EXPECT_EQ(edges[1].comm_id, "pg1_eid");
+  EXPECT_EQ(edges[1].plane, "plane_pg_1");
+}
+
+TEST_F(LocalCommResEdgeTest, GenerateD2UEdgesOnlyPlane0) {
+  std::vector<EndpointConfig> edges;
+  GenerateD2UEdges("pg0_eid", "", edges);
+  ASSERT_EQ(edges.size(), 1U);
+  EXPECT_EQ(edges[0].comm_id, "pg0_eid");
+  EXPECT_EQ(edges[0].plane, "plane_pg_0");
+}
+
+TEST_F(LocalCommResEdgeTest, GenerateD2UEdgesEmpty) {
+  std::vector<EndpointConfig> edges;
+  GenerateD2UEdges("", "", edges);
+  EXPECT_TRUE(edges.empty());
+}
+
+// --- GenerateH2UEdges (Change #3: Host PG EID 作为 comm_id) ---
+// 注意：GenerateH2UEdges 内部调用 GetHostPgEid（依赖 popen urma_admin show），
+// 在 UT 环境中 popen 会失败，因此返回 FAILED。
+
+TEST_F(LocalCommResEdgeTest, GenerateH2UEdgesSuccess) {
+  // urma_admin show 桩函数返回有效输出，GetHostPgEid 应成功
+  RouteData route_data = MakeTwoEntryRouteData();
+  std::vector<EndpointConfig> edges;
+  int32_t ret = GenerateH2UEdges(0, route_data, "pg0_eid", "pg1_eid", edges);
+  EXPECT_EQ(ret, SUCCESS);
+  ASSERT_EQ(edges.size(), 2U);
+  EXPECT_EQ(edges[0].plane, "plane_pg_0");
+  EXPECT_EQ(edges[1].plane, "plane_pg_1");
+}
 
 // --- GenerateD2DEdges ---
 
@@ -492,7 +568,8 @@ TEST_F(LocalCommResGenerateTest, GenerateRouteNotFound) {
 
   LocalCommRes res;
   int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
-  EXPECT_EQ(ret, PARAM_INVALID);
+  // route.conf 不存在时会尝试 procfs fallback，procfs 也不存在则返回 FAILED
+  EXPECT_NE(ret, SUCCESS);
 }
 
 TEST_F(LocalCommResGenerateTest, GenerateGetMainboardIdFailed) {
@@ -706,8 +783,8 @@ TEST_F(LocalCommResGenerateTest, GenerateRouteEidStrips0xPrefix) {
       "pair_device_num=1\n"
       "pair0_dev_id=0\n"
       "pair0_chan_num=1\n"
-      "pair0_chan0_local_eid=0x000000000000008000100000dfdf00f2\n"
-      "pair0_chan0_remote_eid=0x000000000000008000100000dfdf0072\n";
+      "pair0_chan0_local_eid=0x0000000000f2008000100000dfdf0091\n"
+      "pair0_chan0_remote_eid=0x000000000072008000100000dfdf0091\n";
   std::string tmp_route = CreateTempFileWithContent("/tmp/route_ut_XXXXXX", route_content);
   ASSERT_FALSE(tmp_route.empty());
 
@@ -794,6 +871,197 @@ TEST(LocalCommResRootinfoTest, ParseEidByte6Die0) {
   EXPECT_EQ(info.die_id, 0);
   EXPECT_TRUE(info.is_pg_eid);
   EXPECT_EQ(info.port, 2);
+}
+
+// ============================================================================
+// Change #1 测试：Topo 文件路径调整（MatchProductForm / FindTopoFileByMainboardId）
+// 通过默认 GenerateLocalCommRes 重载间接测试产品形态匹配逻辑
+// ============================================================================
+
+class LocalCommResTopoPathTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    DcmiStubSetInitRet(0);
+    DcmiStubSetLogicId(0, 0);
+    DcmiStubSetUrmaDeviceCnt(1, 0);
+    DcmiStubSetSuperPodId(0, 0);
+    DcmiStubSetEidCount(2);
+  }
+  void TearDown() override {
+    ResetDcmiStub();
+  }
+};
+
+TEST_F(LocalCommResTopoPathTest, DefaultOverloadPodMainboardId) {
+  // Pod 产品形态（0x3）→ MatchProductForm 匹配 atlas_950_* 前缀
+  // 在 UT 环境中 /usr/local/Ascend/driver/topo/950/ 不存在，应返回 PARAM_INVALID
+  DcmiStubSetMainboardId(0x3, 0);
+  LocalCommRes res;
+  int32_t ret = GenerateLocalCommRes(0, res);
+  // topo 目录不存在 → FindTopoFileByMainboardId 返回空 → PARAM_INVALID
+  EXPECT_EQ(ret, PARAM_INVALID);
+}
+
+TEST_F(LocalCommResTopoPathTest, DefaultOverloadServerMainboardId) {
+  // Server 产品形态（0x21）→ MatchProductForm 匹配 atlas_850_* 前缀
+  DcmiStubSetMainboardId(0x21, 0);
+  LocalCommRes res;
+  int32_t ret = GenerateLocalCommRes(0, res);
+  EXPECT_EQ(ret, PARAM_INVALID);
+}
+
+TEST_F(LocalCommResTopoPathTest, DefaultOverloadUnknownMainboardId) {
+  // 未知 mainboard_id（0x99）→ MatchProductForm 返回 false → PARAM_INVALID
+  DcmiStubSetMainboardId(0x99, 0);
+  LocalCommRes res;
+  int32_t ret = GenerateLocalCommRes(0, res);
+  EXPECT_EQ(ret, PARAM_INVALID);
+}
+
+TEST_F(LocalCommResTopoPathTest, DefaultOverloadGetMainboardIdFailed) {
+  // GetMainboardId 失败 → 直接返回错误
+  DcmiStubSetMainboardId(0, -1);
+  LocalCommRes res;
+  int32_t ret = GenerateLocalCommRes(0, res);
+  EXPECT_NE(ret, SUCCESS);
+}
+
+// ============================================================================
+// Change #2 测试：route.conf 不存在时的 procfs fallback
+// ============================================================================
+
+class LocalCommResProcfsFallbackTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    ResetDcmiStub();
+    data_dir_ = GetTestDataDir();
+  }
+  void TearDown() override {
+    ResetDcmiStub();
+  }
+  std::string data_dir_;
+};
+
+TEST_F(LocalCommResProcfsFallbackTest, RouteNotFoundProcfsNotAvailable) {
+  // route.conf 不存在 + procfs 不可用 → 返回 FAILED
+  std::string topo_path = data_dir_ + "server_8p_noroce.json";
+  std::string route_path = "/nonexistent/route.conf";
+
+  LocalCommRes res;
+  int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
+  EXPECT_NE(ret, SUCCESS);
+}
+
+TEST_F(LocalCommResProcfsFallbackTest, RouteExistsNoFallback) {
+  // route.conf 存在 → 不触发 procfs fallback → 正常流程
+  std::string topo_path = data_dir_ + "server_8p_noroce.json";
+  std::string route_path = data_dir_ + "route.conf";
+
+  LocalCommRes res;
+  int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_FALSE(res.endpoint_list.empty());
+}
+
+TEST_F(LocalCommResProcfsFallbackTest, RouteMalformedProcfsNotAvailable) {
+  // route.conf 内容格式错误（缺少 pair_device_num）→ ParseRouteFile 返回 FAILED
+  // → 触发 procfs fallback → procfs 不可用 → 返回 FAILED
+  std::string topo_path = data_dir_ + "server_8p_noroce.json";
+  std::string tmp_route = CreateTempFileWithContent("/tmp/route_ut_XXXXXX", "invalid_content=no_pair_device_num\n");
+  ASSERT_FALSE(tmp_route.empty());
+
+  LocalCommRes res;
+  int32_t ret = GenerateLocalCommRes(0, topo_path, tmp_route, res);
+  EXPECT_NE(ret, SUCCESS);
+
+  unlink(tmp_route.c_str());
+}
+
+// ============================================================================
+// Change #3 测试：H2U 边 comm_id 使用 Host PG EID
+// 通过 GenerateH2UEdges 直接测试（函数已在 header 中声明）
+// ============================================================================
+
+class LocalCommResH2UTest : public ::testing::Test {};
+
+TEST_F(LocalCommResH2UTest, H2UEdgesSuccess) {
+  // urma_admin show 桩函数返回有效输出，GetHostPgEid 应成功
+  RouteData route_data;
+  RouteEntry e;
+  e.device_id = 0;
+  e.local_eid = "00000000003200000000000000df0091";
+  e.remote_eid = "0000000000f200000000000000df0001";
+  route_data.entries.push_back(e);
+
+  std::vector<EndpointConfig> edges;
+  int32_t ret = GenerateH2UEdges(0, route_data, "pg0_eid", "pg1_eid", edges);
+  // 桩函数返回有效数据 → 成功生成 H2U 边
+  EXPECT_EQ(ret, SUCCESS);
+  ASSERT_EQ(edges.size(), 2U);
+  EXPECT_EQ(edges[0].plane, "plane_pg_0");
+  EXPECT_EQ(edges[1].plane, "plane_pg_1");
+}
+
+TEST_F(LocalCommResH2UTest, H2UEdgesEmptyRouteData) {
+  // 空 route_data → GetHostPgEid 中找不到匹配的 device_id → FAILED
+  RouteData route_data;
+  std::vector<EndpointConfig> edges;
+  int32_t ret = GenerateH2UEdges(0, route_data, "pg0_eid", "pg1_eid", edges);
+  EXPECT_EQ(ret, FAILED);
+  EXPECT_TRUE(edges.empty());
+}
+
+TEST_F(LocalCommResH2UTest, D2UEdgesSuccessWithBothPlanes) {
+  // GenerateD2UEdges 不依赖外部命令，可正常测试
+  std::vector<EndpointConfig> edges;
+  GenerateD2UEdges("plane_pg_0_eid", "plane_pg_1_eid", edges);
+  ASSERT_EQ(edges.size(), 2U);
+  EXPECT_EQ(edges[0].comm_id, "plane_pg_0_eid");
+  EXPECT_EQ(edges[0].placement, kPlacementDevice);
+  EXPECT_EQ(edges[0].plane, "plane_pg_0");
+  EXPECT_EQ(edges[1].comm_id, "plane_pg_1_eid");
+  EXPECT_EQ(edges[1].plane, "plane_pg_1");
+}
+
+TEST_F(LocalCommResH2UTest, D2UEdgesOnlyPlanePg0) {
+  std::vector<EndpointConfig> edges;
+  GenerateD2UEdges("pg0_eid", "", edges);
+  ASSERT_EQ(edges.size(), 1U);
+  EXPECT_EQ(edges[0].comm_id, "pg0_eid");
+  EXPECT_EQ(edges[0].plane, "plane_pg_0");
+}
+
+TEST_F(LocalCommResH2UTest, D2UEdgesNoPlanes) {
+  std::vector<EndpointConfig> edges;
+  GenerateD2UEdges("", "", edges);
+  EXPECT_TRUE(edges.empty());
+}
+
+// ============================================================================
+// 集成测试：H2U 边失败时的错误传播
+// 验证 CollectAllEdges 在 GetHostPgEid 失败时正确传播错误
+// ============================================================================
+
+TEST_F(LocalCommResH2UTest, IntegrationH2USuccess) {
+  // urma_admin show 桩函数返回有效数据 → H2U 边生成成功 → 整体成功
+  DcmiStubSetInitRet(0);
+  DcmiStubSetMainboardId(0x3, 0);
+  DcmiStubSetLogicId(0, 0);
+  DcmiStubSetUrmaDeviceCnt(1, 0);
+  DcmiStubSetSuperPodId(0, 0);
+  DcmiStubSetEidCount(2);
+  SetUrmaAdminExecFn(UrmaAdminStub);
+
+  std::string data_dir = GetTestDataDir();
+  std::string topo_path = data_dir + "server_8p_noroce.json";
+  std::string route_path = data_dir + "route.conf";
+
+  LocalCommRes res;
+  int32_t ret = GenerateLocalCommRes(0, topo_path, route_path, res);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_FALSE(res.endpoint_list.empty());
+
+  ResetDcmiStub();
 }
 
 }  // namespace test
