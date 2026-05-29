@@ -28,6 +28,7 @@
 #include <array>
 #include <cstring>
 #include <cerrno>
+#include <cstdio>
 #include <set>
 #include <dirent.h>
 #include <fcntl.h>
@@ -418,6 +419,160 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, Ro
               entry.local_eid.c_str(), entry.remote_eid.c_str());
   }
 
+  return SUCCESS;
+}
+
+// ============ urma_admin show 相关函数 ============
+
+// 从格式化 EID（带冒号）中去掉冒号
+std::string FormatEidFromUrma(const std::string &eid_with_colons) {
+  std::string result;
+  for (char c : eid_with_colons) {
+    if (c != ':') {
+      result += c;
+    }
+  }
+  return result;
+}
+
+// urma_admin show 输出中的单条 EID 记录
+struct UrmaEidEntry {
+  std::string udma_name;  // "udma3"
+  int eid_index = 0;      // eid0, eid1, ...
+  std::string eid;        // 带冒号的原始 EID
+};
+
+// 执行 urma_admin show，解析输出，根据 route_data 选择 Host PG EID
+// 逻辑：
+//   1. 执行 urma_admin show，解析 UDMA 组信息
+//   2. 找到 eid_count >= 8 的 UDMA 组（Host 侧），建立 die_id → PG EID 映射
+//   3. 从 route_data 中通过 device_id 找到当前 NPU 的 local_eid（CPU EID）
+//   4. 用 ParseEidByte6 从 CPU EID 提取 die_id，选择同 die 的 Host PG EID
+int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::string &host_pg_eid) {
+  host_pg_eid.clear();
+
+  // 1. 执行 urma_admin show
+  FILE *pipe = popen("urma_admin show", "r");
+  if (pipe == nullptr) {
+    HIXL_LOGE(FAILED, "[GetHostPgEid] Failed to execute urma_admin show");
+    return FAILED;
+  }
+
+  std::vector<UrmaEidEntry> all_entries;
+  char buf[512];
+  while (fgets(buf, sizeof(buf), pipe) != nullptr) {
+    std::string line(buf);
+    // 跳过表头和分隔线
+    if (line.find("num") != std::string::npos && line.find("ubep_dev") != std::string::npos) {
+      continue;
+    }
+    if (line.find("---") != std::string::npos) {
+      continue;
+    }
+    if (line.find("eid") == std::string::npos) {
+      continue;
+    }
+
+    // 解析格式: "0 udma3 UB eid1 0000:0000:003f:0600:0010:0000:df00:1001 ACTIVE"
+    std::istringstream iss(line);
+    std::string num_str, udma_name, tp_type, eid_name, eid_value, link_status;
+    iss >> num_str >> udma_name >> tp_type >> eid_name >> eid_value >> link_status;
+
+    if (udma_name.empty() || eid_name.empty() || eid_value.empty()) {
+      continue;
+    }
+
+    // 提取 eid_index: "eid1" → 1
+    int eid_index = 0;
+    try {
+      eid_index = std::stoi(eid_name.substr(3));
+    } catch (...) {
+      continue;
+    }
+
+    UrmaEidEntry entry;
+    entry.udma_name = udma_name;
+    entry.eid_index = eid_index;
+    entry.eid = eid_value;
+    all_entries.push_back(entry);
+  }
+  pclose(pipe);
+
+  if (all_entries.empty()) {
+    HIXL_LOGE(FAILED, "[GetHostPgEid] No entries from urma_admin show");
+    return FAILED;
+  }
+
+  HIXL_LOGI("[GetHostPgEid] Parsed %zu entries from urma_admin show", all_entries.size());
+
+  // 2. 按 udma_name 分组，找到 eid_count >= 8 的 UDMA 组（Host 侧），建立 die_id → PG EID 映射
+  std::map<std::string, std::vector<UrmaEidEntry>> udma_groups;
+  for (const auto &entry : all_entries) {
+    udma_groups[entry.udma_name].push_back(entry);
+  }
+
+  std::map<int32_t, std::string> die_to_host_pg_eid;
+  for (const auto &[name, entries] : udma_groups) {
+    if (entries.size() < 8) {
+      continue;
+    }
+    HIXL_LOGI("[GetHostPgEid] Host UDMA group: %s (eid_count=%zu)", name.c_str(), entries.size());
+    for (const auto &entry : entries) {
+      std::string eid_no_colon = FormatEidFromUrma(entry.eid);
+      auto info = ParseEidByte6(eid_no_colon);
+      HIXL_LOGI("[GetHostPgEid]   %s eid%d: %s, die_id=%d, is_pg=%s", name.c_str(), entry.eid_index,
+                entry.eid.c_str(), info.die_id, info.is_pg_eid ? "true" : "false");
+      // 只保存 PG EID（高 nibble 为 0x3 或 0x7）
+      if (info.is_pg_eid) {
+        die_to_host_pg_eid[info.die_id] = entry.eid;
+      }
+    }
+  }
+
+  if (die_to_host_pg_eid.empty()) {
+    HIXL_LOGE(FAILED, "[GetHostPgEid] No Host PG EID found (no UDMA group with eid_count >= 8)");
+    return FAILED;
+  }
+
+  // 3. 从 route_data 中通过 device_id 找到当前 NPU 的 local_eid（CPU EID）
+  uint32_t logic_id = 0;
+  if (DcmiProxy::GetLogicIdFromPhyId(phy_dev_id, &logic_id) != 0) {
+    HIXL_LOGE(FAILED, "[GetHostPgEid] Failed to get logic id from phy id: %d", phy_dev_id);
+    return FAILED;
+  }
+  int32_t target_device_id = static_cast<int32_t>(logic_id);
+  HIXL_LOGI("[GetHostPgEid] phy_dev_id=%d, logic_id=%u, target_device_id=%d", phy_dev_id, logic_id, target_device_id);
+  std::string cpu_eid;
+  for (const auto &entry : route_data.entries) {
+    if (entry.device_id == target_device_id && !entry.local_eid.empty()) {
+      cpu_eid = entry.local_eid;
+      break;
+    }
+  }
+
+  if (cpu_eid.empty()) {
+    HIXL_LOGE(FAILED, "[GetHostPgEid] No local_eid found for device_id=%d (phy_dev_id=%d)", target_device_id,
+              phy_dev_id);
+    return FAILED;
+  }
+
+  // 4. 用 ParseEidByte6 从 CPU EID 提取 die_id，选择同 die 的 Host PG EID
+  auto cpu_info = ParseEidByte6(cpu_eid);
+  if (cpu_info.byte6 == 0) {
+    HIXL_LOGE(FAILED, "[GetHostPgEid] Failed to parse CPU EID: %s", cpu_eid.c_str());
+    return FAILED;
+  }
+  int32_t cpu_die_id = cpu_info.die_id;
+  HIXL_LOGI("[GetHostPgEid] CPU EID: %s, die_id=%d", cpu_eid.c_str(), cpu_die_id);
+
+  auto it = die_to_host_pg_eid.find(cpu_die_id);
+  if (it == die_to_host_pg_eid.end()) {
+    HIXL_LOGE(FAILED, "[GetHostPgEid] No Host PG EID for die_id=%d", cpu_die_id);
+    return FAILED;
+  }
+
+  host_pg_eid = FormatEidFromUrma(it->second);
+  HIXL_LOGI("[GetHostPgEid] Selected Host PG EID: %s (die_id=%d)", host_pg_eid.c_str(), cpu_die_id);
   return SUCCESS;
 }
 
@@ -922,12 +1077,20 @@ void GenerateD2UEdges(const std::string &plane_pg_0_eid, const std::string &plan
   }
 }
 
-void GenerateH2UEdges(const std::string &plane_pg_0_eid, const std::string &plane_pg_1_eid,
-                      std::vector<EndpointConfig> &h2u_edges) {
+void GenerateH2UEdges(int32_t phy_dev_id, const RouteData &route_data, const std::string &plane_pg_0_eid,
+                      const std::string &plane_pg_1_eid, std::vector<EndpointConfig> &h2u_edges) {
+  // 获取 Host PG EID（通过 urma_admin show + route_data die_id 选择）
+  std::string host_pg_eid;
+  int32_t ret = GetHostPgEid(phy_dev_id, route_data, host_pg_eid);
+  if (ret != SUCCESS) {
+    HIXL_LOGE(ret, "[H2U] Failed to get Host PG EID");
+    return;
+  }
+  HIXL_LOGI("[H2U] Using Host PG EID as comm_id: %s", host_pg_eid.c_str());
   if (!plane_pg_0_eid.empty()) {
     EndpointConfig edge;
     edge.protocol = kProtocolUbCtp;
-    edge.comm_id = plane_pg_0_eid;
+    edge.comm_id = host_pg_eid;
     edge.placement = kPlacementHost;
     edge.plane = kPlanePg0;
     h2u_edges.push_back(edge);
@@ -935,7 +1098,7 @@ void GenerateH2UEdges(const std::string &plane_pg_0_eid, const std::string &plan
   if (!plane_pg_1_eid.empty()) {
     EndpointConfig edge;
     edge.protocol = kProtocolUbCtp;
-    edge.comm_id = plane_pg_1_eid;
+    edge.comm_id = host_pg_eid;
     edge.placement = kPlacementHost;
     edge.plane = kPlanePg1;
     h2u_edges.push_back(edge);
@@ -953,7 +1116,7 @@ void CollectAllEdges(const EdgeCollectInput &input, std::vector<EndpointConfig> 
     GenerateD2UEdges(input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
     edges.clear();
-    GenerateH2UEdges(input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
+    GenerateH2UEdges(input.phy_dev_id, input.route_data, input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
   }
   if (!input.route_data.entries.empty()) {
