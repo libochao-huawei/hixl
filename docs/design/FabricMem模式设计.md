@@ -18,6 +18,10 @@
 
 **使用example**：
 ```cpp
+#include "hixl/hixl.h"
+
+using namespace hixl;
+
 // 初始化HIXL引擎，启用FabricMem模式
 Hixl engine1;
 std::map<AscendString, AscendString> options1;
@@ -25,8 +29,7 @@ options1[OPTION_ENABLE_USE_FABRIC_MEM] = "1";
 engine1.Initialize("127.0.0.1:26000", options1);
 
 // 注册内存
-std::vector<uint8_t> buffer(size, 0xAA);
-hixl::MemDesc mem_desc{};
+MemDesc mem_desc{};
 mem_desc.addr = reinterpret_cast<uintptr_t>(buffer.data());
 mem_desc.len = size;
 MemHandle handle = nullptr;
@@ -121,7 +124,9 @@ sequenceDiagram
    participant EngineFactory
    participant FabricMemEngine
    participant FabricMemService
-   participant FabricMemControl
+   participant FabricMemControlServer
+   participant FabricMemControlClient
+   participant RemoteControlServer
    participant RemoteMemory
    participant VirtualMemoryManager
    participant AscendRuntime
@@ -133,7 +138,7 @@ sequenceDiagram
    FabricMemEngine->>VirtualMemoryManager: Initialize()
    VirtualMemoryManager->>AscendRuntime: aclrtReserveMemAddress预留虚拟内存
    FabricMemEngine->>FabricMemService: Initialize(max_streams, task_streams, statistic)
-   FabricMemEngine->>FabricMemControl: Start(local_engine, share_handle_provider)
+   FabricMemEngine->>FabricMemControlServer: Start(local_engine, share_handle_provider)
 
    User->>FabricMemEngine: RegisterMem(mem_desc, type, handle)
    FabricMemEngine->>FabricMemService: RegisterMem(mem_desc, type, handle)
@@ -142,8 +147,10 @@ sequenceDiagram
    FabricMemService->>FabricMemService: 存储共享句柄和虚拟地址映射
 
    User->>FabricMemEngine: Connect(remote_engine)
-   FabricMemEngine->>FabricMemControl: Fetch(remote_engine)
-   FabricMemControl-->>FabricMemEngine: remote_share_handles
+   FabricMemEngine->>FabricMemControlClient: Fetch(remote_engine)
+   FabricMemControlClient->>RemoteControlServer: 拉取远端share_handles
+   RemoteControlServer-->>FabricMemControlClient: remote_share_handles
+   FabricMemControlClient-->>FabricMemEngine: remote_share_handles
    FabricMemEngine->>RemoteMemory: Import(remote_share_handles, device_id)
    RemoteMemory->>AscendRuntime: aclrtMemImportFromShareableHandleV2()
    RemoteMemory->>VirtualMemoryManager: ReserveMemory()
@@ -170,11 +177,10 @@ sequenceDiagram
    - 使用`aclrtMemExportToShareableHandleV2`导出为Fabric可共享句柄。
    - 将共享句柄信息存储在`share_handles_`中。
 
-   **H2H传输模式的特殊性**：
-   - 对于HOST内存，FabricMem传输需要额外的转换处理。
-   - HOST内存需要先通过`aclrtMemRetainAllocationHandle`获取物理内存句柄。
-   - 然后使用`aclrtMemExportToShareableHandleV2`导出为共享句柄。
-   - 然后进行VMM映射，将物理内存映射到虚拟地址空间。
+   **HOST内存注册的特殊性**：
+   - 对于HOST内存，除导出共享句柄外，还需要在本进程内完成额外的VMM映射。
+   - 通过`VirtualMemoryManager::ReserveMemory`预留本地虚拟地址，再使用`aclrtMemImportFromShareableHandleV2`和`aclrtMapMem`将HOST内存映射到本地虚拟地址空间。
+   - HDK 25.5不支持`aclrtMemRetainAllocationHandle`时，应通过`AdxlEngine::MallocMem`申请HOST内存。
 
 3. **连接建立阶段**：
    - 本端`FabricMemControlClient`向对端`FabricMemControlServer`拉取`share_handles_`。
@@ -200,11 +206,11 @@ sequenceDiagram
 1. **内存申请**：
    ```cpp
    void *fabric_ptr = nullptr;
-   Hixl::MallocMem(MEM_HOST, mem_size, &fabric_ptr);
+   adxl::AdxlEngine::MallocMem(MEM_HOST, mem_size, &fabric_ptr);
    ```
-   - FabricMem host内存申请由`FabricMemTransferService::MallocMem`统一封装。
+   - FabricMem HOST/DEVICE 内存申请由`FabricMemTransferService::MallocMem`统一封装（对外暴露为`AdxlEngine::MallocMem`）。
    - 底层会完成虚拟地址预留、物理内存申请和映射。
-   - 传输完成后通过`Hixl::FreeMem`释放。
+   - 传输完成后通过`adxl::AdxlEngine::FreeMem`释放。
 
 2. **引擎初始化和内存注册**：
    - 启用FabricMem模式：`options[OPTION_ENABLE_USE_FABRIC_MEM] = "1"`。
