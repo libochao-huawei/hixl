@@ -57,6 +57,8 @@ class EndpointMatcher {
   // ---------- Endpoint lookup tools ----------
   static const EndpointConfig *FindByProtocol(const std::vector<EndpointConfig> &endpoints,
                                               const std::string &protocol);
+  static const EndpointConfig *FindByProtocolAndPlacement(const std::vector<EndpointConfig> &endpoints,
+                                                          const std::string &protocol, const std::string &placement);
   static void BuildMatchMap(const std::vector<EndpointConfig> &endpoints,
                             std::map<MatchKey, EndpointConfig> &out);
 

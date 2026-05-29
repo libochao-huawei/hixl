@@ -70,6 +70,7 @@ struct EndpointConfig {
   std::string dst_eid;
   std::string net_instance_id;
   DeviceInfoConfig device_info{};
+  std::vector<std::string> eid_list;
 
   std::string ToString() const {
     std::ostringstream oss;
@@ -80,8 +81,15 @@ struct EndpointConfig {
     oss << "plane: " << plane << ", ";
     oss << "dst_eid: " << dst_eid << ", ";
     oss << "net_instance_id: " << net_instance_id << ", ";
-    oss << "device_info: " << device_info.ToString();
-    oss << "}";
+    oss << "device_info: " << device_info.ToString() << ", ";
+    oss << "eid_list: [";
+    for (size_t i = 0; i < eid_list.size(); ++i) {
+      oss << eid_list[i];
+      if (i != eid_list.size() - 1) {
+        oss << ", ";
+      }
+    }
+    oss << "]}";
     return oss.str();
   }
 };

@@ -124,20 +124,45 @@ void ParseDeviceInfo(const nlohmann::json &item, EndpointConfig &endpoint) {
   }
 }
 
-Status ParseIpAddress(const std::string &ip_str, CommAddr &addr) {
-  struct in_addr ipv4_addr;
-  (void)memset_s(&ipv4_addr, sizeof(ipv4_addr), 0, sizeof(ipv4_addr));
-  if (inet_pton(AF_INET, ip_str.c_str(), &ipv4_addr) == 1) {
+Status ParseEidList(const nlohmann::json &item, EndpointConfig &endpoint) {
+  if (!item.contains("eid_list") || !item["eid_list"].is_array()) {
+    HIXL_LOGE(PARAM_INVALID, "Missing or invalid 'eid_list' in EndpointConfig");
+    return PARAM_INVALID;
+  }
+
+  try {
+    endpoint.eid_list = item["eid_list"].get<std::vector<std::string>>();
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "Failed to parse field 'eid_list': %s", e.what());
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
+
+Status ParseIpv4Address(const std::string &ip_str, in_addr &addr) {
+  (void)memset_s(&addr, sizeof(addr), 0, sizeof(addr));
+  if (inet_pton(AF_INET, ip_str.c_str(), &addr) != 1) {
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
+
+Status ParseIpv6Address(const std::string &ip_str, in6_addr &addr) {
+  (void)memset_s(&addr, sizeof(addr), 0, sizeof(addr));
+  if (inet_pton(AF_INET6, ip_str.c_str(), &addr) != 1) {
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
+
+Status ParseCommIpAddress(const std::string &ip_str, CommAddr &addr) {
+  if (ParseIpv4Address(ip_str, addr.addr) == SUCCESS) {
     addr.type = COMM_ADDR_TYPE_IP_V4;
-    addr.addr = ipv4_addr;
     return SUCCESS;
   }
 
-  struct in6_addr ipv6_addr;
-  (void)memset_s(&ipv6_addr, sizeof(ipv6_addr), 0, sizeof(ipv6_addr));
-  if (inet_pton(AF_INET6, ip_str.c_str(), &ipv6_addr) == 1) {
+  if (ParseIpv6Address(ip_str, addr.addr6) == SUCCESS) {
     addr.type = COMM_ADDR_TYPE_IP_V6;
-    addr.addr6 = ipv6_addr;
     return SUCCESS;
   }
 
@@ -145,7 +170,23 @@ Status ParseIpAddress(const std::string &ip_str, CommAddr &addr) {
   return PARAM_INVALID;
 }
 
-Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
+Status ParseMultiPortLinkAddress(const std::string &ip_str, MultiPortAddr &addr) {
+  if (ParseIpv4Address(ip_str, addr.linkAddr.addr) == SUCCESS) {
+    addr.family = AF_INET;
+    return SUCCESS;
+  }
+
+  if (ParseIpv6Address(ip_str, addr.linkAddr.addr6) == SUCCESS) {
+    addr.family = AF_INET6;
+    return SUCCESS;
+  }
+
+  HIXL_LOGE(PARAM_INVALID, "Invalid IP address: %s", ip_str.c_str());
+  return PARAM_INVALID;
+}
+
+Status ParseEidAddress(const std::string &eid_str, uint8_t *eid) {
+  HIXL_CHECK_NOTNULL(eid);
   if (eid_str.length() != 32) {
     HIXL_LOGE(PARAM_INVALID, "Invalid EID format: %s. Expected 32 hexadecimal characters without colons.",
               eid_str.c_str());
@@ -157,7 +198,7 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
     return PARAM_INVALID;
   }
 
-  (void)memset_s(addr.eid, COMM_ADDR_EID_LEN, 0, COMM_ADDR_EID_LEN);
+  (void)memset_s(eid, COMM_ADDR_EID_LEN, 0, COMM_ADDR_EID_LEN);
   for (size_t i = 0; i < COMM_ADDR_EID_LEN; ++i) {
     const std::string segment = eid_str.substr(i * 2, 2);
     try {
@@ -166,7 +207,7 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
         HIXL_LOGE(PARAM_INVALID, "Invalid segment %zu in EID: %s. Maximum value is 0xFF.", i, segment.c_str());
         return PARAM_INVALID;
       }
-      addr.eid[i] = static_cast<uint8_t>(value);
+      eid[i] = static_cast<uint8_t>(value);
     } catch (const std::invalid_argument &) {
       HIXL_LOGE(PARAM_INVALID, "Failed to convert segment %zu of EID: %s to integer.", i, segment.c_str());
       return PARAM_INVALID;
@@ -175,6 +216,34 @@ Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
       return PARAM_INVALID;
     }
   }
+  return SUCCESS;
+}
+
+Status ParseMultiPortEidList(const std::vector<std::string> &eid_list, MultiPortAddr &addr) {
+  for (size_t idx = 0; idx < eid_list.size() && idx < HCOMM_NIC_PORT_MAX_NUM; ++idx) {
+    HIXL_CHK_STATUS_RET(ParseEidAddress(eid_list[idx], addr.eidList[idx]), "Failed to parse EID at index %zu", idx);
+  }
+  return SUCCESS;
+}
+
+Status ParseMultiPortAddress(const EndpointConfig &endpoint_config, CommAddr &commAddr) {
+  size_t eid_num = endpoint_config.eid_list.size();
+  if (eid_num == 0 || eid_num > HCOMM_NIC_PORT_MAX_NUM) {
+    HIXL_LOGE(PARAM_INVALID, "The number of EIDs in eid_list is invalid, num: %zu.", eid_num);
+    return PARAM_INVALID;
+  }
+
+  commAddr.type = COMM_ADDR_TYPE_MULTI_PORT;
+  commAddr.portsAddr.portNum = static_cast<uint8_t>(eid_num);
+  HIXL_CHK_STATUS_RET(ParseMultiPortLinkAddress(endpoint_config.comm_id, commAddr.portsAddr),
+                      "ParseMultiPortLinkAddress failed.");
+  HIXL_CHK_STATUS_RET(ParseMultiPortEidList(endpoint_config.eid_list, commAddr.portsAddr),
+                      "ParseMultiPortEidList failed.");
+  return SUCCESS;
+}
+
+Status ParseCommEidAddress(const std::string &eid_str, CommAddr &addr) {
+  HIXL_CHK_STATUS_RET(ParseEidAddress(eid_str, addr.eid), "Failed to parse EID");
   addr.type = COMM_ADDR_TYPE_EID;
   return SUCCESS;
 }
@@ -365,8 +434,13 @@ Status EndpointGenerator::ConvertToEndpointDesc(const EndpointConfig &endpoint_c
                                                 uint32_t dev_phy_id) {
   HIXL_CHK_STATUS_RET(ParseEndpointPlacement(endpoint_config, endpoint), "ParseEndpointPlacement failed");
   HIXL_CHK_STATUS_RET(ParseEndpointProtocol(endpoint_config, endpoint), "ParseEndpointProtocol failed");
+  // host uboe
+  if (endpoint_config.protocol == kProtocolUboe && endpoint_config.placement == kPlacementHost) {
+    HIXL_CHK_STATUS_RET(ParseMultiPortAddress(endpoint_config, endpoint.commAddr), "ParseMultiPortAddress failed");
+    return SUCCESS;
+  }
   if (endpoint_config.protocol == kProtocolRoce || endpoint_config.protocol == kProtocolUboe) {
-    HIXL_CHK_STATUS_RET(ParseIpAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseIpAddress failed");
+    HIXL_CHK_STATUS_RET(ParseCommIpAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseIpAddress failed");
     if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
       HIXL_CHK_STATUS_RET(FillDeviceLocInfo(endpoint_config, endpoint, dev_phy_id), "FillDeviceLocInfo failed");
     }
@@ -393,7 +467,7 @@ Status EndpointGenerator::ConvertToEndpointDesc(const EndpointConfig &endpoint_c
   }
 
   if (endpoint_config.protocol == kProtocolUbCtp || endpoint_config.protocol == kProtocolUbTp) {
-    HIXL_CHK_STATUS_RET(ParseEidAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseEidAddress failed");
+    HIXL_CHK_STATUS_RET(ParseCommEidAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseEidAddress failed");
     if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
       endpoint.loc.device.devPhyId = dev_phy_id;
     }
@@ -418,6 +492,7 @@ Status EndpointGenerator::SerializeEndpointConfigList(const std::vector<Endpoint
       device_info["super_device_id"] = ep.device_info.super_device_id;
       device_info["super_pod_id"] = ep.device_info.super_pod_id;
       item["device_info"] = device_info;
+      item["eid_list"] = ep.eid_list;
 
       j.push_back(item);
     }
@@ -454,6 +529,7 @@ Status EndpointGenerator::DeserializeEndpointConfigList(const std::string &json_
     HIXL_CHK_STATUS_RET(ParseRequiredJsonField(item, "plane", endpoint.plane), "Failed to parse plane");
     HIXL_CHK_STATUS_RET(ParseRequiredJsonField(item, "dst_eid", endpoint.dst_eid), "Failed to parse dst_eid");
     ParseDeviceInfo(item, endpoint);
+    ParseEidList(item, endpoint);
     endpoint_list.emplace_back(std::move(endpoint));
   }
   return SUCCESS;
@@ -557,6 +633,7 @@ Status EndpointGenerator::ParseLocalCommRes(const nlohmann::json &config, std::v
     HIXL_CHK_STATUS_RET(ParseOptionalJsonField(item, "dst_eid", endpoint.dst_eid), "Failed to parse dst_eid");
     endpoint.net_instance_id = net_instance_id;
     ParseDeviceInfo(item, endpoint);
+    ParseEidList(item, endpoint);
     endpoint_list.emplace_back(std::move(endpoint));
   }
   HIXL_CHK_BOOL_RET_STATUS(!endpoint_list.empty(), PARAM_INVALID,
