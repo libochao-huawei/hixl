@@ -139,11 +139,6 @@ int main(int argc, char* argv[]) {
         return kRetFailed;
     }
 
-    std::cout << "========================================\n";
-    std::cout << "  Test: GenerateLocalCommRes\n";
-    std::cout << "  Input npu_id: " << npu_id << "\n";
-    std::cout << "========================================\n\n";
-
     // Step 1: 初始化 ACL
     if (InitAcl() != kRetSuccess) {
         return kRetFailed;
