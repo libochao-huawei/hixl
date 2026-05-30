@@ -55,172 +55,51 @@ void HixlPy::initialize(const std::string &local_engine,
 }
 
 void HixlPy::finalize() {
-  std::vector<MemHandle> handles_to_dereg;
-  std::vector<TransferReq> reqs_to_wait;
-  {
-    std::lock_guard<std::mutex> guard(mutex_);
-    if (!initialized_) {
-      return;
-    }
-    initialized_ = false;
-    for (auto &kv : mem_handles_) {
-      handles_to_dereg.push_back(kv.second);
-    }
-    for (auto &kv : req_handles_) {
-      reqs_to_wait.push_back(kv.second);
-    }
-    mem_handles_.clear();
-    req_handles_.clear();
+  std::lock_guard<std::mutex> guard(mutex_);
+  if (!initialized_) {
+    return;
   }
-
-  pybind11::gil_scoped_release release;
-  for (auto req : reqs_to_wait) {
-    TransferStatus ts = TransferStatus::WAITING;
-    while (ts == TransferStatus::WAITING) {
-      (void)hixl_->GetTransferStatus(req, ts);
-    }
-  }
-  for (auto h : handles_to_dereg) {
-    (void)hixl_->DeregisterMem(h);
-  }
-  hixl_->Finalize();
+  initialized_ = false;
 }
 
 int64_t HixlPy::registerMem(const MemDesc &mem, MemType type) {
-  MemHandle handle = nullptr;
-  pybind11::gil_scoped_release release;
-  Status status = hixl_->RegisterMem(mem, type, handle);
-
-  pybind11::gil_scoped_acquire acquire;
-  checkStatus(status, "RegisterMem failed");
-
-  std::lock_guard<std::mutex> guard(mutex_);
-  int64_t id = next_mem_id_++;
-  mem_handles_[id] = handle;
-  return id;
+  throw std::runtime_error("register_mem is not supported");
 }
 
 void HixlPy::deregisterMem(int64_t handle_id) {
-  MemHandle handle = nullptr;
-  {
-    std::lock_guard<std::mutex> guard(mutex_);
-    auto it = mem_handles_.find(handle_id);
-    if (it == mem_handles_.end()) {
-      throw std::runtime_error("Invalid mem handle id: " + std::to_string(handle_id));
-    }
-    handle = it->second;
-  }
-
-  pybind11::gil_scoped_release release;
-  Status status = hixl_->DeregisterMem(handle);
-
-  pybind11::gil_scoped_acquire acquire;
-  if (status == SUCCESS) {
-    std::lock_guard<std::mutex> guard(mutex_);
-    mem_handles_.erase(handle_id);
-  }
-  checkStatus(status, "DeregisterMem failed");
+  throw std::runtime_error("deregister_mem is not supported");
 }
 
 void HixlPy::connect(const std::string &remote_engine, int32_t timeout) {
-  pybind11::gil_scoped_release release;
-  Status status = hixl_->Connect(AscendString(remote_engine.c_str()), timeout);
-
-  pybind11::gil_scoped_acquire acquire;
-  checkStatus(status, "Connect failed to " + remote_engine);
+  throw std::runtime_error("connect is not supported");
 }
 
 void HixlPy::disconnect(const std::string &remote_engine, int32_t timeout) {
-  pybind11::gil_scoped_release release;
-  Status status = hixl_->Disconnect(AscendString(remote_engine.c_str()), timeout);
-
-  pybind11::gil_scoped_acquire acquire;
-  checkStatus(status, "Disconnect failed from " + remote_engine);
+  throw std::runtime_error("disconnect is not supported");
 }
 
 void HixlPy::transferSync(const std::string &remote_engine, TransferOp op, const std::vector<TransferOpDesc> &op_descs,
                           int32_t timeout) {
-  pybind11::gil_scoped_release release;
-  Status status = hixl_->TransferSync(AscendString(remote_engine.c_str()), op, op_descs, timeout);
-
-  pybind11::gil_scoped_acquire acquire;
-  checkStatus(status, "TransferSync failed to " + remote_engine);
+  throw std::runtime_error("transfer_sync is not supported");
 }
 
 int64_t HixlPy::transferAsync(const std::string &remote_engine, TransferOp op,
                               const std::vector<TransferOpDesc> &op_descs,
                               const std::optional<TransferArgs> &optional_args) {
-  TransferArgs args{};
-  if (optional_args.has_value()) {
-    args = optional_args.value();
-  }
-
-  TransferReq req = nullptr;
-  pybind11::gil_scoped_release release;
-  Status status = hixl_->TransferAsync(AscendString(remote_engine.c_str()), op, op_descs, args, req);
-
-  pybind11::gil_scoped_acquire acquire;
-  checkStatus(status, "TransferAsync failed to " + remote_engine);
-
-  std::lock_guard<std::mutex> guard(mutex_);
-  int64_t id = next_req_id_++;
-  req_handles_[id] = req;
-  return id;
+  throw std::runtime_error("transfer_async is not supported");
 }
 
 TransferStatus HixlPy::getTransferStatus(int64_t req_id, bool auto_cleanup) {
-  TransferReq req = nullptr;
-  {
-    std::lock_guard<std::mutex> guard(mutex_);
-    auto it = req_handles_.find(req_id);
-    if (it == req_handles_.end()) {
-      throw std::runtime_error("Invalid req handle id: " + std::to_string(req_id));
-    }
-    req = it->second;
-  }
-
-  TransferStatus ts = TransferStatus::WAITING;
-  pybind11::gil_scoped_release release;
-  Status status = hixl_->GetTransferStatus(req, ts);
-
-  pybind11::gil_scoped_acquire acquire;
-  checkStatus(status, "GetTransferStatus failed");
-
-  if (auto_cleanup && ts != TransferStatus::WAITING) {
-    std::lock_guard<std::mutex> guard(mutex_);
-    req_handles_.erase(req_id);
-  }
-  return ts;
+  throw std::runtime_error("get_transfer_status is not supported");
 }
 
 void HixlPy::sendNotify(const std::string &remote_engine, const std::string &name, const std::string &msg,
                         int32_t timeout) {
-  NotifyDesc desc;
-  desc.name = AscendString(name.c_str());
-  desc.notify_msg = AscendString(msg.c_str());
-
-  pybind11::gil_scoped_release release;
-  Status status = hixl_->SendNotify(AscendString(remote_engine.c_str()), desc, timeout);
-
-  pybind11::gil_scoped_acquire acquire;
-  checkStatus(status, "SendNotify failed to " + remote_engine);
+  throw std::runtime_error("send_notify is not supported");
 }
 
 std::vector<std::pair<std::string, std::string>> HixlPy::getNotifies() {
-  std::vector<NotifyDesc> notifies;
-  pybind11::gil_scoped_release release;
-  Status status = hixl_->GetNotifies(notifies);
-
-  pybind11::gil_scoped_acquire acquire;
-  checkStatus(status, "GetNotifies failed");
-
-  std::vector<std::pair<std::string, std::string>> result;
-  for (const auto &n : notifies) {
-    std::string name(n.name.GetString());
-    std::string msg(n.notify_msg.GetString());
-    result.emplace_back(name, msg);
-  }
-  return result;
+  throw std::runtime_error("get_notifies is not supported");
 }
 
 }  // namespace hixl

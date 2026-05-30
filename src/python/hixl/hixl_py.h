@@ -60,10 +60,6 @@ class HixlPy {
   std::unique_ptr<Hixl> hixl_;
   std::mutex mutex_;
   bool initialized_ = false;
-  int64_t next_mem_id_ = 1;
-  int64_t next_req_id_ = 1;
-  std::map<int64_t, MemHandle> mem_handles_;
-  std::map<int64_t, TransferReq> req_handles_;
 };
 
 }  // namespace hixl
