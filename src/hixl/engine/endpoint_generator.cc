@@ -170,9 +170,10 @@ Status ParseHccsCommId(const std::string &comm_id_str, uint32_t &device_id) {
 }
 
 Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
-  if (eid_str.length() != 32) {
-    HIXL_LOGE(PARAM_INVALID, "Invalid EID format: %s. Expected 32 hexadecimal characters without colons.",
-              eid_str.c_str());
+  constexpr size_t kEidHexStrLen = COMM_ADDR_EID_LEN * 2U;
+  if (eid_str.length() != kEidHexStrLen) {
+    HIXL_LOGE(PARAM_INVALID, "Invalid EID format: %s. Expected %zu hexadecimal characters without colons.",
+              eid_str.c_str(), kEidHexStrLen);
     return PARAM_INVALID;
   }
 
