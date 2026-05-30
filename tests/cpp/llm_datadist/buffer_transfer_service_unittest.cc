@@ -10,8 +10,10 @@
 
 #include <gtest/gtest.h>
 #include <chrono>
+#include <limits>
 #include <memory>
 #include <thread>
+#include <vector>
 
 #define private public
 #include "adxl/buffer_transfer_service.h"
@@ -142,5 +144,35 @@ TEST_F(BufferTransferServiceUTest, ProcessCtrlMsgSkipsFinalizedChannel) {
 
   service_->PushCtrlMsg(channel, buffer_req);
   WaitUntilQueueProcessed(service_->buffer_ctrl_msg_mutex_, service_->buffer_ctrl_msg_queue_, []() { return true; });
+}
+
+TEST_F(BufferTransferServiceUTest, BuildBufferSliceAddrsSuccess) {
+  constexpr uintptr_t kBaseAddr = 0x1000U;
+  std::vector<size_t> buffer_lens = {256U, 256U};
+  std::vector<uintptr_t> addrs;
+  EXPECT_EQ(service_->BuildBufferSliceAddrs(kBaseAddr, buffer_lens, buffer_lens.size(), addrs), SUCCESS);
+  ASSERT_EQ(addrs.size(), 2U);
+  EXPECT_EQ(addrs[0], kBaseAddr);
+  EXPECT_EQ(addrs[1], kBaseAddr + 256U);
+}
+
+TEST_F(BufferTransferServiceUTest, BuildBufferSliceAddrsRejectsAddressOverflow) {
+  // A peer-controlled length close to SIZE_MAX would wrap the accumulated address; it must be rejected.
+  std::vector<size_t> buffer_lens = {std::numeric_limits<size_t>::max()};
+  std::vector<uintptr_t> addrs;
+  EXPECT_EQ(service_->BuildBufferSliceAddrs(0x1000U, buffer_lens, buffer_lens.size(), addrs), PARAM_INVALID);
+}
+
+TEST_F(BufferTransferServiceUTest, BuildBufferSliceAddrsRejectsExceedingBufferSize) {
+  // buffer_size_ is 1024 (see SetUp); an accumulated length beyond the buffer must be rejected.
+  std::vector<size_t> buffer_lens = {2048U};
+  std::vector<uintptr_t> addrs;
+  EXPECT_EQ(service_->BuildBufferSliceAddrs(0x1000U, buffer_lens, buffer_lens.size(), addrs), PARAM_INVALID);
+}
+
+TEST_F(BufferTransferServiceUTest, BuildBufferSliceAddrsRejectsCountExceedingLens) {
+  std::vector<size_t> buffer_lens = {256U};
+  std::vector<uintptr_t> addrs;
+  EXPECT_EQ(service_->BuildBufferSliceAddrs(0x1000U, buffer_lens, 2U, addrs), PARAM_INVALID);
 }
 }  // namespace adxl

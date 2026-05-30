@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <array>
+#include <limits>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -206,5 +207,14 @@ TEST_F(ChannelMsgHandlerUnitTest, ProcessServerEviction_WhenClientReturnsError_L
   // Cleanup
   close(fd);
   close(peer_fd);
+}
+
+TEST_F(ChannelMsgHandlerUnitTest, RegisterMemRejectsAddrLenOverflow) {
+  MemDesc mem{};
+  mem.addr = std::numeric_limits<uintptr_t>::max() - 0xFFU;
+  mem.len = 0x1000U;  // addr + len wraps around uintptr_t
+  MemHandle handle = nullptr;
+  // The overflow guard runs before any HCCL registration, so this is rejected up front.
+  EXPECT_EQ(handler_->RegisterMem(mem, MEM_DEVICE, handle), PARAM_INVALID);
 }
 }  // namespace adxl

@@ -19,6 +19,7 @@
 #include "adxl/adxl_types.h"
 #include "common/def_types.h"
 #include "base/err_msg.h"
+#include "common/llm_utils.h"
 #include "common/llm_scope_guard.h"
 #include "adxl/adxl_utils.h"
 #include "statistic_manager.h"
@@ -436,15 +437,24 @@ Status BufferTransferService::PrepareServerCopyBuffer(BufferReq &buffer_req, boo
   return SUCCESS;
 }
 
-std::vector<uintptr_t> BufferTransferService::BuildCopyBufferAddrs(const BufferReq &buffer_req) {
-  std::vector<uintptr_t> copy_buff_addrs;
-  copy_buff_addrs.reserve(buffer_req.dst_addrs.size());
-  auto dev_buffer_addr = buffer_req.local_buffer_addr;
-  for (size_t i = 0; i < buffer_req.dst_addrs.size(); ++i) {
-    copy_buff_addrs.emplace_back(dev_buffer_addr);
-    dev_buffer_addr += buffer_req.buffer_lens[i];
+Status BufferTransferService::BuildBufferSliceAddrs(uintptr_t base_addr, const std::vector<size_t> &buffer_lens,
+                                                    size_t count, std::vector<uintptr_t> &addrs) const {
+  ADXL_CHK_BOOL_RET_STATUS(buffer_lens.size() >= count, PARAM_INVALID,
+                           "buffer_lens size:%zu is smaller than required count:%zu.", buffer_lens.size(), count);
+  addrs.clear();
+  addrs.reserve(count);
+  // base_addr points to a local buffer of buffer_size_ bytes. buffer_lens are peer-controlled, so accumulate the
+  // offset with overflow detection and keep it within buffer_size_; otherwise a wrapped/oversized offset would
+  // produce an out-of-bounds DMA address.
+  uint64_t accumulated = 0U;
+  for (size_t i = 0U; i < count; ++i) {
+    addrs.emplace_back(base_addr + accumulated);
+    ADXL_CHK_BOOL_RET_STATUS(!ge::AddOverflow(accumulated, buffer_lens[i], accumulated) &&
+                                 (accumulated <= buffer_size_),
+                             PARAM_INVALID, "accumulated buffer length out of range at index:%zu, buffer_size:%lu.", i,
+                             buffer_size_);
   }
-  return copy_buff_addrs;
+  return SUCCESS;
 }
 
 Status BufferTransferService::ProcessBufferCopyByType(const ChannelPtr &channel, BufferReq &buffer_req,
@@ -477,7 +487,10 @@ Status BufferTransferService::HandleBufferCopy(const ChannelPtr &channel, Buffer
                   type == TransferType::kReadRH2D || type == TransferType::kReadRD2D);
   ADXL_CHK_STATUS_RET(PrepareServerCopyBuffer(buffer_req, is_read, left_timeout, start),
                       "Failed to prepare server copy buffer.");
-  const auto copy_buff_addrs = BuildCopyBufferAddrs(buffer_req);
+  std::vector<uintptr_t> copy_buff_addrs;
+  ADXL_CHK_STATUS_RET(BuildBufferSliceAddrs(buffer_req.local_buffer_addr, buffer_req.buffer_lens,
+                                            buffer_req.dst_addrs.size(), copy_buff_addrs),
+                      "Failed to build copy buffer addrs.");
   ADXL_CHK_STATUS_RET(ProcessBufferCopyByType(channel, buffer_req, copy_buff_addrs, left_timeout), "Copy failed.");
   const uint64_t time_cost =
       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
@@ -661,12 +674,9 @@ Status BufferTransferService::HandleBufferResp(const ChannelPtr &channel, Buffer
       ADXL_CHK_BOOL_RET_STATUS(buffer_resp.src_addrs.size() == buffer_resp.buffer_lens.size(), FAILED,
                                "Addr not valid.");
       std::vector<uintptr_t> buffer_addrs;
-      buffer_addrs.reserve(buffer_resp.src_addrs.size());
-      auto buffer_addr = buffer_resp.buffer_addr;
-      for (size_t i = 0; i < buffer_resp.src_addrs.size(); ++i) {
-        buffer_addrs.emplace_back(buffer_addr);
-        buffer_addr += buffer_resp.buffer_lens[i];
-      }
+      ADXL_CHK_STATUS_RET(BuildBufferSliceAddrs(buffer_resp.buffer_addr, buffer_resp.buffer_lens,
+                                                buffer_resp.src_addrs.size(), buffer_addrs),
+                          "Failed to build buffer addrs.");
       auto kind = (type == TransferType::kReadRH2D || type == TransferType::kReadRD2D) ? ACL_MEMCPY_DEVICE_TO_DEVICE
                                                                                        : ACL_MEMCPY_DEVICE_TO_HOST;
       ADXL_CHK_STATUS_RET(ProcessCopy(channel, buffer_addrs, buffer_resp.src_addrs, buffer_resp.buffer_lens,
