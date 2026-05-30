@@ -33,7 +33,7 @@ constexpr const char kConfigVersion[] = "1.3";
 constexpr const char kUboeProtocolDesc[] = "uboe:device";
 constexpr const char kDefaultUboeNetInstanceId[] = "default_superpod1_1";
 
-const std::set<std::string> kSocV2 = {"Ascend910B1", "Ascend910B2", "Ascend910B3",
+const std::set<std::string> kSocV2 = {"Ascend910B1", "Ascend910B2",  "Ascend910B3",
                                       "Ascend910B4", "Ascend910B2C", "Ascend910B4-1"};
 const std::set<std::string> kSocV3 = {"Ascend910_9391", "Ascend910_9381", "Ascend910_9392",
                                       "Ascend910_9382", "Ascend910_9372", "Ascend910_9362"};
@@ -140,9 +140,10 @@ Status ParseIpAddress(const std::string &ip_str, CommAddr &addr) {
 }
 
 Status ParseEidAddress(const std::string &eid_str, CommAddr &addr) {
-  if (eid_str.length() != 32) {
-    HIXL_LOGE(PARAM_INVALID, "Invalid EID format: %s. Expected 32 hexadecimal characters without colons.",
-              eid_str.c_str());
+  constexpr size_t kEidHexStrLen = COMM_ADDR_EID_LEN * 2U;
+  if (eid_str.length() != kEidHexStrLen) {
+    HIXL_LOGE(PARAM_INVALID, "Invalid EID format: %s. Expected %zu hexadecimal characters without colons.",
+              eid_str.c_str(), kEidHexStrLen);
     return PARAM_INVALID;
   }
 
@@ -196,9 +197,8 @@ Status FillDeviceLocInfo(const EndpointConfig &endpoint_config, EndpointDesc &en
 }
 
 Status ParseEndpointPlacement(const EndpointConfig &endpoint_config, EndpointDesc &endpoint) {
-  static const std::map<std::string, EndpointLocType> kPlacementMap = {
-      {kPlacementHost, ENDPOINT_LOC_TYPE_HOST},
-      {kPlacementDevice, ENDPOINT_LOC_TYPE_DEVICE}};
+  static const std::map<std::string, EndpointLocType> kPlacementMap = {{kPlacementHost, ENDPOINT_LOC_TYPE_HOST},
+                                                                       {kPlacementDevice, ENDPOINT_LOC_TYPE_DEVICE}};
 
   const auto placement_it = kPlacementMap.find(endpoint_config.placement);
   if (placement_it == kPlacementMap.end()) {
@@ -210,12 +210,11 @@ Status ParseEndpointPlacement(const EndpointConfig &endpoint_config, EndpointDes
 }
 
 Status ParseEndpointProtocol(const EndpointConfig &endpoint_config, EndpointDesc &endpoint) {
-  static const std::map<std::string, CommProtocol> kProtocolMap = {
-      {kProtocolRoce, COMM_PROTOCOL_ROCE},
-      {kProtocolUbCtp, COMM_PROTOCOL_UBC_CTP},
-      {kProtocolUbTp, COMM_PROTOCOL_UBC_TP},
-      {kProtocolUboe, COMM_PROTOCOL_UBOE},
-      {kProtocolHccs, COMM_PROTOCOL_HCCS}};
+  static const std::map<std::string, CommProtocol> kProtocolMap = {{kProtocolRoce, COMM_PROTOCOL_ROCE},
+                                                                   {kProtocolUbCtp, COMM_PROTOCOL_UBC_CTP},
+                                                                   {kProtocolUbTp, COMM_PROTOCOL_UBC_TP},
+                                                                   {kProtocolUboe, COMM_PROTOCOL_UBOE},
+                                                                   {kProtocolHccs, COMM_PROTOCOL_HCCS}};
 
   const auto protocol_it = kProtocolMap.find(endpoint_config.protocol);
   if (protocol_it == kProtocolMap.end()) {
@@ -228,8 +227,7 @@ Status ParseEndpointProtocol(const EndpointConfig &endpoint_config, EndpointDesc
 }  // namespace
 
 Status EndpointGenerator::BuildEndpointListFromOptions(const std::map<AscendString, AscendString> &options,
-                                                       const std::string &local_engine,
-                                                       std::string &local_comm_res,
+                                                       const std::string &local_engine, std::string &local_comm_res,
                                                        std::vector<EndpointConfig> &endpoint_list) {
   endpoint_list.clear();
   std::vector<std::string> protocol_desc;
@@ -273,8 +271,7 @@ Status EndpointGenerator::BuildEndpointListFromOptions(const std::map<AscendStri
   return SUCCESS;
 }
 
-Status EndpointGenerator::BuildEndpointListFromLocalCommRes(const nlohmann::json &config,
-                                                            bool has_endpoint_list,
+Status EndpointGenerator::BuildEndpointListFromLocalCommRes(const nlohmann::json &config, bool has_endpoint_list,
                                                             const std::string &local_engine,
                                                             std::vector<EndpointConfig> &endpoint_list) {
   SocType soc_type = SocType::kOther;
@@ -299,8 +296,7 @@ Status EndpointGenerator::BuildEndpointListFromLocalCommRes(const nlohmann::json
   return SUCCESS;
 }
 
-Status EndpointGenerator::ConvertToEndpointDesc(const EndpointConfig &endpoint_config,
-                                                EndpointDesc &endpoint,
+Status EndpointGenerator::ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc &endpoint,
                                                 uint32_t dev_phy_id) {
   HIXL_CHK_STATUS_RET(ParseEndpointPlacement(endpoint_config, endpoint), "ParseEndpointPlacement failed");
   HIXL_CHK_STATUS_RET(ParseEndpointProtocol(endpoint_config, endpoint), "ParseEndpointProtocol failed");
@@ -317,12 +313,12 @@ Status EndpointGenerator::ConvertToEndpointDesc(const EndpointConfig &endpoint_c
     try {
       device_id = std::stoull(endpoint_config.comm_id);
     } catch (const std::exception &e) {
-      HIXL_LOGE(PARAM_INVALID, "Parse hccs comm_id failed, comm_id:%s, exception:%s",
-                endpoint_config.comm_id.c_str(), e.what());
+      HIXL_LOGE(PARAM_INVALID, "Parse hccs comm_id failed, comm_id:%s, exception:%s", endpoint_config.comm_id.c_str(),
+                e.what());
       return PARAM_INVALID;
     }
-    HIXL_CHK_BOOL_RET_STATUS(device_id <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()),
-                             PARAM_INVALID, "hccs comm_id out of range: %s", endpoint_config.comm_id.c_str());
+    HIXL_CHK_BOOL_RET_STATUS(device_id <= static_cast<uint64_t>(std::numeric_limits<uint32_t>::max()), PARAM_INVALID,
+                             "hccs comm_id out of range: %s", endpoint_config.comm_id.c_str());
     endpoint.commAddr.type = COMM_ADDR_TYPE_ID;
     endpoint.commAddr.id = static_cast<uint32_t>(device_id);
     if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
@@ -398,8 +394,7 @@ Status EndpointGenerator::DeserializeEndpointConfigList(const std::string &json_
   return SUCCESS;
 }
 
-Status EndpointGenerator::GenerateInfo(int32_t device_id,
-                                       const std::string &local_engine,
+Status EndpointGenerator::GenerateInfo(int32_t device_id, const std::string &local_engine,
                                        EndpointGenerator::LocCommResInfo &loc_comm_res_info) {
   int32_t phy_device_id = 0;
   HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(device_id, &phy_device_id),
@@ -541,7 +536,8 @@ Status EndpointGenerator::FillDeviceInfoIfNeeded(EndpointGenerator::SocType soc_
   return SUCCESS;
 }
 
-Status EndpointGenerator::BuildEndpointList(int32_t phy_device_id, std::vector<EndpointGenerator::EndpointInfo> &endpoint_list) {
+Status EndpointGenerator::BuildEndpointList(int32_t phy_device_id,
+                                            std::vector<EndpointGenerator::EndpointInfo> &endpoint_list) {
   endpoint_list.clear();
 
   EndpointInfo roce_endpoint{};
