@@ -14,10 +14,11 @@ from setuptools import setup
 from setuptools import find_packages
 
 setup(
-    name='llm_datadist',
-    version='0.0.1',
-    description='llm datadist api',
+    name="llm_datadist",
+    version="0.0.1",
+    description="llm datadist api",
+    author="Huawei Technologies Co., Ltd.",
     packages=find_packages(),
     include_package_data=True,
-    ext_modules=[]
+    ext_modules=[],
 )
