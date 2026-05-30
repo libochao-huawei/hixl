@@ -246,17 +246,6 @@ int32_t GenerateH2UEdges(int32_t phy_dev_id, const RouteData &route_data, const 
  */
 int32_t GetClosPgPortCount(const TopoData &topo_data, int32_t phy_id, const std::string &clos_pg_eid);
 
-// ============ UT 桩注入接口 ============
-
-/** urma_admin 命令执行函数指针类型 */
-using UrmaAdminExecFn = int32_t (*)(const std::string &cmd, std::string &output);
-
-/**
- * @brief 设置 urma_admin 命令执行函数（用于 UT 桩注入）
- * @param [in] fn 自定义函数指针，传 nullptr 恢复默认行为
- */
-void SetUrmaAdminExecFn(UrmaAdminExecFn fn);
-
 }  // namespace hixl
 
 #endif  // CANN_HIXL_SRC_HIXL_ENGINE_HIXL_LOCAL_COMM_RES_TOOL_H
