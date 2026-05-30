@@ -10,8 +10,10 @@
 
 #include <gtest/gtest.h>
 #include <chrono>
+#include <limits>
 #include <memory>
 #include <thread>
+#include <vector>
 
 #define private public
 #include "adxl/buffer_transfer_service.h"
@@ -142,5 +144,43 @@ TEST_F(BufferTransferServiceUTest, ProcessCtrlMsgSkipsFinalizedChannel) {
 
   service_->PushCtrlMsg(channel, buffer_req);
   WaitUntilQueueProcessed(service_->buffer_ctrl_msg_mutex_, service_->buffer_ctrl_msg_queue_, []() { return true; });
+}
+
+TEST_F(BufferTransferServiceUTest, BuildBufferSliceAddrsSuccess) {
+  constexpr uintptr_t kBaseAddr = 0x1000U;
+  constexpr uint64_t kMaxTotalLen = 1024U;
+  std::vector<size_t> buffer_lens = {256U, 256U};
+  std::vector<uintptr_t> addrs;
+  EXPECT_EQ(service_->BuildBufferSliceAddrs(kBaseAddr, buffer_lens, buffer_lens.size(), kMaxTotalLen, addrs), SUCCESS);
+  ASSERT_EQ(addrs.size(), 2U);
+  EXPECT_EQ(addrs[0], kBaseAddr);
+  EXPECT_EQ(addrs[1], kBaseAddr + 256U);
+}
+
+TEST_F(BufferTransferServiceUTest, BuildBufferSliceAddrsRejectsAddressOverflow) {
+  // A peer-controlled length close to SIZE_MAX must be rejected against a bounded max_total_len.
+  std::vector<size_t> buffer_lens = {std::numeric_limits<size_t>::max()};
+  std::vector<uintptr_t> addrs;
+  EXPECT_EQ(service_->BuildBufferSliceAddrs(0x1000U, buffer_lens, buffer_lens.size(), 1024U, addrs), PARAM_INVALID);
+}
+
+TEST_F(BufferTransferServiceUTest, BuildBufferSliceAddrsRejectsExceedingMaxTotalLen) {
+  std::vector<size_t> buffer_lens = {2048U};
+  std::vector<uintptr_t> addrs;
+  EXPECT_EQ(service_->BuildBufferSliceAddrs(0x1000U, buffer_lens, buffer_lens.size(), 1024U, addrs), PARAM_INVALID);
+}
+
+TEST_F(BufferTransferServiceUTest, BuildBufferSliceAddrsUsesExplicitMaxTotalLen) {
+  // Client-side resp handling should honor server-reported total len, not local buffer_size_.
+  std::vector<size_t> buffer_lens = {512U};
+  std::vector<uintptr_t> addrs;
+  EXPECT_EQ(service_->BuildBufferSliceAddrs(0x1000U, buffer_lens, buffer_lens.size(), 512U, addrs), SUCCESS);
+  EXPECT_EQ(service_->BuildBufferSliceAddrs(0x1000U, buffer_lens, buffer_lens.size(), 256U, addrs), PARAM_INVALID);
+}
+
+TEST_F(BufferTransferServiceUTest, BuildBufferSliceAddrsRejectsCountExceedingLens) {
+  std::vector<size_t> buffer_lens = {256U};
+  std::vector<uintptr_t> addrs;
+  EXPECT_EQ(service_->BuildBufferSliceAddrs(0x1000U, buffer_lens, 2U, 1024U, addrs), PARAM_INVALID);
 }
 }  // namespace adxl
