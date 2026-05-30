@@ -524,7 +524,8 @@ TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesMatchSuccess) {
 // GenerateLocalCommRes 集成测试（需要 DCMI 桩）
 // ============================================================================
 
-class LocalCommResGenerateTest : public ::testing::Test {
+// LocalCommRes 测试基类（公共 SetUp/TearDown）
+class LocalCommResTestBase : public ::testing::Test {
  protected:
   void SetUp() override {
     ResetDcmiStub();
@@ -537,6 +538,8 @@ class LocalCommResGenerateTest : public ::testing::Test {
 
   std::string data_dir_;
 };
+
+class LocalCommResGenerateTest : public LocalCommResTestBase {};
 
 TEST_F(LocalCommResGenerateTest, GenerateSuccess) {
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
@@ -930,17 +933,7 @@ TEST_F(LocalCommResTopoPathTest, DefaultOverloadGetMainboardIdFailed) {
 // Change #2 测试：route.conf 不存在时的 procfs fallback
 // ============================================================================
 
-class LocalCommResProcfsFallbackTest : public ::testing::Test {
- protected:
-  void SetUp() override {
-    ResetDcmiStub();
-    data_dir_ = GetTestDataDir();
-  }
-  void TearDown() override {
-    ResetDcmiStub();
-  }
-  std::string data_dir_;
-};
+class LocalCommResProcfsFallbackTest : public LocalCommResTestBase {};
 
 TEST_F(LocalCommResProcfsFallbackTest, RouteNotFoundProcfsNotAvailable) {
   // route.conf 不存在 + procfs 不可用 → 返回 FAILED

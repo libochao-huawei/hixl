@@ -38,11 +38,14 @@
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
 #include <nlohmann/json.hpp>
+#include "mmpa/mmpa_api.h"
 
 namespace hixl {
 
-// urma_admin 命令执行函数指针（定义在匿名命名空间之后，此处为前置声明）
+// urma_admin 命令执行函数指针类型
 using UrmaAdminExecFn = int32_t (*)(const std::string &cmd, std::string &output);
+
+// g_urma_admin_exec_fn 在匿名命名空间之后定义，此处声明
 extern UrmaAdminExecFn g_urma_admin_exec_fn;
 
 // ============ 文件内私有常量与辅助定义 ============
@@ -206,8 +209,15 @@ std::string FindProcBasePath() {
 
 // 读取文件内容到字符串
 bool ReadFileToString(const std::string &path, std::string &content) {
+  if (mmAccess(path.c_str()) != EN_OK) {
+    HIXL_LOGW("[ReadFileToString] File access check failed: %s, errno=%d(%s)",
+               path.c_str(), errno, strerror(errno));
+    return false;
+  }
   std::ifstream file(path);
   if (!file.is_open()) {
+    HIXL_LOGW("[ReadFileToString] Failed to open file: %s, errno=%d(%s)",
+               path.c_str(), errno, strerror(errno));
     return false;
   }
   std::ostringstream oss;
@@ -254,107 +264,105 @@ std::string TrimString(const std::string &s) {
 //   remote_eid: 0x...
 //   local_eid: 0x...     (第二组)
 //   remote_eid: 0x...
-bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id, int32_t &slot_id,
-                            std::string &local_eid, std::string &remote_eid) {
+// 从 pair_info 单行解析 slot_id
+bool ParseSlotIdFromLine(const std::string &line, std::string &slot_id) {
+  if (line.find("dev_id=") == std::string::npos) {
+    return false;
+  }
+  size_t pos = line.find("slot_id=");
+  if (pos == std::string::npos) {
+    return false;
+  }
+  slot_id = TrimString(line.substr(pos + std::strlen("slot_id=")));
+  return true;
+}
+
+// 从 pair_info 单行解析 EID（local 或 remote）
+bool ParseEidFromLine(const std::string &line, const std::string &prefix, std::string &eid) {
+  if (line.find(prefix) == std::string::npos) {
+    return false;
+  }
+  size_t pos = line.find(':');
+  if (pos == std::string::npos) {
+    return false;
+  }
+  eid = TrimString(line.substr(pos + 1));
+  return !eid.empty();
+}
+
+// 格式化 EID（去除 0x 前缀和冒号）
+std::string FormatEidValue(const std::string &eid) {
+  std::string result = eid;
+  // 去掉 0x 前缀
+  if (result.size() >= 2 && result[0] == '0' && (result[1] == 'x' || result[1] == 'X')) {
+    result = result.substr(2);
+  }
+  // 去掉所有冒号
+  result.erase(std::remove(result.begin(), result.end(), ':'), result.end());
+  return result;
+}
+
+// 根据 npu_id 在组内的偏移选择 EID 索引
+size_t SelectEidIndexByNpuId(int32_t npu_id, size_t local_count, size_t remote_count) {
+  int32_t group_offset = npu_id % 8;
+  size_t eid_idx = (group_offset < 4) ? 0 : 1;  // 前4个用第一组，后4个用第二组
+  if (eid_idx >= local_count || eid_idx >= remote_count) {
+    HIXL_LOGW("[ParsePairInfo] npu_id=%d: eid_idx=%zu out of range (local=%zu, remote=%zu), fallback to index 0",
+               npu_id, eid_idx, local_count, remote_count);
+    eid_idx = 0;
+  }
+  return eid_idx;
+}
+
+// 从 pair_info 文本中收集所有 slot_id、local_eid、remote_eid
+bool CollectEidsFromPairInfo(const std::string &pair_info_content, std::string &found_slot_id,
+                             std::vector<std::string> &local_eids, std::vector<std::string> &remote_eids) {
   std::istringstream iss(pair_info_content);
   std::string line;
-  std::string found_slot_id;
-  std::vector<std::string> local_eids;
-  std::vector<std::string> remote_eids;
-  int line_count = 0;
-
   while (std::getline(iss, line)) {
-    ++line_count;
     line = TrimString(line);
     if (line.empty()) {
       continue;
     }
-
-    // 解析 slot_id: 查找匹配 dev_id 的行
-    if (line.find("dev_id=") != std::string::npos) {
-      size_t pos = line.find("slot_id=");
-      if (pos != std::string::npos) {
-        found_slot_id = line.substr(pos + std::strlen("slot_id="));
-        found_slot_id = TrimString(found_slot_id);
-        HIXL_LOGD("[ParsePairInfo] npu_id=%d, line=%d, found_slot_id=[%s]", npu_id, line_count, found_slot_id.c_str());
-      }
+    std::string slot;
+    if (ParseSlotIdFromLine(line, slot)) {
+      found_slot_id = slot;
     }
-
-    // 解析 local_eid
-    if (line.find("local_eid:") != std::string::npos || line.find("local_eid :") != std::string::npos) {
-      size_t pos = line.find(':');
-      if (pos != std::string::npos) {
-        std::string eid_val = TrimString(line.substr(pos + 1));
-        if (!eid_val.empty()) {
-          local_eids.push_back(eid_val);
-          HIXL_LOGD("[ParsePairInfo] npu_id=%d, line=%d, local_eid=[%s]", npu_id, line_count, eid_val.c_str());
-        }
-      }
+    std::string eid_val;
+    if (ParseEidFromLine(line, "local_eid", eid_val)) {
+      local_eids.push_back(eid_val);
     }
-
-    // 解析 remote_eid
-    if (line.find("remote_eid:") != std::string::npos || line.find("remote_eid :") != std::string::npos) {
-      size_t pos = line.find(':');
-      if (pos != std::string::npos) {
-        std::string eid_val = TrimString(line.substr(pos + 1));
-        if (!eid_val.empty()) {
-          remote_eids.push_back(eid_val);
-          HIXL_LOGD("[ParsePairInfo] npu_id=%d, line=%d, remote_eid=[%s]", npu_id, line_count, eid_val.c_str());
-        }
-      }
+    if (ParseEidFromLine(line, "remote_eid", eid_val)) {
+      remote_eids.push_back(eid_val);
     }
   }
+  return (!found_slot_id.empty() && !local_eids.empty() && !remote_eids.empty());
+}
 
-  HIXL_LOGD("[ParsePairInfo] npu_id=%d, lines_parsed=%d, slot_id=[%s], local_eids_count=%zu, remote_eids_count=%zu",
-            npu_id, line_count, found_slot_id.c_str(), local_eids.size(), remote_eids.size());
+bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id, int32_t &slot_id,
+                            std::string &local_eid, std::string &remote_eid) {
+  std::string found_slot_id;
+  std::vector<std::string> local_eids;
+  std::vector<std::string> remote_eids;
 
-  if (found_slot_id.empty()) {
-    HIXL_LOGW("[ParsePairInfo] npu_id=%d: no slot_id found", npu_id);
+  if (!CollectEidsFromPairInfo(pair_info_content, found_slot_id, local_eids, remote_eids)) {
+    HIXL_LOGW("[ParsePairInfo] npu_id=%d: failed to collect slot_id or eids", npu_id);
     return false;
   }
 
-  if (local_eids.empty() || remote_eids.empty()) {
-    HIXL_LOGW("[ParsePairInfo] npu_id=%d: no eids found (local=%zu, remote=%zu)", npu_id, local_eids.size(),
-              remote_eids.size());
-    return false;
-  }
+  HIXL_LOGD("[ParsePairInfo] npu_id=%d, slot_id=[%s], local_eids_count=%zu, remote_eids_count=%zu",
+             npu_id, found_slot_id.c_str(), local_eids.size(), remote_eids.size());
 
-  // 根据 npu_id 在组内的偏移选择 EID 索引
-  // 注意：pair_info 中每组只有 1 个 EID 对，head -1 和 tail -1 结果相同
-  // 因此当选择的索引超出范围时，fallback 到 index 0
-  int32_t group_offset = npu_id % 8;
-  size_t eid_idx = (group_offset < 4) ? 0 : 1;  // 前4个用第一组，后4个用第二组
-  if (eid_idx >= local_eids.size() || eid_idx >= remote_eids.size()) {
-    HIXL_LOGW("[ParsePairInfo] npu_id=%d: eid_idx=%zu out of range (local=%zu, remote=%zu), fallback to index 0",
-              npu_id, eid_idx, local_eids.size(), remote_eids.size());
-    eid_idx = 0;
-  }
+  size_t eid_idx = SelectEidIndexByNpuId(npu_id, local_eids.size(), remote_eids.size());
 
-  // 提取 slot_id 的数值
   try {
     slot_id = std::stoi(found_slot_id);
   } catch (const std::exception &) {
     slot_id = npu_id;
   }
 
-  // 提取 EID（需要去除 0x 前缀和所有冒号）
-  auto FormatEid = [](const std::string &eid) -> std::string {
-    std::string result = eid;
-    // 去掉 0x 前缀
-    if (result.size() >= 2 && result[0] == '0' && (result[1] == 'x' || result[1] == 'X')) {
-      result = result.substr(2);
-    }
-    // 去掉所有冒号（EID 格式为 0000:0000:...:XXXX，需要转为 00000000...XXXX）
-    result.erase(std::remove(result.begin(), result.end(), ':'), result.end());
-    return result;
-  };
-
-  if (eid_idx < local_eids.size()) {
-    local_eid = FormatEid(local_eids[eid_idx]);
-  }
-  if (eid_idx < remote_eids.size()) {
-    remote_eid = FormatEid(remote_eids[eid_idx]);
-  }
+  local_eid = FormatEidValue(local_eids[eid_idx]);
+  remote_eid = FormatEidValue(remote_eids[eid_idx]);
 
   return (!local_eid.empty() || !remote_eid.empty());
 }
@@ -442,6 +450,21 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, Ro
 }
 
 // ============ urma_admin show 相关函数 ============
+
+int32_t DefaultUrmaAdminExec(const std::string &cmd, std::string &output) {
+  FILE *raw_pipe = popen(cmd.c_str(), "r");
+  if (raw_pipe == nullptr) {
+    return FAILED;
+  }
+  auto pipe_deleter = [](FILE *f) { if (f) { pclose(f); } };
+  std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(raw_pipe, pipe_deleter);
+
+  char buf[512];
+  while (fgets(buf, sizeof(buf), pipe.get()) != nullptr) {
+    output += buf;
+  }
+  return SUCCESS;
+}
 
 // 从格式化 EID（带冒号）中去掉冒号
 std::string FormatEidFromUrma(const std::string &eid_with_colons) {
@@ -618,27 +641,13 @@ int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::strin
   return SUCCESS;
 }
 
-int32_t DefaultUrmaAdminExec(const std::string &cmd, std::string &output) {
-  FILE *raw_pipe = popen(cmd.c_str(), "r");
-  if (raw_pipe == nullptr) {
-    return FAILED;
-  }
-  auto pipe_deleter = [](FILE *f) { if (f) { pclose(f); } };
-  std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(raw_pipe, pipe_deleter);
-
-  char buf[512];
-  while (fgets(buf, sizeof(buf), pipe.get()) != nullptr) {
-    output += buf;
-  }
-  return SUCCESS;
-}
-
 }  // anonymous namespace
 
-UrmaAdminExecFn g_urma_admin_exec_fn = DefaultUrmaAdminExec;
+// urma_admin 命令执行函数指针（定义在 hixl 命名空间内）
+UrmaAdminExecFn g_urma_admin_exec_fn = &DefaultUrmaAdminExec;
 
 void SetUrmaAdminExecFn(UrmaAdminExecFn fn) {
-  g_urma_admin_exec_fn = (fn != nullptr) ? fn : DefaultUrmaAdminExec;
+  g_urma_admin_exec_fn = (fn != nullptr) ? fn : &DefaultUrmaAdminExec;
 }
 
 // ============ 文件解析辅助函数 ============
@@ -824,13 +833,15 @@ static int32_t ParseSingleLink(const nlohmann::json &edge, TopoLink &link) {
 }
 
 static int32_t ParseTopoJson(const std::string &topo_path, nlohmann::json &j) {
-  if (!IsFileExists(topo_path)) {
-    HIXL_LOGE(PARAM_INVALID, "Topo file does not exist: %s", topo_path.c_str());
+  if (mmAccess(topo_path.c_str()) != EN_OK) {
+    HIXL_LOGE(PARAM_INVALID, "Topo file access failed: %s, errno=%d(%s)",
+               topo_path.c_str(), errno, strerror(errno));
     return PARAM_INVALID;
   }
   std::ifstream file(topo_path);
   if (!file.is_open()) {
-    HIXL_LOGE(PARAM_INVALID, "Failed to open topo file: %s", topo_path.c_str());
+    HIXL_LOGE(PARAM_INVALID, "Failed to open topo file: %s, errno=%d(%s)",
+               topo_path.c_str(), errno, strerror(errno));
     return PARAM_INVALID;
   }
 
@@ -875,13 +886,15 @@ int32_t ParseTopoFile(const std::string &topo_path, TopoData &topo_data) {
 
 int32_t ParseRouteFile(const std::string &route_path, RouteData &route_data) {
   route_data.entries.clear();
-  if (!IsFileExists(route_path)) {
-    HIXL_LOGE(PARAM_INVALID, "Route file does not exist: %s", route_path.c_str());
+  if (mmAccess(route_path.c_str()) != EN_OK) {
+    HIXL_LOGE(PARAM_INVALID, "Route file access failed: %s, errno=%d(%s)",
+               route_path.c_str(), errno, strerror(errno));
     return PARAM_INVALID;
   }
   std::ifstream file(route_path);
   if (!file.is_open()) {
-    HIXL_LOGE(PARAM_INVALID, "Failed to open route file: %s", route_path.c_str());
+    HIXL_LOGE(PARAM_INVALID, "Failed to open route file: %s, errno=%d(%s)",
+               route_path.c_str(), errno, strerror(errno));
     return PARAM_INVALID;
   }
 
