@@ -66,9 +66,9 @@ graph LR
 | LingQu Computing Network（灵衢计算网络） | [1.5.0以上](https://support.huawei.com/enterprise/zh/ascend-computing/lingqu-computing-network-pid-258003841/software) |
 | CANN                             | **9.0以上**                                                                                                            |
 
-特殊说明：25.5 HDK下不支持aclrtMemRetainAllocationHandle接口，必须使用adxl提供的MallocMem接口和FreeMem接口来管理HOST内存，26.0以上HDK可以直接调用acl接口管理HOST内存。
+特殊说明：25.5 HDK下不支持aclrtMemRetainAllocationHandle接口，必须通过`adxl::AdxlEngine::MallocMem`和`adxl::AdxlEngine::FreeMem`管理HOST内存；26.0以上HDK可以直接调用acl接口管理HOST内存。
 - **启用方式**：初始化引擎时在 `options` 中配置 `OPTION_ENABLE_USE_FABRIC_MEM`，取值为 `"1"` 表示开启（取值为 `"0"` 表示关闭）。详见 [HIXL 接口 · options](cpp/HIXL接口.md)。
-- **可选全局配置**：可通过 `OPTION_GLOBAL_RESOURCE_CONFIG` 配置 Fabric 虚拟内存池容量、起始地址、单任务流数量等，示例见 [HIXL 接口](cpp/HIXL接口.md) 中 `fabric_memory.`* 字段说明。
+- **可选全局配置**：可通过 `OPTION_GLOBAL_RESOURCE_CONFIG` 配置 Fabric 虚拟内存池容量、起始地址、单任务流数量等，示例见 [HIXL 接口](cpp/HIXL接口.md) 中 `fabric_memory.` 相关字段说明。
 
 **硬件范围**：仅支持 **Atlas A3 训练系列产品**、**Atlas A3 推理系列产品**。
 
