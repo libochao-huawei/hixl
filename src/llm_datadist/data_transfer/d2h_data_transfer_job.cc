@@ -114,6 +114,9 @@ ge::Status D2HDataTransferJob::Initialize(const CacheEntry &cache_entry, CommEnt
   stream_ = comm_entity.GetStream();
   buffered_sender_.Initialize(comm_entity);
   const auto &req = comm_entity.GetRequest();
+  LLM_CHK_BOOL_RET_STATUS(req.dst_addr_count <= transfer_message_limits::kMaxDstAddrCount, ge::LLM_PARAM_INVALID,
+                          "dst_addr_count:%u exceeds max:%u", req.dst_addr_count,
+                          transfer_message_limits::kMaxDstAddrCount);
   const auto resp_len = transfer_message_limits::CalcResponseSize(req.dst_addr_count);
   auto *local_recv_flag_addr_base = PtrToPtr<void, uint8_t>(comm_entity.GetEntityInfo().local_resp_ptr) + resp_len;
   // Derive the remote recv-flag base from the already-validated request layout (dst_addr_count / buffer_info_count are
