@@ -625,6 +625,10 @@ ge::Status CommEntity::SendRequest(const FillRequestFunc &fill_request_func, acl
   uint64_t req_size = 0U;
   auto &req_info = *PtrToPtr<void, TransferCacheReq>(info_.send_buffer_req_ptr);
   fill_request_func(req_info, req_size);
+  LLM_CHK_BOOL_RET_STATUS(req_size <= transfer_message_limits::kMaxRequestPayloadSize, ge::LLM_PARAM_INVALID,
+                          "req_size:%lu exceeds max:%lu (buffer:%lu - flag:%lu)", req_size,
+                          transfer_message_limits::kMaxRequestPayloadSize,
+                          transfer_message_limits::kDefaultReqBufferSize, transfer_message_limits::kMsgFlagSize);
   auto *local_sync_flag_ptr = PtrToPtr<void, int8_t>(info_.send_buffer_req_flag_ptr);
   *local_sync_flag_ptr = 1;
   LLM_CHK_ACL_RET(aclrtMemcpyAsync(info_.send_dev_buffer_req_flag_ptr, kDefaultReqBufferSize,

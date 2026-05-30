@@ -49,6 +49,17 @@ TEST(TransferMessageLimitsTest, ZeroBufferInfoCountIsValidForD2hLayout) {
   EXPECT_EQ(CalcMinRequestSize(kDstAddrCount, 0U, kBufferInfoMultiplierD2h),
             sizeof(TransferCacheReq) + sizeof(TransferInfo) * kDstAddrCount);
 }
+
+TEST(TransferMessageLimitsTest, MaxDstAddrCountGuaranteesResponseFitInBuffer) {
+  const uint64_t max_response_size = CalcResponseSize(kMaxDstAddrCount);
+  EXPECT_LE(max_response_size, kMaxResponsePayloadSize);
+  EXPECT_EQ(max_response_size, kResponseInfoHeaderSize + static_cast<uint64_t>(kMaxDstAddrCount) * sizeof(uint64_t));
+}
+
+TEST(TransferMessageLimitsTest, MaxRequestPayloadSizeEqualsBufferCapacityMinusFlag) {
+  EXPECT_EQ(kMaxRequestPayloadSize, kDefaultReqBufferSize - kMsgFlagSize);
+  EXPECT_EQ(kMaxResponsePayloadSize, kDefaultRespBufferSize - kMsgFlagSize);
+}
 }  // namespace
 }  // namespace transfer_message_limits
 }  // namespace llm
