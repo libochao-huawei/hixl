@@ -3,11 +3,13 @@
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
  */
 
 #include <atomic>
+#include <climits>
 #include <gtest/gtest.h>
 #include <limits>
 #include <memory>
@@ -287,6 +289,17 @@ TEST_F(VirtualMemoryManagerTest, SetGlobalStartAddress_OutOfRange_Fails) {
   VirtualMemoryManager &manager = VirtualMemoryManager::GetInstance();
   EXPECT_EQ(manager.SetGlobalStartAddress(39UL), PARAM_INVALID);
   EXPECT_EQ(manager.SetGlobalStartAddress(221UL), PARAM_INVALID);
+}
+
+TEST_F(VirtualMemoryManagerTest, ReserveMemory_OverflowSize_Fails) {
+  VirtualMemoryManager &manager = VirtualMemoryManager::GetInstance();
+  manager.Initialize();
+  uintptr_t addr = 0;
+  EXPECT_EQ(manager.ReserveMemory(SIZE_MAX, addr), PARAM_INVALID);
+  EXPECT_EQ(manager.ReserveMemory(SIZE_MAX - 1, addr), PARAM_INVALID);
+  constexpr size_t kBlockSize = 1024UL * 1024UL * 1024UL;
+  constexpr size_t kOverflowBoundary = SIZE_MAX - kBlockSize + 2;
+  EXPECT_EQ(manager.ReserveMemory(kOverflowBoundary, addr), PARAM_INVALID);
 }
 
 }  // namespace hixl
