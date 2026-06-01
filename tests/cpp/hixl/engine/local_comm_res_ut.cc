@@ -602,32 +602,24 @@ TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesMatchSuccess) {
 // ============================================================================
 
 // LocalCommRes 测试基类（公共 SetUp/TearDown）
-class LocalCommResTestBase : public ::testing::Test {
+class LocalCommResTestBase : public LocalCommResMmpaTestBase {
  protected:
   void SetUp() override {
+    // 先调用基类 SetUp，完成 MmpaStub + temp_dir 初始化
+    LocalCommResMmpaTestBase::SetUp();
+    // 添加 TestBase 特有的初始化
     ResetDcmiStub();
-    // 设置 MmpaStub 使 urma_admin 绝对路径检查失败，回退到 PATH 查找
-    llm::MmpaStub::GetInstance().SetImpl(std::make_shared<LocalCommResMmpaStub>());
     data_dir_ = GetTestDataDir();
-    temp_dir_ = CreateTempDirForUrmaAdmin();
-    if (!temp_dir_.empty()) {
-      old_path_ = SetUrmaAdminPath(temp_dir_);
-    }
   }
 
   void TearDown() override {
-    if (!temp_dir_.empty()) {
-      RestorePath(old_path_);
-      CleanupTempDir(temp_dir_);
-    }
+    // 先执行 TestBase 特有的清理
     ResetDcmiStub();
-    // 恢复默认 MmpaStub（使用 Reset 而非 SetImpl(nullptr)，避免后续 mmAccess 调用崩溃）
-    llm::MmpaStub::GetInstance().Reset();
+    // 调用基类 TearDown，完成 temp_dir 清理 + MmpaStub Reset
+    LocalCommResMmpaTestBase::TearDown();
   }
 
   std::string data_dir_;
-  std::string temp_dir_;
-  std::string old_path_;
 };
 
 class LocalCommResGenerateTest : public LocalCommResTestBase {};

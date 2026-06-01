@@ -207,14 +207,12 @@ std::string FindProcBasePath() {
 // 读取文件内容到字符串
 bool ReadFileToString(const std::string &path, std::string &content) {
   if (mmAccess(path.c_str()) != EN_OK) {
-    HIXL_LOGW("[ReadFileToString] File access check failed: %s, errno=%d(%s)",
-               path.c_str(), errno, strerror(errno));
+    HIXL_LOGW("[ReadFileToString] File access check failed: %s, errno=%d(%s)", path.c_str(), errno, strerror(errno));
     return false;
   }
   std::ifstream file(path);
   if (!file.is_open()) {
-    HIXL_LOGW("[ReadFileToString] Failed to open file: %s, errno=%d(%s)",
-               path.c_str(), errno, strerror(errno));
+    HIXL_LOGW("[ReadFileToString] Failed to open file: %s, errno=%d(%s)", path.c_str(), errno, strerror(errno));
     return false;
   }
   std::ostringstream oss;
@@ -305,7 +303,7 @@ size_t SelectEidIndexByNpuId(int32_t npu_id, size_t local_count, size_t remote_c
   size_t eid_idx = (group_offset < 4) ? 0 : 1;  // 前4个用第一组，后4个用第二组
   if (eid_idx >= local_count || eid_idx >= remote_count) {
     HIXL_LOGW("[ParsePairInfo] npu_id=%d: eid_idx=%zu out of range (local=%zu, remote=%zu), fallback to index 0",
-               npu_id, eid_idx, local_count, remote_count);
+              npu_id, eid_idx, local_count, remote_count);
     eid_idx = 0;
   }
   return eid_idx;
@@ -347,8 +345,8 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
     return false;
   }
 
-  HIXL_LOGD("[ParsePairInfo] npu_id=%d, slot_id=[%s], local_eids_count=%zu, remote_eids_count=%zu",
-             npu_id, found_slot_id.c_str(), local_eids.size(), remote_eids.size());
+  HIXL_LOGD("[ParsePairInfo] npu_id=%d, slot_id=[%s], local_eids_count=%zu, remote_eids_count=%zu", npu_id,
+            found_slot_id.c_str(), local_eids.size(), remote_eids.size());
 
   size_t eid_idx = SelectEidIndexByNpuId(npu_id, local_eids.size(), remote_eids.size());
 
@@ -365,8 +363,8 @@ bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id
 }
 
 // 处理单个 NPU 设备的 procfs 路由数据
-int32_t ProcessNpuProcfsRoute(int32_t npu_id, const std::string &dev_id_path,
-                               const std::string &pair_info_path, RouteEntry &entry) {
+int32_t ProcessNpuProcfsRoute(int32_t npu_id, const std::string &dev_id_path, const std::string &pair_info_path,
+                              RouteEntry &entry) {
   int32_t device_id = npu_id % kNpuGroupSize;
   HIXL_LOGI("[Procfs] Processing npu_id=%d, device_id=%d", npu_id, device_id);
 
@@ -397,8 +395,8 @@ int32_t ProcessNpuProcfsRoute(int32_t npu_id, const std::string &dev_id_path,
     return FAILED;
   }
 
-  HIXL_LOGI("[Procfs] Parsed: npu_id=%d, slot_id=%d, local_eid=[%s], remote_eid=[%s]",
-            npu_id, slot_id, local_eid.c_str(), remote_eid.c_str());
+  HIXL_LOGI("[Procfs] Parsed: npu_id=%d, slot_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id, slot_id,
+            local_eid.c_str(), remote_eid.c_str());
 
   // 只生成 H2D 方向的 RouteEntry
   entry.device_id = device_id;
@@ -426,8 +424,8 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, Ro
     int32_t ret = ProcessNpuProcfsRoute(npu_id, dev_id_path, pair_info_path, entry);
     if (ret == SUCCESS) {
       route_data.entries.push_back(entry);
-      HIXL_LOGI("[Procfs] RouteEntry H2D: npu_id=%d, device_id=%d, local_eid=[%s], remote_eid=[%s]",
-                 npu_id, entry.device_id, entry.local_eid.c_str(), entry.remote_eid.c_str());
+      HIXL_LOGI("[Procfs] RouteEntry H2D: npu_id=%d, device_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id,
+                entry.device_id, entry.local_eid.c_str(), entry.remote_eid.c_str());
     }
   }
 
@@ -440,7 +438,7 @@ int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, Ro
   for (size_t i = 0; i < route_data.entries.size(); ++i) {
     const auto &entry = route_data.entries[i];
     HIXL_LOGI("[Procfs]   [%zu] device_id=%d, local_eid=[%s], remote_eid=[%s]", i, entry.device_id,
-               entry.local_eid.c_str(), entry.remote_eid.c_str());
+              entry.local_eid.c_str(), entry.remote_eid.c_str());
   }
 
   return SUCCESS;
@@ -489,11 +487,14 @@ int32_t DefaultUrmaAdminExec(const std::string &cmd, std::string &output) {
   std::string full_cmd = urma_path + " " + cmd;
   FILE *raw_pipe = popen(full_cmd.c_str(), "r");
   if (raw_pipe == nullptr) {
-    HIXL_LOGW("[DefaultUrmaAdminExec] Failed to execute: %s, errno=%d(%s)",
-               full_cmd.c_str(), errno, strerror(errno));
+    HIXL_LOGW("[DefaultUrmaAdminExec] Failed to execute: %s, errno=%d(%s)", full_cmd.c_str(), errno, strerror(errno));
     return FAILED;
   }
-  auto pipe_deleter = [](FILE *f) { if (f) { pclose(f); } };
+  auto pipe_deleter = [](FILE *f) {
+    if (f) {
+      pclose(f);
+    }
+  };
   std::unique_ptr<FILE, decltype(pipe_deleter)> pipe(raw_pipe, pipe_deleter);
 
   char buf[512];
@@ -547,7 +548,7 @@ int32_t ParseUrmaAdminOutput(const std::string &cmd_output, std::vector<UrmaEidE
 
 // 建立 die_id → Host PG EID 映射
 int32_t BuildDieToHostPgEidMap(const std::vector<UrmaEidEntry> &all_entries,
-                                 std::map<int32_t, std::string> &die_to_host_pg_eid) {
+                               std::map<int32_t, std::string> &die_to_host_pg_eid) {
   // 按 udma_name 分组
   std::map<std::string, std::vector<UrmaEidEntry>> udma_groups;
   for (const auto &entry : all_entries) {
@@ -563,9 +564,8 @@ int32_t BuildDieToHostPgEidMap(const std::vector<UrmaEidEntry> &all_entries,
     for (const auto &entry : entries) {
       std::string eid_no_colon = FormatEidFromUrma(entry.eid);
       auto info = ParseEidByte6(eid_no_colon);
-      HIXL_LOGI("[GetHostPgEid]   %s eid%d: %s, die_id=%d, is_pg=%s",
-                 name.c_str(), entry.eid_index, entry.eid.c_str(),
-                 info.die_id, info.is_pg_eid ? "true" : "false");
+      HIXL_LOGI("[GetHostPgEid]   %s eid%d: %s, die_id=%d, is_pg=%s", name.c_str(), entry.eid_index, entry.eid.c_str(),
+                info.die_id, info.is_pg_eid ? "true" : "false");
       // 只保存 PG EID（高 nibble 为 0x3 或 0x7）
       if (info.is_pg_eid) {
         die_to_host_pg_eid[info.die_id] = entry.eid;
@@ -588,8 +588,7 @@ int32_t GetCpuEidFromRouteData(int32_t phy_dev_id, const RouteData &route_data, 
     return FAILED;
   }
   int32_t target_device_id = static_cast<int32_t>(logic_id);
-  HIXL_LOGI("[GetHostPgEid] phy_dev_id=%d, logic_id=%u, target_device_id=%d",
-             phy_dev_id, logic_id, target_device_id);
+  HIXL_LOGI("[GetHostPgEid] phy_dev_id=%d, logic_id=%u, target_device_id=%d", phy_dev_id, logic_id, target_device_id);
 
   for (const auto &entry : route_data.entries) {
     if (entry.device_id == target_device_id && !entry.local_eid.empty()) {
@@ -599,8 +598,8 @@ int32_t GetCpuEidFromRouteData(int32_t phy_dev_id, const RouteData &route_data, 
   }
 
   if (cpu_eid.empty()) {
-    HIXL_LOGE(FAILED, "[GetHostPgEid] No local_eid found for device_id=%d (phy_dev_id=%d)",
-               target_device_id, phy_dev_id);
+    HIXL_LOGE(FAILED, "[GetHostPgEid] No local_eid found for device_id=%d (phy_dev_id=%d)", target_device_id,
+              phy_dev_id);
     return FAILED;
   }
   return SUCCESS;
@@ -846,14 +845,12 @@ static int32_t ParseSingleLink(const nlohmann::json &edge, TopoLink &link) {
 
 static int32_t ParseTopoJson(const std::string &topo_path, nlohmann::json &j) {
   if (mmAccess(topo_path.c_str()) != EN_OK) {
-    HIXL_LOGE(PARAM_INVALID, "Topo file access failed: %s, errno=%d(%s)",
-               topo_path.c_str(), errno, strerror(errno));
+    HIXL_LOGE(PARAM_INVALID, "Topo file access failed: %s, errno=%d(%s)", topo_path.c_str(), errno, strerror(errno));
     return PARAM_INVALID;
   }
   std::ifstream file(topo_path);
   if (!file.is_open()) {
-    HIXL_LOGE(PARAM_INVALID, "Failed to open topo file: %s, errno=%d(%s)",
-               topo_path.c_str(), errno, strerror(errno));
+    HIXL_LOGE(PARAM_INVALID, "Failed to open topo file: %s, errno=%d(%s)", topo_path.c_str(), errno, strerror(errno));
     return PARAM_INVALID;
   }
 
@@ -899,14 +896,12 @@ int32_t ParseTopoFile(const std::string &topo_path, TopoData &topo_data) {
 int32_t ParseRouteFile(const std::string &route_path, RouteData &route_data) {
   route_data.entries.clear();
   if (mmAccess(route_path.c_str()) != EN_OK) {
-    HIXL_LOGE(PARAM_INVALID, "Route file access failed: %s, errno=%d(%s)",
-               route_path.c_str(), errno, strerror(errno));
+    HIXL_LOGE(PARAM_INVALID, "Route file access failed: %s, errno=%d(%s)", route_path.c_str(), errno, strerror(errno));
     return PARAM_INVALID;
   }
   std::ifstream file(route_path);
   if (!file.is_open()) {
-    HIXL_LOGE(PARAM_INVALID, "Failed to open route file: %s, errno=%d(%s)",
-               route_path.c_str(), errno, strerror(errno));
+    HIXL_LOGE(PARAM_INVALID, "Failed to open route file: %s, errno=%d(%s)", route_path.c_str(), errno, strerror(errno));
     return PARAM_INVALID;
   }
 
@@ -1198,8 +1193,8 @@ int32_t CollectAllEdges(const EdgeCollectInput &input, std::vector<EndpointConfi
     GenerateD2UEdges(input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
     all_edges.insert(all_edges.end(), edges.begin(), edges.end());
     edges.clear();
-    int32_t ret = GenerateH2UEdges(input.phy_dev_id, input.route_data, input.plane_pg_0_eid,
-                                   input.plane_pg_1_eid, edges);
+    int32_t ret =
+        GenerateH2UEdges(input.phy_dev_id, input.route_data, input.plane_pg_0_eid, input.plane_pg_1_eid, edges);
     if (ret != SUCCESS) {
       return ret;
     }
@@ -1218,8 +1213,8 @@ int32_t CollectAllEdges(const EdgeCollectInput &input, std::vector<EndpointConfi
 
 // 组装 LocalCommRes 结果的内部函数
 int32_t BuildLocalCommResResult(int32_t phy_dev_id, bool is_server, const TopoData &topo_data,
-                                 const RouteData &route_data, const std::set<int32_t> &related_npu_ids,
-                                 LocalCommRes &local_comm_res) {
+                                const RouteData &route_data, const std::set<int32_t> &related_npu_ids,
+                                LocalCommRes &local_comm_res) {
   // 构建 NpuRootInfo
   std::map<int32_t, NpuRootInfo> npu_rootinfos;
   int32_t ret = BuildNpuRootinfos(related_npu_ids, is_server, npu_rootinfos);
@@ -1234,8 +1229,7 @@ int32_t BuildLocalCommResResult(int32_t phy_dev_id, bool is_server, const TopoDa
 
   // 生成所有边
   std::vector<EndpointConfig> all_edges;
-  ret = CollectAllEdges({topo_data, route_data, npu_rootinfos, phy_dev_id, plane_pg_0_eid, plane_pg_1_eid},
-                         all_edges);
+  ret = CollectAllEdges({topo_data, route_data, npu_rootinfos, phy_dev_id, plane_pg_0_eid, plane_pg_1_eid}, all_edges);
   if (ret != SUCCESS) {
     return ret;
   }
@@ -1258,8 +1252,8 @@ int32_t BuildLocalCommResResult(int32_t phy_dev_id, bool is_server, const TopoDa
   }
 
   HIXL_LOGI("GenerateLocalCommRes result: version=%s, net_instance_id=%s, endpoints=%zu",
-             local_comm_res.version.c_str(), local_comm_res.net_instance_id.c_str(),
-             local_comm_res.endpoint_list.size());
+            local_comm_res.version.c_str(), local_comm_res.net_instance_id.c_str(),
+            local_comm_res.endpoint_list.size());
   LogEndpointList(local_comm_res.endpoint_list);
 
   DcmiProxy::UnloadDcmi();
@@ -1309,19 +1303,9 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, LocalCommRes &local_comm_res) {
     return PARAM_INVALID;
   }
   std::string route_path = kDefaultRoutePath;
-  bool is_server = IsProductServer(mainboard_id);
 
-  // 2. 解析文件
-  TopoData topo_data;
-  RouteData route_data;
-  std::set<int32_t> related_npu_ids;
-  ret = ParseTopoAndRouteFiles(phy_dev_id, topo_path, route_path, topo_data, route_data, related_npu_ids);
-  if (ret != SUCCESS) {
-    return ret;
-  }
-
-  // 3. 组装结果
-  return BuildLocalCommResResult(phy_dev_id, is_server, topo_data, route_data, related_npu_ids, local_comm_res);
+  // 2. 调用有参版本
+  return GenerateLocalCommRes(phy_dev_id, topo_path, route_path, local_comm_res);
 }
 
 int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, const std::string &route_path,
