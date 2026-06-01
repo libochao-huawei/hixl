@@ -25,6 +25,10 @@ Status ClientManager::CreateClient(const ClientConfig &config, ClientPtr &client
   HIXL_CHK_STATUS_RET(client_ptr->Initialize(config.endpoint_list), "Failed to initialize HixlClient, ip:%s, port:%u",
                       ip.c_str(), port);
   std::lock_guard<std::mutex> lock(mutex_);
+  if (finalized_) {
+    HIXL_LOGE(FAILED, "ClientManager already finalized, cannot create new client");
+    return FAILED;
+  }
   clients_.emplace(config.remote_engine, client_ptr);
   return SUCCESS;
 }
@@ -60,6 +64,7 @@ Status ClientManager::DestroyClient(const std::string &remote_engine) {
 }
 
 bool ClientManager::IsEmpty() {
+  std::lock_guard<std::mutex> lock(mutex_);
   return clients_.empty();
 }
 
@@ -67,6 +72,7 @@ Status ClientManager::Finalize() {
   std::map<std::string, ClientPtr> clients;
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    finalized_ = true;
     clients = std::move(clients_);
   }
 
