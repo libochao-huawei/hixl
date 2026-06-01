@@ -22,7 +22,7 @@ target_include_directories(local_comm_res_generator PRIVATE
         ${HIXL_CODE_DIR}/src/hixl/engine
         ${HIXL_CODE_DIR}/src/hixl/proxy
         ${HIXL_CODE_DIR}/src/hixl/common
-        ${HIXL_CODE_DIR}/src/llm_datadist
+        ${HIXL_CODE_DIR}/third_party/json/include
         ${CANN_INSTALL_PATH}/include
 )
 
@@ -38,11 +38,9 @@ target_compile_options(local_comm_res_generator PRIVATE
 
 target_link_libraries(local_comm_res_generator PRIVATE
         cann_hixl
-        adxl_static
         acl_rt_headers
         acl_rt
         -lpthread
-        -lrt
         stdc++fs
 )
 

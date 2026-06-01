@@ -32,14 +32,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include "acl/acl.h"
 #include "local_comm_res_generator_v1.h"
+#include <nlohmann/json.hpp>
 
 namespace {
-
-constexpr int32_t kRetSuccess = 0;
 constexpr int32_t kRetFailed = -1;
 
 void PrintUsage(const char *prog_name) {
@@ -55,7 +55,7 @@ int32_t InitAcl() {
     return kRetFailed;
   }
   std::cout << "ACL initialized successfully\n";
-  return kRetSuccess;
+  return ACL_SUCCESS;
 }
 
 int32_t FinalizeAcl() {
@@ -65,7 +65,7 @@ int32_t FinalizeAcl() {
     return kRetFailed;
   }
   std::cout << "ACL finalized successfully\n";
-  return kRetSuccess;
+  return ACL_SUCCESS;
 }
 
 int32_t SetDevice(int32_t device_id) {
@@ -75,7 +75,7 @@ int32_t SetDevice(int32_t device_id) {
     return kRetFailed;
   }
   std::cout << "aclrtSetDevice(" << device_id << ") succeeded\n";
-  return kRetSuccess;
+  return ACL_SUCCESS;
 }
 
 int32_t GetCurrentDevice(int32_t *device_id) {
@@ -85,7 +85,7 @@ int32_t GetCurrentDevice(int32_t *device_id) {
     return kRetFailed;
   }
   std::cout << "Current device: logic_id=" << *device_id << std::endl;
-  return kRetSuccess;
+  return ACL_SUCCESS;
 }
 
 int32_t GetPhyDevId(int32_t logic_id, int32_t *phy_id) {
@@ -95,10 +95,10 @@ int32_t GetPhyDevId(int32_t logic_id, int32_t *phy_id) {
     return kRetFailed;
   }
   std::cout << "Logic ID " << logic_id << " -> Physical ID " << *phy_id << std::endl;
-  return kRetSuccess;
+  return ACL_SUCCESS;
 }
 
-void PrintLocalCommRes(const hixl::LocalCommRes &local_comm_res) {
+void PrintLocalCommRes(const hixl::LocalCommRes &local_comm_res, int32_t device_id) {
   std::cout << "\n========== LocalCommRes Result ==========\n";
   std::cout << "version: " << local_comm_res.version << "\n";
   std::cout << "net_instance_id: " << local_comm_res.net_instance_id << "\n";
@@ -111,6 +111,37 @@ void PrintLocalCommRes(const hixl::LocalCommRes &local_comm_res) {
               << ", net_instance_id=" << ep.net_instance_id << "\n";
   }
   std::cout << "========================================\n\n";
+
+  // 生成 JSON 文件
+  nlohmann::json j;
+  j["version"] = local_comm_res.version;
+  j["net_instance_id"] = local_comm_res.net_instance_id;
+  j["endpoint_list"] = nlohmann::json::array();
+
+  for (const auto &ep : local_comm_res.endpoint_list) {
+    nlohmann::json ep_json;
+    ep_json["protocol"] = ep.protocol;
+    ep_json["comm_id"] = ep.comm_id;
+    ep_json["placement"] = ep.placement;
+    if (!ep.plane.empty()) {
+      ep_json["plane"] = ep.plane;
+    }
+    if (!ep.dst_eid.empty()) {
+      ep_json["dst_eid"] = ep.dst_eid;
+    }
+    j["endpoint_list"].push_back(ep_json);
+  }
+
+  // 生成文件名: local_comm_res_{device_id}.json
+  std::string filename = "local_comm_res_" + std::to_string(device_id) + ".json";
+  std::ofstream ofs(filename);
+  if (ofs.is_open()) {
+    ofs << j.dump(2);  // indent=2 for pretty print
+    ofs.close();
+    std::cout << "JSON file generated: " << filename << "\n";
+  } else {
+    std::cerr << "Failed to open file for writing: " << filename << "\n";
+  }
 }
 
 }  // anonymous namespace
@@ -137,19 +168,19 @@ int main(int argc, char *argv[]) {
   }
 
   // Step 1: 初始化 ACL
-  if (InitAcl() != kRetSuccess) {
+  if (InitAcl() != ACL_SUCCESS) {
     return kRetFailed;
   }
 
   // Step 2: 占用 NPU
-  if (SetDevice(npu_id) != kRetSuccess) {
+  if (SetDevice(npu_id) != ACL_SUCCESS) {
     FinalizeAcl();
     return kRetFailed;
   }
 
   // Step 3: 获取当前 logic_id
   int32_t logic_id = -1;
-  if (GetCurrentDevice(&logic_id) != kRetSuccess) {
+  if (GetCurrentDevice(&logic_id) != ACL_SUCCESS) {
     aclrtResetDevice(npu_id);
     FinalizeAcl();
     return kRetFailed;
@@ -157,7 +188,7 @@ int main(int argc, char *argv[]) {
 
   // Step 4: 转换为 physical_id
   int32_t phy_id = -1;
-  if (GetPhyDevId(logic_id, &phy_id) != kRetSuccess) {
+  if (GetPhyDevId(logic_id, &phy_id) != ACL_SUCCESS) {
     aclrtResetDevice(npu_id);
     FinalizeAcl();
     return kRetFailed;
@@ -167,7 +198,7 @@ int main(int argc, char *argv[]) {
   std::cout << "\nCalling GenerateLocalCommRes(phy_id=" << phy_id << ")...\n";
   hixl::LocalCommRes local_comm_res;
   int32_t ret = hixl::GenerateLocalCommRes(phy_id, local_comm_res);
-  if (ret != kRetSuccess) {
+  if (ret != hixl::SUCCESS) {
     std::cerr << "GenerateLocalCommRes failed, ret=" << ret << std::endl;
     aclrtResetDevice(npu_id);
     FinalizeAcl();
@@ -175,12 +206,12 @@ int main(int argc, char *argv[]) {
   }
 
   // Step 6: 打印结果
-  PrintLocalCommRes(local_comm_res);
+  PrintLocalCommRes(local_comm_res, phy_id);
 
   // Step 7: 清理
   aclrtResetDevice(npu_id);
   FinalizeAcl();
 
   std::cout << "Test completed successfully!\n";
-  return kRetSuccess;
+  return ACL_SUCCESS;
 }
