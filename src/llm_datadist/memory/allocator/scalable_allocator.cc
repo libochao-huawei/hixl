@@ -18,6 +18,11 @@
 namespace llm {
 namespace {
 constexpr size_t kRatioBase = 100U;
+
+SpanLayerId CalcSpanLayerCapacity(MemSize threshold, size_t page_idem_num) {
+  auto raw = SpanLayerId_GetIdFromSize(threshold, page_idem_num);
+  return (raw == std::numeric_limits<SpanLayerId>::max()) ? raw : static_cast<SpanLayerId>(raw + 1);
+}
 }
 
 std::atomic_size_t ScalableAllocator::global_allocator_id_(0U);
@@ -27,7 +32,7 @@ ScalableAllocator::ScalableAllocator(SpanAllocator &span_allocator, const Scalab
       allocator_id_with_type_("[allocator_" + std::to_string(allocator_id_) + "]"),
       config_{cfg},
       page_mem_size_{PageLen_GetMemSize(1, cfg.page_idem_num)},
-      span_layer_capacity_{1 + SpanLayerId_GetIdFromSize(cfg.page_mem_size_total_threshold, cfg.page_idem_num)},
+      span_layer_capacity_{CalcSpanLayerCapacity(cfg.page_mem_size_total_threshold, cfg.page_idem_num)},
       uncacheable_layer_start_{SpanLayerId_GetIdFromSize(cfg.uncacheable_size_threshold, cfg.page_idem_num)},
       span_layer_page_capacity_{PageLen_GetLenFromSize(cfg.page_mem_size_total_threshold, cfg.page_idem_num)},
       span_allocator_{span_allocator},
