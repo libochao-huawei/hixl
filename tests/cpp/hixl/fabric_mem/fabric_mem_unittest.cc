@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -87,6 +88,37 @@ class FabricMemRuntimeStub : public llm::AclRuntimeStub {
     return llm::AclRuntimeStub::aclrtMemcpyAsync(dst, dest_max, src, src_count, kind, stream);
   }
 
+  aclError aclrtStreamQuery(aclrtStream stream, aclrtStreamStatus *status) override {
+    ++stream_query_count_;
+    if (stream_query_error_ != ACL_ERROR_NONE) {
+      return stream_query_error_;
+    }
+    if (status == nullptr) {
+      return ACL_ERROR_INVALID_PARAM;
+    }
+    if (streams_not_complete_.count(stream) != 0U) {
+      *status = ACL_STREAM_STATUS_NOT_READY;
+      return ACL_ERROR_NONE;
+    }
+    return llm::AclRuntimeStub::aclrtStreamQuery(stream, status);
+  }
+
+  aclError aclrtSetStreamFailureMode(aclrtStream stream, uint64_t mode) override {
+    ++stream_failure_mode_count_;
+    last_stream_failure_mode_ = mode;
+    (void)stream;
+    return ACL_ERROR_NONE;
+  }
+
+  aclError aclrtSynchronizeStream(aclrtStream stream) override {
+    ++stream_sync_count_;
+    streams_not_complete_.erase(stream);
+    if (stream_sync_error_ != ACL_ERROR_NONE) {
+      return stream_sync_error_;
+    }
+    return llm::AclRuntimeStub::aclrtSynchronizeStream(stream);
+  }
+
   aclError aclrtStreamAbort(aclrtStream stream) override {
     ++stream_abort_count_;
     return llm::AclRuntimeStub::aclrtStreamAbort(stream);
@@ -109,7 +141,14 @@ class FabricMemRuntimeStub : public llm::AclRuntimeStub {
   size_t memcpy_async_fail_on_count_{0U};
   size_t memcpy_async_count_{0U};
   size_t host_flag_d2h_count_{0U};
+  size_t stream_query_count_{0U};
+  size_t stream_failure_mode_count_{0U};
+  uint64_t last_stream_failure_mode_{0U};
   size_t stream_abort_count_{0U};
+  aclError stream_query_error_{ACL_ERROR_NONE};
+  aclError stream_sync_error_{ACL_ERROR_NONE};
+  size_t stream_sync_count_{0U};
+  std::set<aclrtStream> streams_not_complete_;
   size_t malloc_physical_count_{0U};
   aclrtPhysicalMemProp last_physical_mem_prop_{};
 };
@@ -619,6 +658,10 @@ TEST_F(FabricMemTransferServiceUTest, AsyncTransferWaitsUntilAllHostFlagsDone) {
   ASSERT_EQ(service_.TryAcquireAsyncSlot(slot), SUCCESS);
   ASSERT_EQ(slot.host_flags.size(), 2U);
   *static_cast<uint64_t *>(slot.host_flags[0]) = 1ULL;
+  // Mark streams as not complete so query returns WAITING (not kComplete).
+  for (const auto &stream : slot.streams) {
+    runtime_->streams_not_complete_.insert(stream);
+  }
 
   TransferReq req = reinterpret_cast<TransferReq>(0x2468UL);
   const auto start = std::chrono::steady_clock::now();
@@ -632,6 +675,73 @@ TEST_F(FabricMemTransferServiceUTest, AsyncTransferWaitsUntilAllHostFlagsDone) {
   *static_cast<uint64_t *>(record.slot.host_flags[1]) = 1ULL;
   EXPECT_EQ(service_.GetTransferStatus(BuildContext(), req, status), SUCCESS);
   EXPECT_EQ(status, TransferStatus::COMPLETED);
+}
+
+TEST_F(FabricMemTransferServiceUTest, AsyncTransferStreamQueryFailureReturnsFailedWhileHostFlagPending) {
+  ASSERT_EQ(service_.Initialize(4U, 1U, &statistic_), SUCCESS);
+  AsyncSlot slot;
+  ASSERT_EQ(service_.TryAcquireAsyncSlot(slot), SUCCESS);
+  ASSERT_EQ(service_.AppendHostFlagCopies(slot), SUCCESS);
+
+  TransferReq req = reinterpret_cast<TransferReq>(0x3579UL);
+  const auto start = std::chrono::steady_clock::now();
+  service_.RegisterAsyncTransferRecord(BuildContext(), req, std::move(slot), start, start, 64U, 1U);
+  auto &record = service_.req_2_async_record_[reinterpret_cast<uintptr_t>(req)];
+  for (void *host_flag : record.slot.host_flags) {
+    *static_cast<uint64_t *>(host_flag) = 0ULL;
+  }
+  runtime_->stream_query_error_ = ACL_ERROR_RT_INTERNAL_ERROR;
+
+  TransferStatus status = TransferStatus::WAITING;
+  EXPECT_EQ(service_.GetTransferStatus(BuildContext(), req, status), SUCCESS);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+  EXPECT_GT(runtime_->stream_query_count_, 0U);
+  EXPECT_TRUE(service_.req_2_async_record_.empty());
+}
+
+TEST_F(FabricMemTransferServiceUTest, AsyncTransferHostFlagsDoneSkipsStreamSync) {
+  ASSERT_EQ(service_.Initialize(4U, 1U, &statistic_), SUCCESS);
+  AsyncSlot slot;
+  ASSERT_EQ(service_.TryAcquireAsyncSlot(slot), SUCCESS);
+  ASSERT_EQ(service_.AppendHostFlagCopies(slot), SUCCESS);
+  for (void *host_flag : slot.host_flags) {
+    *static_cast<uint64_t *>(host_flag) = 1ULL;
+  }
+
+  TransferReq req = reinterpret_cast<TransferReq>(0x579BUL);
+  const auto start = std::chrono::steady_clock::now();
+  service_.RegisterAsyncTransferRecord(BuildContext(), req, std::move(slot), start, start, 64U, 1U);
+  // Inject sync error — should be ignored because host flags are done (sync is skipped).
+  runtime_->stream_sync_error_ = ACL_ERROR_RT_INTERNAL_ERROR;
+
+  TransferStatus status = TransferStatus::WAITING;
+  EXPECT_EQ(service_.GetTransferStatus(BuildContext(), req, status), SUCCESS);
+  EXPECT_EQ(status, TransferStatus::COMPLETED);
+  EXPECT_EQ(runtime_->stream_sync_count_, 0U);
+  EXPECT_TRUE(service_.req_2_async_record_.empty());
+}
+
+TEST_F(FabricMemTransferServiceUTest, AsyncTransferStreamQueryCompleteTriggersSync) {
+  ASSERT_EQ(service_.Initialize(4U, 1U, &statistic_), SUCCESS);
+  AsyncSlot slot;
+  ASSERT_EQ(service_.TryAcquireAsyncSlot(slot), SUCCESS);
+  ASSERT_EQ(service_.AppendHostFlagCopies(slot), SUCCESS);
+
+  TransferReq req = reinterpret_cast<TransferReq>(0x468AUL);
+  const auto start = std::chrono::steady_clock::now();
+  service_.RegisterAsyncTransferRecord(BuildContext(), req, std::move(slot), start, start, 64U, 1U);
+  auto &record = service_.req_2_async_record_[reinterpret_cast<uintptr_t>(req)];
+  // Host flags not done, but streams report COMPLETE via query.
+  for (void *host_flag : record.slot.host_flags) {
+    *static_cast<uint64_t *>(host_flag) = 0ULL;
+  }
+  runtime_->stream_sync_error_ = ACL_ERROR_RT_INTERNAL_ERROR;
+
+  TransferStatus status = TransferStatus::WAITING;
+  EXPECT_EQ(service_.GetTransferStatus(BuildContext(), req, status), SUCCESS);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+  EXPECT_GT(runtime_->stream_sync_count_, 0U);
+  EXPECT_TRUE(service_.req_2_async_record_.empty());
 }
 
 TEST_F(FabricMemTransferServiceUTest, AsyncTransferRemoveChannelAbortsStreams) {
