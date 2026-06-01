@@ -267,6 +267,7 @@ Status FabricMemEngine::Disconnect(const AscendString &remote_engine, int32_t ti
 }
 
 Status FabricMemEngine::DisconnectLocked(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  TemporaryRtContext with_context(aclrt_context_);
   (void)timeout_in_millis;
   const std::string remote = remote_engine.GetString();
   const auto it = fabric_mem_remote_mems_.find(remote);
@@ -334,7 +335,6 @@ Status FabricMemEngine::TransferSync(const AscendString &remote_engine, Transfer
                                      const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis) {
   HixlProfType type = (operation == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
   HIXL_API_PROFILING(type);
-  TemporaryRtContext with_context(aclrt_context_);
   if (auto_connect_) {
     HIXL_CHK_STATUS_RET(EnsureConnected(remote_engine, timeout_in_millis),
                         "[FabricMemEngine] Auto-connect failed, remote:%s.", remote_engine.GetString());
@@ -361,7 +361,6 @@ Status FabricMemEngine::TransferAsync(const AscendString &remote_engine, Transfe
                                       TransferReq &req) {
   (void)optional_args;
   req = nullptr;
-  TemporaryRtContext with_context(aclrt_context_);
   if (auto_connect_) {
     constexpr int32_t kAutoConnectTimeoutMs = 3000;
     HIXL_CHK_STATUS_RET(EnsureConnected(remote_engine, kAutoConnectTimeoutMs),
@@ -391,7 +390,6 @@ Status FabricMemEngine::TransferAsync(const AscendString &remote_engine, Transfe
 }
 
 Status FabricMemEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
-  TemporaryRtContext with_context(aclrt_context_);
   std::lock_guard<std::mutex> lock(mutex_);
   const auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
   const auto it = req_map_.find(id);

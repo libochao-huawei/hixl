@@ -476,11 +476,8 @@ TEST_F(FabricMemTransferServiceUTest, SlotPoolCreateReuseRollbackAndDestroy) {
   EXPECT_EQ(service_.TryAcquireSlot(slot), SUCCESS);
   EXPECT_EQ(service_.TryAcquireSlot(slot2), SUCCESS);
   EXPECT_EQ(service_.TryAcquireSlot(slot), FAILED);
-
-  AsyncSlot abort_slot;
-  abort_slot.ctx = first_ctx;
-  abort_slot.streams = {first_stream};
-  service_.ReleaseSlot(abort_slot, true);
+  service_.ReleaseSlot(slot, true);
+  service_.ReleaseSlot(slot2, true);
   EXPECT_TRUE(service_.slot_pool_.empty());
 }
 

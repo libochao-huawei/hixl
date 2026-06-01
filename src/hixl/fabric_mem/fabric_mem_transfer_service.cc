@@ -614,10 +614,13 @@ Status FabricMemTransferService::TryAcquireSlotLocked(AsyncSlot &slot) {
 
 Status FabricMemTransferService::TryAcquireSlot(AsyncSlot &slot) {
   std::lock_guard<std::mutex> lock(stream_pool_mutex_);
-  slot.ctx = nullptr;
-  slot.streams.clear();
-  slot.host_flags.clear();
-  return TryAcquireSlotLocked(slot);
+  AsyncSlot acquired_slot;
+  const Status status = TryAcquireSlotLocked(acquired_slot);
+  if (status != SUCCESS) {
+    return status;
+  }
+  slot = std::move(acquired_slot);
+  return SUCCESS;
 }
 
 Status FabricMemTransferService::TryAcquireSlotWithTimeout(AsyncSlot &slot, uint64_t timeout_us) {
