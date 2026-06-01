@@ -323,7 +323,8 @@ clear_kernel_cache_dir() {
 }
 
 WHL_INSTALL_DIR_PATH="${common_parse_dir}/python/site-packages"
-PYTHON_HIXL_WHL="${sourcedir}/lib/llm_datadist-0.0.1-py3-none-any.whl"
+PYTHON_LLM_DATADIST_WHL="${sourcedir}/lib/llm_datadist-0.0.1-py3-none-any.whl"
+PYTHON_HIXL_SO="${sourcedir}/lib/hixl.so"
 
 custom_install() {
     if [ -z "$common_parse_dir/hixl" ]; then
@@ -338,14 +339,23 @@ custom_install() {
     fi
 
     if [ "$hetero_arch" != "y" ]; then
-        log "INFO" "install hixl extension module begin..."
-        hixl_install_package "${PYTHON_HIXL_WHL}" "${WHL_INSTALL_DIR_PATH}"
-        log "INFO" "the hixl extension module installed successfully!"
+        log "INFO" "install llm_datadist extension module begin..."
+        hixl_install_package "${PYTHON_LLM_DATADIST_WHL}" "${WHL_INSTALL_DIR_PATH}"
+        log "INFO" "the llm_datadist extension module installed successfully!"
+
+        log "INFO" "install hixl module begin..."
+        mkdir -p "${WHL_INSTALL_DIR_PATH}/hixl"
+        cp -f "${PYTHON_HIXL_SO}" "${WHL_INSTALL_DIR_PATH}/hixl/"
+        if [ $? -ne 0 ]; then
+            log "ERROR" "copy hixl.so to ${WHL_INSTALL_DIR_PATH}/hixl/ failed"
+            exit 1
+        fi
+        log "INFO" "the hixl module installed successfully!"
 
         if [ "${pylocal}" = "y" ]; then
             log "INFO" "please make sure PYTHONPATH include ${WHL_INSTALL_DIR_PATH}."
         else
-            log "INFO" "The package llm_datadist is already installed in python default path. It is recommended to install it using the '--pylocal' parameter, install the package hixl in the ${WHL_INSTALL_DIR_PATH}."
+            log "INFO" "The package llm_datadist and hixl is already installed in python default path. It is recommended to install it using the '--pylocal' parameter, install the package hixl in the ${WHL_INSTALL_DIR_PATH}."
         fi
 
         if [ "x$stage" = "xinstall" ]; then
