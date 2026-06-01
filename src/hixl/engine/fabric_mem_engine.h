@@ -26,6 +26,8 @@
 #include "fabric_mem/fabric_mem_transfer_service.h"
 #include "hixl/hixl_types.h"
 
+#include "acl/acl.h"
+
 namespace hixl {
 class FabricMemEngine : public hixl::Engine {
  public:
@@ -92,6 +94,8 @@ class FabricMemEngine : public hixl::Engine {
   std::atomic<uint64_t> next_req_id_{1U};
   bool has_acquired_virtual_memory_ = false;
   bool auto_connect_{false};
+  int32_t device_id_{-1};
+  aclrtContext aclrt_context_{nullptr};
 };
 }  // namespace hixl
 

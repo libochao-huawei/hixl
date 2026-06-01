@@ -86,15 +86,16 @@ void FabricMemTransferService::FreeDevConstOne() {
   }
 }
 
-Status FabricMemTransferService::Initialize(size_t max_stream_num, size_t task_stream_num,
+Status FabricMemTransferService::Initialize(int32_t device_id, size_t max_stream_num, size_t task_stream_num,
                                             FabricMemStatistic *statistic) {
+  HIXL_CHK_BOOL_RET_STATUS(device_id >= 0, PARAM_INVALID, "device_id must be non-negative.");
   HIXL_CHK_BOOL_RET_STATUS(max_stream_num > 0, PARAM_INVALID, "max_stream_num must be greater than zero.");
   HIXL_CHK_BOOL_RET_STATUS(task_stream_num > 0, PARAM_INVALID, "task_stream_num must be greater than zero.");
   HIXL_CHK_BOOL_RET_STATUS(max_stream_num >= task_stream_num, PARAM_INVALID,
                            "max_stream_num must be greater than or equal to task_stream_num.");
+  device_id_ = device_id;
   task_stream_num_ = task_stream_num;
   max_async_slot_num_ = max_stream_num / task_stream_num;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id_), "Get current device failed.");
   max_stream_num_ = max_stream_num;
   statistic_ = statistic;
   HIXL_CHK_STATUS_RET(InitDevConstOne(), "Initialize fabric mem dev_const_one failed.");
@@ -123,12 +124,10 @@ void FabricMemTransferService::Finalize() {
   {
     std::lock_guard<std::mutex> lock(stream_pool_mutex_);
     FreeAllHostFlagsLocked();
-    for (const auto &stream_stat : stream_pool_) {
-      if (stream_stat.first != nullptr) {
-        HIXL_CHK_ACL(aclrtDestroyStream(stream_stat.first), "Destroy fabric mem stream failed.");
-      }
+    for (auto &entry : slot_pool_) {
+      DestroySlotEntryLocked(entry, false);
     }
-    stream_pool_.clear();
+    slot_pool_.clear();
   }
   FreeDevConstOne();
   {
@@ -232,14 +231,14 @@ Status FabricMemTransferService::Transfer(const FabricMemTransferContext &contex
                                           const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis) {
   const auto start = std::chrono::steady_clock::now();
   const uint64_t timeout_us = static_cast<uint64_t>(timeout_in_millis) * kMillisToMicros;
-  std::vector<aclrtStream> streams;
-  HIXL_CHK_STATUS_RET(TryGetStream(streams, timeout_us), "Failed to get fabric mem streams.");
-  HIXL_DISMISSABLE_GUARD(fail_guard, ([this, &streams]() { ReleaseStreams(streams, true); }));
+  AsyncSlot slot;
+  HIXL_CHK_STATUS_RET(TryAcquireSlotWithTimeout(slot, timeout_us), "Failed to acquire fabric mem transfer slot.");
+  HIXL_DISMISSABLE_GUARD(fail_guard, ([this, &slot]() { ReleaseSlot(slot, true); }));
+  TemporaryRtContext ctx_guard(slot.ctx);
   auto op_descs_copy = op_descs;
   auto real_copy_start = std::chrono::steady_clock::now();
-  HIXL_CHK_STATUS_RET(DoTransfer(streams, context, operation, op_descs_copy, real_copy_start),
-                      "Fabric mem copy failed.");
-  for (auto &stream : streams) {
+  HIXL_CHK_STATUS_RET(DoTransfer(slot, context, operation, op_descs_copy, real_copy_start), "Fabric mem copy failed.");
+  for (auto &stream : slot.streams) {
     const auto cost = GetDurationUs(start, std::chrono::steady_clock::now());
     HIXL_CHK_BOOL_RET_STATUS(cost < timeout_us, TIMEOUT, "Fabric mem transfer timeout.");
     const uint64_t stream_timeout_ms = (timeout_us - cost) / kMillisToMicros;
@@ -249,7 +248,7 @@ Status FabricMemTransferService::Transfer(const FabricMemTransferContext &contex
   }
   const auto real_copy_cost = GetDurationUs(real_copy_start, std::chrono::steady_clock::now());
   HIXL_DISMISS_GUARD(fail_guard);
-  ReleaseStreams(streams);
+  ReleaseSlot(slot, false);
   const auto transfer_cost = GetDurationUs(start, std::chrono::steady_clock::now());
   UpdateStats(context, transfer_cost, real_copy_cost, GetTransferBytes(op_descs_copy),
               static_cast<uint64_t>(op_descs_copy.size()));
@@ -264,10 +263,11 @@ Status FabricMemTransferService::TransferAsync(const FabricMemTransferContext &c
   AsyncSlot slot;
   HIXL_CHK_STATUS_RET(TryAcquireAsyncSlot(slot), "Failed to acquire fabric mem async slot.");
   HIXL_DISMISSABLE_GUARD(fail_guard, ([this, &slot]() { ReleaseAsyncSlot(slot, true); }));
+  TemporaryRtContext ctx_guard(slot.ctx);
 
   auto op_descs_copy = op_descs;
   auto real_copy_start = std::chrono::steady_clock::now();
-  HIXL_CHK_STATUS_RET(DoTransfer(slot.streams, context, operation, op_descs_copy, real_copy_start),
+  HIXL_CHK_STATUS_RET(DoTransfer(slot, context, operation, op_descs_copy, real_copy_start),
                       "Fabric mem async copy failed.");
   HIXL_CHK_STATUS_RET(AppendHostFlagCopies(slot), "Failed to append fabric mem host flag copies.");
   RegisterAsyncTransferRecord(context, req, std::move(slot), start, real_copy_start, GetTransferBytes(op_descs_copy),
@@ -282,25 +282,53 @@ Status FabricMemTransferService::GetTransferStatus(const FabricMemTransferContex
                                                    TransferStatus &status) {
   const uint64_t req_id = reinterpret_cast<uintptr_t>(req);
   AsyncRecord async_record;
+  bool host_flags_done = false;
   {
     std::lock_guard<std::mutex> lock(async_req_mutex_);
     const auto it = req_2_async_record_.find(req_id);
     HIXL_CHK_BOOL_RET_STATUS(it != req_2_async_record_.end(), FAILED, "Fabric mem request:%lu not found.", req_id);
-    if (!AllHostFlagsDone(it->second.slot)) {
-      status = TransferStatus::WAITING;
-      return SUCCESS;
+    host_flags_done = AllHostFlagsDone(it->second.slot);
+    if (!host_flags_done) {
+      HIXL_LOGW("Fabric mem async transfer host flags not done, req:%lu, querying streams.", req_id);
+      TemporaryRtContext ctx_guard(it->second.slot.ctx);
+      const auto query_result = QueryAsyncSlotStreamsForFailure(it->second.slot);
+      if (query_result == AsyncStreamQueryResult::kFailed) {
+        async_record = std::move(it->second);
+        req_2_async_record_.erase(it);
+        ReleaseAsyncSlot(async_record.slot, true);
+        RemoveChannelReqRelation(context.channel_id, req_id);
+        status = TransferStatus::FAILED;
+        HIXL_LOGE(FAILED, "Fabric mem async transfer failed on stream query, req:%lu.", req_id);
+        return SUCCESS;
+      }
+      if (query_result != AsyncStreamQueryResult::kComplete) {
+        HIXL_LOGW("Fabric mem async transfer still waiting, req:%lu, stream query:not complete.", req_id);
+        status = TransferStatus::WAITING;
+        return SUCCESS;
+      }
+      HIXL_LOGW("Fabric mem async transfer completed via stream query (host flags not done), req:%lu.", req_id);
+    } else {
+      HIXL_LOGI("Fabric mem async transfer host flags done, req:%lu, skipping stream sync.", req_id);
     }
     async_record = std::move(it->second);
     req_2_async_record_.erase(it);
   }
-  HIXL_DISMISSABLE_GUARD(clean_guard, ([this, &context, &async_record, req_id]() {
-                           ReleaseAsyncSlot(async_record.slot, false);
-                           RemoveChannelReqRelation(context.channel_id, req_id);
-                         }));
-  HIXL_CHK_STATUS_RET(CompleteAsyncTransferAndUpdateStats(context, req_id, async_record, status),
-                      "Complete fabric mem async transfer failed.");
-  HIXL_DISMISS_GUARD(clean_guard);
-  return SUCCESS;
+
+  // Host flags done guarantees completion via D2H sentinel on the same stream — no sync needed.
+  // Stream query detected completion — sync to drain device-side errors before recycling resources.
+  if (!host_flags_done) {
+    HIXL_LOGW("Fabric mem stream sync before complete (stream query path), req:%lu.", req_id);
+    TemporaryRtContext ctx_guard(async_record.slot.ctx);
+    if (SynchronizeAsyncSlotStreams(async_record.slot) != SUCCESS) {
+      ReleaseAsyncSlot(async_record.slot, true);
+      RemoveChannelReqRelation(context.channel_id, req_id);
+      status = TransferStatus::FAILED;
+      HIXL_LOGE(FAILED, "Fabric mem async transfer failed on stream synchronize, req:%lu.", req_id);
+      return SUCCESS;
+    }
+  }
+
+  return CompleteAsyncTransferAndUpdateStats(context, req_id, async_record, status);
 }
 
 Status FabricMemTransferService::AppendHostFlagCopies(const AsyncSlot &slot) const {
@@ -323,6 +351,44 @@ bool FabricMemTransferService::AllHostFlagsDone(const AsyncSlot &slot) {
     }
   }
   return !slot.host_flags.empty();
+}
+
+FabricMemTransferService::AsyncStreamQueryResult FabricMemTransferService::QueryAsyncSlotStreamsForFailure(
+    const AsyncSlot &slot) {
+  if (slot.streams.empty()) {
+    HIXL_LOGE(FAILED, "Fabric mem async slot has no streams.");
+    return AsyncStreamQueryResult::kFailed;
+  }
+  bool all_complete = true;
+  for (size_t i = 0U; i < slot.streams.size(); ++i) {
+    aclrtStreamStatus stream_status = ACL_STREAM_STATUS_RESERVED;
+    const aclError ret = aclrtStreamQuery(slot.streams[i], &stream_status);
+    if (ret != ACL_SUCCESS) {
+      HIXL_LOGE(FAILED, "Fabric mem aclrtStreamQuery failed, stream[%zu]:%p, ret:%d.", i,
+                static_cast<void *>(slot.streams[i]), ret);
+      return AsyncStreamQueryResult::kFailed;
+    }
+    HIXL_LOGW("Fabric mem stream query, stream[%zu]:%p, status:%d.", i, static_cast<void *>(slot.streams[i]),
+              static_cast<int32_t>(stream_status));
+    if (stream_status != ACL_STREAM_STATUS_NOT_READY && stream_status != ACL_STREAM_STATUS_COMPLETE) {
+      HIXL_LOGE(FAILED, "Fabric mem aclrtStreamQuery returned unexpected status:%d, stream[%zu]:%p.",
+                static_cast<int32_t>(stream_status), i, static_cast<void *>(slot.streams[i]));
+      return AsyncStreamQueryResult::kFailed;
+    }
+    if (stream_status != ACL_STREAM_STATUS_COMPLETE) {
+      all_complete = false;
+    }
+  }
+  HIXL_LOGW("Fabric mem stream query summary, all_complete:%d, stream count:%zu.", static_cast<int32_t>(all_complete),
+            slot.streams.size());
+  return all_complete ? AsyncStreamQueryResult::kComplete : AsyncStreamQueryResult::kWaiting;
+}
+
+Status FabricMemTransferService::SynchronizeAsyncSlotStreams(const AsyncSlot &slot) {
+  for (const auto &stream : slot.streams) {
+    HIXL_CHK_ACL_RET(aclrtSynchronizeStream(stream), "Synchronize fabric mem async stream failed.");
+  }
+  return SUCCESS;
 }
 
 void FabricMemTransferService::RegisterAsyncTransferRecord(const FabricMemTransferContext &context, TransferReq &req,
@@ -439,12 +505,13 @@ void FabricMemTransferService::FreeAllHostFlagsLocked() {
 
 Status FabricMemTransferService::TryAcquireAsyncSlot(AsyncSlot &slot) {
   std::lock_guard<std::mutex> lock(stream_pool_mutex_);
+  slot.ctx = nullptr;
   slot.streams.clear();
   slot.host_flags.clear();
-  HIXL_CHK_STATUS_RET(TryGetStreamOnceLocked(slot.streams, task_stream_num_),
-                      "Failed to acquire fabric mem async streams.");
+  HIXL_CHK_STATUS_RET(TryAcquireSlotLocked(slot), "Failed to acquire fabric mem async transfer slot.");
   HIXL_DISMISSABLE_GUARD(flag_guard, ([this, &slot]() {
-                           ReturnStreamsLocked(slot.streams);
+                           ReturnSlotLocked(slot);
+                           slot.ctx = nullptr;
                            slot.streams.clear();
                            ReleaseHostFlagsLocked(slot.host_flags);
                          }));
@@ -454,133 +521,143 @@ Status FabricMemTransferService::TryAcquireAsyncSlot(AsyncSlot &slot) {
   return SUCCESS;
 }
 
-void FabricMemTransferService::AbortStreamLocked(aclrtStream stream) {
-  if (stream == nullptr) {
+void FabricMemTransferService::ReleaseAsyncSlot(AsyncSlot &slot, bool destroy_slot) {
+  ReleaseSlot(slot, destroy_slot);
+}
+
+Status FabricMemTransferService::CreateSlotEntryLocked(TransferSlotEntry &entry) {
+  HIXL_CHK_ACL_RET(aclrtCreateContext(&entry.ctx, device_id_), "Create fabric mem transfer context failed.");
+  HIXL_DISMISSABLE_GUARD(ctx_guard, ([&entry]() {
+                           if (entry.ctx != nullptr) {
+                             HIXL_CHK_ACL(aclrtDestroyContext(entry.ctx), "Destroy fabric mem transfer context failed.");
+                             entry.ctx = nullptr;
+                           }
+                         }));
+  TemporaryRtContext with_context(entry.ctx);
+  entry.streams.clear();
+  entry.streams.reserve(task_stream_num_);
+  for (size_t i = 0U; i < task_stream_num_; ++i) {
+    aclrtStream stream = nullptr;
+    HIXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&stream, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC),
+                     "Create fabric mem stream failed.");
+    HIXL_DISMISSABLE_GUARD(stream_guard, ([stream]() {
+                             HIXL_CHK_ACL(aclrtDestroyStream(stream), "Destroy fabric mem stream failed.");
+                           }));
+    HIXL_CHK_ACL_RET(aclrtSetStreamFailureMode(stream, ACL_STOP_ON_FAILURE),
+                     "Set fabric mem stream failure mode failed.");
+    HIXL_DISMISS_GUARD(stream_guard);
+    entry.streams.emplace_back(stream);
+  }
+  entry.available = true;
+  HIXL_DISMISS_GUARD(ctx_guard);
+  return SUCCESS;
+}
+
+void FabricMemTransferService::DestroySlotEntryLocked(TransferSlotEntry &entry, bool abort_streams) {
+  if (entry.ctx == nullptr) {
     return;
   }
-  HIXL_CHK_ACL(aclrtStreamAbort(stream), "Abort fabric mem stream failed.");
-  HIXL_CHK_ACL(aclrtDestroyStream(stream), "Destroy aborted fabric mem stream failed.");
-  stream_pool_.erase(stream);
-}
-
-void FabricMemTransferService::ReleaseAsyncSlot(AsyncSlot &slot, bool abort_streams) {
-  std::lock_guard<std::mutex> lock(stream_pool_mutex_);
-  if (abort_streams) {
-    for (const auto &stream : slot.streams) {
-      AbortStreamLocked(stream);
+  aclrtContext ctx = entry.ctx;
+  entry.ctx = nullptr;
+  {
+    TemporaryRtContext with_context(ctx);
+    for (auto &stream : entry.streams) {
+      if (stream == nullptr) {
+        continue;
+      }
+      if (abort_streams) {
+        HIXL_CHK_ACL(aclrtStreamAbort(stream), "Abort fabric mem stream failed.");
+      }
+      HIXL_CHK_ACL(aclrtDestroyStream(stream), "Destroy fabric mem stream failed.");
+      stream = nullptr;
     }
-  } else {
-    ReturnStreamsLocked(slot.streams);
+    entry.streams.clear();
   }
-  slot.streams.clear();
-  ReleaseHostFlagsLocked(slot.host_flags);
+  HIXL_CHK_ACL(aclrtDestroyContext(ctx), "Destroy fabric mem transfer context failed.");
+  entry.available = false;
 }
 
-Status FabricMemTransferService::TryGetStream(std::vector<aclrtStream> &streams, uint64_t timeout_us) {
+void FabricMemTransferService::ReturnSlotLocked(const AsyncSlot &slot) {
+  for (auto &entry : slot_pool_) {
+    if (entry.ctx != slot.ctx) {
+      continue;
+    }
+    entry.available = true;
+    return;
+  }
+}
+
+Status FabricMemTransferService::TryAcquireSlotLocked(AsyncSlot &slot) {
+  for (auto &entry : slot_pool_) {
+    if (!entry.available || entry.ctx == nullptr || entry.streams.size() != task_stream_num_) {
+      continue;
+    }
+    entry.available = false;
+    slot.ctx = entry.ctx;
+    slot.streams = entry.streams;
+    return SUCCESS;
+  }
+  if (slot_pool_.size() >= max_async_slot_num_) {
+    return FAILED;
+  }
+  TransferSlotEntry entry;
+  const Status status = CreateSlotEntryLocked(entry);
+  if (status != SUCCESS) {
+    return status;
+  }
+  entry.available = false;
+  slot.ctx = entry.ctx;
+  slot.streams = entry.streams;
+  slot_pool_.emplace_back(std::move(entry));
+  return SUCCESS;
+}
+
+Status FabricMemTransferService::TryAcquireSlot(AsyncSlot &slot) {
+  std::lock_guard<std::mutex> lock(stream_pool_mutex_);
+  slot.ctx = nullptr;
+  slot.streams.clear();
+  slot.host_flags.clear();
+  return TryAcquireSlotLocked(slot);
+}
+
+Status FabricMemTransferService::TryAcquireSlotWithTimeout(AsyncSlot &slot, uint64_t timeout_us) {
   const auto start = std::chrono::steady_clock::now();
   while (true) {
-    if (TryGetStreamOnce(streams, task_stream_num_) == SUCCESS) {
+    if (TryAcquireSlot(slot) == SUCCESS) {
       return SUCCESS;
     }
     const auto cost = GetDurationUs(start, std::chrono::steady_clock::now());
-    HIXL_CHK_BOOL_RET_STATUS(cost < timeout_us, TIMEOUT, "Get fabric mem stream timeout.");
+    HIXL_CHK_BOOL_RET_STATUS(cost < timeout_us, TIMEOUT, "Get fabric mem transfer slot timeout.");
     std::this_thread::sleep_for(std::chrono::microseconds(kStreamWaitIntervalUs));
   }
 }
 
-Status FabricMemTransferService::ReuseStreamsLocked(std::vector<aclrtStream> &streams, size_t stream_num) {
-  for (auto &stream_stat : stream_pool_) {
-    if (!stream_stat.second) {
+void FabricMemTransferService::ReleaseSlot(AsyncSlot &slot, bool destroy_slot) {
+  std::lock_guard<std::mutex> lock(stream_pool_mutex_);
+  if (slot.ctx == nullptr) {
+    ReleaseHostFlagsLocked(slot.host_flags);
+    slot.streams.clear();
+    return;
+  }
+  for (auto it = slot_pool_.begin(); it != slot_pool_.end(); ++it) {
+    if (it->ctx != slot.ctx) {
       continue;
     }
-    stream_stat.second = false;
-    streams.emplace_back(stream_stat.first);
-    if (streams.size() >= stream_num) {
-      return SUCCESS;
+    if (destroy_slot) {
+      DestroySlotEntryLocked(*it, true);
+      slot_pool_.erase(it);
+    } else {
+      it->available = true;
     }
+    break;
   }
-  return FAILED;
+  slot.ctx = nullptr;
+  slot.streams.clear();
+  ReleaseHostFlagsLocked(slot.host_flags);
 }
 
-Status FabricMemTransferService::CreateStreamLocked(std::vector<aclrtStream> &streams,
-                                                    std::vector<aclrtStream> &new_streams) const {
-  aclrtStream stream = nullptr;
-  HIXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&stream, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC),
-                   "Create fabric mem stream failed.");
-  streams.emplace_back(stream);
-  new_streams.emplace_back(stream);
-  return SUCCESS;
-}
-
-void FabricMemTransferService::ReturnStreamsLocked(const std::vector<aclrtStream> &streams) {
-  for (auto &stream : streams) {
-    const auto it = stream_pool_.find(stream);
-    if (it == stream_pool_.end()) {
-      continue;
-    }
-    it->second = true;
-  }
-}
-
-void FabricMemTransferService::DestroyStreams(const std::vector<aclrtStream> &streams) {
-  for (auto &stream : streams) {
-    HIXL_CHK_ACL(aclrtDestroyStream(stream), "Destroy newly created fabric mem stream failed.");
-  }
-}
-
-Status FabricMemTransferService::RollbackStreamsLocked(std::vector<aclrtStream> &streams,
-                                                       const std::vector<aclrtStream> &new_streams) {
-  HIXL_EVENT("Fabric mem stream pool is full, current size:%zu.", stream_pool_.size());
-  ReturnStreamsLocked(streams);
-  DestroyStreams(new_streams);
-  streams.clear();
-  return FAILED;
-}
-
-Status FabricMemTransferService::TryGetStreamOnceLocked(std::vector<aclrtStream> &streams, size_t stream_num) {
-  streams.clear();
-  std::vector<aclrtStream> new_streams;
-  if (ReuseStreamsLocked(streams, stream_num) == SUCCESS) {
-    return SUCCESS;
-  }
-  while (streams.size() < stream_num) {
-    if (stream_pool_.size() + new_streams.size() >= max_stream_num_) {
-      return RollbackStreamsLocked(streams, new_streams);
-    }
-    const Status status = CreateStreamLocked(streams, new_streams);
-    if (status != SUCCESS) {
-      ReturnStreamsLocked(streams);
-      DestroyStreams(new_streams);
-      streams.clear();
-      return status;
-    }
-  }
-  for (const auto &stream : streams) {
-    stream_pool_[stream] = false;
-  }
-  return SUCCESS;
-}
-
-Status FabricMemTransferService::TryGetStreamOnce(std::vector<aclrtStream> &streams, size_t stream_num) {
-  std::lock_guard<std::mutex> lock(stream_pool_mutex_);
-  return TryGetStreamOnceLocked(streams, stream_num);
-}
-
-void FabricMemTransferService::ReleaseStreams(std::vector<aclrtStream> &streams, bool abort_streams) {
-  std::lock_guard<std::mutex> lock(stream_pool_mutex_);
-  if (abort_streams) {
-    for (const auto &stream : streams) {
-      AbortStreamLocked(stream);
-    }
-  } else {
-    ReturnStreamsLocked(streams);
-  }
-  streams.clear();
-}
-
-Status FabricMemTransferService::DoTransfer(const std::vector<aclrtStream> &streams,
-                                            const FabricMemTransferContext &context, TransferOp operation,
-                                            std::vector<TransferOpDesc> &op_descs,
+Status FabricMemTransferService::DoTransfer(const AsyncSlot &slot, const FabricMemTransferContext &context,
+                                            TransferOp operation, std::vector<TransferOpDesc> &op_descs,
                                             std::chrono::steady_clock::time_point &start) {
   bool need_trans_local_addr = false;
   HIXL_CHK_STATUS_RET(NeedTransLocalAddr(op_descs, need_trans_local_addr),
@@ -595,7 +672,7 @@ Status FabricMemTransferService::DoTransfer(const std::vector<aclrtStream> &stre
     HIXL_CHK_STATUS_RET(TransLocalHostOpAddrs(op_descs), "Local host fabric mem address translation failed.");
   }
   start = std::chrono::steady_clock::now();
-  HIXL_CHK_STATUS_RET(ProcessCopyWithAsync(streams, operation, op_descs), "Fabric mem async copy failed.");
+  HIXL_CHK_STATUS_RET(ProcessCopyWithAsync(slot, operation, op_descs), "Fabric mem async copy failed.");
   return SUCCESS;
 }
 
@@ -645,13 +722,14 @@ Status FabricMemTransferService::TransLocalHostOpAddrs(std::vector<TransferOpDes
   return SUCCESS;
 }
 
-Status FabricMemTransferService::ProcessCopyWithAsync(const std::vector<aclrtStream> &streams, TransferOp operation,
+Status FabricMemTransferService::ProcessCopyWithAsync(const AsyncSlot &slot, TransferOp operation,
                                                       const std::vector<TransferOpDesc> &op_descs) {
-  HIXL_CHK_BOOL_RET_STATUS(!streams.empty(), PARAM_INVALID, "Fabric mem copy streams cannot be empty.");
-  const size_t stream_count = streams.size();
+  HIXL_CHK_BOOL_RET_STATUS(slot.ctx != nullptr, PARAM_INVALID, "Fabric mem transfer context cannot be null.");
+  HIXL_CHK_BOOL_RET_STATUS(!slot.streams.empty(), PARAM_INVALID, "Fabric mem copy streams cannot be empty.");
+  const size_t stream_count = slot.streams.size();
   size_t stream_idx = 0U;
   for (const auto &op : op_descs) {
-    auto &stream = streams[stream_idx];
+    auto &stream = slot.streams[stream_idx];
     if (++stream_idx >= stream_count) {
       stream_idx = 0U;
     }

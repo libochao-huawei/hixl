@@ -60,8 +60,8 @@ Status FabricMemEngine::InitTransferService() {
   HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(),
                      "[FabricMemEngine] Failed to create fabric mem transfer service.");
   HIXL_CHK_STATUS_RET(
-      fabric_mem_transfer_service_->Initialize(fabric_mem_config_.max_stream_num, fabric_mem_config_.task_stream_num,
-                                               &fabric_mem_statistic_),
+      fabric_mem_transfer_service_->Initialize(device_id_, fabric_mem_config_.max_stream_num,
+                                               fabric_mem_config_.task_stream_num, &fabric_mem_statistic_),
       "[FabricMemEngine] Failed to initialize fabric mem transfer service.");
   return SUCCESS;
 }
@@ -122,8 +122,21 @@ Status FabricMemEngine::Initialize(const std::map<AscendString, AscendString> &o
   HIXL_CHK_BOOL_RET_STATUS(fabric_mem_config_.enabled, PARAM_INVALID,
                            "[FabricMemEngine] EnableUseFabricMem must be 1.");
   auto_connect_ = fabric_mem_config_.auto_connect;
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id_), "[FabricMemEngine] Failed to get device id.");
+  TemporaryRtContext with_context(nullptr);
+  HIXL_CHK_ACL_RET(aclrtCreateContext(&aclrt_context_, device_id_),
+                   "[FabricMemEngine] Failed to create aclrt context.");
+  HIXL_EVENT("[FabricMemEngine] Created aclrt ctx:%p, device:%d.", aclrt_context_, device_id_);
+  HIXL_DISMISSABLE_GUARD(fail_guard, ([this]() {
+                           if (aclrt_context_ != nullptr) {
+                             (void)aclrtDestroyContext(aclrt_context_);
+                             aclrt_context_ = nullptr;
+                           }
+                         }));
+  TemporaryRtContext engine_context(aclrt_context_);
   HIXL_CHK_STATUS_RET(InitFabricMem(), "[FabricMemEngine] Failed to initialize.");
   is_initialized_ = true;
+  HIXL_DISMISS_GUARD(fail_guard);
   HIXL_LOGI("[FabricMemEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
   return SUCCESS;
 }
@@ -135,6 +148,7 @@ bool FabricMemEngine::HasConnectionsLocked() const {
 Status FabricMemEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
   HIXL_LOGI("[FabricMemEngine] Registration started, type:%s, addr:%p, size:%lu", MemTypeToString(type).c_str(),
             reinterpret_cast<void *>(mem.addr), mem.len);
+  TemporaryRtContext with_context(aclrt_context_);
   HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(), "[FabricMemEngine] FabricMem service is null.");
   AddrInfo cur_info{};
   HIXL_CHK_STATUS_RET(BuildAddrInfo(mem, type, cur_info), "[FabricMemEngine] Invalid memory range.");
@@ -163,6 +177,7 @@ Status FabricMemEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle 
 
 Status FabricMemEngine::DeregisterMem(MemHandle mem_handle) {
   HIXL_LOGI("[FabricMemEngine] Deregistration started, handle:%p.", mem_handle);
+  TemporaryRtContext with_context(aclrt_context_);
   HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(), "[FabricMemEngine] FabricMem service is null.");
   std::lock_guard<std::mutex> lock(mutex_);
   const auto it = mem_map_.find(mem_handle);
@@ -179,6 +194,7 @@ Status FabricMemEngine::DeregisterMem(MemHandle mem_handle) {
 }
 
 Status FabricMemEngine::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  TemporaryRtContext with_context(aclrt_context_);
   std::lock_guard<std::mutex> lock(mutex_);
   return ConnectLocked(remote_engine, timeout_in_millis);
 }
@@ -201,9 +217,7 @@ Status FabricMemEngine::CreateAndRegisterRemoteMemory(const std::vector<ShareHan
                                                        const std::string &remote) {
   auto remote_memory = MakeUnique<FabricMemRemoteMemory>();
   HIXL_CHECK_NOTNULL(remote_memory.get(), "[FabricMemEngine] Failed to create remote memory.");
-  int32_t device_id = -1;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id), "[FabricMemEngine] Failed to get device id.");
-  HIXL_CHK_STATUS_RET(remote_memory->Import(share_handles, device_id),
+  HIXL_CHK_STATUS_RET(remote_memory->Import(share_handles, device_id_),
                       "[FabricMemEngine] Failed to import remote memory, remote:%s.", remote.c_str());
   fabric_mem_statistic_.RegisterChannel(FabricMemStatistic::GetClientStatisticChannelId(remote));
   fabric_mem_remote_mems_[remote] = std::move(remote_memory);
@@ -224,6 +238,7 @@ Status FabricMemEngine::EnsureConnected(const AscendString &remote_engine, int32
   Status ret = FabricMemControlClient::Fetch(remote, timeout_in_millis, share_handles, keepalive_fd);
   HIXL_CHK_STATUS_RET(ret,
                       "[FabricMemEngine] Failed to fetch share handles from remote:%s.", remote.c_str());
+  TemporaryRtContext with_context(aclrt_context_);
   std::lock_guard<std::mutex> lock(mutex_);
   if (fabric_mem_remote_mems_.find(remote) != fabric_mem_remote_mems_.end()) {
     if (keepalive_fd >= 0) {
@@ -246,6 +261,7 @@ Status FabricMemEngine::EnsureConnected(const AscendString &remote_engine, int32
 }
 
 Status FabricMemEngine::Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  TemporaryRtContext with_context(aclrt_context_);
   std::lock_guard<std::mutex> lock(mutex_);
   return DisconnectLocked(remote_engine, timeout_in_millis);
 }
@@ -274,6 +290,7 @@ Status FabricMemEngine::DisconnectLocked(const AscendString &remote_engine, int3
 }
 
 void FabricMemEngine::Disconnect() {
+  TemporaryRtContext with_context(aclrt_context_);
   std::lock_guard<std::mutex> lock(mutex_);
   if (fabric_mem_transfer_service_ != nullptr) {
     for (const auto &item : fabric_mem_remote_mems_) {
@@ -317,6 +334,7 @@ Status FabricMemEngine::TransferSync(const AscendString &remote_engine, Transfer
                                      const std::vector<TransferOpDesc> &op_descs, int32_t timeout_in_millis) {
   HixlProfType type = (operation == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
   HIXL_API_PROFILING(type);
+  TemporaryRtContext with_context(aclrt_context_);
   if (auto_connect_) {
     HIXL_CHK_STATUS_RET(EnsureConnected(remote_engine, timeout_in_millis),
                         "[FabricMemEngine] Auto-connect failed, remote:%s.", remote_engine.GetString());
@@ -343,6 +361,7 @@ Status FabricMemEngine::TransferAsync(const AscendString &remote_engine, Transfe
                                       TransferReq &req) {
   (void)optional_args;
   req = nullptr;
+  TemporaryRtContext with_context(aclrt_context_);
   if (auto_connect_) {
     constexpr int32_t kAutoConnectTimeoutMs = 3000;
     HIXL_CHK_STATUS_RET(EnsureConnected(remote_engine, kAutoConnectTimeoutMs),
@@ -372,6 +391,7 @@ Status FabricMemEngine::TransferAsync(const AscendString &remote_engine, Transfe
 }
 
 Status FabricMemEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
+  TemporaryRtContext with_context(aclrt_context_);
   std::lock_guard<std::mutex> lock(mutex_);
   const auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
   const auto it = req_map_.find(id);
@@ -412,26 +432,33 @@ Status FabricMemEngine::GetTransferStatus(const GetTransferStatusArgs &args, std
 }
 
 void FabricMemEngine::CleanupFabricMemLocked() {
-  if (fabric_mem_control_server_ != nullptr) {
-    fabric_mem_control_server_->Stop();
-    fabric_mem_control_server_.reset();
-  }
-  fabric_mem_remote_mems_.clear();
-  for (auto &item : keepalive_fds_) {
-    if (item.second >= 0) {
-      (void)close(item.second);
+  {
+    TemporaryRtContext with_context(aclrt_context_);
+    if (fabric_mem_control_server_ != nullptr) {
+      fabric_mem_control_server_->Stop();
+      fabric_mem_control_server_.reset();
     }
+    fabric_mem_remote_mems_.clear();
+    for (auto &item : keepalive_fds_) {
+      if (item.second >= 0) {
+        (void)close(item.second);
+      }
+    }
+    keepalive_fds_.clear();
+    if (fabric_mem_transfer_service_ != nullptr) {
+      fabric_mem_transfer_service_->Finalize();
+      fabric_mem_transfer_service_.reset();
+    }
+    fabric_mem_statistic_.StopPeriodicDump();
+    mem_map_.clear();
+    req_map_.clear();
+    ReleaseVirtualMemoryManager();
+    is_initialized_ = false;
   }
-  keepalive_fds_.clear();
-  if (fabric_mem_transfer_service_ != nullptr) {
-    fabric_mem_transfer_service_->Finalize();
-    fabric_mem_transfer_service_.reset();
+  if (aclrt_context_ != nullptr) {
+    (void)aclrtDestroyContext(aclrt_context_);
+    aclrt_context_ = nullptr;
   }
-  fabric_mem_statistic_.StopPeriodicDump();
-  mem_map_.clear();
-  req_map_.clear();
-  ReleaseVirtualMemoryManager();
-  is_initialized_ = false;
 }
 
 void FabricMemEngine::Finalize() {
