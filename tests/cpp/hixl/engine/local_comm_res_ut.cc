@@ -58,7 +58,7 @@ std::string GetTestDataDir() {
 constexpr const char *kUrmaAdminPath = "/usr/local/sbin/urma_admin";
 
 // 自定义 MmpaStub：拦截 urma_admin 路径检查，使代码回退到 PATH 查找
-class local_comm_res_mmpa_stub : public hixl::test::KernelJsonMmpaStub {
+class LocalCommResMmpaStub : public hixl::test::KernelJsonMmpaStub {
  public:
   INT32 Access(const CHAR *path_name) override {
     std::string path_str(path_name);
@@ -170,7 +170,7 @@ constexpr const char *kTopoTypeClos = "CLOS";
 // 纯数据驱动测试（无需 DCMI 桩）
 // ============================================================================
 
-class local_comm_res_parse_test : public ::testing::Test {
+class LocalCommResParseTest : public ::testing::Test {
  protected:
   void SetUp() override {
     data_dir_ = GetTestDataDir();
@@ -180,7 +180,7 @@ class local_comm_res_parse_test : public ::testing::Test {
 
 // --- ParseTopoFile ---
 
-TEST_F(local_comm_res_parse_test, ParseTopoFileSuccess) {
+TEST_F(LocalCommResParseTest, ParseTopoFileSuccess) {
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
   TopoData topo_data;
   int32_t ret = ParseTopoFile(topo_path, topo_data);
@@ -194,13 +194,13 @@ TEST_F(local_comm_res_parse_test, ParseTopoFileSuccess) {
   EXPECT_EQ(topo_data.links[0].local_b, 1);
 }
 
-TEST_F(local_comm_res_parse_test, ParseTopoFileNotFound) {
+TEST_F(LocalCommResParseTest, ParseTopoFileNotFound) {
   TopoData topo_data;
   int32_t ret = ParseTopoFile("/nonexistent/path/topo.json", topo_data);
   EXPECT_EQ(ret, PARAM_INVALID);
 }
 
-TEST_F(local_comm_res_parse_test, ParseTopoFileInvalidJson) {
+TEST_F(LocalCommResParseTest, ParseTopoFileInvalidJson) {
   std::string tmp = CreateTempFileWithContent("/tmp/topo_ut_XXXXXX", "not valid json {{{");
   ASSERT_FALSE(tmp.empty());
   TopoData topo_data;
@@ -209,7 +209,7 @@ TEST_F(local_comm_res_parse_test, ParseTopoFileInvalidJson) {
   unlink(tmp.c_str());
 }
 
-TEST_F(local_comm_res_parse_test, ParseTopoFileEmptyEdgeList) {
+TEST_F(LocalCommResParseTest, ParseTopoFileEmptyEdgeList) {
   std::string json = R"({"version":"2.0","peer_count":0,"peer_list":[],"edge_count":0,"edge_list":[]})";
   std::string tmp = CreateTempFileWithContent("/tmp/topo_ut_XXXXXX", json);
   ASSERT_FALSE(tmp.empty());
@@ -220,7 +220,7 @@ TEST_F(local_comm_res_parse_test, ParseTopoFileEmptyEdgeList) {
   unlink(tmp.c_str());
 }
 
-TEST_F(local_comm_res_parse_test, ParseTopoFileEmptyContent) {
+TEST_F(LocalCommResParseTest, ParseTopoFileEmptyContent) {
   // 空文件内容 → FAILED
   std::string tmp = CreateTempFileWithContent("/tmp/topo_ut_XXXXXX", "");
   ASSERT_FALSE(tmp.empty());
@@ -230,7 +230,7 @@ TEST_F(local_comm_res_parse_test, ParseTopoFileEmptyContent) {
   unlink(tmp.c_str());
 }
 
-TEST_F(local_comm_res_parse_test, ParseTopoFileMissingNetLayer) {
+TEST_F(LocalCommResParseTest, ParseTopoFileMissingNetLayer) {
   // edge 对象缺少 net_layer 字段 → 该 edge 被跳过，links 为空
   std::string json =
       R"({"version":"2.0","edge_list":[{"link_type":"PEER2PEER","topo_type":"1DMESH","local_a":0,"local_b":1}]})";
@@ -245,7 +245,7 @@ TEST_F(local_comm_res_parse_test, ParseTopoFileMissingNetLayer) {
 
 // --- ParseRouteFile ---
 
-TEST_F(local_comm_res_parse_test, ParseRouteFileSuccess) {
+TEST_F(LocalCommResParseTest, ParseRouteFileSuccess) {
   std::string route_path = data_dir_ + "route.conf";
   RouteData route_data;
   int32_t ret = ParseRouteFile(route_path, route_data);
@@ -257,13 +257,13 @@ TEST_F(local_comm_res_parse_test, ParseRouteFileSuccess) {
   EXPECT_FALSE(route_data.entries[0].remote_eid.empty());
 }
 
-TEST_F(local_comm_res_parse_test, ParseRouteFileNotFound) {
+TEST_F(LocalCommResParseTest, ParseRouteFileNotFound) {
   RouteData route_data;
   int32_t ret = ParseRouteFile("/nonexistent/path/route.conf", route_data);
   EXPECT_EQ(ret, PARAM_INVALID);
 }
 
-TEST_F(local_comm_res_parse_test, ParseRouteFileMalformed) {
+TEST_F(LocalCommResParseTest, ParseRouteFileMalformed) {
   std::string content = "pair_device_num=1\npair0_dev_id=0\n";  // 缺少 chan 信息
   std::string tmp = CreateTempFileWithContent("/tmp/route_ut_XXXXXX", content);
   ASSERT_FALSE(tmp.empty());
@@ -275,7 +275,7 @@ TEST_F(local_comm_res_parse_test, ParseRouteFileMalformed) {
   unlink(tmp.c_str());
 }
 
-TEST_F(local_comm_res_parse_test, ParseRouteFileMissingPairDeviceNum) {
+TEST_F(LocalCommResParseTest, ParseRouteFileMissingPairDeviceNum) {
   // 缺少 pair_device_num → BuildRouteEntries 返回 FAILED
   std::string content = "pair0_dev_id=0\npair0_chan0_local_eid=0xaa\n";
   std::string tmp = CreateTempFileWithContent("/tmp/route_ut_XXXXXX", content);
@@ -291,11 +291,11 @@ TEST_F(local_comm_res_parse_test, ParseRouteFileMissingPairDeviceNum) {
 // ============================================================================
 
 // MmpaStub 测试基类（公共 SetUp/TearDown，用于需要 PATH 注入的测试）
-class local_comm_res_mmpa_test_base : public ::testing::Test {
+class LocalCommResMmpaTestBase : public ::testing::Test {
  protected:
   void SetUp() override {
     // 设置 MmpaStub 使 urma_admin 绝对路径检查失败，回退到 PATH 查找
-    llm::MmpaStub::GetInstance().SetImpl(std::make_shared<local_comm_res_mmpa_stub>());
+    llm::MmpaStub::GetInstance().SetImpl(std::make_shared<LocalCommResMmpaStub>());
     temp_dir_ = CreateTempDirForUrmaAdmin();
     if (!temp_dir_.empty()) {
       old_path_ = SetUrmaAdminPath(temp_dir_);
@@ -313,7 +313,7 @@ class local_comm_res_mmpa_test_base : public ::testing::Test {
   std::string old_path_;
 };
 
-class local_comm_res_edge_test : public local_comm_res_mmpa_test_base {};
+class LocalCommResEdgeTest : public LocalCommResMmpaTestBase {};
 
 namespace {
 
@@ -368,7 +368,7 @@ std::map<int32_t, NpuRootInfo> MakeNpuRootinfos(int32_t id0, const NpuRootInfo &
 
 // --- GenerateH2DEdges ---
 
-TEST_F(local_comm_res_edge_test, GenerateH2DEdgesSuccess) {
+TEST_F(LocalCommResEdgeTest, GenerateH2DEdgesSuccess) {
   RouteData route_data = MakeTwoEntryRouteData();
 
   std::vector<EndpointConfig> edges;
@@ -383,7 +383,7 @@ TEST_F(local_comm_res_edge_test, GenerateH2DEdgesSuccess) {
   EXPECT_EQ(edges[1].dst_eid, "000000000072008000100000dfdf0001");
 }
 
-TEST_F(local_comm_res_edge_test, GenerateH2DEdgesEmptyRoute) {
+TEST_F(LocalCommResEdgeTest, GenerateH2DEdgesEmptyRoute) {
   RouteData route_data;
   std::vector<EndpointConfig> edges;
   int32_t ret = GenerateH2DEdges(route_data, edges);
@@ -393,7 +393,7 @@ TEST_F(local_comm_res_edge_test, GenerateH2DEdgesEmptyRoute) {
 
 // --- GenerateD2HEdges ---
 
-TEST_F(local_comm_res_edge_test, GenerateD2HEdgesSuccess) {
+TEST_F(LocalCommResEdgeTest, GenerateD2HEdgesSuccess) {
   RouteData route_data = MakeTwoEntryRouteData();
 
   std::vector<EndpointConfig> edges;
@@ -406,7 +406,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2HEdgesSuccess) {
   EXPECT_EQ(edges[0].dst_eid, "000000000002008000100000dfdf0091");  // D2H: dst_eid = local_eid
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2HEdgesEmptyRoute) {
+TEST_F(LocalCommResEdgeTest, GenerateD2HEdgesEmptyRoute) {
   RouteData route_data;
   std::vector<EndpointConfig> edges;
   int32_t ret = GenerateD2HEdges(route_data, 0, edges);
@@ -414,7 +414,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2HEdgesEmptyRoute) {
   EXPECT_TRUE(edges.empty());
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2HEdgesNoMatch) {
+TEST_F(LocalCommResEdgeTest, GenerateD2HEdgesNoMatch) {
   // 所有 entry 的 device_id 都不匹配 phy_dev_id%8
   RouteData route_data;
   RouteEntry e1;
@@ -434,7 +434,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2HEdgesNoMatch) {
   EXPECT_TRUE(edges.empty());
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2HEdgesPhyIdGreaterThan7) {
+TEST_F(LocalCommResEdgeTest, GenerateD2HEdgesPhyIdGreaterThan7) {
   // phy_dev_id=8 → 8%8=0，应匹配 device_id=0 的条目
   RouteData route_data;
   RouteEntry e1;
@@ -461,7 +461,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2HEdgesPhyIdGreaterThan7) {
 
 // --- GenerateD2UEdges (Change #1/#3: plane_pg EID 边生成) ---
 
-TEST_F(local_comm_res_edge_test, GenerateD2UEdgesBothPlanes) {
+TEST_F(LocalCommResEdgeTest, GenerateD2UEdgesBothPlanes) {
   std::vector<EndpointConfig> edges;
   GenerateD2UEdges("pg0_eid", "pg1_eid", edges);
   ASSERT_EQ(edges.size(), 2U);
@@ -472,7 +472,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2UEdgesBothPlanes) {
   EXPECT_EQ(edges[1].plane, "plane_pg_1");
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2UEdgesOnlyPlane0) {
+TEST_F(LocalCommResEdgeTest, GenerateD2UEdgesOnlyPlane0) {
   std::vector<EndpointConfig> edges;
   GenerateD2UEdges("pg0_eid", "", edges);
   ASSERT_EQ(edges.size(), 1U);
@@ -480,7 +480,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2UEdgesOnlyPlane0) {
   EXPECT_EQ(edges[0].plane, "plane_pg_0");
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2UEdgesEmpty) {
+TEST_F(LocalCommResEdgeTest, GenerateD2UEdgesEmpty) {
   std::vector<EndpointConfig> edges;
   GenerateD2UEdges("", "", edges);
   EXPECT_TRUE(edges.empty());
@@ -490,7 +490,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2UEdgesEmpty) {
 // 注意：GenerateH2UEdges 内部调用 GetHostPgEid（依赖 popen urma_admin show），
 // 在 UT 环境中 popen 会失败，因此返回 FAILED。
 
-TEST_F(local_comm_res_edge_test, GenerateH2UEdgesSuccess) {
+TEST_F(LocalCommResEdgeTest, GenerateH2UEdgesSuccess) {
   // urma_admin show 桩函数返回有效输出，GetHostPgEid 应成功
   RouteData route_data = MakeTwoEntryRouteData();
   std::vector<EndpointConfig> edges;
@@ -503,7 +503,7 @@ TEST_F(local_comm_res_edge_test, GenerateH2UEdgesSuccess) {
 
 // --- GenerateD2DEdges ---
 
-TEST_F(local_comm_res_edge_test, GenerateD2DEdgesEmptyTopo) {
+TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesEmptyTopo) {
   TopoData topo_data;
   std::map<int32_t, NpuRootInfo> npu_rootinfos;
   std::vector<EndpointConfig> edges;
@@ -512,7 +512,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2DEdgesEmptyTopo) {
   EXPECT_TRUE(edges.empty());
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2DEdgesNoRootinfoForSelf) {
+TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesNoRootinfoForSelf) {
   // npu_rootinfos 中没有 phy_id=0 的条目 → 返回空
   TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(0, kLinkTypePeer2Peer, kTopoType1DMesh));
   std::map<int32_t, NpuRootInfo> npu_rootinfos;
@@ -522,7 +522,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2DEdgesNoRootinfoForSelf) {
   EXPECT_TRUE(edges.empty());
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2DEdgesSkipNetLayer1) {
+TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipNetLayer1) {
   // net_layer=1 的 link 应被跳过
   TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(1, kLinkTypePeer2Peer, kTopoType1DMesh));
   auto npu_rootinfos = MakeNpuRootinfos(0, MakeRootInfo("0/1", "eid_self"), 1, MakeRootInfo("0/2", "eid_peer"));
@@ -532,7 +532,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2DEdgesSkipNetLayer1) {
   EXPECT_TRUE(edges.empty());
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2DEdgesSkipNonPeer2Peer) {
+TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipNonPeer2Peer) {
   // link_type=PEER2NET 应被跳过
   TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(0, kLinkTypePeer2Net, kTopoType1DMesh));
   NpuRootInfo info = MakeRootInfo("0/1", "eid_self");
@@ -543,7 +543,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2DEdgesSkipNonPeer2Peer) {
   EXPECT_TRUE(edges.empty());
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2DEdgesSkipNon1DMESH) {
+TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipNon1DMESH) {
   // topo_type=CLOS 应被跳过
   TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(0, kLinkTypePeer2Peer, kTopoTypeClos));
   NpuRootInfo info = MakeRootInfo("0/1", "eid_self");
@@ -554,7 +554,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2DEdgesSkipNon1DMESH) {
   EXPECT_TRUE(edges.empty());
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2DEdgesSkipPhyIdNotInLink) {
+TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipPhyIdNotInLink) {
   // phy_id=2 不在 link(local_a=0, local_b=1) 中 → 跳过
   TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(0, kLinkTypePeer2Peer, kTopoType1DMesh));
   NpuRootInfo info = MakeRootInfo("0/1", "eid_a");
@@ -569,7 +569,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2DEdgesSkipPhyIdNotInLink) {
   EXPECT_TRUE(edges.empty());
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2DEdgesSkipEmptyPorts) {
+TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesSkipEmptyPorts) {
   // local_a_ports 为空 → 跳过
   TopoLink link = MakeStandardTopoLink(0, kLinkTypePeer2Peer, kTopoType1DMesh);
   link.local_a_ports = {};
@@ -582,7 +582,7 @@ TEST_F(local_comm_res_edge_test, GenerateD2DEdgesSkipEmptyPorts) {
   EXPECT_TRUE(edges.empty());
 }
 
-TEST_F(local_comm_res_edge_test, GenerateD2DEdgesMatchSuccess) {
+TEST_F(LocalCommResEdgeTest, GenerateD2DEdgesMatchSuccess) {
   // 正常匹配：local_a=0 有 port 0/1 → eid_aaa，local_b=1 有 port 0/2 → eid_bbb
   TopoData topo_data = MakeSingleLinkTopoData(MakeStandardTopoLink(0, kLinkTypePeer2Peer, kTopoType1DMesh));
   auto npu_rootinfos = MakeNpuRootinfos(0, MakeRootInfo("0/1", "eid_aaa"), 1, MakeRootInfo("0/2", "eid_bbb"));
@@ -602,11 +602,11 @@ TEST_F(local_comm_res_edge_test, GenerateD2DEdgesMatchSuccess) {
 // ============================================================================
 
 // LocalCommRes 测试基类（公共 SetUp/TearDown）
-class local_comm_res_test_base : public local_comm_res_mmpa_test_base {
+class LocalCommResTestBase : public LocalCommResMmpaTestBase {
  protected:
   void SetUp() override {
     // 先调用基类 SetUp，完成 MmpaStub + temp_dir 初始化
-    local_comm_res_mmpa_test_base::SetUp();
+    LocalCommResMmpaTestBase::SetUp();
     // 添加 TestBase 特有的初始化
     ResetDcmiStub();
     data_dir_ = GetTestDataDir();
@@ -616,15 +616,15 @@ class local_comm_res_test_base : public local_comm_res_mmpa_test_base {
     // 先执行 TestBase 特有的清理
     ResetDcmiStub();
     // 调用基类 TearDown，完成 temp_dir 清理 + MmpaStub Reset
-    local_comm_res_mmpa_test_base::TearDown();
+    LocalCommResMmpaTestBase::TearDown();
   }
 
   std::string data_dir_;
 };
 
-class local_comm_res_generate_test : public local_comm_res_test_base {};
+class LocalCommResGenerateTest : public LocalCommResTestBase {};
 
-TEST_F(local_comm_res_generate_test, GenerateSuccess) {
+TEST_F(LocalCommResGenerateTest, GenerateSuccess) {
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
   std::string route_path = data_dir_ + "route.conf";
 
@@ -639,7 +639,7 @@ TEST_F(local_comm_res_generate_test, GenerateSuccess) {
   }
 }
 
-TEST_F(local_comm_res_generate_test, GenerateTopoNotFound) {
+TEST_F(LocalCommResGenerateTest, GenerateTopoNotFound) {
   std::string topo_path = "/nonexistent/topo.json";
   std::string route_path = data_dir_ + "route.conf";
 
@@ -648,7 +648,7 @@ TEST_F(local_comm_res_generate_test, GenerateTopoNotFound) {
   EXPECT_EQ(ret, PARAM_INVALID);
 }
 
-TEST_F(local_comm_res_generate_test, GenerateRouteNotFound) {
+TEST_F(LocalCommResGenerateTest, GenerateRouteNotFound) {
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
   std::string route_path = "/nonexistent/route.conf";
 
@@ -658,7 +658,7 @@ TEST_F(local_comm_res_generate_test, GenerateRouteNotFound) {
   EXPECT_NE(ret, SUCCESS);
 }
 
-TEST_F(local_comm_res_generate_test, GenerateGetMainboardIdFailed) {
+TEST_F(LocalCommResGenerateTest, GenerateGetMainboardIdFailed) {
   DcmiStubSetMainboardId(0, -1);  // 模拟失败
 
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
@@ -669,7 +669,7 @@ TEST_F(local_comm_res_generate_test, GenerateGetMainboardIdFailed) {
   EXPECT_NE(ret, SUCCESS);
 }
 
-TEST_F(local_comm_res_generate_test, GenerateGetClosNetInstanceIdFailed) {
+TEST_F(LocalCommResGenerateTest, GenerateGetClosNetInstanceIdFailed) {
   DcmiStubSetSuperPodId(0, -1);  // 模拟 SPOD 查询失败
 
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
@@ -680,7 +680,7 @@ TEST_F(local_comm_res_generate_test, GenerateGetClosNetInstanceIdFailed) {
   EXPECT_NE(ret, SUCCESS);
 }
 
-TEST_F(local_comm_res_generate_test, GeneratePodMainboardId) {
+TEST_F(LocalCommResGenerateTest, GeneratePodMainboardId) {
   DcmiStubSetMainboardId(0x3, 0);  // Pod1
 
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
@@ -692,7 +692,7 @@ TEST_F(local_comm_res_generate_test, GeneratePodMainboardId) {
   EXPECT_FALSE(res.endpoint_list.empty());
 }
 
-TEST_F(local_comm_res_generate_test, GenerateServerMainboardId) {
+TEST_F(LocalCommResGenerateTest, GenerateServerMainboardId) {
   DcmiStubSetMainboardId(0x21, 0);  // Server
 
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
@@ -703,7 +703,7 @@ TEST_F(local_comm_res_generate_test, GenerateServerMainboardId) {
   EXPECT_EQ(ret, SUCCESS);
 }
 
-TEST_F(local_comm_res_generate_test, GenerateBuildNpuRootinfosFailed) {
+TEST_F(LocalCommResGenerateTest, GenerateBuildNpuRootinfosFailed) {
   // URMA 设备数为 0 → BuildNpuRootInfo 返回 FAILED → BuildNpuRootinfos 失败
   DcmiStubSetUrmaDeviceCnt(0, 0);
 
@@ -715,7 +715,7 @@ TEST_F(local_comm_res_generate_test, GenerateBuildNpuRootinfosFailed) {
   EXPECT_EQ(ret, FAILED);
 }
 
-TEST_F(local_comm_res_generate_test, GenerateEmptyAllEdges) {
+TEST_F(LocalCommResGenerateTest, GenerateEmptyAllEdges) {
   // DCMI 仅返回非 PG EID（无 PG EID → clos_pg_eids 为空）
   // BuildNpuRootInfo 因 clos_pg_eids 为空返回 FAILED
   DcmiStubSetEidCount(1);  // 仅返回非 PG EID，plane_pg EID 为空
@@ -738,7 +738,7 @@ TEST_F(local_comm_res_generate_test, GenerateEmptyAllEdges) {
 
 // --- 产品形态覆盖（IsProductServer / IsProductPod / GetMeshDieId） ---
 
-TEST_F(local_comm_res_generate_test, GenerateServerOddMainboardId) {
+TEST_F(LocalCommResGenerateTest, GenerateServerOddMainboardId) {
   // mainboard_id=0x23（奇数，在 [0x21,0x2B] 范围内）→ IsProductServer=true
   DcmiStubSetMainboardId(0x23, 0);
 
@@ -750,7 +750,7 @@ TEST_F(local_comm_res_generate_test, GenerateServerOddMainboardId) {
   EXPECT_FALSE(res.endpoint_list.empty());
 }
 
-TEST_F(local_comm_res_generate_test, GenerateServerEvenMainboardIdInRange2) {
+TEST_F(LocalCommResGenerateTest, GenerateServerEvenMainboardIdInRange2) {
   // mainboard_id=0x42（偶数，在 [0x40,0x46] 范围内）→ IsProductServer=true
   DcmiStubSetMainboardId(0x42, 0);
 
@@ -762,7 +762,7 @@ TEST_F(local_comm_res_generate_test, GenerateServerEvenMainboardIdInRange2) {
   EXPECT_FALSE(res.endpoint_list.empty());
 }
 
-TEST_F(local_comm_res_generate_test, GenerateNotServerEvenInRange1) {
+TEST_F(LocalCommResGenerateTest, GenerateNotServerEvenInRange1) {
   // mainboard_id=0x22（偶数，在 [0x21,0x2B] 范围内但不满足 %2==1）→ IsProductServer=false, IsProductPod=false
   DcmiStubSetMainboardId(0x22, 0);
 
@@ -773,7 +773,7 @@ TEST_F(local_comm_res_generate_test, GenerateNotServerEvenInRange1) {
   EXPECT_EQ(ret, SUCCESS);
 }
 
-TEST_F(local_comm_res_generate_test, GenerateNotServerOddInRange2) {
+TEST_F(LocalCommResGenerateTest, GenerateNotServerOddInRange2) {
   // mainboard_id=0x41（奇数，在 [0x40,0x46] 范围内但不满足 %2==0）→ IsProductServer=false
   DcmiStubSetMainboardId(0x41, 0);
 
@@ -784,7 +784,7 @@ TEST_F(local_comm_res_generate_test, GenerateNotServerOddInRange2) {
   EXPECT_EQ(ret, SUCCESS);
 }
 
-TEST_F(local_comm_res_generate_test, GenerateNotServerBelowRange) {
+TEST_F(LocalCommResGenerateTest, GenerateNotServerBelowRange) {
   // mainboard_id=0x20（低于 [0x21,0x2B]）→ IsProductServer=false
   DcmiStubSetMainboardId(0x20, 0);
 
@@ -795,7 +795,7 @@ TEST_F(local_comm_res_generate_test, GenerateNotServerBelowRange) {
   EXPECT_EQ(ret, SUCCESS);
 }
 
-TEST_F(local_comm_res_generate_test, GenerateNotServerAboveRange) {
+TEST_F(LocalCommResGenerateTest, GenerateNotServerAboveRange) {
   // mainboard_id=0x47（高于 [0x40,0x46]）→ IsProductServer=false
   DcmiStubSetMainboardId(0x47, 0);
 
@@ -806,7 +806,7 @@ TEST_F(local_comm_res_generate_test, GenerateNotServerAboveRange) {
   EXPECT_EQ(ret, SUCCESS);
 }
 
-TEST_F(local_comm_res_generate_test, GeneratePod2MainboardId) {
+TEST_F(LocalCommResGenerateTest, GeneratePod2MainboardId) {
   // mainboard_id=0x5 → IsProductPod=true (Pod2)
   DcmiStubSetMainboardId(0x5, 0);
 
@@ -818,7 +818,7 @@ TEST_F(local_comm_res_generate_test, GeneratePod2MainboardId) {
   EXPECT_FALSE(res.endpoint_list.empty());
 }
 
-TEST_F(local_comm_res_generate_test, GeneratePod3MainboardId) {
+TEST_F(LocalCommResGenerateTest, GeneratePod3MainboardId) {
   // mainboard_id=0x7 → IsProductPod=true (Pod3)
   DcmiStubSetMainboardId(0x7, 0);
 
@@ -832,7 +832,7 @@ TEST_F(local_comm_res_generate_test, GeneratePod3MainboardId) {
 
 // --- CollectRelatedNpuIds / GetMeshDieId 分组覆盖 ---
 
-TEST_F(local_comm_res_generate_test, GeneratePhyIdInSecondGroup) {
+TEST_F(LocalCommResGenerateTest, GeneratePhyIdInSecondGroup) {
   // phy_dev_id=9 → group_start=8, NPU 8-15; GetMeshDieId(9, false) → 9%8=1 → die_id=1
   DcmiStubSetMainboardId(0x3, 0);  // Pod
 
@@ -844,7 +844,7 @@ TEST_F(local_comm_res_generate_test, GeneratePhyIdInSecondGroup) {
   EXPECT_FALSE(res.endpoint_list.empty());
 }
 
-TEST_F(local_comm_res_generate_test, GenerateServerMeshDieId) {
+TEST_F(LocalCommResGenerateTest, GenerateServerMeshDieId) {
   // Server 产品形态 → GetMeshDieId 始终返回 1
   DcmiStubSetMainboardId(0x21, 0);  // Server
 
@@ -858,7 +858,7 @@ TEST_F(local_comm_res_generate_test, GenerateServerMeshDieId) {
 
 // --- 0x 前缀剥离测试 ---
 
-TEST_F(local_comm_res_generate_test, GenerateRouteEidStrips0xPrefix) {
+TEST_F(LocalCommResGenerateTest, GenerateRouteEidStrips0xPrefix) {
   // route.conf 中的 EID 带 0x 前缀 → 最终 endpoint 中应无 0x
   std::string topo_json =
       R"({"version":"2.0","edge_list":[{"net_layer":0,"link_type":"PEER2PEER","topo_type":"1DMESH","local_a":0,"local_b":1,"local_a_ports":["1/0"],"local_b_ports":["1/1"]}]})";
@@ -890,7 +890,7 @@ TEST_F(local_comm_res_generate_test, GenerateRouteEidStrips0xPrefix) {
 
 // --- GetMainboardId / GetClosNetInstanceId 接口覆盖 ---
 
-TEST_F(local_comm_res_generate_test, GetMainboardIdSuccess) {
+TEST_F(LocalCommResGenerateTest, GetMainboardIdSuccess) {
   DcmiStubSetMainboardId(0x42, 0);
   unsigned int mainboard_id = 0;
   int32_t ret = GetMainboardId(0, mainboard_id);
@@ -898,7 +898,7 @@ TEST_F(local_comm_res_generate_test, GetMainboardIdSuccess) {
   EXPECT_EQ(mainboard_id, 0x42U);
 }
 
-TEST_F(local_comm_res_generate_test, GetClosNetInstanceIdSuccess) {
+TEST_F(LocalCommResGenerateTest, GetClosNetInstanceIdSuccess) {
   DcmiStubSetSuperPodId(5, 0);
   std::string net_instance_id;
   int32_t ret = GetClosNetInstanceId(0, net_instance_id);
@@ -908,7 +908,7 @@ TEST_F(local_comm_res_generate_test, GetClosNetInstanceIdSuccess) {
 
 // --- ParseEidByte6 覆盖（rootinfo_builder 模块） ---
 
-TEST(local_comm_res_rootinfo_test, ParseEidByte6ShortEid) {
+TEST(LocalCommResRootinfoTest, ParseEidByte6ShortEid) {
   // EID 长度 < 12 → 返回默认值（全 0）
   EidByte6Info info = ParseEidByte6("0000");
   EXPECT_EQ(info.byte6, 0);
@@ -919,13 +919,13 @@ TEST(local_comm_res_rootinfo_test, ParseEidByte6ShortEid) {
   EXPECT_EQ(info.port, 0);
 }
 
-TEST(local_comm_res_rootinfo_test, ParseEidByte6EmptyEid) {
+TEST(LocalCommResRootinfoTest, ParseEidByte6EmptyEid) {
   EidByte6Info info = ParseEidByte6("");
   EXPECT_EQ(info.byte6, 0);
   EXPECT_FALSE(info.is_pg_eid);
 }
 
-TEST(local_comm_res_rootinfo_test, ParseEidByte6NonPgEid) {
+TEST(LocalCommResRootinfoTest, ParseEidByte6NonPgEid) {
   // byte6=0xf2: high=0xf → die_id=1, is_pg=false, port=2
   // byte6 在 eid.substr(10, 2) 位置，即第 10-11 个字符
   std::string eid = "0000000000f200000000000000000000";
@@ -938,7 +938,7 @@ TEST(local_comm_res_rootinfo_test, ParseEidByte6NonPgEid) {
   EXPECT_EQ(info.port, 2);
 }
 
-TEST(local_comm_res_rootinfo_test, ParseEidByte6PgEid) {
+TEST(LocalCommResRootinfoTest, ParseEidByte6PgEid) {
   // byte6=0x72: high=0x7 → die_id=1, is_pg=true, port=2
   std::string eid = "00000000007200000000000000000000";
   EidByte6Info info = ParseEidByte6(eid);
@@ -949,7 +949,7 @@ TEST(local_comm_res_rootinfo_test, ParseEidByte6PgEid) {
   EXPECT_EQ(info.port, 2);
 }
 
-TEST(local_comm_res_rootinfo_test, ParseEidByte6Die0) {
+TEST(LocalCommResRootinfoTest, ParseEidByte6Die0) {
   // byte6=0x32: high=0x3 → die_id=0, is_pg=true, port=2
   std::string eid = "00000000003200000000000000000000";
   EidByte6Info info = ParseEidByte6(eid);
@@ -964,7 +964,7 @@ TEST(local_comm_res_rootinfo_test, ParseEidByte6Die0) {
 // 通过默认 GenerateLocalCommRes 重载间接测试产品形态匹配逻辑
 // ============================================================================
 
-class local_comm_res_topo_path_test : public ::testing::Test {
+class LocalCommResTopoPathTest : public ::testing::Test {
  protected:
   void SetUp() override {
     DcmiStubSetInitRet(0);
@@ -978,7 +978,7 @@ class local_comm_res_topo_path_test : public ::testing::Test {
   }
 };
 
-TEST_F(local_comm_res_topo_path_test, DefaultOverloadPodMainboardId) {
+TEST_F(LocalCommResTopoPathTest, DefaultOverloadPodMainboardId) {
   // Pod 产品形态（0x3）→ MatchProductForm 匹配 atlas_950_* 前缀
   // 在 UT 环境中 /usr/local/Ascend/driver/topo/950/ 不存在，应返回 PARAM_INVALID
   DcmiStubSetMainboardId(0x3, 0);
@@ -988,7 +988,7 @@ TEST_F(local_comm_res_topo_path_test, DefaultOverloadPodMainboardId) {
   EXPECT_EQ(ret, PARAM_INVALID);
 }
 
-TEST_F(local_comm_res_topo_path_test, DefaultOverloadServerMainboardId) {
+TEST_F(LocalCommResTopoPathTest, DefaultOverloadServerMainboardId) {
   // Server 产品形态（0x21）→ MatchProductForm 匹配 atlas_850_* 前缀
   DcmiStubSetMainboardId(0x21, 0);
   LocalCommRes res;
@@ -996,7 +996,7 @@ TEST_F(local_comm_res_topo_path_test, DefaultOverloadServerMainboardId) {
   EXPECT_EQ(ret, PARAM_INVALID);
 }
 
-TEST_F(local_comm_res_topo_path_test, DefaultOverloadUnknownMainboardId) {
+TEST_F(LocalCommResTopoPathTest, DefaultOverloadUnknownMainboardId) {
   // 未知 mainboard_id（0x99）→ MatchProductForm 返回 false → PARAM_INVALID
   DcmiStubSetMainboardId(0x99, 0);
   LocalCommRes res;
@@ -1004,7 +1004,7 @@ TEST_F(local_comm_res_topo_path_test, DefaultOverloadUnknownMainboardId) {
   EXPECT_EQ(ret, PARAM_INVALID);
 }
 
-TEST_F(local_comm_res_topo_path_test, DefaultOverloadGetMainboardIdFailed) {
+TEST_F(LocalCommResTopoPathTest, DefaultOverloadGetMainboardIdFailed) {
   // GetMainboardId 失败 → 直接返回错误
   DcmiStubSetMainboardId(0, -1);
   LocalCommRes res;
@@ -1016,9 +1016,9 @@ TEST_F(local_comm_res_topo_path_test, DefaultOverloadGetMainboardIdFailed) {
 // Change #2 测试：route.conf 不存在时的 procfs fallback
 // ============================================================================
 
-class local_comm_res_procfs_fallback_test : public local_comm_res_test_base {};
+class LocalCommResProcfsFallbackTest : public LocalCommResTestBase {};
 
-TEST_F(local_comm_res_procfs_fallback_test, RouteNotFoundProcfsNotAvailable) {
+TEST_F(LocalCommResProcfsFallbackTest, RouteNotFoundProcfsNotAvailable) {
   // route.conf 不存在 + procfs 不可用 → 返回 FAILED
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
   std::string route_path = "/nonexistent/route.conf";
@@ -1028,7 +1028,7 @@ TEST_F(local_comm_res_procfs_fallback_test, RouteNotFoundProcfsNotAvailable) {
   EXPECT_NE(ret, SUCCESS);
 }
 
-TEST_F(local_comm_res_procfs_fallback_test, RouteExistsNoFallback) {
+TEST_F(LocalCommResProcfsFallbackTest, RouteExistsNoFallback) {
   // route.conf 存在 → 不触发 procfs fallback → 正常流程
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
   std::string route_path = data_dir_ + "route.conf";
@@ -1039,7 +1039,7 @@ TEST_F(local_comm_res_procfs_fallback_test, RouteExistsNoFallback) {
   EXPECT_FALSE(res.endpoint_list.empty());
 }
 
-TEST_F(local_comm_res_procfs_fallback_test, RouteMalformedProcfsNotAvailable) {
+TEST_F(LocalCommResProcfsFallbackTest, RouteMalformedProcfsNotAvailable) {
   // route.conf 内容格式错误（缺少 pair_device_num）→ ParseRouteFile 返回 FAILED
   // → 触发 procfs fallback → procfs 不可用 → 返回 FAILED
   std::string topo_path = data_dir_ + "server_8p_noroce.json";
@@ -1058,9 +1058,9 @@ TEST_F(local_comm_res_procfs_fallback_test, RouteMalformedProcfsNotAvailable) {
 // 通过 GenerateH2UEdges 直接测试（函数已在 header 中声明）
 // ============================================================================
 
-class local_comm_res_h2_u_test : public local_comm_res_mmpa_test_base {};
+class LocalCommResH2UTest : public LocalCommResMmpaTestBase {};
 
-TEST_F(local_comm_res_h2_u_test, H2UEdgesSuccess) {
+TEST_F(LocalCommResH2UTest, H2UEdgesSuccess) {
   // urma_admin show 桩函数返回有效输出，GetHostPgEid 应成功
   RouteData route_data;
   RouteEntry e;
@@ -1078,7 +1078,7 @@ TEST_F(local_comm_res_h2_u_test, H2UEdgesSuccess) {
   EXPECT_EQ(edges[1].plane, "plane_pg_1");
 }
 
-TEST_F(local_comm_res_h2_u_test, H2UEdgesEmptyRouteData) {
+TEST_F(LocalCommResH2UTest, H2UEdgesEmptyRouteData) {
   // 空 route_data → GetHostPgEid 中找不到匹配的 device_id → FAILED
   RouteData route_data;
   std::vector<EndpointConfig> edges;
@@ -1087,7 +1087,7 @@ TEST_F(local_comm_res_h2_u_test, H2UEdgesEmptyRouteData) {
   EXPECT_TRUE(edges.empty());
 }
 
-TEST_F(local_comm_res_h2_u_test, D2UEdgesSuccessWithBothPlanes) {
+TEST_F(LocalCommResH2UTest, D2UEdgesSuccessWithBothPlanes) {
   // GenerateD2UEdges 不依赖外部命令，可正常测试
   std::vector<EndpointConfig> edges;
   GenerateD2UEdges("plane_pg_0_eid", "plane_pg_1_eid", edges);
@@ -1099,7 +1099,7 @@ TEST_F(local_comm_res_h2_u_test, D2UEdgesSuccessWithBothPlanes) {
   EXPECT_EQ(edges[1].plane, "plane_pg_1");
 }
 
-TEST_F(local_comm_res_h2_u_test, D2UEdgesOnlyPlanePg0) {
+TEST_F(LocalCommResH2UTest, D2UEdgesOnlyPlanePg0) {
   std::vector<EndpointConfig> edges;
   GenerateD2UEdges("pg0_eid", "", edges);
   ASSERT_EQ(edges.size(), 1U);
@@ -1107,7 +1107,7 @@ TEST_F(local_comm_res_h2_u_test, D2UEdgesOnlyPlanePg0) {
   EXPECT_EQ(edges[0].plane, "plane_pg_0");
 }
 
-TEST_F(local_comm_res_h2_u_test, D2UEdgesNoPlanes) {
+TEST_F(LocalCommResH2UTest, D2UEdgesNoPlanes) {
   std::vector<EndpointConfig> edges;
   GenerateD2UEdges("", "", edges);
   EXPECT_TRUE(edges.empty());
@@ -1118,7 +1118,7 @@ TEST_F(local_comm_res_h2_u_test, D2UEdgesNoPlanes) {
 // 验证 CollectAllEdges 在 GetHostPgEid 失败时正确传播错误
 // ============================================================================
 
-TEST_F(local_comm_res_h2_u_test, IntegrationH2USuccess) {
+TEST_F(LocalCommResH2UTest, IntegrationH2USuccess) {
   // urma_admin show 桩函数返回有效数据 → H2U 边生成成功 → 整体成功
   DcmiStubSetInitRet(0);
   DcmiStubSetMainboardId(0x3, 0);
@@ -1144,7 +1144,7 @@ TEST_F(local_comm_res_h2_u_test, IntegrationH2USuccess) {
 // ============================================================================
 
 // Mock IFileAccessor for ProcfsRouteHandler testing
-class mock_procfs_file_accessor : public hixl::ProcfsRouteHandler::IFileAccessor {
+class MockProcfsFileAccessor : public hixl::ProcfsRouteHandler::IFileAccessor {
 public:
     bool FileExists(const std::string& path) override {
         if (file_exists_map_.find(path) != file_exists_map_.end()) {
@@ -1197,7 +1197,7 @@ private:
     bool write_should_fail_ = false;
 };
 
-class procfs_route_handler_test : public ::testing::Test {
+class ProcfsRouteHandlerTest : public ::testing::Test {
 protected:
     void TearDown() override {
         // handler_ will be destroyed automatically
@@ -1213,7 +1213,7 @@ void ConfigureMockForProcfs(hixl::ProcfsRouteHandler& handler,
                             bool asdrv_ub_exists,
                             const std::string& pair_info_content = "",
                             bool write_should_fail = false) {
-    auto mock = std::make_unique<mock_procfs_file_accessor>();
+    auto mock = std::make_unique<MockProcfsFileAccessor>();
     mock->SetFileExists("/proc/ascend_ub/dev_id", ascend_ub_exists);
     mock->SetFileExists("/proc/ascend_ub/pair_info", ascend_ub_exists);
     mock->SetFileExists("/proc/asdrv_ub/dev_id", asdrv_ub_exists);
@@ -1239,7 +1239,7 @@ std::string MakePairInfoContent(const std::string& slot_id,
     return oss.str();
 }
 
-TEST_F(procfs_route_handler_test, GenerateRouteDataProcPathNotFound) {
+TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataProcPathNotFound) {
     // Neither /proc/ascend_ub nor /proc/asdrv_ub exist
     ConfigureMockForProcfs(handler_, false, false, "");
 
@@ -1251,7 +1251,7 @@ TEST_F(procfs_route_handler_test, GenerateRouteDataProcPathNotFound) {
     EXPECT_TRUE(route_data.entries.empty());
 }
 
-TEST_F(procfs_route_handler_test, GenerateRouteDataAscendUbFound) {
+TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataAscendUbFound) {
     ConfigureMockForProcfs(handler_, true, false,
         MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"}, {"0x000000000072008000100000dfdf0001"}));
 
@@ -1266,7 +1266,7 @@ TEST_F(procfs_route_handler_test, GenerateRouteDataAscendUbFound) {
     EXPECT_EQ(route_data.entries[0].remote_eid, "000000000072008000100000dfdf0001");
 }
 
-TEST_F(procfs_route_handler_test, GenerateRouteDataAsdrvUbFound) {
+TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataAsdrvUbFound) {
     // ascend_ub doesn't exist, asdrv_ub exists
     ConfigureMockForProcfs(handler_, false, true,
         MakePairInfoContent("1", {"0x0000000000f2008000100000dfdf0091"}, {"0x000000000072008000100000dfdf0001"}));
@@ -1280,7 +1280,7 @@ TEST_F(procfs_route_handler_test, GenerateRouteDataAsdrvUbFound) {
     EXPECT_EQ(route_data.entries[0].device_id, 1);  // 1 % 8 = 1
 }
 
-TEST_F(procfs_route_handler_test, GenerateRouteDataWriteFails) {
+TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataWriteFails) {
     ConfigureMockForProcfs(handler_, true, false,
         MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"}, {"0x000000000072008000100000dfdf0001"}),
         true);  // write_should_fail = true
@@ -1293,7 +1293,7 @@ TEST_F(procfs_route_handler_test, GenerateRouteDataWriteFails) {
     EXPECT_TRUE(route_data.entries.empty());
 }
 
-TEST_F(procfs_route_handler_test, GenerateRouteDataReadPairInfoFails) {
+TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataReadPairInfoFails) {
     ConfigureMockForProcfs(handler_, true, false, "");
 
     std::set<int32_t> related_npu_ids = {0};
@@ -1304,7 +1304,7 @@ TEST_F(procfs_route_handler_test, GenerateRouteDataReadPairInfoFails) {
     EXPECT_TRUE(route_data.entries.empty());
 }
 
-TEST_F(procfs_route_handler_test, GenerateRouteDataMalformedPairInfo) {
+TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataMalformedPairInfo) {
     ConfigureMockForProcfs(handler_, true, false, "not valid pair info content\n");
 
     std::set<int32_t> related_npu_ids = {0};
@@ -1315,7 +1315,7 @@ TEST_F(procfs_route_handler_test, GenerateRouteDataMalformedPairInfo) {
     EXPECT_TRUE(route_data.entries.empty());
 }
 
-TEST_F(procfs_route_handler_test, GenerateRouteDataMultipleNpus) {
+TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataMultipleNpus) {
     ConfigureMockForProcfs(handler_, true, false,
         MakePairInfoContent("2", {"0x0000000000f2008000100000dfdf0091", "0x0000000000f2008000100000dfdf0092"},
                                   {"0x000000000072008000100000dfdf0001", "0x000000000072008000100000dfdf0002"}));
@@ -1329,7 +1329,7 @@ TEST_F(procfs_route_handler_test, GenerateRouteDataMultipleNpus) {
     ASSERT_EQ(route_data.entries.size(), 4U);
 }
 
-TEST_F(procfs_route_handler_test, GenerateRouteDataEmptyNpuIds) {
+TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataEmptyNpuIds) {
     ConfigureMockForProcfs(handler_, true, false, "");
 
     std::set<int32_t> related_npu_ids;  // empty
@@ -1341,7 +1341,7 @@ TEST_F(procfs_route_handler_test, GenerateRouteDataEmptyNpuIds) {
     EXPECT_TRUE(route_data.entries.empty());
 }
 
-TEST_F(procfs_route_handler_test, GenerateRouteDataNpuIdGreaterThan7) {
+TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataNpuIdGreaterThan7) {
     ConfigureMockForProcfs(handler_, true, false,
         MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"}, {"0x000000000072008000100000dfdf0001"}));
 
@@ -1355,7 +1355,7 @@ TEST_F(procfs_route_handler_test, GenerateRouteDataNpuIdGreaterThan7) {
     EXPECT_EQ(route_data.entries[0].device_id, 2);  // 10 % 8 = 2
 }
 
-TEST_F(procfs_route_handler_test, GenerateRouteDataEid0xPrefixStripped) {
+TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataEid0xPrefixStripped) {
     ConfigureMockForProcfs(handler_, true, false,
         MakePairInfoContent("0", {"0xaa", "0xbb"}, {"0xcc", "0xdd"}));
 
@@ -1373,7 +1373,7 @@ TEST_F(procfs_route_handler_test, GenerateRouteDataEid0xPrefixStripped) {
     EXPECT_EQ(route_data.entries[1].remote_eid, "dd");
 }
 
-TEST_F(procfs_route_handler_test, GenerateRouteDataEidColonStripped) {
+TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataEidColonStripped) {
     ConfigureMockForProcfs(handler_, true, false,
         MakePairInfoContent("0", {"0xaa:bb:cc", "dd:ee:ff"}, {"11:22:33", "44:55:66"}));
 
@@ -1395,7 +1395,7 @@ TEST_F(procfs_route_handler_test, GenerateRouteDataEidColonStripped) {
 // TopoFileFinder UT
 // ============================================================================
 
-class topo_file_finder_test : public ::testing::Test {};
+class TopoFileFinderTest : public ::testing::Test {};
 
 // Helper: Create temp dir with topo files
 std::string CreateTempTopoDir(const std::string& prefix, bool with_850_file, bool with_950_file) {
@@ -1427,7 +1427,7 @@ void CleanupTopoTempDir(const std::string& temp_dir) {
     }
 }
 
-TEST_F(topo_file_finder_test, FindTopoFileServerProduct) {
+TEST_F(TopoFileFinderTest, FindTopoFileServerProduct) {
     // Server 产品 (mainboard_id=0x21) 应匹配 atlas_850_* 前缀
     std::string temp_dir = CreateTempTopoDir("atlas", true, true);
     ASSERT_FALSE(temp_dir.empty());
@@ -1441,7 +1441,7 @@ TEST_F(topo_file_finder_test, FindTopoFileServerProduct) {
     CleanupTopoTempDir(temp_dir);
 }
 
-TEST_F(topo_file_finder_test, FindTopoFilePodProduct) {
+TEST_F(TopoFileFinderTest, FindTopoFilePodProduct) {
     // Pod 产品 (mainboard_id=0x3) 应匹配 atlas_950_* 前缀
     std::string temp_dir = CreateTempTopoDir("atlas", true, true);
     ASSERT_FALSE(temp_dir.empty());
@@ -1455,7 +1455,7 @@ TEST_F(topo_file_finder_test, FindTopoFilePodProduct) {
     CleanupTopoTempDir(temp_dir);
 }
 
-TEST_F(topo_file_finder_test, FindTopoFilePod2Product) {
+TEST_F(TopoFileFinderTest, FindTopoFilePod2Product) {
     // Pod2 产品 (mainboard_id=0x5) 应匹配 atlas_950_* 前缀
     std::string temp_dir = CreateTempTopoDir("atlas", true, true);
     ASSERT_FALSE(temp_dir.empty());
@@ -1469,7 +1469,7 @@ TEST_F(topo_file_finder_test, FindTopoFilePod2Product) {
     CleanupTopoTempDir(temp_dir);
 }
 
-TEST_F(topo_file_finder_test, FindTopoFilePod3Product) {
+TEST_F(TopoFileFinderTest, FindTopoFilePod3Product) {
     // Pod3 产品 (mainboard_id=0x7) 应匹配 atlas_950_* 前缀
     std::string temp_dir = CreateTempTopoDir("atlas", true, true);
     ASSERT_FALSE(temp_dir.empty());
@@ -1483,7 +1483,7 @@ TEST_F(topo_file_finder_test, FindTopoFilePod3Product) {
     CleanupTopoTempDir(temp_dir);
 }
 
-TEST_F(topo_file_finder_test, FindTopoFileServerEvenRange2) {
+TEST_F(TopoFileFinderTest, FindTopoFileServerEvenRange2) {
     // Server 产品偶数范围 (mainboard_id=0x42) 应匹配 atlas_850_* 前缀
     std::string temp_dir = CreateTempTopoDir("atlas", true, true);
     ASSERT_FALSE(temp_dir.empty());
@@ -1497,7 +1497,7 @@ TEST_F(topo_file_finder_test, FindTopoFileServerEvenRange2) {
     CleanupTopoTempDir(temp_dir);
 }
 
-TEST_F(topo_file_finder_test, FindTopoFileDirectoryNotExist) {
+TEST_F(TopoFileFinderTest, FindTopoFileDirectoryNotExist) {
     // 目录不存在应返回空
     hixl::TopoFileFinder finder;
     std::string result = finder.FindTopoFile("/nonexistent/path", 0x21);
@@ -1505,7 +1505,7 @@ TEST_F(topo_file_finder_test, FindTopoFileDirectoryNotExist) {
     EXPECT_TRUE(result.empty());
 }
 
-TEST_F(topo_file_finder_test, FindTopoFileNoMatchingFile) {
+TEST_F(TopoFileFinderTest, FindTopoFileNoMatchingFile) {
     // 目录存在但没有匹配的文件应返回空
     std::string temp_dir = CreateTempTopoDir("atlas", false, false);  // 不创建任何文件
     ASSERT_FALSE(temp_dir.empty());
@@ -1518,7 +1518,7 @@ TEST_F(topo_file_finder_test, FindTopoFileNoMatchingFile) {
     CleanupTopoTempDir(temp_dir);
 }
 
-TEST_F(topo_file_finder_test, FindTopoFileUnknownMainboardId) {
+TEST_F(TopoFileFinderTest, FindTopoFileUnknownMainboardId) {
     // 未知 mainboard_id 应返回空
     std::string temp_dir = CreateTempTopoDir("atlas", true, true);
     ASSERT_FALSE(temp_dir.empty());
@@ -1531,7 +1531,7 @@ TEST_F(topo_file_finder_test, FindTopoFileUnknownMainboardId) {
     CleanupTopoTempDir(temp_dir);
 }
 
-TEST_F(topo_file_finder_test, FindTopoFileServerOddMainboardId) {
+TEST_F(TopoFileFinderTest, FindTopoFileServerOddMainboardId) {
     // Server 产品奇数 mainboard_id (0x23) 应匹配 atlas_850_* 前缀
     std::string temp_dir = CreateTempTopoDir("atlas", true, true);
     ASSERT_FALSE(temp_dir.empty());
