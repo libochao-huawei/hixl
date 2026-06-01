@@ -523,7 +523,7 @@ Status FabricMemTransferService::CreateSlotEntryLocked(TransferSlotEntry &entry)
     entry.streams.emplace_back(stream);
   }
   entry.available = true;
-  HIXL_DISMISS_GUARD(ctx_guard);
+  // HIXL_DISMISS_GUARD(ctx_guard);
   return SUCCESS;
 }
 
@@ -547,7 +547,7 @@ void FabricMemTransferService::DestroySlotEntryLocked(TransferSlotEntry &entry, 
     }
     entry.streams.clear();
   }
-  HIXL_CHK_ACL(aclrtDestroyContext(ctx), "Destroy fabric mem transfer context failed.");
+  // HIXL_CHK_ACL(aclrtDestroyContext(ctx), "Destroy fabric mem transfer context failed.");
   entry.available = false;
 }
 
