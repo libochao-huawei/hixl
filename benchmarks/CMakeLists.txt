@@ -19,4 +19,3 @@ add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 
 add_subdirectory(comm_benchmark)
 add_subdirectory(kv_benchmark)
-add_subdirectory(test_tools)
