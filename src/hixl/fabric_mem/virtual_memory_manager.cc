@@ -13,6 +13,7 @@
 #include <set>
 #include <string>
 
+#include "utils/extern_math_util.h"
 #include "acl/acl.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
@@ -144,7 +145,10 @@ Status VirtualMemoryManager::ReserveMemory(size_t size, uintptr_t &mem_addr) {
   if (!initialized_) {
     HIXL_CHK_STATUS_RET(InitProcess(), "Failed to initialize virtual memory process.");
   }
-  const size_t blocks_needed = (size + kBlockSize - 1) / kBlockSize;
+  size_t rounded_size = 0;
+  HIXL_CHK_BOOL_RET_STATUS(!ge::AddOverflow(size, kBlockSize - 1, rounded_size), PARAM_INVALID,
+                           "Requested size %zu would cause integer overflow.", size);
+  const size_t blocks_needed = rounded_size / kBlockSize;
   HIXL_CHK_BOOL_RET_STATUS(blocks_needed <= num_blocks_, RESOURCE_EXHAUSTED,
                            "Requested size %zu exceeds virtual memory capacity.", size);
 

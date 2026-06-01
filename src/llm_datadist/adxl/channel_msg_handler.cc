@@ -10,6 +10,7 @@
 
 #include "channel_msg_handler.h"
 #include <algorithm>
+#include "utils/extern_math_util.h"
 #include "nlohmann/json.hpp"
 #include "adxl/adxl_types.h"
 #include "common/rank_table_generator.h"
@@ -216,18 +217,21 @@ void ChannelMsgHandler::Finalize() {
 }
 
 Status ChannelMsgHandler::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
+  uintptr_t end_addr = 0;
+  ADXL_CHK_BOOL_RET_STATUS(!ge::AddOverflow(mem.addr, mem.len, end_addr), PARAM_INVALID,
+                           "Address overflow in RegisterMem, addr:0x%lx, len:%lu.", mem.addr, mem.len);
   HcclMem hccl_mem = {};
   hccl_mem.type = type == MEM_DEVICE ? COMM_MEM_TYPE_DEVICE : COMM_MEM_TYPE_HOST;
   hccl_mem.addr = reinterpret_cast<void *>(mem.addr);
   hccl_mem.size = mem.len;
   ADXL_CHK_HCCL_RET(llm::HcclAdapter::GetInstance().HcclRegisterGlobalMem(&hccl_mem, &mem_handle));
-  LLMLOGI("Add local mem range start:%lu, end:%lu, type:%s, channel:%s.", mem.addr, mem.addr + mem.len,
+  LLMLOGI("Add local mem range start:%lu, end:%lu, type:%s, channel:%s.", mem.addr, end_addr,
           hixl::MemTypeToString(static_cast<hixl::MemType>(type)).c_str(), listen_info_.c_str());
   // keep same lock order with DeregisterMem
   std::lock_guard<std::mutex> lock(mutex_);
   ADXL_CHK_BOOL_RET_STATUS(segment_table_ != nullptr, FAILED, "Segment table is null.");
-  segment_table_->AddRange(listen_info_, mem.addr, mem.addr + mem.len, type);
-  handle_to_addr_[mem_handle] = AddrInfo{mem.addr, mem.addr + mem.len, type};
+  segment_table_->AddRange(listen_info_, mem.addr, end_addr, type);
+  handle_to_addr_[mem_handle] = AddrInfo{mem.addr, end_addr, type};
   LLMLOGI("RegisterMem success: handle=%p, total registered handles=%zu.", mem_handle, handle_to_addr_.size());
   return SUCCESS;
 }

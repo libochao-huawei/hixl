@@ -30,6 +30,7 @@ namespace llm {
 namespace {
 constexpr size_t kMaxDimNum = 32U;
 constexpr size_t kAlignment = 4096U;
+constexpr size_t kMaxPoolSize = 128UL * 1024UL * 1024UL * 1024UL;
 
 ge::Status ParseMemoryPoolConfig(const std::string &mem_pool_config, size_t &pool_size, size_t &page_shift) {
   const std::string &json_str = mem_pool_config;
@@ -39,6 +40,8 @@ ge::Status ParseMemoryPoolConfig(const std::string &mem_pool_config, size_t &poo
     LLM_CHK_BOOL_RET_STATUS(json_obj.at("memory_size").is_number_unsigned(), ge::LLM_PARAM_INVALID,
                             "memory_size is not an unsigned integer: config = %s", json_str.c_str());
     pool_size = json_obj.at("memory_size").get<size_t>();
+    LLM_CHK_BOOL_RET_STATUS(pool_size <= kMaxPoolSize, ge::LLM_PARAM_INVALID,
+                            "memory_size (%zu) exceeds maximum allowed value (%zu)", pool_size, kMaxPoolSize);
     if (json_obj.contains("page_shift")) {
       LLM_CHK_BOOL_RET_STATUS(json_obj.at("page_shift").is_number_unsigned(), ge::LLM_PARAM_INVALID,
                               "page_shift is not an unsigned integer: config = %s", json_str.c_str());
