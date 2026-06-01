@@ -332,6 +332,18 @@ TEST_F(DataCacheEngineTest, InitializeMemoryPool_Failed) {
     EXPECT_EQ(llm_mem_pool.Initialize((void *)0x1000000000, config.page_mem_size_total_threshold),
               ge::LLM_PARAM_INVALID);
   }
+  // SIZE_MAX (2^64 - 1): ScalableAllocator 内部 1 + (SIZE_MAX >> page_shift)
+  // 当 page_idem_num=16 时截断为 uint32_t 后为 UINT32_MAX，+1 回绕为 0。
+  // 修复后 +1 溢出被防御，span_layer_capacity_ 不会回绕为 0。
+  // 使用 page_idem_num=63 使 SIZE_MAX >> 63 = 1，resize(2) 不会分配巨大内存。
+  {
+    ScalableConfig config{};
+    config.page_idem_num = 63;
+    config.page_mem_size_total_threshold = SIZE_MAX;
+    llm::SpanAllocatorImp span_allocator;
+    llm::ScalableAllocator allocator(span_allocator, config);
+    EXPECT_NE(allocator.span_layer_capacity_, 0U);
+  }
 }
 
 TEST_F(DataCacheEngineTest, PullCache_D2H_C2C) {
