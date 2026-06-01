@@ -13,6 +13,7 @@
 #include <set>
 #include <string>
 
+#include "utils/extern_math_util.h"
 #include "acl/acl.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"

@@ -116,16 +116,20 @@ void CalcIndicesWithValidRanges(const KvCacheExtParam &ext_param, llm::PullCache
     return;
   }
 
-  uint64_t indices_beg = static_cast<uint64_t>(ext_param.src_layer_range.first * ext_param.tensor_num_per_layer);
-  uint64_t range = static_cast<uint64_t>((ext_param.src_layer_range.second - ext_param.src_layer_range.first + 1) *
-                                          ext_param.tensor_num_per_layer);
+  uint64_t indices_beg = static_cast<uint64_t>(ext_param.src_layer_range.first) *
+                         static_cast<uint64_t>(ext_param.tensor_num_per_layer);
+  uint64_t range = (static_cast<uint64_t>(ext_param.src_layer_range.second) -
+                    static_cast<uint64_t>(ext_param.src_layer_range.first) + 1ULL) *
+                   static_cast<uint64_t>(ext_param.tensor_num_per_layer);
   for (uint64_t i = 0; i < range; i++) {
     pull_cache_param.src_tensor_indices.push_back(indices_beg + i);
   }
 
-  indices_beg = static_cast<uint64_t>(ext_param.dst_layer_range.first * ext_param.tensor_num_per_layer);
-  range = static_cast<uint64_t>((ext_param.dst_layer_range.second - ext_param.dst_layer_range.first + 1) *
-                                ext_param.tensor_num_per_layer);
+  indices_beg = static_cast<uint64_t>(ext_param.dst_layer_range.first) *
+                static_cast<uint64_t>(ext_param.tensor_num_per_layer);
+  range = (static_cast<uint64_t>(ext_param.dst_layer_range.second) -
+           static_cast<uint64_t>(ext_param.dst_layer_range.first) + 1ULL) *
+          static_cast<uint64_t>(ext_param.tensor_num_per_layer);
   for (uint64_t i = 0; i < range; i++) {
     pull_cache_param.dst_tensor_indices.push_back(indices_beg + i);
   }
