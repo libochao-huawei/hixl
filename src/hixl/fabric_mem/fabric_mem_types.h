@@ -39,6 +39,7 @@ struct ShareHandleInfo {
 
 struct AsyncSlot {
   std::vector<aclrtStream> streams;
+  std::vector<aclrtContext> contexts;
   std::vector<void *> host_flags;
 };
 

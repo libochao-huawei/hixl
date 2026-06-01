@@ -17,8 +17,10 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -87,6 +89,57 @@ class FabricMemRuntimeStub : public llm::AclRuntimeStub {
     return llm::AclRuntimeStub::aclrtMemcpyAsync(dst, dest_max, src, src_count, kind, stream);
   }
 
+  aclError aclrtStreamQuery(aclrtStream stream, aclrtStreamStatus *status) override {
+    ++stream_query_count_;
+    if (stream_query_error_ != ACL_ERROR_NONE) {
+      return stream_query_error_;
+    }
+    if (status == nullptr) {
+      return ACL_ERROR_INVALID_PARAM;
+    }
+    if (streams_not_complete_.count(stream) != 0U) {
+      *status = ACL_STREAM_STATUS_NOT_READY;
+      return ACL_ERROR_NONE;
+    }
+    return llm::AclRuntimeStub::aclrtStreamQuery(stream, status);
+  }
+
+  aclError aclrtCreateContext(aclrtContext *context, int32_t deviceId) override {
+    (void)deviceId;
+    *context = reinterpret_cast<aclrtContext>(new uint8_t[8]);
+    return ACL_ERROR_NONE;
+  }
+
+  aclError aclrtDestroyContext(aclrtContext context) override {
+    delete[] reinterpret_cast<uint8_t *>(context);
+    return ACL_ERROR_NONE;
+  }
+
+  aclError aclrtSetCurrentContext(aclrtContext context) override {
+    current_context_ = context;
+    return ACL_ERROR_NONE;
+  }
+
+  aclError aclrtGetCurrentContext(aclrtContext *context) override {
+    *context = current_context_;
+    return ACL_ERROR_NONE;
+  }
+
+  aclError aclrtCtxGetCurrentDefaultStream(aclrtStream *stream) override {
+    *stream = reinterpret_cast<aclrtStream>(new uint8_t[8]);
+    context_to_stream_[current_context_] = *stream;
+    return ACL_ERROR_NONE;
+  }
+
+  aclError aclrtSynchronizeStream(aclrtStream stream) override {
+    ++stream_sync_count_;
+    streams_not_complete_.erase(stream);
+    if (stream_sync_error_ != ACL_ERROR_NONE) {
+      return stream_sync_error_;
+    }
+    return llm::AclRuntimeStub::aclrtSynchronizeStream(stream);
+  }
+
   aclError aclrtStreamAbort(aclrtStream stream) override {
     ++stream_abort_count_;
     return llm::AclRuntimeStub::aclrtStreamAbort(stream);
@@ -109,7 +162,14 @@ class FabricMemRuntimeStub : public llm::AclRuntimeStub {
   size_t memcpy_async_fail_on_count_{0U};
   size_t memcpy_async_count_{0U};
   size_t host_flag_d2h_count_{0U};
+  size_t stream_query_count_{0U};
   size_t stream_abort_count_{0U};
+  aclError stream_query_error_{ACL_ERROR_NONE};
+  aclError stream_sync_error_{ACL_ERROR_NONE};
+  size_t stream_sync_count_{0U};
+  std::set<aclrtStream> streams_not_complete_;
+  aclrtContext current_context_{nullptr};
+  std::unordered_map<aclrtContext, aclrtStream> context_to_stream_;
   size_t malloc_physical_count_{0U};
   aclrtPhysicalMemProp last_physical_mem_prop_{};
 };
@@ -419,17 +479,17 @@ TEST_F(FabricMemTransferServiceUTest, StreamPoolCreateReuseRollbackAndDestroy) {
   ASSERT_EQ(streams.size(), 1U);
   const auto first_stream = streams[0];
   service_.ReleaseStreams(streams);
-  EXPECT_TRUE(streams.empty() || service_.stream_pool_[first_stream]);
+  EXPECT_TRUE(streams.empty() || service_.stream_pool_[first_stream].available);
 
   EXPECT_EQ(service_.TryGetStreamOnce(streams, 1U), SUCCESS);
   ASSERT_EQ(streams.size(), 1U);
   EXPECT_EQ(streams[0], first_stream);
-  EXPECT_FALSE(service_.stream_pool_[first_stream]);
+  EXPECT_FALSE(service_.stream_pool_[first_stream].available);
   service_.ReleaseStreams(streams);
 
   EXPECT_EQ(service_.TryGetStreamOnce(streams, 3U), FAILED);
   EXPECT_TRUE(streams.empty());
-  EXPECT_TRUE(service_.stream_pool_[first_stream]);
+  EXPECT_TRUE(service_.stream_pool_[first_stream].available);
 
   AsyncSlot slot;
   slot.streams = {first_stream};
@@ -468,14 +528,21 @@ TEST_F(FabricMemTransferServiceUTest, AddressTranslationAndCopyValidation) {
 
   std::vector<aclrtStream> streams;
   ASSERT_EQ(service_.TryGetStreamOnce(streams, 2U), SUCCESS);
-  EXPECT_EQ(FabricMemTransferService::ProcessCopyWithAsync({}, WRITE, BuildOpDescs(local, remote)), PARAM_INVALID);
-  EXPECT_EQ(FabricMemTransferService::ProcessCopyWithAsync(streams, WRITE, BuildOpDescs(local, remote)), SUCCESS);
+  std::vector<aclrtContext> contexts;
+  {
+    std::lock_guard<std::mutex> lock(service_.stream_pool_mutex_);
+    for (const auto &s : streams) {
+      contexts.emplace_back(service_.stream_pool_[s].ctx);
+    }
+  }
+  EXPECT_EQ(service_.ProcessCopyWithAsync({}, {}, WRITE, BuildOpDescs(local, remote)), PARAM_INVALID);
+  EXPECT_EQ(service_.ProcessCopyWithAsync(streams, contexts, WRITE, BuildOpDescs(local, remote)), SUCCESS);
   EXPECT_EQ(remote[0], 7U);
   std::fill(std::begin(remote), std::end(remote), 9U);
-  EXPECT_EQ(FabricMemTransferService::ProcessCopyWithAsync(streams, READ, BuildOpDescs(local, remote)), SUCCESS);
+  EXPECT_EQ(service_.ProcessCopyWithAsync(streams, contexts, READ, BuildOpDescs(local, remote)), SUCCESS);
   EXPECT_EQ(local[0], 9U);
   EXPECT_EQ(
-      FabricMemTransferService::ProcessCopyWithAsync(streams, static_cast<TransferOp>(99), BuildOpDescs(local, remote)),
+      service_.ProcessCopyWithAsync(streams, contexts, static_cast<TransferOp>(99), BuildOpDescs(local, remote)),
       PARAM_INVALID);
   service_.ReleaseStreams(streams);
 }
@@ -619,6 +686,10 @@ TEST_F(FabricMemTransferServiceUTest, AsyncTransferWaitsUntilAllHostFlagsDone) {
   ASSERT_EQ(service_.TryAcquireAsyncSlot(slot), SUCCESS);
   ASSERT_EQ(slot.host_flags.size(), 2U);
   *static_cast<uint64_t *>(slot.host_flags[0]) = 1ULL;
+  // Mark streams as not complete so query returns WAITING (not kComplete).
+  for (const auto &stream : slot.streams) {
+    runtime_->streams_not_complete_.insert(stream);
+  }
 
   TransferReq req = reinterpret_cast<TransferReq>(0x2468UL);
   const auto start = std::chrono::steady_clock::now();
@@ -632,6 +703,73 @@ TEST_F(FabricMemTransferServiceUTest, AsyncTransferWaitsUntilAllHostFlagsDone) {
   *static_cast<uint64_t *>(record.slot.host_flags[1]) = 1ULL;
   EXPECT_EQ(service_.GetTransferStatus(BuildContext(), req, status), SUCCESS);
   EXPECT_EQ(status, TransferStatus::COMPLETED);
+}
+
+TEST_F(FabricMemTransferServiceUTest, AsyncTransferStreamQueryFailureReturnsFailedWhileHostFlagPending) {
+  ASSERT_EQ(service_.Initialize(4U, 1U, &statistic_), SUCCESS);
+  AsyncSlot slot;
+  ASSERT_EQ(service_.TryAcquireAsyncSlot(slot), SUCCESS);
+  ASSERT_EQ(service_.AppendHostFlagCopies(slot), SUCCESS);
+
+  TransferReq req = reinterpret_cast<TransferReq>(0x3579UL);
+  const auto start = std::chrono::steady_clock::now();
+  service_.RegisterAsyncTransferRecord(BuildContext(), req, std::move(slot), start, start, 64U, 1U);
+  auto &record = service_.req_2_async_record_[reinterpret_cast<uintptr_t>(req)];
+  for (void *host_flag : record.slot.host_flags) {
+    *static_cast<uint64_t *>(host_flag) = 0ULL;
+  }
+  runtime_->stream_query_error_ = ACL_ERROR_RT_INTERNAL_ERROR;
+
+  TransferStatus status = TransferStatus::WAITING;
+  EXPECT_EQ(service_.GetTransferStatus(BuildContext(), req, status), SUCCESS);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+  EXPECT_GT(runtime_->stream_query_count_, 0U);
+  EXPECT_TRUE(service_.req_2_async_record_.empty());
+}
+
+TEST_F(FabricMemTransferServiceUTest, AsyncTransferHostFlagsDoneSkipsStreamSync) {
+  ASSERT_EQ(service_.Initialize(4U, 1U, &statistic_), SUCCESS);
+  AsyncSlot slot;
+  ASSERT_EQ(service_.TryAcquireAsyncSlot(slot), SUCCESS);
+  ASSERT_EQ(service_.AppendHostFlagCopies(slot), SUCCESS);
+  for (void *host_flag : slot.host_flags) {
+    *static_cast<uint64_t *>(host_flag) = 1ULL;
+  }
+
+  TransferReq req = reinterpret_cast<TransferReq>(0x579BUL);
+  const auto start = std::chrono::steady_clock::now();
+  service_.RegisterAsyncTransferRecord(BuildContext(), req, std::move(slot), start, start, 64U, 1U);
+  // Inject sync error — should be ignored because host flags are done (sync is skipped).
+  runtime_->stream_sync_error_ = ACL_ERROR_RT_INTERNAL_ERROR;
+
+  TransferStatus status = TransferStatus::WAITING;
+  EXPECT_EQ(service_.GetTransferStatus(BuildContext(), req, status), SUCCESS);
+  EXPECT_EQ(status, TransferStatus::COMPLETED);
+  EXPECT_EQ(runtime_->stream_sync_count_, 0U);
+  EXPECT_TRUE(service_.req_2_async_record_.empty());
+}
+
+TEST_F(FabricMemTransferServiceUTest, AsyncTransferStreamQueryCompleteTriggersSync) {
+  ASSERT_EQ(service_.Initialize(4U, 1U, &statistic_), SUCCESS);
+  AsyncSlot slot;
+  ASSERT_EQ(service_.TryAcquireAsyncSlot(slot), SUCCESS);
+  ASSERT_EQ(service_.AppendHostFlagCopies(slot), SUCCESS);
+
+  TransferReq req = reinterpret_cast<TransferReq>(0x468AUL);
+  const auto start = std::chrono::steady_clock::now();
+  service_.RegisterAsyncTransferRecord(BuildContext(), req, std::move(slot), start, start, 64U, 1U);
+  auto &record = service_.req_2_async_record_[reinterpret_cast<uintptr_t>(req)];
+  // Host flags not done, but streams report COMPLETE via query.
+  for (void *host_flag : record.slot.host_flags) {
+    *static_cast<uint64_t *>(host_flag) = 0ULL;
+  }
+  runtime_->stream_sync_error_ = ACL_ERROR_RT_INTERNAL_ERROR;
+
+  TransferStatus status = TransferStatus::WAITING;
+  EXPECT_EQ(service_.GetTransferStatus(BuildContext(), req, status), SUCCESS);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+  EXPECT_GT(runtime_->stream_sync_count_, 0U);
+  EXPECT_TRUE(service_.req_2_async_record_.empty());
 }
 
 TEST_F(FabricMemTransferServiceUTest, AsyncTransferRemoveChannelAbortsStreams) {

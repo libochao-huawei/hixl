@@ -50,12 +50,21 @@ class FabricMemTransferService {
   static Status FreeMem(void *ptr);
 
  private:
+  enum class AsyncStreamQueryResult { kWaiting, kFailed, kComplete };
+
+  struct StreamPoolEntry {
+    aclrtContext ctx = nullptr;
+    bool available = true;
+  };
+
   Status InitDevConstOne();
   void FreeDevConstOne();
   Status TryAcquireAsyncSlot(AsyncSlot &slot);
   void ReleaseAsyncSlot(AsyncSlot &slot, bool abort_streams);
   Status AppendHostFlagCopies(const AsyncSlot &slot) const;
   static bool AllHostFlagsDone(const AsyncSlot &slot);
+  static AsyncStreamQueryResult QueryAsyncSlotStreamsForFailure(const AsyncSlot &slot);
+  static Status SynchronizeAsyncSlotStreams(const AsyncSlot &slot);
   void RegisterAsyncTransferRecord(const FabricMemTransferContext &context, TransferReq &req, AsyncSlot &&slot,
                                    const std::chrono::steady_clock::time_point &transfer_start,
                                    const std::chrono::steady_clock::time_point &real_copy_start,
@@ -68,17 +77,17 @@ class FabricMemTransferService {
   void FreeAllHostFlagsLocked();
   void AbortStreamLocked(aclrtStream stream);
   Status ReuseStreamsLocked(std::vector<aclrtStream> &streams, size_t stream_num);
-  Status CreateStreamLocked(std::vector<aclrtStream> &streams, std::vector<aclrtStream> &new_streams) const;
-  Status RollbackStreamsLocked(std::vector<aclrtStream> &streams, const std::vector<aclrtStream> &new_streams);
+  Status CreateStreamLocked(std::vector<aclrtStream> &streams, std::vector<aclrtContext> &new_contexts) const;
+  Status RollbackStreamsLocked(std::vector<aclrtStream> &streams, const std::vector<aclrtContext> &new_contexts);
   void ReturnStreamsLocked(const std::vector<aclrtStream> &streams);
-  static void DestroyStreams(const std::vector<aclrtStream> &streams);
+  static void DestroyContexts(const std::vector<aclrtContext> &contexts);
   Status TryGetStreamOnce(std::vector<aclrtStream> &streams, size_t stream_num);
-  Status TryGetStream(std::vector<aclrtStream> &streams, uint64_t timeout_us);
-  static Status ProcessCopyWithAsync(const std::vector<aclrtStream> &streams, TransferOp operation,
-                                     const std::vector<TransferOpDesc> &op_descs);
-  Status DoTransfer(const std::vector<aclrtStream> &streams, const FabricMemTransferContext &context,
-                    TransferOp operation, std::vector<TransferOpDesc> &op_descs,
-                    std::chrono::steady_clock::time_point &start);
+  Status TryGetStream(std::vector<aclrtStream> &streams, std::vector<aclrtContext> &contexts, uint64_t timeout_us);
+  Status ProcessCopyWithAsync(const std::vector<aclrtStream> &streams, const std::vector<aclrtContext> &contexts,
+                              TransferOp operation, const std::vector<TransferOpDesc> &op_descs);
+  Status DoTransfer(const std::vector<aclrtStream> &streams, const std::vector<aclrtContext> &contexts,
+                    const FabricMemTransferContext &context, TransferOp operation,
+                    std::vector<TransferOpDesc> &op_descs, std::chrono::steady_clock::time_point &start);
   void ReleaseStreams(std::vector<aclrtStream> &streams, bool abort_streams = false);
   void RemoveChannelReqRelation(const std::string &channel_id, uint64_t req_id);
   static Status TransOpAddr(uintptr_t old_addr, size_t len,
@@ -102,7 +111,7 @@ class FabricMemTransferService {
   FabricMemStatistic *statistic_{nullptr};
 
   std::mutex stream_pool_mutex_;
-  std::unordered_map<aclrtStream, bool> stream_pool_;
+  std::unordered_map<aclrtStream, StreamPoolEntry> stream_pool_;
   std::vector<void *> free_host_flags_;
   size_t allocated_host_flag_count_{0};
   void *dev_const_one_{nullptr};
