@@ -289,26 +289,25 @@ Status FabricMemTransferService::GetTransferStatus(const FabricMemTransferContex
     HIXL_CHK_BOOL_RET_STATUS(it != req_2_async_record_.end(), FAILED, "Fabric mem request:%lu not found.", req_id);
     host_flags_done = AllHostFlagsDone(it->second.slot);
     if (!host_flags_done) {
-      HIXL_LOGW("Fabric mem async transfer host flags not done, req:%lu, querying streams.", req_id);
-      TemporaryRtContext ctx_guard(it->second.slot.ctx);
-      const auto query_result = QueryAsyncSlotStreamsForFailure(it->second.slot);
-      if (query_result == AsyncStreamQueryResult::kFailed) {
-        async_record = std::move(it->second);
-        req_2_async_record_.erase(it);
-        ReleaseAsyncSlot(async_record.slot, true);
-        RemoveChannelReqRelation(context.channel_id, req_id);
-        status = TransferStatus::FAILED;
-        HIXL_LOGE(FAILED, "Fabric mem async transfer failed on stream query, req:%lu.", req_id);
+      status = TransferStatus::WAITING;
         return SUCCESS;
-      }
-      if (query_result != AsyncStreamQueryResult::kComplete) {
-        HIXL_LOGW("Fabric mem async transfer still waiting, req:%lu, stream query:not complete.", req_id);
-        status = TransferStatus::WAITING;
-        return SUCCESS;
-      }
-      HIXL_LOGW("Fabric mem async transfer completed via stream query (host flags not done), req:%lu.", req_id);
-    } else {
-      HIXL_LOGI("Fabric mem async transfer host flags done, req:%lu, skipping stream sync.", req_id);
+      // TemporaryRtContext ctx_guard(it->second.slot.ctx);
+      // const auto query_result = QueryAsyncSlotStreamsForFailure(it->second.slot);
+      // if (query_result == AsyncStreamQueryResult::kFailed) {
+      //   async_record = std::move(it->second);
+      //   req_2_async_record_.erase(it);
+      //   ReleaseAsyncSlot(async_record.slot, true);
+      //   RemoveChannelReqRelation(context.channel_id, req_id);
+      //   status = TransferStatus::FAILED;
+      //   HIXL_LOGE(FAILED, "Fabric mem async transfer failed on stream query, req:%lu.", req_id);
+      //   return SUCCESS;
+      // }
+      // if (query_result != AsyncStreamQueryResult::kComplete) {
+      //   HIXL_LOGW("Fabric mem async transfer still waiting, req:%lu, stream query:not complete.", req_id);
+      //   status = TransferStatus::WAITING;
+      //   return SUCCESS;
+      // }
+      
     }
     async_record = std::move(it->second);
     req_2_async_record_.erase(it);
@@ -354,8 +353,6 @@ FabricMemTransferService::AsyncStreamQueryResult FabricMemTransferService::Query
                 static_cast<void *>(slot.streams[i]), ret);
       return AsyncStreamQueryResult::kFailed;
     }
-    HIXL_LOGW("Fabric mem stream query, stream[%zu]:%p, status:%d.", i, static_cast<void *>(slot.streams[i]),
-              static_cast<int32_t>(stream_status));
     if (stream_status != ACL_STREAM_STATUS_NOT_READY && stream_status != ACL_STREAM_STATUS_COMPLETE) {
       HIXL_LOGE(FAILED, "Fabric mem aclrtStreamQuery returned unexpected status:%d, stream[%zu]:%p.",
                 static_cast<int32_t>(stream_status), i, static_cast<void *>(slot.streams[i]));
@@ -365,8 +362,6 @@ FabricMemTransferService::AsyncStreamQueryResult FabricMemTransferService::Query
       all_complete = false;
     }
   }
-  HIXL_LOGW("Fabric mem stream query summary, all_complete:%d, stream count:%zu.", static_cast<int32_t>(all_complete),
-            slot.streams.size());
   return all_complete ? AsyncStreamQueryResult::kComplete : AsyncStreamQueryResult::kWaiting;
 }
 
