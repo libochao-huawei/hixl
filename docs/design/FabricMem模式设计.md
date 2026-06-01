@@ -187,7 +187,7 @@ sequenceDiagram
    - `FabricMemTransferService`进行用户地址和映射地址转换。
    - 从stream pool获取任务需要的流资源。
    - 使用`aclrtMemcpyAsync`执行内存拷贝操作。
-   - 同步传输阻塞等待；异步传输在每个copy stream上追加host flag D2H，轮询host flag判定完成（不再使用EventRecord/query event）。
+   - 同步传输阻塞等待；异步传输在每个copy stream上追加host flag D2H，优先轮询host flag判定完成；host flag未完成时通过`aclrtStreamQuery`提前感知stream异常；全部host flag完成后调用`aclrtSynchronizeStream`确认并回收Device侧错误；FabricMem创建的stream默认`ACL_STOP_ON_FAILURE`（遇错即停）。
    - 传输耗时、真实拷贝耗时、总字节数和op desc数量记录在`FabricMemStatistic`中。
 
 5. **资源清理阶段**：

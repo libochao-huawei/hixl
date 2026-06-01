@@ -210,6 +210,28 @@ aclError AclRuntimeStub::aclrtStreamAbort(aclrtStream stream) {
 
 aclError AclRuntimeStub::aclrtStreamWaitEvent(aclrtStream stream, aclrtEvent event) {
   (void)stream;
+  (void)event;
+  return ACL_ERROR_NONE;
+}
+
+aclError AclRuntimeStub::aclrtStreamQuery(aclrtStream stream, aclrtStreamStatus *status) {
+  if (status == nullptr) {
+    return ACL_ERROR_INVALID_PARAM;
+  }
+  if (std::string(__FUNCTION__) == g_acl_stub_mock) {
+    return ACL_ERROR_RT_INTERNAL_ERROR;
+  }
+  (void)stream;
+  *status = ACL_STREAM_STATUS_COMPLETE;
+  return ACL_ERROR_NONE;
+}
+
+aclError AclRuntimeStub::aclrtSetStreamFailureMode(aclrtStream stream, uint64_t mode) {
+  (void)stream;
+  (void)mode;
+  if (std::string(__FUNCTION__) == g_acl_stub_mock) {
+    return ACL_ERROR_RT_INTERNAL_ERROR;
+  }
   return ACL_ERROR_NONE;
 }
 
@@ -721,6 +743,14 @@ aclError aclrtStreamAbort(aclrtStream stream) {
 
 aclError aclrtStreamWaitEvent(aclrtStream stream, aclrtEvent event) {
   return llm::AclRuntimeStub::GetInstance()->aclrtStreamWaitEvent(stream, event);
+}
+
+aclError aclrtStreamQuery(aclrtStream stream, aclrtStreamStatus *status) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtStreamQuery(stream, status);
+}
+
+aclError aclrtSetStreamFailureMode(aclrtStream stream, uint64_t mode) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtSetStreamFailureMode(stream, mode);
 }
 
 aclError aclrtSynchronizeStream(aclrtStream stream) {
