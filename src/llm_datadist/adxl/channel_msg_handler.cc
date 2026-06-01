@@ -10,6 +10,7 @@
 
 #include "channel_msg_handler.h"
 #include <algorithm>
+#include "utils/extern_math_util.h"
 #include "nlohmann/json.hpp"
 #include "adxl/adxl_types.h"
 #include "common/rank_table_generator.h"
