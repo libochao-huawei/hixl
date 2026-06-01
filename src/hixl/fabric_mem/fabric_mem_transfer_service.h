@@ -50,12 +50,16 @@ class FabricMemTransferService {
   static Status FreeMem(void *ptr);
 
  private:
+  enum class AsyncStreamQueryResult { kWaiting, kFailed, kComplete };
+
   Status InitDevConstOne();
   void FreeDevConstOne();
   Status TryAcquireAsyncSlot(AsyncSlot &slot);
   void ReleaseAsyncSlot(AsyncSlot &slot, bool abort_streams);
   Status AppendHostFlagCopies(const AsyncSlot &slot) const;
   static bool AllHostFlagsDone(const AsyncSlot &slot);
+  static AsyncStreamQueryResult QueryAsyncSlotStreamsForFailure(const AsyncSlot &slot);
+  static Status SynchronizeAsyncSlotStreams(const AsyncSlot &slot);
   void RegisterAsyncTransferRecord(const FabricMemTransferContext &context, TransferReq &req, AsyncSlot &&slot,
                                    const std::chrono::steady_clock::time_point &transfer_start,
                                    const std::chrono::steady_clock::time_point &real_copy_start,

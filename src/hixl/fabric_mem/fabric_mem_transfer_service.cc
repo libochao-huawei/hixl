@@ -282,25 +282,45 @@ Status FabricMemTransferService::GetTransferStatus(const FabricMemTransferContex
                                                    TransferStatus &status) {
   const uint64_t req_id = reinterpret_cast<uintptr_t>(req);
   AsyncRecord async_record;
+  bool host_flags_done = false;
   {
     std::lock_guard<std::mutex> lock(async_req_mutex_);
     const auto it = req_2_async_record_.find(req_id);
     HIXL_CHK_BOOL_RET_STATUS(it != req_2_async_record_.end(), FAILED, "Fabric mem request:%lu not found.", req_id);
-    if (!AllHostFlagsDone(it->second.slot)) {
-      status = TransferStatus::WAITING;
-      return SUCCESS;
+    host_flags_done = AllHostFlagsDone(it->second.slot);
+    if (!host_flags_done) {
+      const auto query_result = QueryAsyncSlotStreamsForFailure(it->second.slot);
+      if (query_result == AsyncStreamQueryResult::kFailed) {
+        async_record = std::move(it->second);
+        req_2_async_record_.erase(it);
+        ReleaseAsyncSlot(async_record.slot, true);
+        RemoveChannelReqRelation(context.channel_id, req_id);
+        status = TransferStatus::FAILED;
+        HIXL_LOGE(FAILED, "Fabric mem async transfer failed on stream query, req:%lu.", req_id);
+        return SUCCESS;
+      }
+      if (query_result != AsyncStreamQueryResult::kComplete) {
+        status = TransferStatus::WAITING;
+        return SUCCESS;
+      }
     }
     async_record = std::move(it->second);
     req_2_async_record_.erase(it);
   }
-  HIXL_DISMISSABLE_GUARD(clean_guard, ([this, &context, &async_record, req_id]() {
-                           ReleaseAsyncSlot(async_record.slot, false);
-                           RemoveChannelReqRelation(context.channel_id, req_id);
-                         }));
-  HIXL_CHK_STATUS_RET(CompleteAsyncTransferAndUpdateStats(context, req_id, async_record, status),
-                      "Complete fabric mem async transfer failed.");
-  HIXL_DISMISS_GUARD(clean_guard);
-  return SUCCESS;
+
+  // Host flags done guarantees completion via D2H sentinel on the same stream — no sync needed.
+  // Stream query detected completion — sync to drain device-side errors before recycling resources.
+  if (!host_flags_done) {
+    if (SynchronizeAsyncSlotStreams(async_record.slot) != SUCCESS) {
+      ReleaseAsyncSlot(async_record.slot, true);
+      RemoveChannelReqRelation(context.channel_id, req_id);
+      status = TransferStatus::FAILED;
+      HIXL_LOGE(FAILED, "Fabric mem async transfer failed on stream synchronize, req:%lu.", req_id);
+      return SUCCESS;
+    }
+  }
+
+  return CompleteAsyncTransferAndUpdateStats(context, req_id, async_record, status);
 }
 
 Status FabricMemTransferService::AppendHostFlagCopies(const AsyncSlot &slot) const {
@@ -323,6 +343,39 @@ bool FabricMemTransferService::AllHostFlagsDone(const AsyncSlot &slot) {
     }
   }
   return !slot.host_flags.empty();
+}
+
+FabricMemTransferService::AsyncStreamQueryResult FabricMemTransferService::QueryAsyncSlotStreamsForFailure(
+    const AsyncSlot &slot) {
+  if (slot.streams.empty()) {
+    HIXL_LOGE(FAILED, "Fabric mem async slot has no streams.");
+    return AsyncStreamQueryResult::kFailed;
+  }
+  bool all_complete = true;
+  for (const auto &stream : slot.streams) {
+    aclrtStreamStatus stream_status = ACL_STREAM_STATUS_RESERVED;
+    const aclError ret = aclrtStreamQuery(stream, &stream_status);
+    if (ret != ACL_SUCCESS) {
+      HIXL_LOGE(FAILED, "Fabric mem aclrtStreamQuery failed, ret:%d.", ret);
+      return AsyncStreamQueryResult::kFailed;
+    }
+    if (stream_status != ACL_STREAM_STATUS_NOT_READY && stream_status != ACL_STREAM_STATUS_COMPLETE) {
+      HIXL_LOGE(FAILED, "Fabric mem aclrtStreamQuery returned unexpected status:%d.",
+                static_cast<int32_t>(stream_status));
+      return AsyncStreamQueryResult::kFailed;
+    }
+    if (stream_status != ACL_STREAM_STATUS_COMPLETE) {
+      all_complete = false;
+    }
+  }
+  return all_complete ? AsyncStreamQueryResult::kComplete : AsyncStreamQueryResult::kWaiting;
+}
+
+Status FabricMemTransferService::SynchronizeAsyncSlotStreams(const AsyncSlot &slot) {
+  for (const auto &stream : slot.streams) {
+    HIXL_CHK_ACL_RET(aclrtSynchronizeStream(stream), "Synchronize fabric mem async stream failed.");
+  }
+  return SUCCESS;
 }
 
 void FabricMemTransferService::RegisterAsyncTransferRecord(const FabricMemTransferContext &context, TransferReq &req,
@@ -507,6 +560,12 @@ Status FabricMemTransferService::CreateStreamLocked(std::vector<aclrtStream> &st
   aclrtStream stream = nullptr;
   HIXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&stream, 0, ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC),
                    "Create fabric mem stream failed.");
+  HIXL_DISMISSABLE_GUARD(stream_guard, ([stream]() {
+                           HIXL_CHK_ACL(aclrtDestroyStream(stream), "Destroy fabric mem stream failed.");
+                         }));
+  HIXL_CHK_ACL_RET(aclrtSetStreamFailureMode(stream, ACL_STOP_ON_FAILURE),
+                   "Set fabric mem stream failure mode failed.");
+  HIXL_DISMISS_GUARD(stream_guard);
   streams.emplace_back(stream);
   new_streams.emplace_back(stream);
   return SUCCESS;
