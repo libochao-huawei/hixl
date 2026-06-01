@@ -85,6 +85,14 @@ constexpr size_t kSecondElementSize = 2;  // 第二元素 size 检查
 constexpr uint32_t kOddParity = 1;        // 奇校验
 constexpr uint32_t kEvenParity = 0;       // 偶校验
 
+// 产品形态判断函数
+inline bool IsProductServer(uint32_t mainboard_id) {
+  return ((mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax1 &&
+           (mainboard_id % 2 == kOddParity)) ||
+          (mainboard_id >= kMainboardIdServerMin2 && mainboard_id <= kMainboardIdServerMax2 &&
+           (mainboard_id % 2 == kEvenParity)));
+}
+
 // topo 文件名前缀
 constexpr const char *kTopoPrefixAtlas950 = "atlas_950_";
 constexpr const char *kTopoPrefixAtlas850 = "atlas_850_";
@@ -95,7 +103,6 @@ constexpr const char *kProcPathAsdrvUb = "/proc/asdrv_ub";
 
 // urma_admin 命令路径常量
 constexpr const char *kUrmaAdminPath = "/usr/local/sbin/urma_admin";
-constexpr const char *kProcNamespaceNode = "/proc/uda/namespace_node";
 constexpr const char *kProcDevIdFile = "dev_id";
 constexpr const char *kProcPairInfoFile = "pair_info";
 
@@ -130,319 +137,7 @@ struct EdgeCollectInput {
   const std::string &plane_pg_1_eid;
 };
 
-// 产品形态判定
-bool IsProductServer(uint32_t mainboard_id) {
-  return ((mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax1 &&
-           (mainboard_id % 2 == kOddParity)) ||
-          (mainboard_id >= kMainboardIdServerMin2 && mainboard_id <= kMainboardIdServerMax2 &&
-           (mainboard_id % 2 == kEvenParity)));
-}
-
-// 根据 mainboard_id 获取产品形态对应的 topo 文件名前缀
-// Pod 产品（0x3/0x5/0x7）：atlas_950_
-// Server 产品（0x21-0x2B 奇数, 0x40-0x46 偶数）：atlas_850_
-bool MatchProductForm(uint32_t mainboard_id, std::string &topo_prefix) {
-  if (mainboard_id == kMainboardIdPod1 || mainboard_id == kMainboardIdPod2 || mainboard_id == kMainboardIdPod3) {
-    topo_prefix = kTopoPrefixAtlas950;
-    return true;
-  }
-  if (IsProductServer(mainboard_id)) {
-    topo_prefix = kTopoPrefixAtlas850;
-    return true;
-  }
-  return false;
-}
-
-// 在指定目录下查找匹配产品形态的 topo 文件
-std::string FindTopoFileByMainboardId(const std::string &topo_dir, uint32_t mainboard_id) {
-  std::string topo_prefix;
-  if (!MatchProductForm(mainboard_id, topo_prefix)) {
-    HIXL_LOGW("Unknown product form for mainboard_id=0x%x", mainboard_id);
-    return "";
-  }
-  HIXL_LOGI("mainboard_id=0x%x, topo_prefix=%s", mainboard_id, topo_prefix.c_str());
-
-  DIR *dir = opendir(topo_dir.c_str());
-  if (dir == nullptr) {
-    HIXL_LOGW("Failed to open topo dir: %s", topo_dir.c_str());
-    return "";
-  }
-
-  std::string matched_file;
-  struct dirent *entry = nullptr;
-  while ((entry = readdir(dir)) != nullptr) {
-    std::string name(entry->d_name);
-    // 必须以 .json 结尾
-    if (name.size() < kJsonExtLen || name.compare(name.size() - kJsonExtLen, kJsonExtLen, ".json") != 0) {
-      continue;
-    }
-    // 必须匹配产品形态前缀
-    if (name.compare(0, topo_prefix.size(), topo_prefix) != 0) {
-      continue;
-    }
-    matched_file = topo_dir + name;
-    break;  // 取第一个匹配的文件
-  }
-  closedir(dir);
-
-  if (matched_file.empty()) {
-    HIXL_LOGW("No topo file matching '%s*.json' in %s", topo_prefix.c_str(), topo_dir.c_str());
-  } else {
-    HIXL_LOGI("Matched topo file: %s", matched_file.c_str());
-  }
-  return matched_file;
-}
-
-// 查找可用的 proc 基路径（ascend_ub 或 asdrv_ub）
-std::string FindProcBasePath() {
-  if (IsFileExists(std::string(kProcPathAscendUb) + "/" + kProcDevIdFile)) {
-    return kProcPathAscendUb;
-  }
-  if (IsFileExists(std::string(kProcPathAsdrvUb) + "/" + kProcDevIdFile)) {
-    return kProcPathAsdrvUb;
-  }
-  return "";
-}
-
-// 读取文件内容到字符串
-bool ReadFileToString(const std::string &path, std::string &content) {
-  if (mmAccess(path.c_str()) != EN_OK) {
-    HIXL_LOGW("[ReadFileToString] File access check failed: %s, errno=%d(%s)", path.c_str(), errno, strerror(errno));
-    return false;
-  }
-  std::ifstream file(path);
-  if (!file.is_open()) {
-    HIXL_LOGW("[ReadFileToString] Failed to open file: %s, errno=%d(%s)", path.c_str(), errno, strerror(errno));
-    return false;
-  }
-  std::ostringstream oss;
-  oss << file.rdbuf();
-  content = oss.str();
-  return true;
-}
-
-// 写入字符串到文件（使用低级 I/O，确保 procfs 写入生效）
-bool WriteStringToFile(const std::string &path, const std::string &content) {
-  int fd = open(path.c_str(), O_WRONLY);
-  if (fd < 0) {
-    HIXL_LOGW("[WriteStringToFile] Failed to open %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
-    return false;
-  }
-  ssize_t written = write(fd, content.c_str(), content.size());
-  if (written < 0) {
-    HIXL_LOGW("[WriteStringToFile] write() failed for %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
-  }
-  close(fd);
-  fd = -1;
-  if (written != static_cast<ssize_t>(content.size())) {
-    HIXL_LOGW("[WriteStringToFile] Incomplete write to %s: written=%zd, expected=%zu", path.c_str(), written,
-              content.size());
-    return false;
-  }
-  return true;
-}
-
-// 去除字符串首尾空白字符
-std::string TrimString(const std::string &s) {
-  size_t start = s.find_first_not_of(" \t\r\n");
-  if (start == std::string::npos) {
-    return "";
-  }
-  size_t end = s.find_last_not_of(" \t\r\n");
-  return s.substr(start, end - start + 1);
-}
-
-// 从 pair_info 文本中提取指定设备的信息
-// pair_info 格式示例:
-//   dev_id=0 slot_id=0
-//   local_eid: 0x...
-//   remote_eid: 0x...
-//   local_eid: 0x...     (第二组)
-//   remote_eid: 0x...
-// 从 pair_info 单行解析 slot_id
-bool ParseSlotIdFromLine(const std::string &line, std::string &slot_id) {
-  if (line.find("dev_id=") == std::string::npos) {
-    return false;
-  }
-  size_t pos = line.find("slot_id=");
-  if (pos == std::string::npos) {
-    return false;
-  }
-  slot_id = TrimString(line.substr(pos + std::strlen("slot_id=")));
-  return true;
-}
-
-// 从 pair_info 单行解析 EID（local 或 remote）
-bool ParseEidFromLine(const std::string &line, const std::string &prefix, std::string &eid) {
-  if (line.find(prefix) == std::string::npos) {
-    return false;
-  }
-  size_t pos = line.find(':');
-  if (pos == std::string::npos) {
-    return false;
-  }
-  eid = TrimString(line.substr(pos + 1));
-  return !eid.empty();
-}
-
-// 格式化 EID（去除 0x 前缀和冒号）
-std::string FormatEidValue(const std::string &eid) {
-  std::string result = eid;
-  // 去掉 0x 前缀
-  if (result.size() >= 2 && result[0] == '0' && (result[1] == 'x' || result[1] == 'X')) {
-    result = result.substr(2);
-  }
-  // 去掉所有冒号
-  result.erase(std::remove(result.begin(), result.end(), ':'), result.end());
-  return result;
-}
-
-// 根据 npu_id 在组内的偏移选择 EID 索引
-size_t SelectEidIndexByNpuId(int32_t npu_id, size_t local_count, size_t remote_count) {
-  int32_t group_offset = npu_id % 8;
-  size_t eid_idx = (group_offset < 4) ? 0 : 1;  // 前4个用第一组，后4个用第二组
-  if (eid_idx >= local_count || eid_idx >= remote_count) {
-    HIXL_LOGW("[ParsePairInfo] npu_id=%d: eid_idx=%zu out of range (local=%zu, remote=%zu), fallback to index 0",
-              npu_id, eid_idx, local_count, remote_count);
-    eid_idx = 0;
-  }
-  return eid_idx;
-}
-
-// 从 pair_info 文本中收集所有 slot_id、local_eid、remote_eid
-bool CollectEidsFromPairInfo(const std::string &pair_info_content, std::string &found_slot_id,
-                             std::vector<std::string> &local_eids, std::vector<std::string> &remote_eids) {
-  std::istringstream iss(pair_info_content);
-  std::string line;
-  while (std::getline(iss, line)) {
-    line = TrimString(line);
-    if (line.empty()) {
-      continue;
-    }
-    std::string slot;
-    if (ParseSlotIdFromLine(line, slot)) {
-      found_slot_id = slot;
-    }
-    std::string eid_val;
-    if (ParseEidFromLine(line, "local_eid", eid_val)) {
-      local_eids.push_back(eid_val);
-    }
-    if (ParseEidFromLine(line, "remote_eid", eid_val)) {
-      remote_eids.push_back(eid_val);
-    }
-  }
-  return (!found_slot_id.empty() && !local_eids.empty() && !remote_eids.empty());
-}
-
-bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id, int32_t &slot_id,
-                            std::string &local_eid, std::string &remote_eid) {
-  std::string found_slot_id;
-  std::vector<std::string> local_eids;
-  std::vector<std::string> remote_eids;
-
-  if (!CollectEidsFromPairInfo(pair_info_content, found_slot_id, local_eids, remote_eids)) {
-    HIXL_LOGW("[ParsePairInfo] npu_id=%d: failed to collect slot_id or eids", npu_id);
-    return false;
-  }
-
-  HIXL_LOGD("[ParsePairInfo] npu_id=%d, slot_id=[%s], local_eids_count=%zu, remote_eids_count=%zu", npu_id,
-            found_slot_id.c_str(), local_eids.size(), remote_eids.size());
-
-  size_t eid_idx = SelectEidIndexByNpuId(npu_id, local_eids.size(), remote_eids.size());
-
-  try {
-    slot_id = std::stoi(found_slot_id);
-  } catch (const std::exception &) {
-    slot_id = npu_id;
-  }
-
-  local_eid = FormatEidValue(local_eids[eid_idx]);
-  remote_eid = FormatEidValue(remote_eids[eid_idx]);
-
-  return (!local_eid.empty() || !remote_eid.empty());
-}
-
-// 处理单个 NPU 设备的 procfs 路由数据
-int32_t ProcessNpuProcfsRoute(int32_t npu_id, const std::string &dev_id_path, const std::string &pair_info_path,
-                              RouteEntry &entry) {
-  int32_t device_id = npu_id % kNpuGroupSize;
-  HIXL_LOGI("[Procfs] Processing npu_id=%d, device_id=%d", npu_id, device_id);
-
-  // 写入 device_id（组内相对 ID）选择设备
-  std::ostringstream dev_id_ss;
-  dev_id_ss << device_id << "\n";
-  if (!WriteStringToFile(dev_id_path, dev_id_ss.str())) {
-    HIXL_LOGW("[Procfs] Failed to write device_id=%d to %s", device_id, dev_id_path.c_str());
-    return FAILED;
-  }
-
-  // 短暂延时确保内核更新
-  usleep(kProcfsWriteDelayUs);
-
-  // 读取 pair_info
-  std::string pair_info_content;
-  if (!ReadFileToString(pair_info_path, pair_info_content)) {
-    HIXL_LOGW("[Procfs] Failed to read pair_info for npu_id=%d", npu_id);
-    return FAILED;
-  }
-
-  // 解析 pair_info
-  int32_t slot_id = npu_id;
-  std::string local_eid;
-  std::string remote_eid;
-  if (!ParsePairInfoForDevice(pair_info_content, npu_id, slot_id, local_eid, remote_eid)) {
-    HIXL_LOGW("[Procfs] Failed to parse pair_info for npu_id=%d", npu_id);
-    return FAILED;
-  }
-
-  HIXL_LOGI("[Procfs] Parsed: npu_id=%d, slot_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id, slot_id,
-            local_eid.c_str(), remote_eid.c_str());
-
-  // 只生成 H2D 方向的 RouteEntry
-  entry.device_id = device_id;
-  entry.local_eid = local_eid;
-  entry.remote_eid = remote_eid;
-  return SUCCESS;
-}
-
-// 通过 procfs 获取路由数据（当 /lib/route.conf 不存在时的 fallback）
-int32_t GenerateRouteDataFromProcfs(const std::set<int32_t> &related_npu_ids, RouteData &route_data) {
-  route_data.entries.clear();
-
-  std::string proc_base = FindProcBasePath();
-  if (proc_base.empty()) {
-    HIXL_LOGE(FAILED, "Neither /proc/ascend_ub nor /proc/asdrv_ub found");
-    return FAILED;
-  }
-  HIXL_LOGI("Using procfs base path: %s", proc_base.c_str());
-
-  std::string dev_id_path = proc_base + "/" + kProcDevIdFile;
-  std::string pair_info_path = proc_base + "/" + kProcPairInfoFile;
-
-  for (int32_t npu_id : related_npu_ids) {
-    RouteEntry entry;
-    int32_t ret = ProcessNpuProcfsRoute(npu_id, dev_id_path, pair_info_path, entry);
-    if (ret == SUCCESS) {
-      route_data.entries.push_back(entry);
-      HIXL_LOGI("[Procfs] RouteEntry H2D: npu_id=%d, device_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id,
-                entry.device_id, entry.local_eid.c_str(), entry.remote_eid.c_str());
-    }
-  }
-
-  if (route_data.entries.empty()) {
-    HIXL_LOGE(FAILED, "No route entries generated from procfs");
-    return FAILED;
-  }
-
-  HIXL_LOGI("[Procfs] Generated %zu route entries from procfs:", route_data.entries.size());
-  for (size_t i = 0; i < route_data.entries.size(); ++i) {
-    const auto &entry = route_data.entries[i];
-    HIXL_LOGI("[Procfs]   [%zu] device_id=%d, local_eid=[%s], remote_eid=[%s]", i, entry.device_id,
-              entry.local_eid.c_str(), entry.remote_eid.c_str());
-  }
-
-  return SUCCESS;
-}
+// TopoFileFinder 类相关函数已移至 namespace hixl 作用域
 
 // 从格式化 EID（带冒号）中去掉冒号
 std::string FormatEidFromUrma(const std::string &eid_with_colons) {
@@ -660,6 +355,340 @@ int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::strin
 }
 
 }  // anonymous namespace
+
+// ============================================================================
+// TopoFileFinder 类实现
+// ============================================================================
+
+TopoFileFinder::TopoFileFinder() {}
+
+TopoFileFinder::~TopoFileFinder() {}
+
+bool TopoFileFinder::MatchProductForm(uint32_t mainboard_id, std::string &topo_prefix) {
+  if (mainboard_id == kMainboardIdPod1 || mainboard_id == kMainboardIdPod2 || mainboard_id == kMainboardIdPod3) {
+    topo_prefix = kTopoPrefixAtlas950;
+    return true;
+  }
+  if (IsProductServer(mainboard_id)) {
+    topo_prefix = kTopoPrefixAtlas850;
+    return true;
+  }
+  return false;
+}
+
+bool TopoFileFinder::IsProductServer(uint32_t mainboard_id) {
+  return ((mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax1 &&
+           (mainboard_id % 2 == kOddParity)) ||
+          (mainboard_id >= kMainboardIdServerMin2 && mainboard_id <= kMainboardIdServerMax2 &&
+           (mainboard_id % 2 == kEvenParity)));
+}
+
+std::string TopoFileFinder::FindTopoFile(const std::string &topo_dir, uint32_t mainboard_id) {
+  std::string topo_prefix;
+  if (!MatchProductForm(mainboard_id, topo_prefix)) {
+    HIXL_LOGW("Unknown product form for mainboard_id=0x%x", mainboard_id);
+    return "";
+  }
+  HIXL_LOGI("mainboard_id=0x%x, topo_prefix=%s", mainboard_id, topo_prefix.c_str());
+
+  DIR *dir = opendir(topo_dir.c_str());
+  if (dir == nullptr) {
+    HIXL_LOGW("Failed to open topo dir: %s", topo_dir.c_str());
+    return "";
+  }
+
+  std::string matched_file;
+  struct dirent *entry = nullptr;
+  while ((entry = readdir(dir)) != nullptr) {
+    std::string name(entry->d_name);
+    // 必须以 .json 结尾
+    if (name.size() < kJsonExtLen || name.compare(name.size() - kJsonExtLen, kJsonExtLen, ".json") != 0) {
+      continue;
+    }
+    // 必须匹配产品形态前缀
+    if (name.compare(0, topo_prefix.size(), topo_prefix) != 0) {
+      continue;
+    }
+    matched_file = topo_dir + name;
+    break;  // 取第一个匹配的文件
+  }
+  closedir(dir);
+
+  if (matched_file.empty()) {
+    HIXL_LOGW("No topo file matching '%s*.json' in %s", topo_prefix.c_str(), topo_dir.c_str());
+  } else {
+    HIXL_LOGI("Matched topo file: %s", matched_file.c_str());
+  }
+  return matched_file;
+}
+
+// ============================================================================
+// ProcfsRouteHandler 类实现
+// ============================================================================
+
+ProcfsRouteHandler::ProcfsRouteHandler() : file_accessor_(nullptr) {}
+
+ProcfsRouteHandler::~ProcfsRouteHandler() {}
+
+void ProcfsRouteHandler::SetFileAccessor(std::unique_ptr<IFileAccessor> accessor) {
+  file_accessor_ = std::move(accessor);
+}
+
+std::string ProcfsRouteHandler::FindProcBasePath() {
+  std::string dev_id_file = kProcDevIdFile;
+  if (file_accessor_) {
+    if (file_accessor_->FileExists(std::string(kProcPathAscendUb) + "/" + dev_id_file)) {
+      return kProcPathAscendUb;
+    }
+    if (file_accessor_->FileExists(std::string(kProcPathAsdrvUb) + "/" + dev_id_file)) {
+      return kProcPathAsdrvUb;
+    }
+  } else {
+    if (IsFileExists(std::string(kProcPathAscendUb) + "/" + dev_id_file)) {
+      return kProcPathAscendUb;
+    }
+    if (IsFileExists(std::string(kProcPathAsdrvUb) + "/" + dev_id_file)) {
+      return kProcPathAsdrvUb;
+    }
+  }
+  return "";
+}
+
+bool ProcfsRouteHandler::ReadFileToString(const std::string &path, std::string &content) {
+  if (file_accessor_) {
+    return file_accessor_->ReadFile(path, content);
+  }
+  // 默认实现
+  if (mmAccess(path.c_str()) != EN_OK) {
+    HIXL_LOGW("[ReadFileToString] File access check failed: %s, errno=%d(%s)", path.c_str(), errno, strerror(errno));
+    return false;
+  }
+  std::ifstream file(path);
+  if (!file.is_open()) {
+    HIXL_LOGW("[ReadFileToString] Failed to open file: %s, errno=%d(%s)", path.c_str(), errno, strerror(errno));
+    return false;
+  }
+  std::ostringstream oss;
+  oss << file.rdbuf();
+  content = oss.str();
+  return true;
+}
+
+bool ProcfsRouteHandler::WriteStringToFile(const std::string &path, const std::string &content) {
+  if (file_accessor_) {
+    return file_accessor_->WriteFile(path, content);
+  }
+  // 默认实现
+  int fd = open(path.c_str(), O_WRONLY);
+  if (fd < 0) {
+    HIXL_LOGW("[WriteStringToFile] Failed to open %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
+    return false;
+  }
+  ssize_t written = write(fd, content.c_str(), content.size());
+  if (written < 0) {
+    HIXL_LOGW("[WriteStringToFile] write() failed for %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
+  }
+  close(fd);
+  fd = -1;
+  if (written != static_cast<ssize_t>(content.size())) {
+    HIXL_LOGW("[WriteStringToFile] Incomplete write to %s: written=%zd, expected=%zu", path.c_str(), written,
+              content.size());
+    return false;
+  }
+  return true;
+}
+
+std::string ProcfsRouteHandler::TrimString(const std::string &s) {
+  size_t start = s.find_first_not_of(" \t\r\n");
+  if (start == std::string::npos) {
+    return "";
+  }
+  size_t end = s.find_last_not_of(" \t\r\n");
+  return s.substr(start, end - start + 1);
+}
+
+bool ProcfsRouteHandler::ParseSlotIdFromLine(const std::string &line, std::string &slot_id) {
+  if (line.find("dev_id=") == std::string::npos) {
+    return false;
+  }
+  size_t pos = line.find("slot_id=");
+  if (pos == std::string::npos) {
+    return false;
+  }
+  slot_id = TrimString(line.substr(pos + std::strlen("slot_id=")));
+  return true;
+}
+
+bool ProcfsRouteHandler::ParseEidFromLine(const std::string &line, const std::string &prefix, std::string &eid) {
+  if (line.find(prefix) == std::string::npos) {
+    return false;
+  }
+  size_t pos = line.find(':');
+  if (pos == std::string::npos) {
+    return false;
+  }
+  eid = TrimString(line.substr(pos + 1));
+  return !eid.empty();
+}
+
+std::string ProcfsRouteHandler::FormatEidValue(const std::string &eid) {
+  std::string result = eid;
+  // 去掉 0x 前缀
+  if (result.size() >= 2 && result[0] == '0' && (result[1] == 'x' || result[1] == 'X')) {
+    result = result.substr(2);
+  }
+  // 去掉所有冒号
+  result.erase(std::remove(result.begin(), result.end(), ':'), result.end());
+  return result;
+}
+
+size_t ProcfsRouteHandler::SelectEidIndexByNpuId(int32_t npu_id, size_t local_count, size_t remote_count) {
+  int32_t group_offset = npu_id % 8;
+  size_t eid_idx = (group_offset < 4) ? 0 : 1;  // 前4个用第一组，后4个用第二组
+  if (eid_idx >= local_count || eid_idx >= remote_count) {
+    HIXL_LOGW("[ParsePairInfo] npu_id=%d: eid_idx=%zu out of range (local=%zu, remote=%zu), fallback to index 0",
+              npu_id, eid_idx, local_count, remote_count);
+    eid_idx = 0;
+  }
+  return eid_idx;
+}
+
+bool ProcfsRouteHandler::CollectEidsFromPairInfo(const std::string &pair_info_content, std::string &found_slot_id,
+                                                 std::vector<std::string> &local_eids,
+                                                 std::vector<std::string> &remote_eids) {
+  std::istringstream iss(pair_info_content);
+  std::string line;
+  while (std::getline(iss, line)) {
+    line = TrimString(line);
+    if (line.empty()) {
+      continue;
+    }
+    std::string slot;
+    if (ParseSlotIdFromLine(line, slot)) {
+      found_slot_id = slot;
+    }
+    std::string eid_val;
+    if (ParseEidFromLine(line, "local_eid", eid_val)) {
+      local_eids.push_back(eid_val);
+    }
+    if (ParseEidFromLine(line, "remote_eid", eid_val)) {
+      remote_eids.push_back(eid_val);
+    }
+  }
+  return (!found_slot_id.empty() && !local_eids.empty() && !remote_eids.empty());
+}
+
+bool ProcfsRouteHandler::ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id, int32_t &slot_id,
+                                                std::string &local_eid, std::string &remote_eid) {
+  std::string found_slot_id;
+  std::vector<std::string> local_eids;
+  std::vector<std::string> remote_eids;
+
+  if (!CollectEidsFromPairInfo(pair_info_content, found_slot_id, local_eids, remote_eids)) {
+    HIXL_LOGW("[ParsePairInfo] npu_id=%d: failed to collect slot_id or eids", npu_id);
+    return false;
+  }
+
+  HIXL_LOGD("[ParsePairInfo] npu_id=%d, slot_id=[%s], local_eids_count=%zu, remote_eids_count=%zu", npu_id,
+            found_slot_id.c_str(), local_eids.size(), remote_eids.size());
+
+  size_t eid_idx = SelectEidIndexByNpuId(npu_id, local_eids.size(), remote_eids.size());
+
+  try {
+    slot_id = std::stoi(found_slot_id);
+  } catch (const std::exception &) {
+    slot_id = npu_id;
+  }
+
+  local_eid = FormatEidValue(local_eids[eid_idx]);
+  remote_eid = FormatEidValue(remote_eids[eid_idx]);
+
+  return (!local_eid.empty() || !remote_eid.empty());
+}
+
+int32_t ProcfsRouteHandler::ProcessNpuProcfsRoute(int32_t npu_id, const std::string &dev_id_path,
+                                                  const std::string &pair_info_path, RouteEntry &entry) {
+  int32_t device_id = npu_id % kNpuGroupSize;
+  HIXL_LOGI("[Procfs] Processing npu_id=%d, device_id=%d", npu_id, device_id);
+
+  // 写入 device_id（组内相对 ID）选择设备
+  std::ostringstream dev_id_ss;
+  dev_id_ss << device_id << "\n";
+  if (!WriteStringToFile(dev_id_path, dev_id_ss.str())) {
+    HIXL_LOGW("[Procfs] Failed to write device_id=%d to %s", device_id, dev_id_path.c_str());
+    return FAILED;
+  }
+
+  // 短暂延时确保内核更新
+  usleep(kProcfsWriteDelayUs);
+
+  // 读取 pair_info
+  std::string pair_info_content;
+  if (!ReadFileToString(pair_info_path, pair_info_content)) {
+    HIXL_LOGW("[Procfs] Failed to read pair_info for npu_id=%d", npu_id);
+    return FAILED;
+  }
+
+  // 解析 pair_info
+  int32_t slot_id = npu_id;
+  std::string local_eid;
+  std::string remote_eid;
+  if (!ParsePairInfoForDevice(pair_info_content, npu_id, slot_id, local_eid, remote_eid)) {
+    HIXL_LOGW("[Procfs] Failed to parse pair_info for npu_id=%d", npu_id);
+    return FAILED;
+  }
+
+  HIXL_LOGI("[Procfs] Parsed: npu_id=%d, slot_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id, slot_id,
+            local_eid.c_str(), remote_eid.c_str());
+
+  // 只生成 H2D 方向的 RouteEntry
+  entry.device_id = device_id;
+  entry.local_eid = local_eid;
+  entry.remote_eid = remote_eid;
+  return SUCCESS;
+}
+
+int32_t ProcfsRouteHandler::GenerateRouteData(const std::set<int32_t> &related_npu_ids, RouteData &route_data) {
+  route_data.entries.clear();
+
+  std::string proc_base = FindProcBasePath();
+  if (proc_base.empty()) {
+    HIXL_LOGE(FAILED, "Neither /proc/ascend_ub nor /proc/asdrv_ub found");
+    return FAILED;
+  }
+  HIXL_LOGI("Using procfs base path: %s", proc_base.c_str());
+
+  std::string dev_id_path = proc_base + "/" + kProcDevIdFile;
+  std::string pair_info_path = proc_base + "/" + kProcPairInfoFile;
+
+  for (int32_t npu_id : related_npu_ids) {
+    RouteEntry entry;
+    int32_t ret = ProcessNpuProcfsRoute(npu_id, dev_id_path, pair_info_path, entry);
+    if (ret == SUCCESS) {
+      route_data.entries.push_back(entry);
+      HIXL_LOGI("[Procfs] RouteEntry H2D: npu_id=%d, device_id=%d, local_eid=[%s], remote_eid=[%s]", npu_id,
+                entry.device_id, entry.local_eid.c_str(), entry.remote_eid.c_str());
+    }
+  }
+
+  if (route_data.entries.empty()) {
+    HIXL_LOGE(FAILED, "No route entries generated from procfs");
+    return FAILED;
+  }
+
+  HIXL_LOGI("[Procfs] Generated %zu route entries from procfs:", route_data.entries.size());
+  for (size_t i = 0; i < route_data.entries.size(); ++i) {
+    const auto &entry = route_data.entries[i];
+    HIXL_LOGI("[Procfs]   [%zu] device_id=%d, local_eid=[%s], remote_eid=[%s]", i, entry.device_id,
+              entry.local_eid.c_str(), entry.remote_eid.c_str());
+  }
+
+  return SUCCESS;
+}
+
+// ============================================================================
+// ProcfsRouteHandler 类实现结束
+// ============================================================================
 
 // ============ 文件解析辅助函数 ============
 
@@ -1267,7 +1296,8 @@ int32_t ParseRouteWithProcfsFallback(int32_t phy_dev_id, const std::string &rout
   int32_t ret = ParseRouteFile(route_path, route_data);
   if (ret != SUCCESS) {
     HIXL_LOGW("ParseRouteFile failed (path=%s), trying procfs fallback", route_path.c_str());
-    ret = GenerateRouteDataFromProcfs(related_npu_ids, route_data);
+    ProcfsRouteHandler handler;
+    ret = handler.GenerateRouteData(related_npu_ids, route_data);
     if (ret != SUCCESS) {
       HIXL_LOGE(FAILED, "Both route.conf and procfs fallback failed");
       return ret;
@@ -1297,7 +1327,7 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, LocalCommRes &local_comm_res) {
   if (ret != SUCCESS) {
     return ret;
   }
-  std::string topo_path = FindTopoFileByMainboardId(kDefaultTopoDir, mainboard_id);
+  std::string topo_path = TopoFileFinder().FindTopoFile(kDefaultTopoDir, mainboard_id);
   if (topo_path.empty()) {
     HIXL_LOGE(PARAM_INVALID, "No topo file found for mainboard_id=0x%x in %s", mainboard_id, kDefaultTopoDir);
     return PARAM_INVALID;
@@ -1316,6 +1346,7 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
   if (ret != SUCCESS) {
     return ret;
   }
+  // 判断是否为 Server 产品形态
   bool is_server = IsProductServer(mainboard_id);
 
   // 2. 解析文件
