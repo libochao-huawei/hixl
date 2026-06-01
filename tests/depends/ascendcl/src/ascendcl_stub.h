@@ -71,6 +71,8 @@ public:
   virtual aclError aclrtDestroyStream(aclrtStream stream);
   virtual aclError aclrtStreamAbort(aclrtStream stream);
   virtual aclError aclrtStreamWaitEvent(aclrtStream stream, aclrtEvent event);
+  virtual aclError aclrtStreamQuery(aclrtStream stream, aclrtStreamStatus *status);
+  virtual aclError aclrtSetStreamFailureMode(aclrtStream stream, uint64_t mode);
   virtual aclError aclrtSynchronizeStream(aclrtStream stream);
   virtual aclError aclrtSynchronizeStreamWithTimeout(aclrtStream stream, int32_t timeout);
   virtual aclError aclrtMalloc(void **devPtr, size_t size, aclrtMemMallocPolicy policy);
