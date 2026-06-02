@@ -38,6 +38,7 @@ struct ShareHandleInfo {
 };
 
 struct AsyncSlot {
+  aclrtContext ctx = nullptr;
   std::vector<aclrtStream> streams;
   std::vector<void *> host_flags;
 };
@@ -54,6 +55,7 @@ struct FabricMemTransferContext {
   std::string channel_id;
   std::string statistic_channel_id;
   std::unordered_map<uintptr_t, VaInfo> remote_va_to_old_va;
+  std::shared_ptr<FabricMemTransferStatisticInfo> stat_info_holder;
   FabricMemTransferStatisticInfo *stat_info = nullptr;
 };
 }  // namespace hixl
