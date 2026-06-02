@@ -254,19 +254,13 @@ int32_t GetClosPgPortCount(const TopoData &topo_data, int32_t phy_id, const std:
  */
 class ProcfsRouteHandler {
  public:
-  // 文件访问接口（用于测试 mock）
-  struct IFileAccessor {
-    virtual ~IFileAccessor() = default;
-    virtual bool FileExists(const std::string &path) = 0;
-    virtual bool ReadFile(const std::string &path, std::string &content) = 0;
-    virtual bool WriteFile(const std::string &path, const std::string &content) = 0;
-  };
-
   ProcfsRouteHandler();
+  /**
+   * @brief 构造时显式指定 proc 根目录
+   * @param [in] proc_base_path 注入的 proc 根目录；空字符串表示走默认双路径自动发现
+   */
+  explicit ProcfsRouteHandler(std::string proc_base_path);
   ~ProcfsRouteHandler();
-
-  // 设置文件访问器（用于测试）
-  void SetFileAccessor(std::unique_ptr<IFileAccessor> accessor);
 
   // 通过 procfs 生成路由数据
   int32_t GenerateRouteData(const std::set<int32_t> &related_npu_ids, RouteData &route_data);
@@ -288,7 +282,8 @@ class ProcfsRouteHandler {
   int32_t ProcessNpuProcfsRoute(int32_t npu_id, const std::string &dev_id_path, const std::string &pair_info_path,
                                 RouteEntry &entry);
 
-  std::unique_ptr<IFileAccessor> file_accessor_;
+  // 显式注入的 proc 根目录；空字符串表示走默认 ascend_ub / asdrv_ub 自动发现
+  std::string injected_proc_base_path_;
 };
 
 // ============ TopoFileFinder 类 ============
