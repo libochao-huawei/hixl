@@ -201,21 +201,49 @@ int32_t DefaultUrmaAdminExec(const std::string &cmd, std::string &output) {
 
 // 解析 urma_admin show 输出，提取所有 EID 条目
 int32_t ParseUrmaAdminOutput(const std::string &cmd_output, std::vector<UrmaEidEntry> &all_entries) {
+  HIXL_LOGI("[ParseUrmaAdminOutput] urma_admin output length: %zu bytes", cmd_output.length());
+  if (cmd_output.empty()) {
+    HIXL_LOGE(FAILED, "[ParseUrmaAdminOutput] urma_admin output is empty");
+    return FAILED;
+  }
+  // 打印前 500 字符用于调试
+  std::string output_preview = cmd_output.length() > 500 ? cmd_output.substr(0, 500) + "..." : cmd_output;
+  HIXL_LOGI("[ParseUrmaAdminOutput] urma_admin output preview:\n%s", output_preview.c_str());
+
   std::istringstream stream(cmd_output);
   std::string line;
+  size_t line_num = 0;
+  size_t skipped_header = 0;
+  size_t skipped_separator = 0;
+  size_t skipped_no_eid = 0;
+  size_t skipped_empty_field = 0;
+  size_t skipped_parse_error = 0;
+  size_t parsed_ok = 0;
+
   while (std::getline(stream, line)) {
+    ++line_num;
     // 跳过表头和分隔线
     if ((line.find("num") != std::string::npos && line.find("ubep_dev") != std::string::npos) ||
-        line.find("---") != std::string::npos || line.find("eid") == std::string::npos) {
+        line.find("---") != std::string::npos) {
+      ++skipped_header;
+      continue;
+    }
+    if (line.find("eid") == std::string::npos) {
+      ++skipped_no_eid;
+      HIXL_LOGD("[ParseUrmaAdminOutput] line %zu skipped (no 'eid' keyword): %s", line_num, line.c_str());
       continue;
     }
 
     // 解析格式: "0 udma3 UB eid1 0000:0000:003f:0600:0010:0000:df00:1001 ACTIVE"
+    HIXL_LOGD("[ParseUrmaAdminOutput] parsing line %zu: %s", line_num, line.c_str());
     std::istringstream iss(line);
     std::string num_str, udma_name, tp_type, eid_name, eid_value, link_status;
     iss >> num_str >> udma_name >> tp_type >> eid_name >> eid_value >> link_status;
 
     if (udma_name.empty() || eid_name.empty() || eid_value.empty()) {
+      ++skipped_empty_field;
+      HIXL_LOGD("[ParseUrmaAdminOutput] line %zu skipped (empty field): udma=%s, eid_name=%s, eid_value=%s",
+                 line_num, udma_name.c_str(), eid_name.c_str(), eid_value.c_str());
       continue;
     }
 
@@ -223,7 +251,10 @@ int32_t ParseUrmaAdminOutput(const std::string &cmd_output, std::vector<UrmaEidE
     int eid_index = 0;
     try {
       eid_index = std::stoi(eid_name.substr(3));
-    } catch (const std::exception &) {
+    } catch (const std::exception &e) {
+      ++skipped_parse_error;
+      HIXL_LOGW("[ParseUrmaAdminOutput] line %zu: failed to parse eid_index from '%s' (exception: %s)",
+                 line_num, eid_name.c_str(), e.what());
       continue;
     }
 
@@ -232,12 +263,20 @@ int32_t ParseUrmaAdminOutput(const std::string &cmd_output, std::vector<UrmaEidE
     entry.eid_index = eid_index;
     entry.eid = eid_value;
     all_entries.push_back(entry);
+    ++parsed_ok;
+    HIXL_LOGD("[ParseUrmaAdminOutput] line %zu parsed: udma=%s, eid_index=%d, eid=%s",
+               line_num, udma_name.c_str(), eid_index, eid_value.c_str());
   }
 
+  HIXL_LOGI("[ParseUrmaAdminOutput] summary: total_lines=%zu, parsed=%zu, skipped(header=%zu, separator=%zu, "
+             "no_eid=%zu, empty_field=%zu, parse_error=%zu)",
+             line_num, parsed_ok, skipped_header, skipped_separator, skipped_no_eid, skipped_empty_field, skipped_parse_error);
+
   if (all_entries.empty()) {
-    HIXL_LOGE(FAILED, "[GetHostPgEid] No entries from urma_admin show");
+    HIXL_LOGE(FAILED, "[ParseUrmaAdminOutput] No entries parsed from urma_admin show output");
     return FAILED;
   }
+  HIXL_LOGI("[ParseUrmaAdminOutput] Successfully parsed %zu entries", all_entries.size());
   return SUCCESS;
 }
 
@@ -307,6 +346,7 @@ int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::strin
   // 1. 执行 urma_admin show
   std::string cmd_output;
   int32_t ret = DefaultUrmaAdminExec("urma_admin show", cmd_output);
+  HIXL_LOGI("[GetHostPgEid] the outcoming of urma_admin show are : %s", cmd_output.c_str());
   if (ret != SUCCESS) {
     HIXL_LOGE(FAILED, "[GetHostPgEid] Failed to execute urma_admin show");
     return FAILED;
