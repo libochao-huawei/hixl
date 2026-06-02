@@ -1518,19 +1518,7 @@ TEST_F(TopoFileFinderTest, FindTopoFileServerOddMainboardId) {
 // "成功" 路径（需要真实系统环境）；但可以验证 "失败" 路径下的错误码传递和
 // AscendString 的状态保持。
 
-class LocalCommResJsonTest : public ::testing::Test {
- protected:
-  void SetUp() override {
-    DcmiStubSetInitRet(0);
-    DcmiStubSetLogicId(0, 0);
-    DcmiStubSetUrmaDeviceCnt(1, 0);
-    DcmiStubSetSuperPodId(0, 0);
-    DcmiStubSetEidCount(2);
-  }
-  void TearDown() override {
-    ResetDcmiStub();
-  }
-};
+class LocalCommResJsonTest : public LocalCommResTopoPathTest {};
 
 TEST_F(LocalCommResJsonTest, PropagatesGetMainboardIdFailure) {
   // GetMainboardId 失败 → GenerateLocalCommRes 内部立即返回错误码 →
