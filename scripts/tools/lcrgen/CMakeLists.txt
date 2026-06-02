@@ -11,6 +11,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(hixl_lcrgen_tool)
 
+set(CMAKE_SKIP_RPATH TRUE)
+
 add_executable(lcrgen local_comm_res_generator.cc)
 
 target_compile_features(lcrgen PRIVATE cxx_std_17)

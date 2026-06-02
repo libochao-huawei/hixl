@@ -45,6 +45,28 @@ struct LocalCommRes {
   std::vector<EndpointConfig> endpoint_list;  // 端点列表
 };
 
+/**
+ * @brief 端点配置视图，所有字符串字段均为 AscendString（ABI 安全）
+ */
+struct EndpointConfigView {
+  AscendString protocol;
+  AscendString comm_id;
+  AscendString placement;
+  AscendString plane;
+  AscendString dst_eid;
+  AscendString net_instance_id;
+  DeviceInfoConfig device_info{};
+};
+
+/**
+ * @brief LocalCommRes 视图，所有字符串字段均为 AscendString（ABI 安全）
+ */
+struct LocalCommResView {
+  AscendString version;                           // 版本号，默认 "1.3"
+  AscendString net_instance_id;                   // 网络实例 ID
+  std::vector<EndpointConfigView> endpoint_list;  // 端点列表
+};
+
 // ============ Topology 数据结构 ============
 
 /**
@@ -103,18 +125,18 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
                              LocalCommRes &local_comm_res);
 
 /**
- * @brief 生成 LocalCommRes 的 JSON 字符串（lcrgen 工具使用）
+ * @brief 生成 LocalCommRes 的视图数据（lcrgen 工具使用）
  *
- * 内部完成 GenerateLocalCommRes + JSON 序列化，**全部在 libcann_hixl.so 内部**完成，
- * 避免将 LocalCommRes（包含 std::string 字段）跨 .so 边界拷贝。
- * 输出通过 AscendString（即 ge::AscendString，内部封装 shared_ptr<std::string>）返回，
- * 跨 .so 边界 ABI 安全。
+ * 内部完成 GenerateLocalCommRes，并把 LocalCommRes 的 std::string 字段
+ * 全部转成 AscendString 填充到 LocalCommResView 中。**所有 std::string → AscendString
+ * 转换都在 libcann_hixl.so 内部完成**，避免 std::string 跨 .so 边界传递。
+ * JSON 序列化由 lcrgen 工具本地完成（基于 view 字段的 AscendString）。
  *
  * @param [in] phy_dev_id 物理设备 ID
- * @param [out] result 成功时填入带 2 空格缩进的 JSON 字符串；失败时保持默认空
+ * @param [out] view 成功时填入 LocalCommResView；失败时状态未定义
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
-int32_t GenerateLocalCommResJson(int32_t phy_dev_id, AscendString &result);
+int32_t GenerateLocalCommResJson(int32_t phy_dev_id, LocalCommResView &view);
 
 // ============ DCMI 接口封装 ============
 

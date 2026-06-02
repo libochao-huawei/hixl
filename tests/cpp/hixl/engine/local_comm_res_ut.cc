@@ -1515,42 +1515,40 @@ TEST_F(TopoFileFinderTest, FindTopoFileServerOddMainboardId) {
 //
 // GenerateLocalCommResJson 内部调用 GenerateLocalCommRes（无参版本）使用默认
 // 路径 /usr/local/Ascend/driver/topo/950/，UT 环境下该路径不存在，因此无法构造
-// "成功" 路径（需要真实系统环境）；但可以验证 "失败" 路径下的错误码传递和
-// AscendString 的状态保持。
+// "成功" 路径（需要真实系统环境）；但可以验证 "失败" 路径下的错误码传递。
+// （成功路径下 std::string → AscendString 转换逻辑被 lcrgen 工具本地测试覆盖，
+//  无需在单元测试中重复验证。）
 
 class LocalCommResJsonTest : public LocalCommResTopoPathTest {};
 
 TEST_F(LocalCommResJsonTest, PropagatesGetMainboardIdFailure) {
   // GetMainboardId 失败 → GenerateLocalCommRes 内部立即返回错误码 →
-  // GenerateLocalCommResJson 应透传该错误码，且 result 保持为空。
+  // GenerateLocalCommResJson 应透传该错误码。
   DcmiStubSetMainboardId(0, -1);
 
-  AscendString result;
-  int32_t ret = GenerateLocalCommResJson(0, result);
+  LocalCommResView view;
+  int32_t ret = GenerateLocalCommResJson(0, view);
   EXPECT_NE(ret, SUCCESS);
-  EXPECT_EQ(result.GetLength(), 0u);
 }
 
 TEST_F(LocalCommResJsonTest, ParamInvalidWhenDefaultTopoMissing) {
   // mainboard_id 成功获取 → 进入 FindTopoFile 逻辑；
   // 默认 topo 目录 /usr/local/Ascend/driver/topo/950/ 在 UT 环境不存在 →
-  // 返回 PARAM_INVALID，result 保持为空。
+  // 返回 PARAM_INVALID。
   DcmiStubSetMainboardId(0x3, 0);  // Pod1
 
-  AscendString result;
-  int32_t ret = GenerateLocalCommResJson(0, result);
+  LocalCommResView view;
+  int32_t ret = GenerateLocalCommResJson(0, view);
   EXPECT_EQ(ret, PARAM_INVALID);
-  EXPECT_EQ(result.GetLength(), 0u);
 }
 
 TEST_F(LocalCommResJsonTest, ParamInvalidOnUnknownMainboardId) {
   // 未知 mainboard_id（0x99）→ MatchProductForm 返回 false → PARAM_INVALID
   DcmiStubSetMainboardId(0x99, 0);
 
-  AscendString result;
-  int32_t ret = GenerateLocalCommResJson(0, result);
+  LocalCommResView view;
+  int32_t ret = GenerateLocalCommResJson(0, view);
   EXPECT_EQ(ret, PARAM_INVALID);
-  EXPECT_EQ(result.GetLength(), 0u);
 }
 
 }  // namespace test
