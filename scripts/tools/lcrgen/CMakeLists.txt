@@ -23,7 +23,7 @@ target_include_directories(lcrgen PRIVATE
         ${HIXL_CODE_DIR}/src/hixl/proxy
         ${HIXL_CODE_DIR}/src/hixl/common
         ${HIXL_CODE_DIR}/third_party/json/include
-        ${CANN_INSTALL_PATH}/include
+        ${ASCEND_INSTALL_PATH}/include
 )
 
 target_compile_options(lcrgen PRIVATE
@@ -44,4 +44,4 @@ target_link_libraries(lcrgen PRIVATE
         stdc++fs
 )
 
-target_link_ascend_hal(lcrgen)
+target_link_libraries(lcrgen PRIVATE ascend_hal)
