@@ -175,11 +175,13 @@ std::string GetUrmaAdminPath() {
 // urma_admin 命令执行函数
 int32_t DefaultUrmaAdminExec(const std::string &cmd, std::string &output) {
   auto urma_path = GetUrmaAdminPath();
+  HIXL_LOGI("[DefaultUrmaAdminExec] resolved urma_admin path: '%s'", urma_path.c_str());
   if (urma_path.empty()) {
     HIXL_LOGW("[DefaultUrmaAdminExec] urma_admin not found");
     return FAILED;
   }
   std::string full_cmd = urma_path + " " + cmd;
+  HIXL_LOGI("[DefaultUrmaAdminExec] exec cmd: '%s'", full_cmd.c_str());
   FILE *raw_pipe = popen(full_cmd.c_str(), "r");
   if (raw_pipe == nullptr) {
     HIXL_LOGW("[DefaultUrmaAdminExec] Failed to execute: %s, errno=%d(%s)", full_cmd.c_str(), errno, strerror(errno));
@@ -196,11 +198,21 @@ int32_t DefaultUrmaAdminExec(const std::string &cmd, std::string &output) {
   while (fgets(buf, sizeof(buf), pipe.get()) != nullptr) {
     output += buf;
   }
+  HIXL_LOGI("[DefaultUrmaAdminExec] output length: %zu bytes, raw output:\n%s", output.size(), output.c_str());
   return SUCCESS;
 }
 
 // 解析 urma_admin show 输出，提取所有 EID 条目
 int32_t ParseUrmaAdminOutput(const std::string &cmd_output, std::vector<UrmaEidEntry> &all_entries) {
+  HIXL_LOGI("[ParseUrmaAdminOutput] urma_admin output length: %zu bytes", cmd_output.length());
+  if (cmd_output.empty()) {
+    HIXL_LOGE(FAILED, "[ParseUrmaAdminOutput] urma_admin output is empty");
+    return FAILED;
+  }
+  // 打印前 500 字符用于调试
+  std::string output_preview = cmd_output.length() > 500 ? cmd_output.substr(0, 500) + "..." : cmd_output;
+  HIXL_LOGI("[ParseUrmaAdminOutput] urma_admin output preview:\n%s", output_preview.c_str());
+
   std::istringstream stream(cmd_output);
   std::string line;
   while (std::getline(stream, line)) {
@@ -235,9 +247,10 @@ int32_t ParseUrmaAdminOutput(const std::string &cmd_output, std::vector<UrmaEidE
   }
 
   if (all_entries.empty()) {
-    HIXL_LOGE(FAILED, "[GetHostPgEid] No entries from urma_admin show");
+    HIXL_LOGE(FAILED, "[ParseUrmaAdminOutput] No entries parsed from urma_admin show output");
     return FAILED;
   }
+  HIXL_LOGI("[ParseUrmaAdminOutput] Successfully parsed %zu entries", all_entries.size());
   return SUCCESS;
 }
 
@@ -307,6 +320,7 @@ int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::strin
   // 1. 执行 urma_admin show
   std::string cmd_output;
   int32_t ret = DefaultUrmaAdminExec("urma_admin show", cmd_output);
+  HIXL_LOGI("[GetHostPgEid] the outcoming of urma_admin show are : %s", cmd_output.c_str());
   if (ret != SUCCESS) {
     HIXL_LOGE(FAILED, "[GetHostPgEid] Failed to execute urma_admin show");
     return FAILED;
