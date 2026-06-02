@@ -24,6 +24,11 @@
 #include "profiling/prof_api_reg.h"
 
 namespace hixl {
+
+const std::unordered_set<std::string> FabricMemEngine::kSupportedOptions = {
+    OPTION_ENABLE_USE_FABRIC_MEM, OPTION_AUTO_CONNECT,
+    OPTION_GLOBAL_RESOURCE_CONFIG};
+
 namespace {
 std::mutex g_fabric_mem_vm_mutex;
 size_t g_fabric_mem_vm_ref_count = 0;
@@ -114,14 +119,29 @@ Status FabricMemEngine::InitFabricMem() {
   return SUCCESS;
 }
 
-Status FabricMemEngine::Initialize(const std::map<AscendString, AscendString> &options) {
+Status FabricMemEngine::Initialize(const HixlEngineOptions &options) {
   HIXL_LOGI("[FabricMemEngine] Initialization started, local_engine:%s", local_engine_.c_str());
   std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_CHK_STATUS_RET(FabricMemConfigParser::Parse(options, fabric_mem_config_),
-                      "[FabricMemEngine] Failed to parse fabric mem config.");
-  HIXL_CHK_BOOL_RET_STATUS(fabric_mem_config_.enabled, PARAM_INVALID,
+  HIXL_CHK_STATUS_RET(options.CheckSupportedOptions(kSupportedOptions),
+                      "[FabricMemEngine] Unsupported option");
+  HIXL_CHK_BOOL_RET_STATUS(options.EnableFabricMem().value_or(false), PARAM_INVALID,
                            "[FabricMemEngine] EnableUseFabricMem must be 1.");
-  auto_connect_ = fabric_mem_config_.auto_connect;
+
+  fabric_mem_config_.enabled = true;
+  auto grc = options.GlobalResourceCfg();
+  if (grc.has_value()) {
+    if (grc->fabric_memory.max_capacity.has_value()) {
+      fabric_mem_config_.capacity_tb = *grc->fabric_memory.max_capacity;
+      fabric_mem_config_.has_capacity_tb = true;
+    }
+    if (grc->fabric_memory.start_address.has_value()) {
+      fabric_mem_config_.start_address_tb = *grc->fabric_memory.start_address;
+      fabric_mem_config_.has_start_address_tb = true;
+    }
+    fabric_mem_config_.task_stream_num = grc->fabric_memory.task_stream_num.value_or(4U);
+  }
+  auto_connect_ = options.AutoConnect().value_or(false);
+
   HIXL_CHK_STATUS_RET(InitFabricMem(), "[FabricMemEngine] Failed to initialize.");
   is_initialized_ = true;
   HIXL_LOGI("[FabricMemEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
