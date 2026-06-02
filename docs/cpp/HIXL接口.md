@@ -143,7 +143,7 @@ device侧网卡默认监听端口为16666，如果在多个进程使用同一个
 **表 2**  options（Ascend 950PR/Ascend 950DT）
 | 参数名 | 可选/必选 | 描述 |
 | --- | --- | --- |
-| OPTION_LOCAL_COMM_RES | 必选 | 配置本地通信资源信息，格式是json格式的字符串。配置格式参考[通信资源配置字段说明](#通信资源配置字段说明)。配置为空不会自动生成相关信息。 |
+| OPTION_LOCAL_COMM_RES | 必选 | 配置本地通信资源信息，格式是json格式的字符串。配置格式参考[通信资源配置字段说明](#通信资源配置字段说明)。配置为空不会自动生成相关信息。<br>配置样例：<br>UB：`{"version":"1.3","net_instance_id":"sp_4294967295_srv_0","endpoint_list":[{"protocol":"ub_ctp","comm_id":"00000000007f020000100000df149001","placement":"host","dst_eid":"00000000007f030000100000df141c01"}]}`<br>ROCE：`{"net_instance_id":"superpod1_1","endpoint_list":[{"protocol":"roce","comm_id":"1.0.0.1","placement":"host"}],"version":"1.3"}` |
 | OPTION_GLOBAL_RESOURCE_CONFIG | 可选 | 字符串取值"GlobalResourceConfig"。用于开启并配置全局资源，格式为json格式的字符串，字段说明参考[全局资源配置字段说明](#全局资源配置字段说明)。 |
 
 <a name="通信资源配置字段说明"></a>**通信资源配置字段说明**  
