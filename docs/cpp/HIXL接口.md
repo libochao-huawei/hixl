@@ -95,6 +95,37 @@ Status Initialize(const AscendString &local_engine, const std::map<AscendString,
 
 如上表格中的环境变量请参考[《环境变量参考》](https://www.hiascend.com/document/redirect/CannCommunityEnvRef)，ranktable请参考[《HCCL集合通信库用户指南》](https://www.hiascend.com/document/redirect/CannCommunityHcclUg)。
 
+OPTION_LOCAL_COMM_RES配置为"1.3"版本的配置示例如下：
+- 最小配置（仅配置version字段，其他字段自动生成）：
+```json
+{
+    "version": "1.3"
+}
+```
+
+- 完整配置示例（手动指定通信资源信息）：
+```json
+{
+    "version": "1.3",
+    "net_instance_id": "superpod1_1",
+    "endpoint_list": [
+        {
+            "protocol": "roce",
+            "comm_id": "10.10.10.1",
+            "placement": "host"
+        },
+        {
+            "protocol": "ub_ctp",
+            "comm_id": "000000000000000000000000c0a80463",
+            "placement": "device",
+            "dst_eid": "000000000000000000000000c0a80563"
+        }
+    ]
+}
+```
+
+> **说明：** 推荐使用最小配置方式，系统会自动生成本地通信资源信息。如需手动指定，endpoint_list中各字段的含义请参考[通信资源配置字段说明](#通信资源配置字段说明)。
+
 OPTION_GLOBAL_RESOURCE_CONFIG的配置示例和使用约束如下：
 
 对于Fabric Mem模式（仅Atlas A3 训练系列产品/Atlas A3 推理系列产品支持），该参数配置示例如下：
@@ -140,7 +171,7 @@ device侧网卡默认监听端口为16666，如果在多个进程使用同一个
 <a name="通信资源配置字段说明"></a>**通信资源配置字段说明**  
 | 字段名 | 数据类型 | 必选/可选 | 说明 | 支持值/填写规则 |
 | ---- | ---- | ---- | ---- | ---- |
-| version | 字符串 | 必选 | 版本号 | "1.0"/"1.2"/"1.3"。推荐使用"1.3"，需要HDK版本大于等于25.5.0且toolkit包版本大于等于9.1.0。 |
+| version | 字符串 | 必选 | 版本号 | "1.3"。需要HDK版本大于等于25.5.0且toolkit包版本大于等于9.1.0。 |
 | net_instance_id | 字符串 | 必选 | 当前超节点的唯一标识 | 每个超节点唯一即可 |
 | endpoint_list | 数组 | 必选 | 可以使用的通信设备列表 | - |
 | endpoint_list[].protocol | 字符串 | 必选 | 通信协议 | "roce"/"ub_ctp"/"ub_tp"/"uboe" |
@@ -530,6 +561,52 @@ Status TransferSync(const AscendString &remote_engine,
 - 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 - 在调用TransferAsync接口进行异步传输后，需要使用该接口查询对应请求状态，如果查询状态是COMPLETED，将释放相关资源。该场景下不支持再次查询。
 - 异步传输时，用户自行判断是否超时，如果用户判断任务超时，需要调用Disconnect接口销毁链路，清理相关资源。
+
+## GetTransferStatus
+
+**函数功能**
+
+获取所有异步内存传输的状态。
+
+**函数原型**
+
+```
+  Status GetTransferStatus(const GetTransferStatusArgs &args, std::vector<TransferResult> &results)
+```
+
+**参数说明**
+
+| 参数名称 | 输入/输出 | 取值说明 |
+| --- | --- | --- |
+| args | 输入 | 获取所有异步传输请求的状态参数 |
+| results | 输出 | 所有异步传输请求的状态 |
+
+**调用示例**
+
+```
+  //初始化客户端和服务端engine，并完成链接
+  Status transfer_status = client_engine.TransferAsync(remote_engine, operation, op_descs, optional_args, req);
+  //req是TransferAsync()的输出值，使用这个请求句柄进行传输状态查询
+  GetTransferStatusArgs args = { .max_query_count = 4, .skip_waiting = true };
+  std::vector<TransferResult> results;
+  Status query_status = client_engine.GetTransferStatus(args, results);
+  //对传输状态进行检查，判断传输是否完成
+  ...
+```
+
+**返回值**
+
+- SUCCESS：成功
+- UNSUPPORTED: Hixl初始化的options未配置LocalCommRes的version为1.3且未配置GlobalResourceConfig的comm_resource_config.protocol_desc包含uboe:device时，不支持通过该接口查询
+- 其他：失败
+
+**约束说明**
+
+- 调用该接口之前，需要先调用Connect接口完成与对端的建链。
+- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用”aclrtGetCurrentContext”获取context，并在新线程调用”aclrtSetCurrentContext”设置context。
+- 在调用TransferAsync接口进行异步传输后，需要使用该接口查询所有请求状态，如果某请求状态是COMPLETED或FAILED，将释放相关资源。该场景下再次查询将不再返回该请求状态。
+- 异步传输时，用户自行判断是否超时，如果用户判断任务超时，建议调用Disconnect接口销毁链路，清理相关资源。
+
 
 ## SendNotify
 
