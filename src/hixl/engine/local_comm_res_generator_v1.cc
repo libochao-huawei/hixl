@@ -440,39 +440,32 @@ std::string TopoFileFinder::FindTopoFile(const std::string &topo_dir, uint32_t m
 // ProcfsRouteHandler 类实现
 // ============================================================================
 
-ProcfsRouteHandler::ProcfsRouteHandler() : file_accessor_(nullptr) {}
+ProcfsRouteHandler::ProcfsRouteHandler() : injected_proc_base_path_() {}
+
+ProcfsRouteHandler::ProcfsRouteHandler(std::string proc_base_path)
+    : injected_proc_base_path_(std::move(proc_base_path)) {}
 
 ProcfsRouteHandler::~ProcfsRouteHandler() {}
 
-void ProcfsRouteHandler::SetFileAccessor(std::unique_ptr<IFileAccessor> accessor) {
-  file_accessor_ = std::move(accessor);
-}
-
 std::string ProcfsRouteHandler::FindProcBasePath() {
+  // 显式注入的路径优先；空字符串表示走默认 ascend_ub / asdrv_ub 自动发现
+  if (!injected_proc_base_path_.empty()) {
+    if (IsFileExists(injected_proc_base_path_ + "/" + kProcDevIdFile)) {
+      return injected_proc_base_path_;
+    }
+    return "";
+  }
   std::string dev_id_file = kProcDevIdFile;
-  if (file_accessor_) {
-    if (file_accessor_->FileExists(std::string(kProcPathAscendUb) + "/" + dev_id_file)) {
-      return kProcPathAscendUb;
-    }
-    if (file_accessor_->FileExists(std::string(kProcPathAsdrvUb) + "/" + dev_id_file)) {
-      return kProcPathAsdrvUb;
-    }
-  } else {
-    if (IsFileExists(std::string(kProcPathAscendUb) + "/" + dev_id_file)) {
-      return kProcPathAscendUb;
-    }
-    if (IsFileExists(std::string(kProcPathAsdrvUb) + "/" + dev_id_file)) {
-      return kProcPathAsdrvUb;
-    }
+  if (IsFileExists(std::string(kProcPathAscendUb) + "/" + dev_id_file)) {
+    return kProcPathAscendUb;
+  }
+  if (IsFileExists(std::string(kProcPathAsdrvUb) + "/" + dev_id_file)) {
+    return kProcPathAsdrvUb;
   }
   return "";
 }
 
 bool ProcfsRouteHandler::ReadFileToString(const std::string &path, std::string &content) {
-  if (file_accessor_) {
-    return file_accessor_->ReadFile(path, content);
-  }
-  // 默认实现
   if (mmAccess(path.c_str()) != EN_OK) {
     HIXL_LOGW("[ReadFileToString] File access check failed: %s, errno=%d(%s)", path.c_str(), errno, strerror(errno));
     return false;
@@ -489,10 +482,6 @@ bool ProcfsRouteHandler::ReadFileToString(const std::string &path, std::string &
 }
 
 bool ProcfsRouteHandler::WriteStringToFile(const std::string &path, const std::string &content) {
-  if (file_accessor_) {
-    return file_accessor_->WriteFile(path, content);
-  }
-  // 默认实现
   int fd = open(path.c_str(), O_WRONLY);
   if (fd < 0) {
     HIXL_LOGW("[WriteStringToFile] Failed to open %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));

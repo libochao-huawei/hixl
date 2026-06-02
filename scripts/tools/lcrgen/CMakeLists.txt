@@ -11,11 +11,11 @@
 cmake_minimum_required(VERSION 3.16)
 project(hixl_lcrgen_tool)
 
-add_executable(local_comm_res_generator local_comm_res_generator.cc)
+add_executable(lcrgen local_comm_res_generator.cc)
 
-target_compile_features(local_comm_res_generator PRIVATE cxx_std_17)
+target_compile_features(lcrgen PRIVATE cxx_std_17)
 
-target_include_directories(local_comm_res_generator PRIVATE
+target_include_directories(lcrgen PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${HIXL_CODE_DIR}/include
         ${HIXL_CODE_DIR}/src/hixl
@@ -26,7 +26,7 @@ target_include_directories(local_comm_res_generator PRIVATE
         ${CANN_INSTALL_PATH}/include
 )
 
-target_compile_options(local_comm_res_generator PRIVATE
+target_compile_options(lcrgen PRIVATE
         -ftrapv
         -O2
         -fno-common
@@ -36,7 +36,7 @@ target_compile_options(local_comm_res_generator PRIVATE
         -Wextra
 )
 
-target_link_libraries(local_comm_res_generator PRIVATE
+target_link_libraries(lcrgen PRIVATE
         cann_hixl
         acl_rt_headers
         acl_rt
@@ -44,4 +44,4 @@ target_link_libraries(local_comm_res_generator PRIVATE
         stdc++fs
 )
 
-target_link_ascend_hal(local_comm_res_generator)
+target_link_ascend_hal(lcrgen)

@@ -1141,254 +1141,218 @@ TEST_F(LocalCommResH2UTest, IntegrationH2USuccess) {
 
 // ============================================================================
 // ProcfsRouteHandler UT
+// 真实文件系统版本：通过构造时注入临时目录，移除所有 mock 抽象
 // ============================================================================
 
-// Mock IFileAccessor for ProcfsRouteHandler testing
-class MockProcfsFileAccessor : public hixl::ProcfsRouteHandler::IFileAccessor {
-public:
-    bool FileExists(const std::string& path) override {
-        if (file_exists_map_.find(path) != file_exists_map_.end()) {
-            return file_exists_map_[path];
-        }
-        return false;
-    }
-
-    bool ReadFile(const std::string& path, std::string& content) override {
-        if (read_file_map_.find(path) != read_file_map_.end()) {
-            content = read_file_map_[path];
-            return true;
-        }
-        return false;
-    }
-
-    bool WriteFile(const std::string& path, const std::string& content) override {
-        write_calls_.push_back({path, content});
-        return write_should_fail_ ? false : true;
-    }
-
-    // Helper methods to configure mock behavior
-    void SetFileExists(const std::string& path, bool exists) {
-        file_exists_map_[path] = exists;
-    }
-
-    void SetReadFileContent(const std::string& path, const std::string& content) {
-        read_file_map_[path] = content;
-    }
-
-    void SetWriteShouldFail(bool fail) {
-        write_should_fail_ = fail;
-    }
-
-    void Clear() {
-        file_exists_map_.clear();
-        read_file_map_.clear();
-        write_calls_.clear();
-        write_should_fail_ = false;
-    }
-
-    const std::vector<std::pair<std::string, std::string>>& GetWriteCalls() const {
-        return write_calls_;
-    }
-
-private:
-    std::map<std::string, bool> file_exists_map_;
-    std::map<std::string, std::string> read_file_map_;
-    std::vector<std::pair<std::string, std::string>> write_calls_;
-    bool write_should_fail_ = false;
-};
+// Helper to create valid pair_info content
+std::string MakePairInfoContent(const std::string &slot_id, const std::vector<std::string> &local_eids,
+                                const std::vector<std::string> &remote_eids) {
+  std::ostringstream oss;
+  for (size_t i = 0; i < local_eids.size() && i < remote_eids.size(); ++i) {
+    oss << "dev_id=0 slot_id=" << slot_id << "\n";
+    oss << "local_eid: " << local_eids[i] << "\n";
+    oss << "remote_eid: " << remote_eids[i] << "\n";
+  }
+  return oss.str();
+}
 
 class ProcfsRouteHandlerTest : public ::testing::Test {
-protected:
-    void TearDown() override {
-        // handler_ will be destroyed automatically
-    }
+ protected:
+  void SetUp() override {
+    std::string temp_dir = "/tmp/hixl_procfs_ut_XXXXXX";
+    char *result = mkdtemp(&temp_dir[0]);
+    ASSERT_NE(result, nullptr);
+    proc_base_ = temp_dir;
+  }
 
-    hixl::ProcfsRouteHandler handler_;
+  void TearDown() override {
+    if (!proc_base_.empty()) {
+      std::string cmd = "rm -rf " + proc_base_;
+      (void)system(cmd.c_str());
+      proc_base_.clear();
+    }
+  }
+
+  // 在临时目录下写入指定文件的内容；name 相对于 proc_base_
+  void WriteProcFile(const std::string &name, const std::string &content) {
+    std::string path = proc_base_ + "/" + name;
+    std::ofstream of(path.c_str());
+    ASSERT_TRUE(of.is_open());
+    of << content;
+    of.close();
+  }
+
+  // 显式注入的 proc 根目录
+  std::string proc_base_;
 };
 
-// Helper function to create a configured mock and inject it into a handler
-// This replaces any previously set mock
-void ConfigureMockForProcfs(hixl::ProcfsRouteHandler& handler,
-                            bool ascend_ub_exists,
-                            bool asdrv_ub_exists,
-                            const std::string& pair_info_content = "",
-                            bool write_should_fail = false) {
-    auto mock = std::make_unique<MockProcfsFileAccessor>();
-    mock->SetFileExists("/proc/ascend_ub/dev_id", ascend_ub_exists);
-    mock->SetFileExists("/proc/ascend_ub/pair_info", ascend_ub_exists);
-    mock->SetFileExists("/proc/asdrv_ub/dev_id", asdrv_ub_exists);
-    mock->SetFileExists("/proc/asdrv_ub/pair_info", asdrv_ub_exists);
-    mock->SetReadFileContent("/proc/ascend_ub/dev_id", "");
-    mock->SetReadFileContent("/proc/ascend_ub/pair_info", pair_info_content);
-    mock->SetReadFileContent("/proc/asdrv_ub/dev_id", "");
-    mock->SetReadFileContent("/proc/asdrv_ub/pair_info", pair_info_content);
-    mock->SetWriteShouldFail(write_should_fail);
-    handler.SetFileAccessor(std::move(mock));
-}
-
-// Helper to create valid pair_info content
-std::string MakePairInfoContent(const std::string& slot_id,
-                                 const std::vector<std::string>& local_eids,
-                                 const std::vector<std::string>& remote_eids) {
-    std::ostringstream oss;
-    for (size_t i = 0; i < local_eids.size() && i < remote_eids.size(); ++i) {
-        oss << "dev_id=0 slot_id=" << slot_id << "\n";
-        oss << "local_eid: " << local_eids[i] << "\n";
-        oss << "remote_eid: " << remote_eids[i] << "\n";
-    }
-    return oss.str();
-}
-
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataProcPathNotFound) {
-    // Neither /proc/ascend_ub nor /proc/asdrv_ub exist
-    ConfigureMockForProcfs(handler_, false, false, "");
+  // 注入的目录存在但 dev_id 不存在 → FindProcBasePath 返回空 → 失败
+  hixl::ProcfsRouteHandler handler(proc_base_);
 
-    std::set<int32_t> related_npu_ids = {0, 1};
-    hixl::RouteData route_data;
-    int32_t ret = handler_.GenerateRouteData(related_npu_ids, route_data);
+  std::set<int32_t> related_npu_ids = {0, 1};
+  hixl::RouteData route_data;
+  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
 
-    EXPECT_EQ(ret, hixl::FAILED);
-    EXPECT_TRUE(route_data.entries.empty());
+  EXPECT_EQ(ret, hixl::FAILED);
+  EXPECT_TRUE(route_data.entries.empty());
 }
 
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataAscendUbFound) {
-    ConfigureMockForProcfs(handler_, true, false,
-        MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"}, {"0x000000000072008000100000dfdf0001"}));
+  WriteProcFile("dev_id", "");
+  WriteProcFile("pair_info", MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"},
+                                                 {"0x000000000072008000100000dfdf0001"}));
 
-    std::set<int32_t> related_npu_ids = {0};
-    hixl::RouteData route_data;
-    int32_t ret = handler_.GenerateRouteData(related_npu_ids, route_data);
+  hixl::ProcfsRouteHandler handler(proc_base_);
+  std::set<int32_t> related_npu_ids = {0};
+  hixl::RouteData route_data;
+  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
 
-    EXPECT_EQ(ret, hixl::SUCCESS);
-    ASSERT_EQ(route_data.entries.size(), 1U);
-    EXPECT_EQ(route_data.entries[0].device_id, 0);  // 0 % 8 = 0
-    EXPECT_EQ(route_data.entries[0].local_eid, "0000000000f2008000100000dfdf0091");
-    EXPECT_EQ(route_data.entries[0].remote_eid, "000000000072008000100000dfdf0001");
+  EXPECT_EQ(ret, hixl::SUCCESS);
+  ASSERT_EQ(route_data.entries.size(), 1U);
+  EXPECT_EQ(route_data.entries[0].device_id, 0);  // 0 % 8 = 0
+  EXPECT_EQ(route_data.entries[0].local_eid, "0000000000f2008000100000dfdf0091");
+  EXPECT_EQ(route_data.entries[0].remote_eid, "000000000072008000100000dfdf0001");
 }
 
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataAsdrvUbFound) {
-    // ascend_ub doesn't exist, asdrv_ub exists
-    ConfigureMockForProcfs(handler_, false, true,
-        MakePairInfoContent("1", {"0x0000000000f2008000100000dfdf0091"}, {"0x000000000072008000100000dfdf0001"}));
+  // 复用同一注入路径，行为与 ascend_ub 一致（注入路径优先）
+  WriteProcFile("dev_id", "");
+  WriteProcFile("pair_info", MakePairInfoContent("1", {"0x0000000000f2008000100000dfdf0091"},
+                                                 {"0x000000000072008000100000dfdf0001"}));
 
-    std::set<int32_t> related_npu_ids = {1};
-    hixl::RouteData route_data;
-    int32_t ret = handler_.GenerateRouteData(related_npu_ids, route_data);
+  hixl::ProcfsRouteHandler handler(proc_base_);
+  std::set<int32_t> related_npu_ids = {1};
+  hixl::RouteData route_data;
+  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
 
-    EXPECT_EQ(ret, hixl::SUCCESS);
-    ASSERT_EQ(route_data.entries.size(), 1U);
-    EXPECT_EQ(route_data.entries[0].device_id, 1);  // 1 % 8 = 1
+  EXPECT_EQ(ret, hixl::SUCCESS);
+  ASSERT_EQ(route_data.entries.size(), 1U);
+  EXPECT_EQ(route_data.entries[0].device_id, 1);  // 1 % 8 = 1
 }
 
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataWriteFails) {
-    ConfigureMockForProcfs(handler_, true, false,
-        MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"}, {"0x000000000072008000100000dfdf0001"}),
-        true);  // write_should_fail = true
+  // dev_id 不存在 → open() 失败 → WriteStringToFile 失败 → ProcessNpuProcfsRoute 返回 FAILED
+  WriteProcFile("pair_info", MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"},
+                                                 {"0x000000000072008000100000dfdf0001"}));
 
-    std::set<int32_t> related_npu_ids = {0};
-    hixl::RouteData route_data;
-    int32_t ret = handler_.GenerateRouteData(related_npu_ids, route_data);
+  hixl::ProcfsRouteHandler handler(proc_base_);
+  std::set<int32_t> related_npu_ids = {0};
+  hixl::RouteData route_data;
+  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
 
-    EXPECT_EQ(ret, hixl::FAILED);
-    EXPECT_TRUE(route_data.entries.empty());
+  EXPECT_EQ(ret, hixl::FAILED);
+  EXPECT_TRUE(route_data.entries.empty());
 }
 
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataReadPairInfoFails) {
-    ConfigureMockForProcfs(handler_, true, false, "");
+  // dev_id 存在，pair_info 缺失 → 读取失败
+  WriteProcFile("dev_id", "");
 
-    std::set<int32_t> related_npu_ids = {0};
-    hixl::RouteData route_data;
-    int32_t ret = handler_.GenerateRouteData(related_npu_ids, route_data);
+  hixl::ProcfsRouteHandler handler(proc_base_);
+  std::set<int32_t> related_npu_ids = {0};
+  hixl::RouteData route_data;
+  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
 
-    EXPECT_EQ(ret, hixl::FAILED);
-    EXPECT_TRUE(route_data.entries.empty());
+  EXPECT_EQ(ret, hixl::FAILED);
+  EXPECT_TRUE(route_data.entries.empty());
 }
 
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataMalformedPairInfo) {
-    ConfigureMockForProcfs(handler_, true, false, "not valid pair info content\n");
+  WriteProcFile("dev_id", "");
+  WriteProcFile("pair_info", "not valid pair info content\n");
 
-    std::set<int32_t> related_npu_ids = {0};
-    hixl::RouteData route_data;
-    int32_t ret = handler_.GenerateRouteData(related_npu_ids, route_data);
+  hixl::ProcfsRouteHandler handler(proc_base_);
+  std::set<int32_t> related_npu_ids = {0};
+  hixl::RouteData route_data;
+  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
 
-    EXPECT_EQ(ret, hixl::FAILED);
-    EXPECT_TRUE(route_data.entries.empty());
+  EXPECT_EQ(ret, hixl::FAILED);
+  EXPECT_TRUE(route_data.entries.empty());
 }
 
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataMultipleNpus) {
-    ConfigureMockForProcfs(handler_, true, false,
-        MakePairInfoContent("2", {"0x0000000000f2008000100000dfdf0091", "0x0000000000f2008000100000dfdf0092"},
-                                  {"0x000000000072008000100000dfdf0001", "0x000000000072008000100000dfdf0002"}));
+  WriteProcFile("dev_id", "");
+  WriteProcFile("pair_info",
+                MakePairInfoContent("2", {"0x0000000000f2008000100000dfdf0091", "0x0000000000f2008000100000dfdf0092"},
+                                    {"0x000000000072008000100000dfdf0001", "0x000000000072008000100000dfdf0002"}));
 
-    std::set<int32_t> related_npu_ids = {0, 1, 2, 3};
-    hixl::RouteData route_data;
-    int32_t ret = handler_.GenerateRouteData(related_npu_ids, route_data);
+  hixl::ProcfsRouteHandler handler(proc_base_);
+  std::set<int32_t> related_npu_ids = {0, 1, 2, 3};
+  hixl::RouteData route_data;
+  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
 
-    EXPECT_EQ(ret, hixl::SUCCESS);
-    // device_id = npu_id % 8, so 0,1,2,3 should all generate entries
-    ASSERT_EQ(route_data.entries.size(), 4U);
+  EXPECT_EQ(ret, hixl::SUCCESS);
+  // device_id = npu_id % 8, so 0,1,2,3 should all generate entries
+  ASSERT_EQ(route_data.entries.size(), 4U);
 }
 
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataEmptyNpuIds) {
-    ConfigureMockForProcfs(handler_, true, false, "");
+  WriteProcFile("dev_id", "");
+  WriteProcFile("pair_info", "");
 
-    std::set<int32_t> related_npu_ids;  // empty
-    hixl::RouteData route_data;
-    int32_t ret = handler_.GenerateRouteData(related_npu_ids, route_data);
+  hixl::ProcfsRouteHandler handler(proc_base_);
+  std::set<int32_t> related_npu_ids;  // empty
+  hixl::RouteData route_data;
+  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
 
-    // No NPUs to process, no entries generated → returns FAILED
-    EXPECT_EQ(ret, hixl::FAILED);
-    EXPECT_TRUE(route_data.entries.empty());
+  // No NPUs to process, no entries generated → returns FAILED
+  EXPECT_EQ(ret, hixl::FAILED);
+  EXPECT_TRUE(route_data.entries.empty());
 }
 
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataNpuIdGreaterThan7) {
-    ConfigureMockForProcfs(handler_, true, false,
-        MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"}, {"0x000000000072008000100000dfdf0001"}));
+  WriteProcFile("dev_id", "");
+  WriteProcFile("pair_info", MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"},
+                                                 {"0x000000000072008000100000dfdf0001"}));
 
-    // npu_id = 10, device_id = 10 % 8 = 2
-    std::set<int32_t> related_npu_ids = {10};
-    hixl::RouteData route_data;
-    int32_t ret = handler_.GenerateRouteData(related_npu_ids, route_data);
+  // npu_id = 10, device_id = 10 % 8 = 2
+  hixl::ProcfsRouteHandler handler(proc_base_);
+  std::set<int32_t> related_npu_ids = {10};
+  hixl::RouteData route_data;
+  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
 
-    EXPECT_EQ(ret, hixl::SUCCESS);
-    ASSERT_EQ(route_data.entries.size(), 1U);
-    EXPECT_EQ(route_data.entries[0].device_id, 2);  // 10 % 8 = 2
+  EXPECT_EQ(ret, hixl::SUCCESS);
+  ASSERT_EQ(route_data.entries.size(), 1U);
+  EXPECT_EQ(route_data.entries[0].device_id, 2);  // 10 % 8 = 2
 }
 
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataEid0xPrefixStripped) {
-    ConfigureMockForProcfs(handler_, true, false,
-        MakePairInfoContent("0", {"0xaa", "0xbb"}, {"0xcc", "0xdd"}));
+  WriteProcFile("dev_id", "");
+  WriteProcFile("pair_info", MakePairInfoContent("0", {"0xaa", "0xbb"}, {"0xcc", "0xdd"}));
 
-    // npu_id=0 → group_offset=0 → eid_idx=0; npu_id=4 → group_offset=4 → eid_idx=1
-    std::set<int32_t> related_npu_ids = {0, 4};
-    hixl::RouteData route_data;
-    int32_t ret = handler_.GenerateRouteData(related_npu_ids, route_data);
+  // npu_id=0 → group_offset=0 → eid_idx=0; npu_id=4 → group_offset=4 → eid_idx=1
+  hixl::ProcfsRouteHandler handler(proc_base_);
+  std::set<int32_t> related_npu_ids = {0, 4};
+  hixl::RouteData route_data;
+  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
 
-    EXPECT_EQ(ret, hixl::SUCCESS);
-    ASSERT_EQ(route_data.entries.size(), 2U);
-    // Verify 0x prefix is stripped
-    EXPECT_EQ(route_data.entries[0].local_eid, "aa");
-    EXPECT_EQ(route_data.entries[0].remote_eid, "cc");
-    EXPECT_EQ(route_data.entries[1].local_eid, "bb");
-    EXPECT_EQ(route_data.entries[1].remote_eid, "dd");
+  EXPECT_EQ(ret, hixl::SUCCESS);
+  ASSERT_EQ(route_data.entries.size(), 2U);
+  // Verify 0x prefix is stripped
+  EXPECT_EQ(route_data.entries[0].local_eid, "aa");
+  EXPECT_EQ(route_data.entries[0].remote_eid, "cc");
+  EXPECT_EQ(route_data.entries[1].local_eid, "bb");
+  EXPECT_EQ(route_data.entries[1].remote_eid, "dd");
 }
 
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataEidColonStripped) {
-    ConfigureMockForProcfs(handler_, true, false,
-        MakePairInfoContent("0", {"0xaa:bb:cc", "dd:ee:ff"}, {"11:22:33", "44:55:66"}));
+  WriteProcFile("dev_id", "");
+  WriteProcFile("pair_info", MakePairInfoContent("0", {"0xaa:bb:cc", "dd:ee:ff"}, {"11:22:33", "44:55:66"}));
 
-    // npu_id=0 → group_offset=0 → eid_idx=0; npu_id=4 → group_offset=4 → eid_idx=1
-    std::set<int32_t> related_npu_ids = {0, 4};
-    hixl::RouteData route_data;
-    int32_t ret = handler_.GenerateRouteData(related_npu_ids, route_data);
+  // npu_id=0 → group_offset=0 → eid_idx=0; npu_id=4 → group_offset=4 → eid_idx=1
+  hixl::ProcfsRouteHandler handler(proc_base_);
+  std::set<int32_t> related_npu_ids = {0, 4};
+  hixl::RouteData route_data;
+  int32_t ret = handler.GenerateRouteData(related_npu_ids, route_data);
 
-    EXPECT_EQ(ret, hixl::SUCCESS);
-    ASSERT_EQ(route_data.entries.size(), 2U);
-    // Verify colons are stripped
-    EXPECT_EQ(route_data.entries[0].local_eid, "aabbcc");
-    EXPECT_EQ(route_data.entries[0].remote_eid, "112233");
-    EXPECT_EQ(route_data.entries[1].local_eid, "ddeeff");
-    EXPECT_EQ(route_data.entries[1].remote_eid, "445566");
+  EXPECT_EQ(ret, hixl::SUCCESS);
+  ASSERT_EQ(route_data.entries.size(), 2U);
+  // Verify colons are stripped
+  EXPECT_EQ(route_data.entries[0].local_eid, "aabbcc");
+  EXPECT_EQ(route_data.entries[0].remote_eid, "112233");
+  EXPECT_EQ(route_data.entries[1].local_eid, "ddeeff");
+  EXPECT_EQ(route_data.entries[1].remote_eid, "445566");
 }
 
 // ============================================================================
@@ -1398,151 +1362,151 @@ TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataEidColonStripped) {
 class TopoFileFinderTest : public ::testing::Test {};
 
 // Helper: Create temp dir with topo files
-std::string CreateTempTopoDir(const std::string& prefix, bool with_850_file, bool with_950_file) {
-    std::string temp_dir = "/tmp/hixl_topo_ut_XXXXXX";
-    char* result = mkdtemp(&temp_dir[0]);
-    if (result == nullptr) {
-        return "";
-    }
-    if (with_850_file) {
-        std::string file_path = temp_dir + "/" + prefix + "_850_server.json";
-        std::ofstream of(file_path.c_str());
-        of << "{}";
-        of.close();
-    }
-    if (with_950_file) {
-        std::string file_path = temp_dir + "/" + prefix + "_950_pod.json";
-        std::ofstream of(file_path.c_str());
-        of << "{}";
-        of.close();
-    }
-    return temp_dir;
+std::string CreateTempTopoDir(const std::string &prefix, bool with_850_file, bool with_950_file) {
+  std::string temp_dir = "/tmp/hixl_topo_ut_XXXXXX";
+  char *result = mkdtemp(&temp_dir[0]);
+  if (result == nullptr) {
+    return "";
+  }
+  if (with_850_file) {
+    std::string file_path = temp_dir + "/" + prefix + "_850_server.json";
+    std::ofstream of(file_path.c_str());
+    of << "{}";
+    of.close();
+  }
+  if (with_950_file) {
+    std::string file_path = temp_dir + "/" + prefix + "_950_pod.json";
+    std::ofstream of(file_path.c_str());
+    of << "{}";
+    of.close();
+  }
+  return temp_dir;
 }
 
 // Helper: Cleanup temp dir
-void CleanupTopoTempDir(const std::string& temp_dir) {
-    if (!temp_dir.empty()) {
-        std::string cmd = "rm -rf " + temp_dir;
-        system(cmd.c_str());
-    }
+void CleanupTopoTempDir(const std::string &temp_dir) {
+  if (!temp_dir.empty()) {
+    std::string cmd = "rm -rf " + temp_dir;
+    system(cmd.c_str());
+  }
 }
 
 TEST_F(TopoFileFinderTest, FindTopoFileServerProduct) {
-    // Server 产品 (mainboard_id=0x21) 应匹配 atlas_850_* 前缀
-    std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-    ASSERT_FALSE(temp_dir.empty());
+  // Server 产品 (mainboard_id=0x21) 应匹配 atlas_850_* 前缀
+  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
+  ASSERT_FALSE(temp_dir.empty());
 
-    hixl::TopoFileFinder finder;
-    std::string result = finder.FindTopoFile(temp_dir, 0x21);
+  hixl::TopoFileFinder finder;
+  std::string result = finder.FindTopoFile(temp_dir, 0x21);
 
-    EXPECT_FALSE(result.empty());
-    EXPECT_NE(result.find("850"), std::string::npos);
+  EXPECT_FALSE(result.empty());
+  EXPECT_NE(result.find("850"), std::string::npos);
 
-    CleanupTopoTempDir(temp_dir);
+  CleanupTopoTempDir(temp_dir);
 }
 
 TEST_F(TopoFileFinderTest, FindTopoFilePodProduct) {
-    // Pod 产品 (mainboard_id=0x3) 应匹配 atlas_950_* 前缀
-    std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-    ASSERT_FALSE(temp_dir.empty());
+  // Pod 产品 (mainboard_id=0x3) 应匹配 atlas_950_* 前缀
+  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
+  ASSERT_FALSE(temp_dir.empty());
 
-    hixl::TopoFileFinder finder;
-    std::string result = finder.FindTopoFile(temp_dir, 0x3);
+  hixl::TopoFileFinder finder;
+  std::string result = finder.FindTopoFile(temp_dir, 0x3);
 
-    EXPECT_FALSE(result.empty());
-    EXPECT_NE(result.find("950"), std::string::npos);
+  EXPECT_FALSE(result.empty());
+  EXPECT_NE(result.find("950"), std::string::npos);
 
-    CleanupTopoTempDir(temp_dir);
+  CleanupTopoTempDir(temp_dir);
 }
 
 TEST_F(TopoFileFinderTest, FindTopoFilePod2Product) {
-    // Pod2 产品 (mainboard_id=0x5) 应匹配 atlas_950_* 前缀
-    std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-    ASSERT_FALSE(temp_dir.empty());
+  // Pod2 产品 (mainboard_id=0x5) 应匹配 atlas_950_* 前缀
+  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
+  ASSERT_FALSE(temp_dir.empty());
 
-    hixl::TopoFileFinder finder;
-    std::string result = finder.FindTopoFile(temp_dir, 0x5);
+  hixl::TopoFileFinder finder;
+  std::string result = finder.FindTopoFile(temp_dir, 0x5);
 
-    EXPECT_FALSE(result.empty());
-    EXPECT_NE(result.find("950"), std::string::npos);
+  EXPECT_FALSE(result.empty());
+  EXPECT_NE(result.find("950"), std::string::npos);
 
-    CleanupTopoTempDir(temp_dir);
+  CleanupTopoTempDir(temp_dir);
 }
 
 TEST_F(TopoFileFinderTest, FindTopoFilePod3Product) {
-    // Pod3 产品 (mainboard_id=0x7) 应匹配 atlas_950_* 前缀
-    std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-    ASSERT_FALSE(temp_dir.empty());
+  // Pod3 产品 (mainboard_id=0x7) 应匹配 atlas_950_* 前缀
+  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
+  ASSERT_FALSE(temp_dir.empty());
 
-    hixl::TopoFileFinder finder;
-    std::string result = finder.FindTopoFile(temp_dir, 0x7);
+  hixl::TopoFileFinder finder;
+  std::string result = finder.FindTopoFile(temp_dir, 0x7);
 
-    EXPECT_FALSE(result.empty());
-    EXPECT_NE(result.find("950"), std::string::npos);
+  EXPECT_FALSE(result.empty());
+  EXPECT_NE(result.find("950"), std::string::npos);
 
-    CleanupTopoTempDir(temp_dir);
+  CleanupTopoTempDir(temp_dir);
 }
 
 TEST_F(TopoFileFinderTest, FindTopoFileServerEvenRange2) {
-    // Server 产品偶数范围 (mainboard_id=0x42) 应匹配 atlas_850_* 前缀
-    std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-    ASSERT_FALSE(temp_dir.empty());
+  // Server 产品偶数范围 (mainboard_id=0x42) 应匹配 atlas_850_* 前缀
+  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
+  ASSERT_FALSE(temp_dir.empty());
 
-    hixl::TopoFileFinder finder;
-    std::string result = finder.FindTopoFile(temp_dir, 0x42);
+  hixl::TopoFileFinder finder;
+  std::string result = finder.FindTopoFile(temp_dir, 0x42);
 
-    EXPECT_FALSE(result.empty());
-    EXPECT_NE(result.find("850"), std::string::npos);
+  EXPECT_FALSE(result.empty());
+  EXPECT_NE(result.find("850"), std::string::npos);
 
-    CleanupTopoTempDir(temp_dir);
+  CleanupTopoTempDir(temp_dir);
 }
 
 TEST_F(TopoFileFinderTest, FindTopoFileDirectoryNotExist) {
-    // 目录不存在应返回空
-    hixl::TopoFileFinder finder;
-    std::string result = finder.FindTopoFile("/nonexistent/path", 0x21);
+  // 目录不存在应返回空
+  hixl::TopoFileFinder finder;
+  std::string result = finder.FindTopoFile("/nonexistent/path", 0x21);
 
-    EXPECT_TRUE(result.empty());
+  EXPECT_TRUE(result.empty());
 }
 
 TEST_F(TopoFileFinderTest, FindTopoFileNoMatchingFile) {
-    // 目录存在但没有匹配的文件应返回空
-    std::string temp_dir = CreateTempTopoDir("atlas", false, false);  // 不创建任何文件
-    ASSERT_FALSE(temp_dir.empty());
+  // 目录存在但没有匹配的文件应返回空
+  std::string temp_dir = CreateTempTopoDir("atlas", false, false);  // 不创建任何文件
+  ASSERT_FALSE(temp_dir.empty());
 
-    hixl::TopoFileFinder finder;
-    std::string result = finder.FindTopoFile(temp_dir, 0x21);
+  hixl::TopoFileFinder finder;
+  std::string result = finder.FindTopoFile(temp_dir, 0x21);
 
-    EXPECT_TRUE(result.empty());
+  EXPECT_TRUE(result.empty());
 
-    CleanupTopoTempDir(temp_dir);
+  CleanupTopoTempDir(temp_dir);
 }
 
 TEST_F(TopoFileFinderTest, FindTopoFileUnknownMainboardId) {
-    // 未知 mainboard_id 应返回空
-    std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-    ASSERT_FALSE(temp_dir.empty());
+  // 未知 mainboard_id 应返回空
+  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
+  ASSERT_FALSE(temp_dir.empty());
 
-    hixl::TopoFileFinder finder;
-    std::string result = finder.FindTopoFile(temp_dir, 0x99);
+  hixl::TopoFileFinder finder;
+  std::string result = finder.FindTopoFile(temp_dir, 0x99);
 
-    EXPECT_TRUE(result.empty());
+  EXPECT_TRUE(result.empty());
 
-    CleanupTopoTempDir(temp_dir);
+  CleanupTopoTempDir(temp_dir);
 }
 
 TEST_F(TopoFileFinderTest, FindTopoFileServerOddMainboardId) {
-    // Server 产品奇数 mainboard_id (0x23) 应匹配 atlas_850_* 前缀
-    std::string temp_dir = CreateTempTopoDir("atlas", true, true);
-    ASSERT_FALSE(temp_dir.empty());
+  // Server 产品奇数 mainboard_id (0x23) 应匹配 atlas_850_* 前缀
+  std::string temp_dir = CreateTempTopoDir("atlas", true, true);
+  ASSERT_FALSE(temp_dir.empty());
 
-    hixl::TopoFileFinder finder;
-    std::string result = finder.FindTopoFile(temp_dir, 0x23);
+  hixl::TopoFileFinder finder;
+  std::string result = finder.FindTopoFile(temp_dir, 0x23);
 
-    EXPECT_FALSE(result.empty());
-    EXPECT_NE(result.find("850"), std::string::npos);
+  EXPECT_FALSE(result.empty());
+  EXPECT_NE(result.find("850"), std::string::npos);
 
-    CleanupTopoTempDir(temp_dir);
+  CleanupTopoTempDir(temp_dir);
 }
 
 }  // namespace test
