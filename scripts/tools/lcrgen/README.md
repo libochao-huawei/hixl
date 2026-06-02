@@ -4,7 +4,7 @@
 
 ## 功能说明
 
-该工具通过调用 `GenerateLocalCommRes` 接口，自动生成以下信息：
+该工具通过用户输入的npu逻辑id，自动生成以下信息：
 - 版本号（version）
 - 网络实例 ID（net_instance_id）
 - 端点列表（endpoint_list），包含所有通信边的配置信息

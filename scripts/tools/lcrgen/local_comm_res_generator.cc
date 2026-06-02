@@ -17,10 +17,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <string>
 #include "acl/acl.h"
 #include "local_comm_res_generator_v1.h"
 #include "graph/ascend_string.h"
+#include <nlohmann/json.hpp>
 
 namespace {
 void PrintUsage(const char *prog_name) {
@@ -79,15 +79,27 @@ aclError GetPhyDevId(int32_t logic_id, int32_t *phy_id) {
   return ACL_SUCCESS;
 }
 
-// 直接将 libcann_hixl.so 内部已拼接好的 JSON 字符串打屏输出，
-// 保留 j.dump(2) 的 2 空格缩进，便于用户复制粘贴使用。
-void PrintLocalCommRes(const ge::AscendString &json_result) {
-  const char *json_str = json_result.GetString();
-  if (json_str == nullptr) {
-    std::cerr << "LocalCommRes JSON is null\n";
-    return;
+// 基于 libcann_hixl.so 通过 GenerateLocalCommResJson 给出的 LocalCommResView
+// 在本地拼成 JSON 字符串并打屏输出，保留 2 空格缩进便于用户复制粘贴。
+void PrintLocalCommRes(const hixl::LocalCommResView &view) {
+  nlohmann::json j;
+  j["version"] = view.version.GetString();
+  j["net_instance_id"] = view.net_instance_id.GetString();
+  j["endpoint_list"] = nlohmann::json::array();
+  for (const auto &ep : view.endpoint_list) {
+    nlohmann::json ep_json;
+    ep_json["protocol"] = ep.protocol.GetString();
+    ep_json["comm_id"] = ep.comm_id.GetString();
+    ep_json["placement"] = ep.placement.GetString();
+    if (ep.plane.GetLength() > 0) {
+      ep_json["plane"] = ep.plane.GetString();
+    }
+    if (ep.dst_eid.GetLength() > 0) {
+      ep_json["dst_eid"] = ep.dst_eid.GetString();
+    }
+    j["endpoint_list"].push_back(std::move(ep_json));
   }
-  std::cout << json_str << "\n";
+  std::cout << j.dump(2) << "\n";
 }
 
 }  // anonymous namespace
@@ -141,9 +153,12 @@ int main(int argc, char *argv[]) {
   }
 
   // Step 5: 调用 GenerateLocalCommResJson
+  // 内部完成 LocalCommRes 组装 + std::string → AscendString 转换，输出
+  // LocalCommResView（所有字符串字段均为 AscendString，跨 .so 边界 ABI 安全）。
+  // JSON 序列化由 lcrgen 工具在本地完成，避免 lcrgen 持有 std::string 变量。
   std::cout << "\nCalling GenerateLocalCommResJson(phy_id=" << phy_id << ")...\n";
-  ge::AscendString json_result;
-  int32_t ret = hixl::GenerateLocalCommResJson(phy_id, json_result);
+  hixl::LocalCommResView view;
+  int32_t ret = hixl::GenerateLocalCommResJson(phy_id, view);
   if (ret != hixl::SUCCESS) {
     std::cerr << "GenerateLocalCommResJson failed, ret=" << ret << std::endl;
     aclrtResetDevice(npu_id);
@@ -152,7 +167,7 @@ int main(int argc, char *argv[]) {
   }
 
   // Step 6: 打印结果
-  PrintLocalCommRes(json_result);
+  PrintLocalCommRes(view);
 
   // Step 7: 清理
   aclrtResetDevice(npu_id);
