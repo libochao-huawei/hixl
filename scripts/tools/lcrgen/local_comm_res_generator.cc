@@ -16,12 +16,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
 #include <iostream>
 #include <string>
 #include "acl/acl.h"
 #include "local_comm_res_generator_v1.h"
-#include <nlohmann/json.hpp>
+#include "graph/ascend_string.h"
 
 namespace {
 void PrintUsage(const char *prog_name) {
@@ -80,37 +79,15 @@ aclError GetPhyDevId(int32_t logic_id, int32_t *phy_id) {
   return ACL_SUCCESS;
 }
 
-void PrintLocalCommRes(const hixl::LocalCommRes &local_comm_res, int32_t device_id) {
-  // 生成 JSON 文件
-  nlohmann::json j;
-  j["version"] = local_comm_res.version;
-  j["net_instance_id"] = local_comm_res.net_instance_id;
-  j["endpoint_list"] = nlohmann::json::array();
-
-  for (const auto &ep : local_comm_res.endpoint_list) {
-    nlohmann::json ep_json;
-    ep_json["protocol"] = ep.protocol;
-    ep_json["comm_id"] = ep.comm_id;
-    ep_json["placement"] = ep.placement;
-    if (!ep.plane.empty()) {
-      ep_json["plane"] = ep.plane;
-    }
-    if (!ep.dst_eid.empty()) {
-      ep_json["dst_eid"] = ep.dst_eid;
-    }
-    j["endpoint_list"].push_back(ep_json);
+// 直接将 libcann_hixl.so 内部已拼接好的 JSON 字符串打屏输出，
+// 保留 j.dump(2) 的 2 空格缩进，便于用户复制粘贴使用。
+void PrintLocalCommRes(const ge::AscendString &json_result) {
+  const char *json_str = json_result.GetString();
+  if (json_str == nullptr) {
+    std::cerr << "LocalCommRes JSON is null\n";
+    return;
   }
-
-  // 生成文件名: local_comm_res_{device_id}.json
-  std::string filename = "local_comm_res_" + std::to_string(device_id) + ".json";
-  std::ofstream ofs(filename);
-  if (ofs.is_open()) {
-    ofs << j.dump(2);  // indent=2 for pretty print
-    ofs.close();
-    std::cout << "LocalCommRes JSON file generated at: " << filename << "\n";
-  } else {
-    std::cerr << "Failed to open file for writing: " << filename << "\n";
-  }
+  std::cout << json_str << "\n";
 }
 
 }  // anonymous namespace
@@ -163,19 +140,19 @@ int main(int argc, char *argv[]) {
     return ACL_ERROR_INVALID_PARAM;
   }
 
-  // Step 5: 调用 GenerateLocalCommRes
-  std::cout << "\nCalling GenerateLocalCommRes(phy_id=" << phy_id << ")...\n";
-  hixl::LocalCommRes local_comm_res;
-  int32_t ret = hixl::GenerateLocalCommRes(phy_id, local_comm_res);
+  // Step 5: 调用 GenerateLocalCommResJson
+  std::cout << "\nCalling GenerateLocalCommResJson(phy_id=" << phy_id << ")...\n";
+  ge::AscendString json_result;
+  int32_t ret = hixl::GenerateLocalCommResJson(phy_id, json_result);
   if (ret != hixl::SUCCESS) {
-    std::cerr << "GenerateLocalCommRes failed, ret=" << ret << std::endl;
+    std::cerr << "GenerateLocalCommResJson failed, ret=" << ret << std::endl;
     aclrtResetDevice(npu_id);
     FinalizeAcl();
     return ACL_ERROR_INVALID_PARAM;
   }
 
   // Step 6: 打印结果
-  PrintLocalCommRes(local_comm_res, phy_id);
+  PrintLocalCommRes(json_result);
 
   // Step 7: 清理
   aclrtResetDevice(npu_id);

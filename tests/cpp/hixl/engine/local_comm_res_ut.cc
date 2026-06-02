@@ -1509,5 +1509,61 @@ TEST_F(TopoFileFinderTest, FindTopoFileServerOddMainboardId) {
   CleanupTopoTempDir(temp_dir);
 }
 
+// ============================================================================
+// GenerateLocalCommResJson 测试
+// ============================================================================
+//
+// GenerateLocalCommResJson 内部调用 GenerateLocalCommRes（无参版本）使用默认
+// 路径 /usr/local/Ascend/driver/topo/950/，UT 环境下该路径不存在，因此无法构造
+// "成功" 路径（需要真实系统环境）；但可以验证 "失败" 路径下的错误码传递和
+// AscendString 的状态保持。
+
+class LocalCommResJsonTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    DcmiStubSetInitRet(0);
+    DcmiStubSetLogicId(0, 0);
+    DcmiStubSetUrmaDeviceCnt(1, 0);
+    DcmiStubSetSuperPodId(0, 0);
+    DcmiStubSetEidCount(2);
+  }
+  void TearDown() override {
+    ResetDcmiStub();
+  }
+};
+
+TEST_F(LocalCommResJsonTest, PropagatesGetMainboardIdFailure) {
+  // GetMainboardId 失败 → GenerateLocalCommRes 内部立即返回错误码 →
+  // GenerateLocalCommResJson 应透传该错误码，且 result 保持为空。
+  DcmiStubSetMainboardId(0, -1);
+
+  AscendString result;
+  int32_t ret = GenerateLocalCommResJson(0, result);
+  EXPECT_NE(ret, SUCCESS);
+  EXPECT_EQ(result.GetLength(), 0u);
+}
+
+TEST_F(LocalCommResJsonTest, ParamInvalidWhenDefaultTopoMissing) {
+  // mainboard_id 成功获取 → 进入 FindTopoFile 逻辑；
+  // 默认 topo 目录 /usr/local/Ascend/driver/topo/950/ 在 UT 环境不存在 →
+  // 返回 PARAM_INVALID，result 保持为空。
+  DcmiStubSetMainboardId(0x3, 0);  // Pod1
+
+  AscendString result;
+  int32_t ret = GenerateLocalCommResJson(0, result);
+  EXPECT_EQ(ret, PARAM_INVALID);
+  EXPECT_EQ(result.GetLength(), 0u);
+}
+
+TEST_F(LocalCommResJsonTest, ParamInvalidOnUnknownMainboardId) {
+  // 未知 mainboard_id（0x99）→ MatchProductForm 返回 false → PARAM_INVALID
+  DcmiStubSetMainboardId(0x99, 0);
+
+  AscendString result;
+  int32_t ret = GenerateLocalCommResJson(0, result);
+  EXPECT_EQ(ret, PARAM_INVALID);
+  EXPECT_EQ(result.GetLength(), 0u);
+}
+
 }  // namespace test
 }  // namespace hixl

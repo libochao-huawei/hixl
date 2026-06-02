@@ -319,7 +319,7 @@ int32_t GetHostPgEid(int32_t phy_dev_id, const RouteData &route_data, std::strin
 
   // 1. 执行 urma_admin show
   std::string cmd_output;
-  int32_t ret = DefaultUrmaAdminExec("urma_admin show", cmd_output);
+  int32_t ret = DefaultUrmaAdminExec("show", cmd_output);
   HIXL_LOGI("[GetHostPgEid] the outcoming of urma_admin show are : %s", cmd_output.c_str());
   if (ret != SUCCESS) {
     HIXL_LOGE(FAILED, "[GetHostPgEid] Failed to execute urma_admin show");
@@ -1363,6 +1363,39 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
 
   // 3. 组装结果
   return BuildLocalCommResResult(phy_dev_id, is_server, topo_data, route_data, related_npu_ids, local_comm_res);
+}
+
+int32_t GenerateLocalCommResJson(int32_t phy_dev_id, AscendString &result) {
+  // 1. 调用 GenerateLocalCommRes 组装 LocalCommRes 结构体
+  LocalCommRes local_comm_res;
+  int32_t ret = GenerateLocalCommRes(phy_dev_id, local_comm_res);
+  if (ret != SUCCESS) {
+    HIXL_LOGE(ret, "[GenerateLocalCommResJson] GenerateLocalCommRes failed, ret=%d", ret);
+    return ret;
+  }
+
+  // 2. 序列化为带 2 空格缩进的 JSON 字符串
+  nlohmann::json j;
+  j["version"] = local_comm_res.version;
+  j["net_instance_id"] = local_comm_res.net_instance_id;
+  j["endpoint_list"] = nlohmann::json::array();
+  for (const auto &ep : local_comm_res.endpoint_list) {
+    nlohmann::json ep_json;
+    ep_json["protocol"] = ep.protocol;
+    ep_json["comm_id"] = ep.comm_id;
+    ep_json["placement"] = ep.placement;
+    if (!ep.plane.empty()) {
+      ep_json["plane"] = ep.plane;
+    }
+    if (!ep.dst_eid.empty()) {
+      ep_json["dst_eid"] = ep.dst_eid;
+    }
+    j["endpoint_list"].push_back(ep_json);
+  }
+
+  // 3. 通过 AscendString 返回（内部封装 shared_ptr<std::string>，跨 .so 边界 ABI 安全）
+  result = AscendString(j.dump(2).c_str());
+  return SUCCESS;
 }
 
 }  // namespace hixl

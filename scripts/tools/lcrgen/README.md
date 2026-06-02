@@ -22,7 +22,7 @@ bash build.sh --examples
 ## 运行
 进入build目录下，找工具的同名目录，其中有编译生成的可执行文件。
 ```bash
-./local_comm_res_generator <npu_id>
+./lcrgen <npu_id>
 ```
 
 ### 参数说明
@@ -35,13 +35,13 @@ bash build.sh --examples
 
 ```bash
 # 查看帮助信息
-./local_comm_res_generator
+./lcrgen
 
 # 生成 device 0 的 LocalCommRes 信息
-./local_comm_res_generator 0
+./lcrgen 0
 
 # 生成 device 1 的 LocalCommRes 信息
-./local_comm_res_generator 1
+./lcrgen 1
 ```
 
 ## 输出说明

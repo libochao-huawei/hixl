@@ -29,6 +29,7 @@
 #include "rootinfo_builder_generator_v1.h"
 // 引入 EndpointConfig 定义
 #include "common/hixl_inner_types.h"
+// AscendString 通过 hixl_inner_types.h 间接包含的 hixl_types.h 提供别名（hixl::AscendString）
 
 namespace hixl {
 
@@ -100,6 +101,20 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, LocalCommRes &local_comm_res);
  */
 int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, const std::string &route_path,
                              LocalCommRes &local_comm_res);
+
+/**
+ * @brief 生成 LocalCommRes 的 JSON 字符串（lcrgen 工具使用）
+ *
+ * 内部完成 GenerateLocalCommRes + JSON 序列化，**全部在 libcann_hixl.so 内部**完成，
+ * 避免将 LocalCommRes（包含 std::string 字段）跨 .so 边界拷贝。
+ * 输出通过 AscendString（即 ge::AscendString，内部封装 shared_ptr<std::string>）返回，
+ * 跨 .so 边界 ABI 安全。
+ *
+ * @param [in] phy_dev_id 物理设备 ID
+ * @param [out] result 成功时填入带 2 空格缩进的 JSON 字符串；失败时保持默认空
+ * @return 成功: SUCCESS, 失败: 其它错误码
+ */
+int32_t GenerateLocalCommResJson(int32_t phy_dev_id, AscendString &result);
 
 // ============ DCMI 接口封装 ============
 
