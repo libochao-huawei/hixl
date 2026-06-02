@@ -12,6 +12,7 @@
 #define HIXL_SRC_HIXL_ENGINE_FABRIC_MEM_ENGINE_H_
 
 #include <atomic>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -26,7 +27,22 @@
 #include "fabric_mem/fabric_mem_transfer_service.h"
 #include "hixl/hixl_types.h"
 
+#include "acl/acl.h"
+
 namespace hixl {
+struct RemoteConnection {
+  std::unique_ptr<FabricMemRemoteMemory> remote_memory;
+  std::mutex state_mutex;
+  std::condition_variable cv;
+  uint32_t in_flight{0U};
+  bool disconnecting{false};
+};
+
+struct FabricMemTransferRequest {
+  TransferInfo info;
+  std::shared_ptr<RemoteConnection> conn;
+};
+
 class FabricMemEngine : public hixl::Engine {
  public:
   explicit FabricMemEngine(const AscendString &local_engine) : Engine(local_engine){};
@@ -57,6 +73,38 @@ class FabricMemEngine : public hixl::Engine {
   Status RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor) override;
 
  private:
+  class RemoteTransferLease {
+   public:
+    RemoteTransferLease(FabricMemEngine &engine, std::shared_ptr<RemoteConnection> conn, bool acquired)
+        : engine_(engine), conn_(std::move(conn)), acquired_(acquired) {}
+    ~RemoteTransferLease() {
+      if (acquired_) {
+        engine_.ReleaseTransferLease(conn_);
+      }
+    }
+    RemoteTransferLease(const RemoteTransferLease &) = delete;
+    RemoteTransferLease &operator=(const RemoteTransferLease &) = delete;
+    RemoteTransferLease(RemoteTransferLease &&other) noexcept
+        : engine_(other.engine_), conn_(std::move(other.conn_)), acquired_(other.acquired_) {
+      other.acquired_ = false;
+    }
+    RemoteTransferLease &operator=(RemoteTransferLease &&) = delete;
+    bool Acquired() const {
+      return acquired_;
+    }
+    void Release() {
+      if (acquired_) {
+        engine_.ReleaseTransferLease(conn_);
+        acquired_ = false;
+      }
+    }
+
+   private:
+    FabricMemEngine &engine_;
+    std::shared_ptr<RemoteConnection> conn_;
+    bool acquired_;
+  };
+
   Status ApplyVirtualMemoryConfig();
   Status InitTransferService();
   Status StartControlServer();
@@ -65,33 +113,41 @@ class FabricMemEngine : public hixl::Engine {
   void ReleaseVirtualMemoryManager();
   void CleanupFabricMemLocked();
   bool HasConnectionsLocked() const;
-  Status BuildTransferContextLocked(const std::string &remote_engine, FabricMemTransferContext &context);
-  Status ConnectLocked(const AscendString &remote_engine, int32_t timeout_in_millis);
-  Status DisconnectLocked(const AscendString &remote_engine, int32_t timeout_in_millis);
+  Status LookupRemoteConnectionLocked(const std::string &remote_engine, std::shared_ptr<RemoteConnection> &conn);
+  Status BuildTransferContext(const RemoteConnection &conn, const std::string &remote_engine,
+                              FabricMemTransferContext &context);
+  Status AcquireTransferLease(const std::string &remote_engine, std::shared_ptr<RemoteConnection> &conn);
+  void ReleaseTransferLease(const std::shared_ptr<RemoteConnection> &conn);
+  Status DisconnectLocked(const AscendString &remote_engine, int32_t timeout_in_millis,
+                          bool wait_in_flight = true);
   // Ensures connection to remote without holding mutex_ during network I/O.
-  // Uses double-checked locking: quick check under lock, network fetch without lock, install under lock.
   Status EnsureConnected(const AscendString &remote_engine, int32_t timeout_in_millis);
-  Status CreateAndRegisterRemoteMemory(const std::vector<ShareHandleInfo> &share_handles,
-                                       const std::string &remote);
+  Status CreateAndRegisterRemoteMemory(const std::vector<ShareHandleInfo> &share_handles, const std::string &remote);
   void RemoveChannelReqMapLocked(const std::string &remote_engine);
+  Status DisconnectOnTransferError(const AscendString &remote_engine, int32_t timeout_in_millis);
 
-  // Lock hierarchy (must be acquired in this order):
-  //   mutex_ -> stream_pool_mutex_ -> channel_2_req_mutex_ -> async_req_mutex_
-  //   mutex_ -> share_handle_mutex_
+  // mutex_: engine lifecycle, mem_map_, remote connection table, keepalive_fds_.
+  // connection_mutex_: serializes remote install after network fetch.
+  // req_map_mutex_: protects req_map_.
+  // RemoteConnection::state_mutex: per-remote transfer/disconnect exclusion.
   std::mutex mutex_;
+  std::mutex connection_mutex_;
+  std::mutex req_map_mutex_;
   std::atomic<bool> is_initialized_{false};
 
   FabricMemConfig fabric_mem_config_;
   FabricMemStatistic fabric_mem_statistic_;
-  std::unique_ptr<FabricMemTransferService> fabric_mem_transfer_service_;
+  std::shared_ptr<FabricMemTransferService> fabric_mem_transfer_service_;
   std::unique_ptr<FabricMemControlServer> fabric_mem_control_server_;
-  std::unordered_map<std::string, std::unique_ptr<FabricMemRemoteMemory>> fabric_mem_remote_mems_;
+  std::unordered_map<std::string, std::shared_ptr<RemoteConnection>> fabric_mem_remote_mems_;
   std::unordered_map<std::string, int32_t> keepalive_fds_;
   std::unordered_map<void *, MemInfo> mem_map_;
-  std::unordered_map<uint64_t, TransferInfo> req_map_;
+  std::unordered_map<uint64_t, FabricMemTransferRequest> req_map_;
   std::atomic<uint64_t> next_req_id_{1U};
   bool has_acquired_virtual_memory_ = false;
   bool auto_connect_{false};
+  int32_t device_id_{-1};
+  aclrtContext aclrt_context_{nullptr};
 };
 }  // namespace hixl
 

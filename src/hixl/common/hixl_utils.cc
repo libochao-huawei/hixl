@@ -301,14 +301,15 @@ std::string TransferOpToString(TransferOp op) {
 TemporaryRtContext::TemporaryRtContext(aclrtContext context) {
   (void)aclrtGetCurrentContext(&prev_context_);
   HIXL_LOGI("Get current aclrt ctx:%p", prev_context_);
-  if (context != nullptr && prev_context_ != context) {
+  need_restore_ = (prev_context_ != context);
+  if (need_restore_) {
     HIXL_LOGI("Set new current aclrt ctx:%p", context);
     HIXL_CHK_ACL(aclrtSetCurrentContext(context));
   }
 }
 
 TemporaryRtContext::~TemporaryRtContext() {
-  if (prev_context_ != nullptr) {
+  if (need_restore_) {
     HIXL_LOGI("Restore previous aclrt ctx:%p", prev_context_);
     HIXL_CHK_STATUS(aclrtSetCurrentContext(prev_context_));
   }

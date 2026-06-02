@@ -14,6 +14,7 @@
 #include <string>
 #include <unistd.h>
 #include <unordered_set>
+#include <utility>
 
 #include "acl/acl_rt.h"
 #include "common/hixl_checker.h"
@@ -56,12 +57,12 @@ Status FabricMemEngine::ApplyVirtualMemoryConfig() {
 }
 
 Status FabricMemEngine::InitTransferService() {
-  fabric_mem_transfer_service_ = MakeUnique<FabricMemTransferService>();
+  fabric_mem_transfer_service_ = std::make_shared<FabricMemTransferService>();
   HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(),
                      "[FabricMemEngine] Failed to create fabric mem transfer service.");
   HIXL_CHK_STATUS_RET(
-      fabric_mem_transfer_service_->Initialize(fabric_mem_config_.max_stream_num, fabric_mem_config_.task_stream_num,
-                                               &fabric_mem_statistic_),
+      fabric_mem_transfer_service_->Initialize(device_id_, fabric_mem_config_.max_stream_num,
+                                               fabric_mem_config_.task_stream_num, &fabric_mem_statistic_),
       "[FabricMemEngine] Failed to initialize fabric mem transfer service.");
   return SUCCESS;
 }
@@ -69,9 +70,10 @@ Status FabricMemEngine::InitTransferService() {
 Status FabricMemEngine::StartControlServer() {
   fabric_mem_control_server_ = MakeUnique<FabricMemControlServer>();
   HIXL_CHECK_NOTNULL(fabric_mem_control_server_.get(), "[FabricMemEngine] Failed to create fabric mem control server.");
-  auto provider = [this](std::vector<ShareHandleInfo> &share_handles) -> Status {
-    HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(), "[FabricMemEngine] FabricMem service is null.");
-    share_handles = fabric_mem_transfer_service_->GetShareHandles();
+  auto transfer_service = fabric_mem_transfer_service_;
+  auto provider = [transfer_service](std::vector<ShareHandleInfo> &share_handles) -> Status {
+    HIXL_CHECK_NOTNULL(transfer_service.get(), "[FabricMemEngine] FabricMem service is null.");
+    share_handles = transfer_service->GetShareHandles();
     return SUCCESS;
   };
   HIXL_CHK_STATUS_RET(fabric_mem_control_server_->Start(local_engine_, provider),
@@ -122,8 +124,21 @@ Status FabricMemEngine::Initialize(const std::map<AscendString, AscendString> &o
   HIXL_CHK_BOOL_RET_STATUS(fabric_mem_config_.enabled, PARAM_INVALID,
                            "[FabricMemEngine] EnableUseFabricMem must be 1.");
   auto_connect_ = fabric_mem_config_.auto_connect;
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id_), "[FabricMemEngine] Failed to get device id.");
+  TemporaryRtContext with_context(nullptr);
+  HIXL_CHK_ACL_RET(aclrtCreateContext(&aclrt_context_, device_id_),
+                   "[FabricMemEngine] Failed to create aclrt context.");
+  HIXL_EVENT("[FabricMemEngine] Created aclrt ctx:%p, device:%d.", aclrt_context_, device_id_);
+  HIXL_DISMISSABLE_GUARD(fail_guard, ([this]() {
+                           if (aclrt_context_ != nullptr) {
+                             (void)aclrtDestroyContext(aclrt_context_);
+                             aclrt_context_ = nullptr;
+                           }
+                         }));
+  TemporaryRtContext engine_context(aclrt_context_);
   HIXL_CHK_STATUS_RET(InitFabricMem(), "[FabricMemEngine] Failed to initialize.");
   is_initialized_ = true;
+  HIXL_DISMISS_GUARD(fail_guard);
   HIXL_LOGI("[FabricMemEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
   return SUCCESS;
 }
@@ -133,6 +148,7 @@ bool FabricMemEngine::HasConnectionsLocked() const {
 }
 
 Status FabricMemEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
+  TemporaryRtContext with_context(aclrt_context_);
   HIXL_LOGI("[FabricMemEngine] Registration started, type:%s, addr:%p, size:%lu", MemTypeToString(type).c_str(),
             reinterpret_cast<void *>(mem.addr), mem.len);
   HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(), "[FabricMemEngine] FabricMem service is null.");
@@ -162,6 +178,7 @@ Status FabricMemEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle 
 }
 
 Status FabricMemEngine::DeregisterMem(MemHandle mem_handle) {
+  TemporaryRtContext with_context(aclrt_context_);
   HIXL_LOGI("[FabricMemEngine] Deregistration started, handle:%p.", mem_handle);
   HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(), "[FabricMemEngine] FabricMem service is null.");
   std::lock_guard<std::mutex> lock(mutex_);
@@ -179,18 +196,27 @@ Status FabricMemEngine::DeregisterMem(MemHandle mem_handle) {
 }
 
 Status FabricMemEngine::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return ConnectLocked(remote_engine, timeout_in_millis);
-}
-
-Status FabricMemEngine::ConnectLocked(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  TemporaryRtContext with_context(aclrt_context_);
   const std::string remote = remote_engine.GetString();
-  HIXL_CHK_BOOL_RET_STATUS(fabric_mem_remote_mems_.find(remote) == fabric_mem_remote_mems_.end(), ALREADY_CONNECTED,
-                           "[FabricMemEngine] remote engine:%s is already connected.", remote.c_str());
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    HIXL_CHK_BOOL_RET_STATUS(fabric_mem_remote_mems_.find(remote) == fabric_mem_remote_mems_.end(), ALREADY_CONNECTED,
+                             "[FabricMemEngine] remote engine:%s is already connected.", remote.c_str());
+  }
   std::vector<ShareHandleInfo> share_handles;
   int32_t keepalive_fd = -1;
   HIXL_CHK_STATUS_RET(FabricMemControlClient::Fetch(remote, timeout_in_millis, share_handles, keepalive_fd),
                       "[FabricMemEngine] Failed to fetch share handles from remote:%s.", remote.c_str());
+  // Note: connection_mutex_ (acquired below) serializes all concurrent Connect/EnsureConnected
+  // calls, so the re-check after Fetch is safe against double-install races.
+  std::lock_guard<std::mutex> connection_lock(connection_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (fabric_mem_remote_mems_.find(remote) != fabric_mem_remote_mems_.end()) {
+    if (keepalive_fd >= 0) {
+      (void)close(keepalive_fd);
+    }
+    return ALREADY_CONNECTED;
+  }
   if (keepalive_fd >= 0) {
     keepalive_fds_[remote] = keepalive_fd;
   }
@@ -198,20 +224,21 @@ Status FabricMemEngine::ConnectLocked(const AscendString &remote_engine, int32_t
 }
 
 Status FabricMemEngine::CreateAndRegisterRemoteMemory(const std::vector<ShareHandleInfo> &share_handles,
-                                                       const std::string &remote) {
+                                                      const std::string &remote) {
   auto remote_memory = MakeUnique<FabricMemRemoteMemory>();
   HIXL_CHECK_NOTNULL(remote_memory.get(), "[FabricMemEngine] Failed to create remote memory.");
-  int32_t device_id = -1;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id), "[FabricMemEngine] Failed to get device id.");
-  HIXL_CHK_STATUS_RET(remote_memory->Import(share_handles, device_id),
+  HIXL_CHK_STATUS_RET(remote_memory->Import(share_handles, device_id_),
                       "[FabricMemEngine] Failed to import remote memory, remote:%s.", remote.c_str());
+  auto connection = std::make_shared<RemoteConnection>();
+  connection->remote_memory = std::move(remote_memory);
   fabric_mem_statistic_.RegisterChannel(FabricMemStatistic::GetClientStatisticChannelId(remote));
-  fabric_mem_remote_mems_[remote] = std::move(remote_memory);
+  fabric_mem_remote_mems_[remote] = std::move(connection);
   HIXL_EVENT("[FabricMemEngine] Connected, local_engine:%s, remote_engine:%s.", local_engine_.c_str(), remote.c_str());
   return SUCCESS;
 }
 
 Status FabricMemEngine::EnsureConnected(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  TemporaryRtContext with_context(aclrt_context_);
   const std::string remote = remote_engine.GetString();
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -222,8 +249,8 @@ Status FabricMemEngine::EnsureConnected(const AscendString &remote_engine, int32
   std::vector<ShareHandleInfo> share_handles;
   int32_t keepalive_fd = -1;
   Status ret = FabricMemControlClient::Fetch(remote, timeout_in_millis, share_handles, keepalive_fd);
-  HIXL_CHK_STATUS_RET(ret,
-                      "[FabricMemEngine] Failed to fetch share handles from remote:%s.", remote.c_str());
+  HIXL_CHK_STATUS_RET(ret, "[FabricMemEngine] Failed to fetch share handles from remote:%s.", remote.c_str());
+  std::lock_guard<std::mutex> connection_lock(connection_mutex_);
   std::lock_guard<std::mutex> lock(mutex_);
   if (fabric_mem_remote_mems_.find(remote) != fabric_mem_remote_mems_.end()) {
     if (keepalive_fd >= 0) {
@@ -245,22 +272,101 @@ Status FabricMemEngine::EnsureConnected(const AscendString &remote_engine, int32
   return CreateAndRegisterRemoteMemory(share_handles, remote);
 }
 
-Status FabricMemEngine::Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return DisconnectLocked(remote_engine, timeout_in_millis);
+Status FabricMemEngine::LookupRemoteConnectionLocked(const std::string &remote_engine,
+                                                     std::shared_ptr<RemoteConnection> &conn) {
+  const auto it = fabric_mem_remote_mems_.find(remote_engine);
+  HIXL_CHK_BOOL_RET_STATUS(it != fabric_mem_remote_mems_.end(), NOT_CONNECTED,
+                           "[FabricMemEngine] remote engine:%s is not connected.", remote_engine.c_str());
+  conn = it->second;
+  return SUCCESS;
 }
 
-Status FabricMemEngine::DisconnectLocked(const AscendString &remote_engine, int32_t timeout_in_millis) {
-  (void)timeout_in_millis;
+Status FabricMemEngine::AcquireTransferLease(const std::string &remote_engine,
+                                             std::shared_ptr<RemoteConnection> &conn) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    HIXL_CHK_STATUS_RET(LookupRemoteConnectionLocked(remote_engine, conn),
+                        "[FabricMemEngine] Failed to lookup remote connection.");
+  }
+  std::lock_guard<std::mutex> conn_lock(conn->state_mutex);
+  HIXL_CHK_BOOL_RET_STATUS(!conn->disconnecting, NOT_CONNECTED,
+                           "[FabricMemEngine] remote engine:%s is disconnecting.", remote_engine.c_str());
+  ++conn->in_flight;
+  return SUCCESS;
+}
+
+void FabricMemEngine::ReleaseTransferLease(const std::shared_ptr<RemoteConnection> &conn) {
+  if (conn == nullptr) {
+    return;
+  }
+  std::lock_guard<std::mutex> conn_lock(conn->state_mutex);
+  if (conn->in_flight > 0U) {
+    --conn->in_flight;
+  }
+  conn->cv.notify_all();
+}
+
+Status FabricMemEngine::Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  TemporaryRtContext with_context(aclrt_context_);
+  return DisconnectLocked(remote_engine, timeout_in_millis, true);
+}
+
+Status FabricMemEngine::DisconnectLocked(const AscendString &remote_engine, int32_t timeout_in_millis,
+                                         bool wait_in_flight) {
   const std::string remote = remote_engine.GetString();
+  std::shared_ptr<RemoteConnection> conn;
+  std::shared_ptr<FabricMemTransferService> transfer_service;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto it = fabric_mem_remote_mems_.find(remote);
+    if (it == fabric_mem_remote_mems_.end()) {
+      return NOT_CONNECTED;
+    }
+    conn = it->second;
+    transfer_service = fabric_mem_transfer_service_;
+  }
+  {
+    std::lock_guard<std::mutex> conn_lock(conn->state_mutex);
+    conn->disconnecting = true;
+  }
+  // Release leases held by pending async requests for this channel,
+  // so that in_flight can reach 0 even if GetTransferStatus is never called.
+  {
+    std::lock_guard<std::mutex> req_lock(req_map_mutex_);
+    for (auto it = req_map_.begin(); it != req_map_.end();) {
+      if (it->second.info.remote_engine.GetString() == remote) {
+        ReleaseTransferLease(it->second.conn);
+        it = req_map_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+  if (transfer_service != nullptr) {
+    transfer_service->RemoveChannel(remote);
+  }
+  if (wait_in_flight) {
+    std::unique_lock<std::mutex> conn_lock(conn->state_mutex);
+    if (timeout_in_millis > 0) {
+      if (!conn->cv.wait_for(conn_lock, std::chrono::milliseconds(timeout_in_millis),
+                             [&conn]() { return conn->in_flight == 0U; })) {
+        HIXL_LOGW("[FabricMemEngine] Timed out waiting for in-flight transfers on disconnect, remote:%s.",
+                  remote.c_str());
+        return TIMEOUT;
+      }
+    } else {
+      conn->cv.wait(conn_lock, [&conn]() { return conn->in_flight == 0U; });
+    }
+  }
+  std::lock_guard<std::mutex> lock(mutex_);
   const auto it = fabric_mem_remote_mems_.find(remote);
   if (it == fabric_mem_remote_mems_.end()) {
     return NOT_CONNECTED;
   }
-  if (fabric_mem_transfer_service_ != nullptr) {
-    fabric_mem_transfer_service_->RemoveChannel(remote);
+  {
+    std::lock_guard<std::mutex> req_lock(req_map_mutex_);
+    RemoveChannelReqMapLocked(remote);
   }
-  RemoveChannelReqMapLocked(remote);
   fabric_mem_statistic_.RemoveStatisticChannel(FabricMemStatistic::GetClientStatisticChannelId(remote));
   fabric_mem_remote_mems_.erase(it);
   auto legacy_it = keepalive_fds_.find(remote);
@@ -274,26 +380,27 @@ Status FabricMemEngine::DisconnectLocked(const AscendString &remote_engine, int3
 }
 
 void FabricMemEngine::Disconnect() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (fabric_mem_transfer_service_ != nullptr) {
+  TemporaryRtContext with_context(aclrt_context_);
+  std::vector<std::string> remotes;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    remotes.reserve(fabric_mem_remote_mems_.size());
     for (const auto &item : fabric_mem_remote_mems_) {
-      fabric_mem_transfer_service_->RemoveChannel(item.first);
-      fabric_mem_statistic_.RemoveStatisticChannel(FabricMemStatistic::GetClientStatisticChannelId(item.first));
+      remotes.emplace_back(item.first);
     }
   }
-  fabric_mem_remote_mems_.clear();
-  for (auto &item : keepalive_fds_) {
-    if (item.second >= 0) {
-      (void)close(item.second);
-    }
+  for (const auto &remote : remotes) {
+    (void)Disconnect(AscendString(remote.c_str()), 0);
   }
-  keepalive_fds_.clear();
-  req_map_.clear();
+  {
+    std::lock_guard<std::mutex> req_lock(req_map_mutex_);
+    req_map_.clear();
+  }
 }
 
 void FabricMemEngine::RemoveChannelReqMapLocked(const std::string &remote_engine) {
   for (auto it = req_map_.begin(); it != req_map_.end();) {
-    if (it->second.remote_engine.GetString() == remote_engine) {
+    if (it->second.info.remote_engine.GetString() == remote_engine) {
       it = req_map_.erase(it);
     } else {
       ++it;
@@ -301,16 +408,21 @@ void FabricMemEngine::RemoveChannelReqMapLocked(const std::string &remote_engine
   }
 }
 
-Status FabricMemEngine::BuildTransferContextLocked(const std::string &remote_engine,
-                                                   FabricMemTransferContext &context) {
-  const auto it = fabric_mem_remote_mems_.find(remote_engine);
-  HIXL_CHK_BOOL_RET_STATUS(it != fabric_mem_remote_mems_.end(), NOT_CONNECTED,
-                           "[FabricMemEngine] remote engine:%s is not connected.", remote_engine.c_str());
+Status FabricMemEngine::BuildTransferContext(const RemoteConnection &conn, const std::string &remote_engine,
+                                             FabricMemTransferContext &context) {
+  HIXL_CHECK_NOTNULL(conn.remote_memory.get(), "[FabricMemEngine] Remote memory is null.");
   context.channel_id = remote_engine;
   context.statistic_channel_id = FabricMemStatistic::GetClientStatisticChannelId(remote_engine);
-  context.remote_va_to_old_va = it->second->GetNewVaToOldVa();
+  context.remote_va_to_old_va = conn.remote_memory->GetNewVaToOldVa();
   context.stat_info = fabric_mem_statistic_.GetOrCreateStatisticInfo(context.statistic_channel_id).get();
   return SUCCESS;
+}
+
+Status FabricMemEngine::DisconnectOnTransferError(const AscendString &remote_engine, int32_t timeout_in_millis) {
+  if (!auto_connect_) {
+    return SUCCESS;
+  }
+  return Disconnect(remote_engine, timeout_in_millis);
 }
 
 Status FabricMemEngine::TransferSync(const AscendString &remote_engine, TransferOp operation,
@@ -321,21 +433,38 @@ Status FabricMemEngine::TransferSync(const AscendString &remote_engine, Transfer
     HIXL_CHK_STATUS_RET(EnsureConnected(remote_engine, timeout_in_millis),
                         "[FabricMemEngine] Auto-connect failed, remote:%s.", remote_engine.GetString());
   }
-  std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(), "[FabricMemEngine] FabricMem service is null.");
+  const std::string remote = remote_engine.GetString();
+  std::shared_ptr<RemoteConnection> conn;
+  HIXL_CHK_STATUS_RET(AcquireTransferLease(remote, conn),
+                      "[FabricMemEngine] Failed to acquire transfer lease, remote:%s.", remote.c_str());
+  RemoteTransferLease lease(*this, conn, true);
+
   FabricMemTransferContext context;
-  Status ret = BuildTransferContextLocked(remote_engine.GetString(), context);
-  if (ret != SUCCESS) {
-    if (auto_connect_) {
-      (void)DisconnectLocked(remote_engine, timeout_in_millis);
+  std::shared_ptr<FabricMemTransferService> transfer_service;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (fabric_mem_transfer_service_ == nullptr) {
+      HIXL_LOGE(PARAM_INVALID, "[FabricMemEngine] FabricMem service is null.");
+      return PARAM_INVALID;
     }
+    HIXL_CHK_STATUS_RET(BuildTransferContext(*conn, remote, context),
+                        "[FabricMemEngine] Failed to build transfer context.");
+    transfer_service = fabric_mem_transfer_service_;
+  }
+
+  Status ret = transfer_service->Transfer(context, operation, op_descs, timeout_in_millis);
+  // Release lease BEFORE disconnect to avoid self-deadlock: DisconnectLocked
+  // waits for in_flight == 0, which requires the lease to be released first.
+  lease.Release();
+  if (!IsInitialized()) {
+    return FAILED;
+  }
+  if (ret != SUCCESS) {
+    HIXL_CHK_STATUS_RET(DisconnectOnTransferError(remote_engine, timeout_in_millis),
+                        "[FabricMemEngine] Failed to disconnect on transfer error.");
     return ret;
   }
-  ret = fabric_mem_transfer_service_->Transfer(context, operation, op_descs, timeout_in_millis);
-  if (ret != SUCCESS && auto_connect_) {
-    (void)DisconnectLocked(remote_engine, timeout_in_millis);
-  }
-  return ret;
+  return SUCCESS;
 }
 
 Status FabricMemEngine::TransferAsync(const AscendString &remote_engine, TransferOp operation,
@@ -348,59 +477,117 @@ Status FabricMemEngine::TransferAsync(const AscendString &remote_engine, Transfe
     HIXL_CHK_STATUS_RET(EnsureConnected(remote_engine, kAutoConnectTimeoutMs),
                         "[FabricMemEngine] Auto-connect failed, remote:%s.", remote_engine.GetString());
   }
-  std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(), "[FabricMemEngine] FabricMem service is null.");
+  const std::string remote = remote_engine.GetString();
+  std::shared_ptr<RemoteConnection> conn;
+  HIXL_CHK_STATUS_RET(AcquireTransferLease(remote, conn),
+                      "[FabricMemEngine] Failed to acquire transfer lease, remote:%s.", remote.c_str());
+
   FabricMemTransferContext context;
-  Status ret = BuildTransferContextLocked(remote_engine.GetString(), context);
-  if (ret != SUCCESS) {
-    if (auto_connect_) {
-      (void)DisconnectLocked(remote_engine, 0);
+  std::shared_ptr<FabricMemTransferService> transfer_service;
+  Status build_ret = SUCCESS;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (fabric_mem_transfer_service_ == nullptr) {
+      build_ret = PARAM_INVALID;
+    } else {
+      build_ret = BuildTransferContext(*conn, remote, context);
+      if (build_ret == SUCCESS) {
+        transfer_service = fabric_mem_transfer_service_;
+      }
     }
-    return ret;
   }
+  if (build_ret != SUCCESS) {
+    ReleaseTransferLease(conn);
+    if (auto_connect_) {
+      (void)Disconnect(remote_engine, 0);
+    }
+    return build_ret;
+  }
+
   const uint64_t id = next_req_id_.fetch_add(1U, std::memory_order_relaxed);
   TransferReq new_req = reinterpret_cast<void *>(static_cast<uintptr_t>(id));
-  ret = fabric_mem_transfer_service_->TransferAsync(context, operation, op_descs, new_req);
-  if (ret != SUCCESS && auto_connect_) {
-    (void)DisconnectLocked(remote_engine, 0);
+  Status ret = transfer_service->TransferAsync(context, operation, op_descs, new_req);
+  if (!IsInitialized()) {
+    ReleaseTransferLease(conn);
+    return FAILED;
+  }
+  if (ret != SUCCESS) {
+    ReleaseTransferLease(conn);
+    HIXL_CHK_STATUS_RET(DisconnectOnTransferError(remote_engine, 0),
+                        "[FabricMemEngine] Failed to disconnect on transfer error.");
     return ret;
   }
   const uint64_t start_time = HixlProfilingReporter::GetSysCycleTime();
-  req_map_.emplace(id, TransferInfo{start_time, operation, remote_engine, nullptr});
+  {
+    std::lock_guard<std::mutex> req_lock(req_map_mutex_);
+    req_map_.emplace(id, FabricMemTransferRequest{TransferInfo{start_time, operation, remote_engine, nullptr}, conn});
+  }
   req = new_req;
   return SUCCESS;
 }
 
 Status FabricMemEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
-  std::lock_guard<std::mutex> lock(mutex_);
   const auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
-  const auto it = req_map_.find(id);
-  HIXL_CHK_BOOL_RET_STATUS(it != req_map_.end(), PARAM_INVALID, "[FabricMemEngine] request:%p not found.", req);
-  HIXL_CHECK_NOTNULL(fabric_mem_transfer_service_.get(), "[FabricMemEngine] FabricMem service is null.");
-  const AscendString remote_engine = it->second.remote_engine;
-  FabricMemTransferContext context;
-  Status ret = BuildTransferContextLocked(remote_engine.GetString(), context);
-  if (ret != SUCCESS) {
-    req_map_.erase(it);
-    if (auto_connect_) {
-      (void)DisconnectLocked(remote_engine, 0);
-    }
-    return ret;
+  FabricMemTransferRequest transfer_req{};
+  {
+    std::lock_guard<std::mutex> req_lock(req_map_mutex_);
+    const auto it = req_map_.find(id);
+    HIXL_CHK_BOOL_RET_STATUS(it != req_map_.end(), PARAM_INVALID, "[FabricMemEngine] request:%p not found.", req);
+    transfer_req = it->second;
   }
-  ret = fabric_mem_transfer_service_->GetTransferStatus(context, req, status);
-  if (ret != SUCCESS) {
-    req_map_.erase(it);
-    if (auto_connect_) {
-      (void)DisconnectLocked(remote_engine, 0);
+
+  const std::string remote = transfer_req.info.remote_engine.GetString();
+  FabricMemTransferContext context;
+  std::shared_ptr<FabricMemTransferService> transfer_service;
+  bool conn_invalid = false;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (fabric_mem_transfer_service_ == nullptr || transfer_req.conn == nullptr ||
+        transfer_req.conn->remote_memory == nullptr) {
+      conn_invalid = true;
+    } else {
+      Status build_ret = BuildTransferContext(*transfer_req.conn, remote, context);
+      if (build_ret != SUCCESS) {
+        conn_invalid = true;
+      } else {
+        transfer_service = fabric_mem_transfer_service_;
+      }
     }
+  }
+  if (conn_invalid) {
+    {
+      std::lock_guard<std::mutex> req_lock(req_map_mutex_);
+      req_map_.erase(id);
+    }
+    ReleaseTransferLease(transfer_req.conn);
+    if (auto_connect_) {
+      (void)Disconnect(transfer_req.info.remote_engine, 0);
+    }
+    return NOT_CONNECTED;
+  }
+
+  Status ret = transfer_service->GetTransferStatus(context, req, status);
+  if (ret != SUCCESS) {
+    {
+      std::lock_guard<std::mutex> req_lock(req_map_mutex_);
+      req_map_.erase(id);
+    }
+    ReleaseTransferLease(transfer_req.conn);
+    HIXL_CHK_STATUS_RET(DisconnectOnTransferError(transfer_req.info.remote_engine, 0),
+                        "[FabricMemEngine] Failed to disconnect on transfer error.");
     return ret;
   }
   if (status != TransferStatus::WAITING) {
     if (status == TransferStatus::COMPLETED) {
-      const auto type = (it->second.op_type == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
-      HIXL_API_PROFILING_WITH_TIME(type, it->second.start_time);
+      const auto prof_type =
+          (transfer_req.info.op_type == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
+      HIXL_API_PROFILING_WITH_TIME(prof_type, transfer_req.info.start_time);
     }
-    req_map_.erase(it);
+    {
+      std::lock_guard<std::mutex> req_lock(req_map_mutex_);
+      req_map_.erase(id);
+    }
+    ReleaseTransferLease(transfer_req.conn);
   }
   return SUCCESS;
 }
@@ -412,26 +599,42 @@ Status FabricMemEngine::GetTransferStatus(const GetTransferStatusArgs &args, std
 }
 
 void FabricMemEngine::CleanupFabricMemLocked() {
-  if (fabric_mem_control_server_ != nullptr) {
-    fabric_mem_control_server_->Stop();
-    fabric_mem_control_server_.reset();
-  }
-  fabric_mem_remote_mems_.clear();
-  for (auto &item : keepalive_fds_) {
-    if (item.second >= 0) {
-      (void)close(item.second);
+  is_initialized_ = false;
+  for (auto &item : fabric_mem_remote_mems_) {
+    if (item.second != nullptr) {
+      std::lock_guard<std::mutex> conn_lock(item.second->state_mutex);
+      item.second->disconnecting = true;
     }
   }
-  keepalive_fds_.clear();
-  if (fabric_mem_transfer_service_ != nullptr) {
-    fabric_mem_transfer_service_->Finalize();
-    fabric_mem_transfer_service_.reset();
+  {
+    TemporaryRtContext with_context(aclrt_context_);
+    if (fabric_mem_control_server_ != nullptr) {
+      fabric_mem_control_server_->Stop();
+      fabric_mem_control_server_.reset();
+    }
+    if (fabric_mem_transfer_service_ != nullptr) {
+      fabric_mem_transfer_service_->Finalize();
+      fabric_mem_transfer_service_.reset();
+    }
+    fabric_mem_statistic_.StopPeriodicDump();
+    fabric_mem_remote_mems_.clear();
+    for (auto &item : keepalive_fds_) {
+      if (item.second >= 0) {
+        (void)close(item.second);
+      }
+    }
+    keepalive_fds_.clear();
+    mem_map_.clear();
+    {
+      std::lock_guard<std::mutex> req_lock(req_map_mutex_);
+      req_map_.clear();
+    }
+    ReleaseVirtualMemoryManager();
   }
-  fabric_mem_statistic_.StopPeriodicDump();
-  mem_map_.clear();
-  req_map_.clear();
-  ReleaseVirtualMemoryManager();
-  is_initialized_ = false;
+  if (aclrt_context_ != nullptr) {
+    (void)aclrtDestroyContext(aclrt_context_);
+    aclrt_context_ = nullptr;
+  }
 }
 
 void FabricMemEngine::Finalize() {
@@ -443,6 +646,7 @@ void FabricMemEngine::Finalize() {
 
 Status FabricMemEngine::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify,
                                    int32_t timeout_in_millis) {
+  TemporaryRtContext with_context(aclrt_context_);
   HIXL_LOGI("[FabricMemEngine] Sending notify to remote:%s, name:%s", remote_engine.GetString(),
             notify.name.GetString());
   HIXL_CHK_STATUS_RET(FabricMemControlClient::SendNotify(remote_engine.GetString(), notify, timeout_in_millis),
@@ -452,6 +656,7 @@ Status FabricMemEngine::SendNotify(const AscendString &remote_engine, const Noti
 }
 
 Status FabricMemEngine::GetNotifies(std::vector<NotifyDesc> &notifies) {
+  TemporaryRtContext with_context(aclrt_context_);
   if (fabric_mem_control_server_ == nullptr) {
     notifies.clear();
     return SUCCESS;
@@ -462,6 +667,7 @@ Status FabricMemEngine::GetNotifies(std::vector<NotifyDesc> &notifies) {
 }
 
 Status FabricMemEngine::RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor) {
+  TemporaryRtContext with_context(aclrt_context_);
   (void)msg_type;
   (void)processor;
   HIXL_LOGE(UNSUPPORTED, "[FabricMemEngine] Method RegisterCallbackProcessor is not supported.");
