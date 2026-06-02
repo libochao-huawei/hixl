@@ -18,6 +18,7 @@
 #include "common/ctrl_msg.h"
 #include "common/ctrl_msg_plugin.h"
 #include "common/scope_guard.h"
+#include "cs/msg_handler.h"
 #include "engine/client_handler_factory.h"
 #include "engine/endpoint_generator.h"
 #include "engine/endpoint_matcher.h"
@@ -33,37 +34,41 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
     HIXL_LOGE(PARAM_INVALID, "The input local_endpoint_list is empty");
     return PARAM_INVALID;
   }
+  // 创建socket，与server建链，发送请求，获取remote_endpoint_list
   std::vector<EndpointConfig> remote_endpoint_list;
-  CtrlMsgPlugin::Initialize();
-  {
-    int32_t socket = -1;
-    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip_, server_port_, socket, kCtrlMsgPluginTimeoutMs),
-                        "Connect socket failed");
-    ScopeGuard socket_guard([&socket]() {
-      if (socket != -1) {
-        HIXL_LOGI("HixlClient close socket start, socket:%d", socket);
-        close(socket);
-        HIXL_LOGI("HixlClient close socket end, socket:%d", socket);
-        socket = -1;
-      }
-    });
-    HIXL_CHK_STATUS_RET(SendEndpointInfoReq(socket, CtrlMsgType::kGetEndpointInfoReq),
-                        "HixlClient send GetEndpointInfoReq failed, socket:%d", socket);
-    HIXL_CHK_STATUS_RET(RecvEndpointInfoResp(socket, remote_endpoint_list),
-                        "HixlClient receive GetEndpointInfoResp failed, socket:%d", socket);
-  }
+  HIXL_CHK_STATUS_RET(GetRemoteEndpointList(remote_endpoint_list), "GetRemoteEndpointList failed");
   if (remote_endpoint_list.empty()) {
     HIXL_LOGE(FAILED, "HixlClient received empty remote_endpoint_list");
     return FAILED;
   }
   std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
   HandlerCreateArgs::HandlerType handler_type;
-  HIXL_CHK_STATUS_RET(EndpointMatcher::MatchEndpoints(local_endpoint_list, remote_endpoint_list,
-                                                      matched_pairs, handler_type),
-                      "EndpointMatcher::MatchEndpoints failed");
+  HIXL_CHK_STATUS_RET(
+      EndpointMatcher::MatchEndpoints(local_endpoint_list, remote_endpoint_list, matched_pairs, handler_type),
+      "EndpointMatcher::MatchEndpoints failed");
   HandlerCreateArgs args{server_ip_, server_port_, rdma_tc_, rdma_sl_, handler_type, std::move(matched_pairs)};
   client_handler_ = ClientHandlerFactory::Create(args);
   HIXL_CHECK_NOTNULL(client_handler_, "ClientHandlerFactory create handler failed");
+  return SUCCESS;
+}
+
+Status HixlClient::GetRemoteEndpointList(std::vector<EndpointConfig> &remote_endpoint_list) const {
+  CtrlMsgPlugin::Initialize();
+  int32_t socket = -1;
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip_, server_port_, socket, kCtrlMsgPluginTimeoutMs),
+                      "Connect socket failed");
+  ScopeGuard socket_guard([&socket]() {
+    if (socket != -1) {
+      HIXL_LOGI("HixlClient close socket start, socket:%d", socket);
+      close(socket);
+      HIXL_LOGI("HixlClient close socket end, socket:%d", socket);
+      socket = -1;
+    }
+  });
+  HIXL_CHK_STATUS_RET(SendEndpointInfoReq(socket, CtrlMsgType::kGetEndpointInfoReq),
+                      "HixlClient send GetEndpointInfoReq failed, socket:%d", socket);
+  HIXL_CHK_STATUS_RET(RecvEndpointInfoResp(socket, remote_endpoint_list),
+                      "HixlClient receive GetEndpointInfoResp failed, socket:%d", socket);
   return SUCCESS;
 }
 

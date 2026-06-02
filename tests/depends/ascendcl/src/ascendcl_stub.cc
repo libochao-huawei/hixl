@@ -87,6 +87,14 @@ aclError AclRuntimeStub::aclrtResetDevice(int32_t deviceId) {
   return ACL_ERROR_NONE;
 }
 
+aclError AclRuntimeStub::aclrtGetDeviceCount(uint32_t *count) {
+  if (__FUNCTION__ == g_acl_stub_mock) {
+    return ACL_ERROR_RT_INTERNAL_ERROR;
+  }
+  *count = 1U;
+  return ACL_ERROR_NONE;
+}
+
 aclError AclRuntimeStub::aclrtGetDevice(int32_t *deviceId) {
   if (__FUNCTION__ == g_acl_stub_mock) {
     return ACL_ERROR_RT_INTERNAL_ERROR;
@@ -653,6 +661,10 @@ aclError aclrtSetDevice(int32_t deviceId) {
 
 aclError aclrtResetDevice(int32_t deviceId) {
   return llm::AclRuntimeStub::GetInstance()->aclrtResetDevice(deviceId);
+}
+
+aclError aclrtGetDeviceCount(uint32_t *count) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtGetDeviceCount(count);
 }
 
 aclError aclrtGetDevice(int32_t *deviceId) {

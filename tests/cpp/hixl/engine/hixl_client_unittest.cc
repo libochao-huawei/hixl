@@ -56,6 +56,7 @@ static std::vector<uint32_t> kRemoteMems(kMemNum, kNum2);
 enum class MockHixlServerMode : uint32_t {
   k4UbNormal = 0,
   k2UbNormal,
+  kHostOnlyNormal,
   // GetEndpointInfoResp 相关异常
   kGetEndpointInfoResp_BadMagic,
   kGetEndpointInfoResp_BadMsgType,
@@ -184,6 +185,7 @@ class MockHixlServer {
   static const std::string kUbTpPlaneBEndpointJson;
   static const std::string k2UbJson;
   static const std::string k4UbJson;
+  static const std::string kHostOnlyJson;
   static const std::string kNotArrayJson;
   static const std::string kMissingFieldJson;
 
@@ -211,6 +213,10 @@ class MockHixlServer {
       case MockHixlServerMode::k2UbNormal:
         SendResponseImpl(kMagicNumber, CtrlMsgType::kGetEndpointInfoResp, sizeof(CtrlMsgType) + k2UbJson.size(),
                          k2UbJson);
+        break;
+      case MockHixlServerMode::kHostOnlyNormal:
+        SendResponseImpl(kMagicNumber, CtrlMsgType::kGetEndpointInfoResp,
+                         sizeof(CtrlMsgType) + kHostOnlyJson.size(), kHostOnlyJson);
         break;
       case MockHixlServerMode::kGetEndpointInfoResp_BadMagic:
         SendResponseImpl(0xDEADBEEF, CtrlMsgType::kGetEndpointInfoResp, sizeof(CtrlMsgType) + k4UbJson.size(),
@@ -249,7 +255,12 @@ const std::string MockHixlServer::kRoceEndpointJson = R"({
       "dst_eid": "",
       "plane": "",
       "placement": "device",
-      "net_instance_id": "superpod1-1"
+      "net_instance_id": "superpod1-1",
+      "device_info": {
+        "phy_device_id": 12,
+        "super_device_id": -1,
+        "super_pod_id": -1
+      }
     })";
 
 const std::string MockHixlServer::kUbCtpHostEndpointJson = R"({
@@ -267,7 +278,12 @@ const std::string MockHixlServer::kUbCtpDeviceEndpointJson = R"({
       "dst_eid" : "000000000000000000000000c0a80763",
       "plane": "",
       "placement" : "device",
-      "net_instance_id" : "superpod1-1"
+      "net_instance_id" : "superpod1-1",
+      "device_info": {
+        "phy_device_id": 12,
+        "super_device_id": -1,
+        "super_pod_id": -1
+      }
     })";
 
 const std::string MockHixlServer::kUbCtpPlaneAEndpointJson = R"({
@@ -276,7 +292,12 @@ const std::string MockHixlServer::kUbCtpPlaneAEndpointJson = R"({
       "dst_eid": "",
       "plane" : "plane-a",
       "placement" : "device",
-      "net_instance_id" : "superpod1-1"
+      "net_instance_id" : "superpod1-1",
+      "device_info": {
+        "phy_device_id": 12,
+        "super_device_id": -1,
+        "super_pod_id": -1
+      }
     })";
 
 const std::string MockHixlServer::kUbTpPlaneBEndpointJson = R"({
@@ -295,6 +316,18 @@ const std::string MockHixlServer::k2UbJson =
 const std::string MockHixlServer::k4UbJson = R"([)" + kRoceEndpointJson + R"(,)" + kUbCtpHostEndpointJson + R"(,)" +
                                              kUbCtpDeviceEndpointJson + R"(,)" + kUbCtpPlaneAEndpointJson + R"(,)" +
                                              kUbTpPlaneBEndpointJson + R"(])";
+
+const std::string MockHixlServer::kHostOnlyJson = R"([
+    {
+      "protocol": "roce",
+      "comm_id": "127.0.0.1",
+      "dst_eid": "",
+      "plane": "",
+      "placement": "host",
+      "net_instance_id": "superpod1-1"
+    }
+  ])";
+
 const std::string MockHixlServer::kNotArrayJson = R"(
     {
       "protocol": "roce",
@@ -336,6 +369,8 @@ class HixlClientUTest : public ::testing::Test {
   void SetUp() override {
     // EnsureDeviceKernelLoadedLocked 现在在初始化阶段调用，需要提前设置 MmpaStub
     llm::MmpaStub::GetInstance().SetImpl(std::make_shared<ClientMmpaStub>());
+    acl_stub_ = endpoint_test::CreateAclRuntimeStub("Ascend910_9391", 0, 12, 9, 8);
+    llm::AclRuntimeStub::SetInstance(acl_stub_);
     ClientConfig config{};
     config.rdma_tc = kDefaultRdmaTc;
     config.rdma_sl = kDefaultRdmaSl;
@@ -347,6 +382,7 @@ class HixlClientUTest : public ::testing::Test {
     client_->Finalize();
     server_->DestroyServerAndUnreg();
     llm::MmpaStub::GetInstance().Reset();
+    llm::AclRuntimeStub::Reset();
   }
 
   void StartServer(MockHixlServerMode mode) {
@@ -365,8 +401,20 @@ class HixlClientUTest : public ::testing::Test {
     server_->ListenServer();
   }
 
+  void StartHostOnlyServer() {
+    server_->SetMode(MockHixlServerMode::kHostOnlyNormal);
+    std::vector<EndpointConfig> remote_endpoint_list;
+    remote_endpoint_list.push_back(MakeRoceHostOnlyRemoteEp());
+    auto st = server_->CreateServer(remote_endpoint_list);
+    ASSERT_EQ(st, SUCCESS) << "Failed to start host-only mock server";
+    CommMem host_mem{COMM_MEM_TYPE_HOST, &kRemoteMems[0], sizeof(uint32_t)};
+    server_->RegMem(&host_mem, 1U);
+    server_->ListenServer();
+  }
+
   std::unique_ptr<HixlClient> client_;
   std::unique_ptr<MockHixlServer> server_;
+  std::shared_ptr<endpoint_test::MockAclRuntimeStub> acl_stub_;
 
   EndpointConfig MakeRoceHostLocalEp() {
     EndpointConfig ep{};
@@ -382,6 +430,16 @@ class HixlClientUTest : public ::testing::Test {
     ep.protocol = "roce";
     ep.comm_id = "127.0.0.1";
     ep.placement = "device";
+    ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
+    return ep;
+  }
+
+  EndpointConfig MakeRoceHostOnlyRemoteEp() {
+    EndpointConfig ep{};
+    ep.protocol = "roce";
+    ep.comm_id = "127.0.0.1";
+    ep.placement = "host";
     ep.net_instance_id = "superpod1-1";
     return ep;
   }
@@ -423,6 +481,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.dst_eid = "000000000000000000000000c0a80763";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -433,6 +492,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.plane = "plane-a";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -443,6 +503,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.plane = "plane-a";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -453,6 +514,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.plane = "plane-b";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -827,6 +889,20 @@ TEST_F(HixlClientUTest, ConnectSuccessTest) {
   // 调用 Connect 方法
   st = client_->Connect(kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
+  st = client_->Finalize();
+  EXPECT_EQ(st, SUCCESS);
+  server_->DestroyServerAndUnreg();
+}
+
+TEST_F(HixlClientUTest, InitializeHostOnlyDirectClientSkipsDeviceQueries) {
+  StartHostOnlyServer();
+  std::vector<EndpointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+
+  Status st = client_->Initialize(local_endpoint_list);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(acl_stub_->get_device_call_count_, 0U);
+  EXPECT_EQ(acl_stub_->get_phy_device_call_count_, 0U);
   st = client_->Finalize();
   EXPECT_EQ(st, SUCCESS);
   server_->DestroyServerAndUnreg();

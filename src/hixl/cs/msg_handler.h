@@ -14,6 +14,7 @@
 #include <queue>
 #include <mutex>
 #include <condition_variable>
+#include "common/optional_aclrt_context.h"
 #include "cs/hixl_cs.h"
 #include "hixl/hixl_types.h"
 #include "common/thread_pool.h"
@@ -40,7 +41,7 @@ class MsgHandler {
   std::unique_ptr<ThreadPool> thread_pool_ = nullptr;
   std::atomic<bool> running_{false};
   std::thread listener_;
-  aclrtContext ctx_ = nullptr;
+  OptionalAclrtContext aclrt_context_;
 };
 }  // namespace hixl
 

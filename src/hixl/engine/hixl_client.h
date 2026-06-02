@@ -96,6 +96,7 @@ class HixlClient {
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
 
  private:
+  Status GetRemoteEndpointList(std::vector<EndpointConfig> &remote_endpoint_list) const;
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const;
   void WaitBatchCsSyncInflightDrain();
