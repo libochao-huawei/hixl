@@ -44,16 +44,13 @@ unset(_cmake_targets_defined)
 unset(_cmake_targets_not_defined)
 unset(_cmake_expected_targets)
 
-find_path(_EX_RTS_PATH "experiment/runtime/runtime/rt.h"
-    NO_CMAKE_SYSTEM_PATH
-    NO_CMAKE_FIND_ROOT_PATH)
-find_path(_RTS_PATH "../pkg_inc/runtime/runtime/rt.h"
+find_path(_RT_EXTERNAL_PATH "../pkg_inc/runtime/rt_external.h"
     NO_CMAKE_SYSTEM_PATH
     NO_CMAKE_FIND_ROOT_PATH)
 
-if(_RTS_PATH)
-    set(_INCLUDE_DIR "${_RTS_PATH}/../pkg_inc")
-    set(runtime_INCLUDE_DIR "${_INCLUDE_DIR};${_INCLUDE_DIR}/runtime;${_INCLUDE_DIR}/runtime/runtime;${_INCLUDE_DIR}/runtime/runtime/rts;${_RTS_PATH}/acl/error_codes")
+if(_RT_EXTERNAL_PATH)
+    set(_INCLUDE_DIR "${_RT_EXTERNAL_PATH}/../pkg_inc")
+    set(runtime_INCLUDE_DIR "${_INCLUDE_DIR};${_INCLUDE_DIR}/runtime;${_RT_EXTERNAL_PATH}/acl/error_codes")
 else()
     unset(_INCLUDE_DIR)
 endif()

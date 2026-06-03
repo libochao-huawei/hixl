@@ -63,8 +63,6 @@ else ()
     target_include_directories(runtime_headers INTERFACE
         ${CANN_INSTALL_PATH}/pkg_inc
         ${CANN_INSTALL_PATH}/pkg_inc/runtime
-        ${CANN_INSTALL_PATH}/pkg_inc/runtime/runtime
-        ${CANN_INSTALL_PATH}/pkg_inc/runtime/runtime/rts
         ${CANN_INSTALL_PATH}/include/acl/error_codes
     )
 
