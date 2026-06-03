@@ -26,24 +26,34 @@ constexpr size_t kMaxStartAddressTB = 220UL;
 constexpr size_t kMinTaskStreamNum = 1U;
 constexpr size_t kMaxTaskStreamNum = 8U;
 
+template <typename T>
+T JsonToNumber(const nlohmann::json &val) {
+  if (val.is_string()) {
+    T result{};
+    ToNumber(val.get<std::string>(), result);
+    return result;
+  }
+  return val.get<T>();
+}
+
 void from_json(const nlohmann::json &j, FabricMemoryConfig &cfg) {
   if (j.contains("max_capacity")) {
-    cfg.max_capacity = j.at("max_capacity").get<size_t>();
+    cfg.max_capacity = JsonToNumber<size_t>(j.at("max_capacity"));
   }
   if (j.contains("start_address")) {
-    cfg.start_address = j.at("start_address").get<size_t>();
+    cfg.start_address = JsonToNumber<size_t>(j.at("start_address"));
   }
   if (j.contains("task_stream_num")) {
-    cfg.task_stream_num = j.at("task_stream_num").get<size_t>();
+    cfg.task_stream_num = JsonToNumber<size_t>(j.at("task_stream_num"));
   }
 }
 
 void from_json(const nlohmann::json &j, ConnectPoolConfig &cfg) {
   if (j.contains("connect_pool.thread_num")) {
-    cfg.thread_num = j.at("connect_pool.thread_num").get<int32_t>();
+    cfg.thread_num = JsonToNumber<int32_t>(j.at("connect_pool.thread_num"));
   }
   if (j.contains("connect_pool.task_queue_capacity")) {
-    cfg.task_queue_capacity = j.at("connect_pool.task_queue_capacity").get<int32_t>();
+    cfg.task_queue_capacity = JsonToNumber<int32_t>(j.at("connect_pool.task_queue_capacity"));
   }
 }
 
