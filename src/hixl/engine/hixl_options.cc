@@ -30,7 +30,11 @@ template <typename T>
 T JsonToNumber(const nlohmann::json &val) {
   if (val.is_string()) {
     T result{};
-    ToNumber(val.get<std::string>(), result);
+    Status ret = ToNumber(val.get<std::string>(), result);
+    if (ret != SUCCESS) {
+      throw nlohmann::json::type_error::create(0, "Failed to convert string to number: " + val.get<std::string>(),
+                                               nullptr);
+    }
     return result;
   }
   return val.get<T>();
@@ -66,6 +70,16 @@ void from_json(const nlohmann::json &j, CommResourceConfigDesc &cfg) {
 void from_json(const nlohmann::json &j, GlobalResourceConfig &cfg) {
   if (j.contains("fabric_memory") && j.at("fabric_memory").is_object()) {
     from_json(j.at("fabric_memory"), cfg.fabric_memory);
+  }
+  // Also support flat key format: "fabric_memory.start_address", etc.
+  if (j.contains("fabric_memory.max_capacity")) {
+    cfg.fabric_memory.max_capacity = JsonToNumber<size_t>(j.at("fabric_memory.max_capacity"));
+  }
+  if (j.contains("fabric_memory.start_address")) {
+    cfg.fabric_memory.start_address = JsonToNumber<size_t>(j.at("fabric_memory.start_address"));
+  }
+  if (j.contains("fabric_memory.task_stream_num")) {
+    cfg.fabric_memory.task_stream_num = JsonToNumber<size_t>(j.at("fabric_memory.task_stream_num"));
   }
   from_json(j, cfg.connect_pool);
   from_json(j, cfg.comm_resource_config);
