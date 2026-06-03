@@ -99,6 +99,7 @@ target_include_directories(hixl_test PRIVATE
         ${HIXL_CODE_DIR}/tests
         ${HIXL_CODE_DIR}/tests/depends/ascendcl/src
         ${HIXL_CODE_DIR}/tests/depends/hccl/src
+        ${HIXL_CODE_DIR}/tests/depends/lcr_stub/src
         ${HIXL_CODE_DIR}/tests/depends/slog/src
         )
 
