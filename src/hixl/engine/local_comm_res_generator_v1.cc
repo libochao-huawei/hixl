@@ -1332,7 +1332,18 @@ int32_t ParseTopoAndRouteFiles(int32_t phy_dev_id, const std::string &topo_path,
   return SUCCESS;
 }
 
+// 测试桩：允许 UT 注入 GenerateLocalCommRes 的替代实现，覆盖 SUCCESS 路径。
+// 非线程安全，仅限单线程 UT 场景使用。
+namespace {
+int32_t (*g_generate_local_comm_res_stub)(int32_t phy_dev_id, LocalCommRes &local_comm_res) = nullptr;
+}  // namespace
+
 int32_t GenerateLocalCommRes(int32_t phy_dev_id, LocalCommRes &local_comm_res) {
+  // 0. 若设置了测试桩，优先调用桩实现（仅 UT 使用）
+  if (g_generate_local_comm_res_stub != nullptr) {
+    return g_generate_local_comm_res_stub(phy_dev_id, local_comm_res);
+  }
+
   // 1. 获取 mainboard_id，根据产品形态选择 topo 文件
   uint32_t mainboard_id = 0;
   int32_t ret = GetMainboardId(phy_dev_id, mainboard_id);
@@ -1374,38 +1385,48 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
   return BuildLocalCommResResult(phy_dev_id, is_server, topo_data, route_data, related_npu_ids, local_comm_res);
 }
 
-void ConvertLocalCommResToView(const LocalCommRes &src, LocalCommResView &dst) {
-  // std::string 字段仅在 .so 内部使用，不跨 .so 边界传递；外层通过 AscendString
-  // （内部封装 shared_ptr<std::string>）持有，跨 .so 边界 ABI 安全。
-  dst.version = AscendString(src.version.c_str());
-  dst.net_instance_id = AscendString(src.net_instance_id.c_str());
-  dst.endpoint_list.clear();
-  dst.endpoint_list.reserve(src.endpoint_list.size());
-  for (const auto &ep : src.endpoint_list) {
-    EndpointConfigView ep_view;
-    ep_view.protocol = AscendString(ep.protocol.c_str());
-    ep_view.comm_id = AscendString(ep.comm_id.c_str());
-    ep_view.placement = AscendString(ep.placement.c_str());
-    ep_view.plane = AscendString(ep.plane.c_str());
-    ep_view.dst_eid = AscendString(ep.dst_eid.c_str());
-    ep_view.net_instance_id = AscendString(ep.net_instance_id.c_str());
-    ep_view.device_info = ep.device_info;
-    dst.endpoint_list.push_back(std::move(ep_view));
-  }
-}
-
-int32_t GenerateLocalCommResJson(int32_t phy_dev_id, LocalCommResView &view) {
+int32_t TransLocalCommRes(int32_t phy_dev_id, AscendString &result) {
   // 1. 调用 GenerateLocalCommRes 组装 LocalCommRes 结构体
   LocalCommRes local_comm_res;
   int32_t ret = GenerateLocalCommRes(phy_dev_id, local_comm_res);
   if (ret != SUCCESS) {
-    HIXL_LOGE(ret, "[GenerateLocalCommResJson] GenerateLocalCommRes failed, ret=%d", ret);
+    HIXL_LOGE(ret, "[TransLocalCommRes] GenerateLocalCommRes failed, ret=%d", ret);
     return ret;
   }
 
-  // 2. 把 std::string 字段全部转成 AscendString 填充到 view
-  ConvertLocalCommResToView(local_comm_res, view);
+  // 2. 序列化为带 2 空格缩进的 JSON 字符串
+  nlohmann::json j;
+  j["version"] = local_comm_res.version;
+  j["net_instance_id"] = local_comm_res.net_instance_id;
+  j["endpoint_list"] = nlohmann::json::array();
+  for (const auto &ep : local_comm_res.endpoint_list) {
+    nlohmann::json ep_json;
+    ep_json["protocol"] = ep.protocol;
+    ep_json["comm_id"] = ep.comm_id;
+    ep_json["placement"] = ep.placement;
+    if (!ep.plane.empty()) {
+      ep_json["plane"] = ep.plane;
+    }
+    if (!ep.dst_eid.empty()) {
+      ep_json["dst_eid"] = ep.dst_eid;
+    }
+    j["endpoint_list"].push_back(std::move(ep_json));
+  }
+
+  // 3. 通过 AscendString 返回（内部封装 shared_ptr<std::string>，跨 .so 边界 ABI 安全）
+  result = AscendString(j.dump(2).c_str());
   return SUCCESS;
 }
+
+namespace test_stub {
+// 测试专用：在 UT 中注入 GenerateLocalCommRes 的桩实现。
+// 桩函数签名：int32_t (*)(int32_t phy_dev_id, LocalCommRes &local_comm_res)
+void SetGenerateLocalCommResStub(int32_t (*stub)(int32_t, LocalCommRes &)) {
+  g_generate_local_comm_res_stub = stub;
+}
+void ClearGenerateLocalCommResStub() {
+  g_generate_local_comm_res_stub = nullptr;
+}
+}  // namespace test_stub
 
 }  // namespace hixl
