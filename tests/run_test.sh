@@ -183,10 +183,31 @@ run() {
           echo -e "\033[31m${RUN_TEST_CASE}\033[0m"
           exit 1;
       fi
-      RUN_TEST_CASE="${BUILD_PATH}/tests/cpp/hixl/hixl_test --gtest_output=xml:${report_dir}/hixl_test.xml" && ${RUN_TEST_CASE}
-      if [[ "$?" -ne 0 ]]; then
-          echo "!!! CPP TEST FAILED, PLEASE CHECK YOUR CHANGES !!!"
-          echo -e "\033[31m${RUN_TEST_CASE}\033[0m"
+      HIXL_PARALLEL_TEST_PIDS=()
+      HIXL_PARALLEL_TEST_CMDS=()
+
+      run_cpp_test_parallel() {
+          local test_bin="$1"
+          local report_name="$2"
+          local run_cmd="${test_bin} --gtest_output=xml:${report_dir}/${report_name}"
+          echo "Run (parallel): ${run_cmd}"
+          ${run_cmd} &
+          HIXL_PARALLEL_TEST_PIDS+=("$!")
+          HIXL_PARALLEL_TEST_CMDS+=("${run_cmd}")
+      }
+
+      run_cpp_test_parallel "${BUILD_PATH}/tests/cpp/hixl/hixl_test" "hixl_test.xml"
+      run_cpp_test_parallel "${BUILD_PATH}/tests/cpp/hixl/fabric_mem/fabric_mem_test" "fabric_mem_test.xml"
+
+      HIXL_PARALLEL_FAILED=0
+      for idx in "${!HIXL_PARALLEL_TEST_PIDS[@]}"; do
+          if ! wait "${HIXL_PARALLEL_TEST_PIDS[$idx]}"; then
+              HIXL_PARALLEL_FAILED=1
+              echo "!!! CPP TEST FAILED, PLEASE CHECK YOUR CHANGES !!!"
+              echo -e "\033[31m${HIXL_PARALLEL_TEST_CMDS[$idx]}\033[0m"
+          fi
+      done
+      if [[ "${HIXL_PARALLEL_FAILED}" -ne 0 ]]; then
           exit 1;
       fi
   fi
@@ -239,6 +260,7 @@ run() {
           detect_lcov_flags
           lcov -c ${LCOV_IGNORE_FLAGS} -d ${BUILD_PATH}/tests/cpp/llm_datadist/CMakeFiles/llm_datadist_test.dir \
                   -d ${BUILD_PATH}/tests/cpp/hixl/CMakeFiles/hixl_test.dir \
+                  -d ${BUILD_PATH}/tests/cpp/hixl/fabric_mem/CMakeFiles/fabric_mem_test.dir \
                   -d ${BUILD_PATH}/tests/depends/python/CMakeFiles/llm_datadist_wrapper_stub.dir \
                   -d ${BUILD_PATH}/tests/depends/python/CMakeFiles/metadef_wrapper_stub.dir \
                -o cov/tmp.info
