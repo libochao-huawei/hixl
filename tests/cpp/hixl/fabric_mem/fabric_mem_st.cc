@@ -144,6 +144,31 @@ struct FabricMemTestEnv {
   FabricMemEngine engine2;
 };
 
+struct TripleFabricMemTestEnv {
+  TripleFabricMemTestEnv(int32_t port2, int32_t port3)
+      : engine2_ip(BuildRemoteEngineId(port2)),
+        engine3_ip(BuildRemoteEngineId(port3)),
+        engine1(AscendString(kEngine1Ip)),
+        engine2(AscendString(engine2_ip.c_str())),
+        engine3(AscendString(engine3_ip.c_str())) {
+    EXPECT_EQ(InitializeEngine(engine1, kDeviceId0), SUCCESS);
+    EXPECT_EQ(InitializeEngine(engine2, kDeviceId1), SUCCESS);
+    EXPECT_EQ(InitializeEngine(engine3, kDeviceId0), SUCCESS);
+  }
+
+  void Finalize() {
+    engine1.Finalize();
+    engine2.Finalize();
+    engine3.Finalize();
+  }
+
+  std::string engine2_ip;
+  std::string engine3_ip;
+  FabricMemEngine engine1;
+  FabricMemEngine engine2;
+  FabricMemEngine engine3;
+};
+
 void RegisterStandardBuffers(FabricMemTestEnv &env, TransferBuffers &buffers) {
   EXPECT_EQ(RegisterDeviceBuffer(env.engine1, buffers.src), SUCCESS);
   EXPECT_EQ(RegisterDeviceBuffer(env.engine1, buffers.dst), SUCCESS);
@@ -281,43 +306,35 @@ TEST_F(FabricMemSTest, TestHixlFabricMemMultiTargetParallel) {
   ASSERT_GT(port2, 0);
   const int32_t port3 = test::AllocateFabricMemTestPort();
   ASSERT_GT(port3, 0);
-  const std::string engine2_ip = BuildRemoteEngineId(port2);
-  const std::string engine3_ip = BuildRemoteEngineId(port3);
-
-  FabricMemEngine engine1{AscendString(kEngine1Ip)};
-  FabricMemEngine engine2{AscendString(engine2_ip.c_str())};
-  FabricMemEngine engine3{AscendString(engine3_ip.c_str())};
-  EXPECT_EQ(InitializeEngine(engine1, kDeviceId0), SUCCESS);
-  EXPECT_EQ(InitializeEngine(engine2, kDeviceId1), SUCCESS);
-  EXPECT_EQ(InitializeEngine(engine3, kDeviceId0), SUCCESS);
+  TripleFabricMemTestEnv env(port2, port3);
 
   DeviceBuffer src{kDataPattern};
   DeviceBuffer remote_buf2{kInitPattern};
   DeviceBuffer remote_buf3{kInitPattern};
-  EXPECT_EQ(RegisterDeviceBuffer(engine1, src), SUCCESS);
-  EXPECT_EQ(RegisterDeviceBuffer(engine2, remote_buf2), SUCCESS);
-  EXPECT_EQ(RegisterDeviceBuffer(engine3, remote_buf3), SUCCESS);
+  EXPECT_EQ(RegisterDeviceBuffer(env.engine1, src), SUCCESS);
+  EXPECT_EQ(RegisterDeviceBuffer(env.engine2, remote_buf2), SUCCESS);
+  EXPECT_EQ(RegisterDeviceBuffer(env.engine3, remote_buf3), SUCCESS);
 
-  const AscendString remote2(engine2_ip.c_str());
-  const AscendString remote3(engine3_ip.c_str());
-  EXPECT_EQ(engine1.Connect(remote2, kTimeoutMs), SUCCESS);
-  EXPECT_EQ(engine1.Connect(remote3, kTimeoutMs), SUCCESS);
+  const AscendString remote2(env.engine2_ip.c_str());
+  const AscendString remote3(env.engine3_ip.c_str());
+  EXPECT_EQ(env.engine1.Connect(remote2, kTimeoutMs), SUCCESS);
+  EXPECT_EQ(env.engine1.Connect(remote3, kTimeoutMs), SUCCESS);
 
   const TransferOpDesc desc2 = BuildTransferDesc(src, remote_buf2);
   const TransferOpDesc desc3 = BuildTransferDesc(src, remote_buf3);
   std::vector<std::thread> threads;
-  threads.emplace_back([&]() { EXPECT_EQ(engine1.TransferSync(remote2, WRITE, {desc2}, kTimeoutMs), SUCCESS); });
-  threads.emplace_back([&]() { EXPECT_EQ(engine1.TransferSync(remote3, WRITE, {desc3}, kTimeoutMs), SUCCESS); });
+  threads.emplace_back(
+      [&]() { EXPECT_EQ(env.engine1.TransferSync(remote2, WRITE, {desc2}, kTimeoutMs), SUCCESS); });
+  threads.emplace_back(
+      [&]() { EXPECT_EQ(env.engine1.TransferSync(remote3, WRITE, {desc3}, kTimeoutMs), SUCCESS); });
   JoinThreads(threads);
 
-  EXPECT_EQ(engine1.Disconnect(remote2, kTimeoutMs), SUCCESS);
-  EXPECT_EQ(engine1.Disconnect(remote3, kTimeoutMs), SUCCESS);
-  EXPECT_EQ(engine1.DeregisterMem(src.handle), SUCCESS);
-  EXPECT_EQ(engine2.DeregisterMem(remote_buf2.handle), SUCCESS);
-  EXPECT_EQ(engine3.DeregisterMem(remote_buf3.handle), SUCCESS);
-  engine1.Finalize();
-  engine2.Finalize();
-  engine3.Finalize();
+  EXPECT_EQ(env.engine1.Disconnect(remote2, kTimeoutMs), SUCCESS);
+  EXPECT_EQ(env.engine1.Disconnect(remote3, kTimeoutMs), SUCCESS);
+  EXPECT_EQ(env.engine1.DeregisterMem(src.handle), SUCCESS);
+  EXPECT_EQ(env.engine2.DeregisterMem(remote_buf2.handle), SUCCESS);
+  EXPECT_EQ(env.engine3.DeregisterMem(remote_buf3.handle), SUCCESS);
+  env.Finalize();
 }
 
 TEST_F(FabricMemSTest, TestHixlFabricMemConcurrentAsync) {

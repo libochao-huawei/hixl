@@ -111,6 +111,7 @@ class FabricMemTransferService {
   static Status CreateSlotStream(aclrtStream &stream);
   static void DestroySlotStreams(std::vector<aclrtStream> &streams, bool abort_streams);
   static void DestroyCreatedSlotEntry(TransferSlotEntry &entry);
+  Status PopulateSlotStreams(TransferSlotEntry &entry);
   Status CreateSlotEntryLocked(TransferSlotEntry &entry);
   void DestroySlotEntryLocked(TransferSlotEntry &entry, bool abort_streams);
   void ReturnSlotLocked(const AsyncSlot &slot);

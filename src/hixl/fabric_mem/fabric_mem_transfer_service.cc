@@ -734,10 +734,7 @@ void FabricMemTransferService::DestroyCreatedSlotEntry(TransferSlotEntry &entry)
   entry.ctx = nullptr;
 }
 
-Status FabricMemTransferService::CreateSlotEntryLocked(TransferSlotEntry &entry) {
-  HIXL_CHK_ACL_RET(aclrtCreateContext(&entry.ctx, device_id_), "Create fabric mem transfer context failed.");
-  HIXL_DISMISSABLE_GUARD(ctx_guard, ([&entry]() { DestroyCreatedSlotEntry(entry); }));
-  TemporaryRtContext with_context(entry.ctx);
+Status FabricMemTransferService::PopulateSlotStreams(TransferSlotEntry &entry) {
   entry.streams.clear();
   entry.streams.reserve(task_stream_num_);
   for (size_t i = 0U; i < task_stream_num_; ++i) {
@@ -745,6 +742,14 @@ Status FabricMemTransferService::CreateSlotEntryLocked(TransferSlotEntry &entry)
     HIXL_CHK_STATUS_RET(CreateSlotStream(stream), "Create fabric mem stream failed.");
     entry.streams.emplace_back(stream);
   }
+  return SUCCESS;
+}
+
+Status FabricMemTransferService::CreateSlotEntryLocked(TransferSlotEntry &entry) {
+  HIXL_CHK_ACL_RET(aclrtCreateContext(&entry.ctx, device_id_), "Create fabric mem transfer context failed.");
+  HIXL_DISMISSABLE_GUARD(ctx_guard, ([&entry]() { DestroyCreatedSlotEntry(entry); }));
+  TemporaryRtContext with_context(entry.ctx);
+  HIXL_CHK_STATUS_RET(PopulateSlotStreams(entry), "Populate fabric mem slot streams failed.");
   entry.available = true;
   HIXL_DISMISS_GUARD(ctx_guard);
   return SUCCESS;
