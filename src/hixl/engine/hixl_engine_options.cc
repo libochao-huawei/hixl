@@ -55,10 +55,10 @@ void from_json(const nlohmann::json &j, CommResourceConfigDesc &cfg) {
 
 void from_json(const nlohmann::json &j, GlobalResourceConfig &cfg) {
   if (j.contains("fabric_memory") && j.at("fabric_memory").is_object()) {
-    cfg.fabric_memory = j.at("fabric_memory").get<FabricMemoryConfig>();
+    from_json(j.at("fabric_memory"), cfg.fabric_memory);
   }
-  cfg.connect_pool = j.get<ConnectPoolConfig>();
-  cfg.comm_resource_config = j.get<CommResourceConfigDesc>();
+  from_json(j, cfg.connect_pool);
+  from_json(j, cfg.comm_resource_config);
 }
 }  // namespace
 
