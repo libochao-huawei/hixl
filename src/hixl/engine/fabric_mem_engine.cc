@@ -27,10 +27,6 @@ namespace hixl {
 
 const std::unordered_set<std::string> FabricMemEngine::kSupportedOptions = {
     OPTION_ENABLE_USE_FABRIC_MEM, OPTION_AUTO_CONNECT,
-    OPTION_RDMA_TRAFFIC_CLASS, adxl::OPTION_RDMA_TRAFFIC_CLASS,
-    OPTION_RDMA_SERVICE_LEVEL, adxl::OPTION_RDMA_SERVICE_LEVEL,
-    OPTION_LOCAL_COMM_RES, adxl::OPTION_LOCAL_COMM_RES,
-    OPTION_BUFFER_POOL, adxl::OPTION_BUFFER_POOL,
     OPTION_GLOBAL_RESOURCE_CONFIG};
 
 namespace {
@@ -126,8 +122,11 @@ Status FabricMemEngine::InitFabricMem() {
 Status FabricMemEngine::Initialize(const HixlOptions &options) {
   HIXL_LOGI("[FabricMemEngine] Initialization started, local_engine:%s", local_engine_.c_str());
   std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_CHK_STATUS_RET(options.CheckSupportedOptions(kSupportedOptions),
-                      "[FabricMemEngine] Unsupported option");
+  for (const auto &key : options.RawOptions()) {
+    if (kSupportedOptions.find(key.first.GetString()) == kSupportedOptions.end()) {
+      HIXL_LOGW("[FabricMemEngine] Unsupported option '%s' will be ignored", key.first.GetString());
+    }
+  }
   HIXL_CHK_BOOL_RET_STATUS(options.EnableFabricMem().value_or(false), PARAM_INVALID,
                            "[FabricMemEngine] EnableUseFabricMem must be 1.");
 

@@ -38,3 +38,4 @@ log/
 .opencode
 compile_commands.json
 .clangd
+graphify-out/
