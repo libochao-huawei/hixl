@@ -208,7 +208,7 @@ TEST_F(HixlEngineOptionsUTest, ParseGlobalResourceConfigFabricMemory) {
   HixlEngineOptions result;
   EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.GlobalResourceCfg().has_value());
-  auto &grc = *result.GlobalResourceCfg();
+  auto grc = *result.GlobalResourceCfg();
   ASSERT_TRUE(grc.fabric_memory.max_capacity.has_value());
   EXPECT_EQ(*grc.fabric_memory.max_capacity, 10U);
   ASSERT_TRUE(grc.fabric_memory.start_address.has_value());
@@ -224,7 +224,7 @@ TEST_F(HixlEngineOptionsUTest, ParseGlobalResourceConfigConnectPool) {
   HixlEngineOptions result;
   EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.GlobalResourceCfg().has_value());
-  auto &grc = *result.GlobalResourceCfg();
+  auto grc = *result.GlobalResourceCfg();
   ASSERT_TRUE(grc.connect_pool.thread_num.has_value());
   EXPECT_EQ(*grc.connect_pool.thread_num, 4);
   ASSERT_TRUE(grc.connect_pool.task_queue_capacity.has_value());
@@ -238,7 +238,7 @@ TEST_F(HixlEngineOptionsUTest, ParseGlobalResourceConfigProtocolDesc) {
   HixlEngineOptions result;
   EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.GlobalResourceCfg().has_value());
-  auto &grc = *result.GlobalResourceCfg();
+  auto grc = *result.GlobalResourceCfg();
   ASSERT_TRUE(grc.comm_resource_config.protocol_desc.has_value());
   EXPECT_EQ(grc.comm_resource_config.protocol_desc->size(), 1U);
   EXPECT_EQ((*grc.comm_resource_config.protocol_desc)[0], "uboe:device");
