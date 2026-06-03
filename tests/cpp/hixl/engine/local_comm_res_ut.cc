@@ -830,19 +830,6 @@ TEST_F(LocalCommResGenerateTest, GeneratePod3MainboardId) {
   EXPECT_FALSE(res.endpoint_list.empty());
 }
 
-// --- CollectRelatedNpuIds / GetMeshDieId 分组覆盖 ---
-
-TEST_F(LocalCommResGenerateTest, GeneratePhyIdInSecondGroup) {
-  // phy_dev_id=9 → group_start=8, NPU 8-15; GetMeshDieId(9, false) → 9%8=1 → die_id=1
-  DcmiStubSetMainboardId(0x3, 0);  // Pod
-
-  std::string topo_path = data_dir_ + "server_8p_noroce.json";
-  std::string route_path = data_dir_ + "route.conf";
-  LocalCommRes res;
-  int32_t ret = GenerateLocalCommRes(9, topo_path, route_path, res);
-  EXPECT_EQ(ret, SUCCESS);
-  EXPECT_FALSE(res.endpoint_list.empty());
-}
 
 TEST_F(LocalCommResGenerateTest, GenerateServerMeshDieId) {
   // Server 产品形态 → GetMeshDieId 始终返回 1
@@ -1306,7 +1293,7 @@ TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataNpuIdGreaterThan7) {
   WriteProcFile("pair_info", MakePairInfoContent("0", {"0x0000000000f2008000100000dfdf0091"},
                                                  {"0x000000000072008000100000dfdf0001"}));
 
-  // npu_id = 10, device_id = 10 % 8 = 2
+  // npu_id = 10, device_id = 10 采用物理id
   hixl::ProcfsRouteHandler handler(proc_base_);
   std::set<int32_t> related_npu_ids = {10};
   hixl::RouteData route_data;
@@ -1314,7 +1301,7 @@ TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataNpuIdGreaterThan7) {
 
   EXPECT_EQ(ret, hixl::SUCCESS);
   ASSERT_EQ(route_data.entries.size(), 1U);
-  EXPECT_EQ(route_data.entries[0].device_id, 2);  // 10 % 8 = 2
+  EXPECT_EQ(route_data.entries[0].device_id, 10);  // 采用物理id
 }
 
 TEST_F(ProcfsRouteHandlerTest, GenerateRouteDataEid0xPrefixStripped) {

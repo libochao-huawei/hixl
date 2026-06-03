@@ -295,7 +295,7 @@ int32_t GetCpuEidFromRouteData(int32_t phy_dev_id, const RouteData &route_data, 
     HIXL_LOGE(FAILED, "[GetHostPgEid] Failed to get logic id from phy id: %d", phy_dev_id);
     return FAILED;
   }
-  int32_t target_device_id = static_cast<int32_t>(logic_id);
+  int32_t target_device_id = phy_dev_id;
   HIXL_LOGI("[GetHostPgEid] phy_dev_id=%d, logic_id=%u, target_device_id=%d", phy_dev_id, logic_id, target_device_id);
 
   for (const auto &entry : route_data.entries) {
@@ -308,6 +308,12 @@ int32_t GetCpuEidFromRouteData(int32_t phy_dev_id, const RouteData &route_data, 
   if (cpu_eid.empty()) {
     HIXL_LOGE(FAILED, "[GetHostPgEid] No local_eid found for device_id=%d (phy_dev_id=%d)", target_device_id,
               phy_dev_id);
+    HIXL_LOGE(FAILED, "[GetHostPgEid] Available route_data.entries (%zu total):", route_data.entries.size());
+    for (size_t i = 0; i < route_data.entries.size(); ++i) {
+      const auto &entry = route_data.entries[i];
+      HIXL_LOGE(FAILED, "[GetHostPgEid]   entry[%zu]: device_id=%d, local_eid=[%s], remote_eid=[%s]", i,
+                entry.device_id, entry.local_eid.c_str(), entry.remote_eid.c_str());
+    }
     return FAILED;
   }
   return SUCCESS;
@@ -611,14 +617,12 @@ bool ProcfsRouteHandler::ParsePairInfoForDevice(const std::string &pair_info_con
 
 int32_t ProcfsRouteHandler::ProcessNpuProcfsRoute(int32_t npu_id, const std::string &dev_id_path,
                                                   const std::string &pair_info_path, RouteEntry &entry) {
-  int32_t device_id = npu_id % kNpuGroupSize;
-  HIXL_LOGI("[Procfs] Processing npu_id=%d, device_id=%d", npu_id, device_id);
-
-  // 写入 device_id（组内相对 ID）选择设备
+  HIXL_LOGI("[Procfs] Processing npu_id=%d, device_id=%d", npu_id);
+  // 写入phyid选择设备
   std::ostringstream dev_id_ss;
-  dev_id_ss << device_id << "\n";
+  dev_id_ss << npu_id << "\n";
   if (!WriteStringToFile(dev_id_path, dev_id_ss.str())) {
-    HIXL_LOGW("[Procfs] Failed to write device_id=%d to %s", device_id, dev_id_path.c_str());
+    HIXL_LOGW("[Procfs] Failed to write npu_id=%d to %s", npu_id, dev_id_path.c_str());
     return FAILED;
   }
 
@@ -645,7 +649,7 @@ int32_t ProcfsRouteHandler::ProcessNpuProcfsRoute(int32_t npu_id, const std::str
             local_eid.c_str(), remote_eid.c_str());
 
   // 只生成 H2D 方向的 RouteEntry
-  entry.device_id = device_id;
+  entry.device_id = npu_id;
   entry.local_eid = local_eid;
   entry.remote_eid = remote_eid;
   return SUCCESS;
@@ -790,6 +794,11 @@ int32_t BuildRouteEntries(const std::map<std::string, std::string> &kv_map, Rout
   }
 
   HIXL_LOGI("Parsed %zu route entries", route_data.entries.size());
+  for (size_t i = 0; i < route_data.entries.size(); ++i) {
+    const auto &entry = route_data.entries[i];
+    HIXL_LOGI("  route_entry[%zu]: device_id=%d, local_eid=[%s], remote_eid=[%s]", i, entry.device_id,
+              entry.local_eid.c_str(), entry.remote_eid.c_str());
+  }
   return SUCCESS;
 }
 
