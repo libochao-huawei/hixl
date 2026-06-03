@@ -13,6 +13,7 @@ find_package_if_target_not_exists(securec MODULE REQUIRED)
 
 if (NOT ENABLE_TEST)
     find_package_if_target_not_exists(slog MODULE REQUIRED)
+    find_package_if_target_not_exists(runtime MODULE REQUIRED)
     find_package_if_target_not_exists(mmpa MODULE REQUIRED)
     find_package_if_target_not_exists(msprof MODULE REQUIRED)
     find_package_if_target_not_exists(hccl MODULE REQUIRED)
@@ -20,84 +21,77 @@ if (NOT ENABLE_TEST)
     find_package_if_target_not_exists(runtime MODULE REQUIRED)
     find_package_if_target_not_exists(metadef MODULE REQUIRED)
     find_package_if_target_not_exists(ascend_hal MODULE REQUIRED)
-    find_package_if_target_not_exists(error_manager MODULE REQUIRED)
 else ()
     add_library(hccl_headers INTERFACE)
     target_include_directories(hccl_headers INTERFACE
         ${HIXL_CODE_DIR}/src/hixl/proxy   # prefer use compat copy header
-        ${ASCEND_INSTALL_PATH}/include
-        ${ASCEND_INSTALL_PATH}/include/hccl
-        ${ASCEND_INSTALL_PATH}/include/hcomm
-        ${ASCEND_INSTALL_PATH}/pkg_inc
-        ${ASCEND_INSTALL_PATH}/pkg_inc/hccl
+        ${CANN_INSTALL_PATH}/include
+        ${CANN_INSTALL_PATH}/include/hccl
+        ${CANN_INSTALL_PATH}/include/hcomm
+        ${CANN_INSTALL_PATH}/pkg_inc
+        ${CANN_INSTALL_PATH}/pkg_inc/hccl
         )
 
     add_library(mmpa_headers INTERFACE)
-    if (EXISTS "${ASCEND_INSTALL_PATH}/include/mmpa")
+    if (EXISTS "${CANN_INSTALL_PATH}/include/mmpa")
         target_include_directories(mmpa_headers INTERFACE
-            ${ASCEND_INSTALL_PATH}/include
-            ${ASCEND_INSTALL_PATH}/include/mmpa/sub_inc
+            ${CANN_INSTALL_PATH}/include
+            ${CANN_INSTALL_PATH}/include/mmpa/sub_inc
         )
     else ()
         target_include_directories(mmpa_headers INTERFACE
-            ${ASCEND_INSTALL_PATH}/pkg_inc
-            ${ASCEND_INSTALL_PATH}/pkg_inc/mmpa/sub_inc
+            ${CANN_INSTALL_PATH}/pkg_inc
+            ${CANN_INSTALL_PATH}/pkg_inc/mmpa/sub_inc
         )
     endif ()
 
 
     add_library(msprof_headers INTERFACE)
     target_include_directories(msprof_headers INTERFACE
-        ${ASCEND_INSTALL_PATH}/pkg_inc
-        ${ASCEND_INSTALL_PATH}/pkg_inc/profiling
-        ${ASCEND_INSTALL_PATH}/pkg_inc/toolchain
+        ${CANN_INSTALL_PATH}/pkg_inc
+        ${CANN_INSTALL_PATH}/pkg_inc/profiling
+        ${CANN_INSTALL_PATH}/pkg_inc/toolchain
     )
 
     add_library(metadef_headers INTERFACE)
     target_include_directories(metadef_headers INTERFACE
-        ${ASCEND_INSTALL_PATH}/include
-        ${ASCEND_INSTALL_PATH}/include/external
-    )
-
-    add_library(error_manager_headers INTERFACE)
-    target_include_directories(error_manager_headers INTERFACE
-        ${ASCEND_INSTALL_PATH}/include
-        ${ASCEND_INSTALL_PATH}/include/external
+        ${CANN_INSTALL_PATH}/include
+        ${CANN_INSTALL_PATH}/include/external
     )
 
     add_library(runtime_headers INTERFACE)
     target_include_directories(runtime_headers INTERFACE
-        ${ASCEND_INSTALL_PATH}/pkg_inc
-        ${ASCEND_INSTALL_PATH}/pkg_inc/runtime
-        ${ASCEND_INSTALL_PATH}/pkg_inc/runtime/runtime
-        ${ASCEND_INSTALL_PATH}/pkg_inc/runtime/runtime/rts
-        ${ASCEND_INSTALL_PATH}/include/acl/error_codes
+        ${CANN_INSTALL_PATH}/pkg_inc
+        ${CANN_INSTALL_PATH}/pkg_inc/runtime
+        ${CANN_INSTALL_PATH}/pkg_inc/runtime/runtime
+        ${CANN_INSTALL_PATH}/pkg_inc/runtime/runtime/rts
+        ${CANN_INSTALL_PATH}/include/acl/error_codes
     )
 
     add_library(slog_headers INTERFACE)
     target_include_directories(slog_headers INTERFACE
-        ${ASCEND_INSTALL_PATH}/include
-        ${ASCEND_INSTALL_PATH}/pkg_inc
-        ${ASCEND_INSTALL_PATH}/pkg_inc/base
+        ${CANN_INSTALL_PATH}/include
+        ${CANN_INSTALL_PATH}/pkg_inc
+        ${CANN_INSTALL_PATH}/pkg_inc/base
     )
 
     add_library(acl_rt_headers INTERFACE)
     target_include_directories(acl_rt_headers INTERFACE
-        ${ASCEND_INSTALL_PATH}/include
-        ${ASCEND_INSTALL_PATH}/include/acl
+        ${CANN_INSTALL_PATH}/include
+        ${CANN_INSTALL_PATH}/include/acl
     )
 
     add_library(ascend_hal_headers INTERFACE)
-    if (NOT EXISTS "${ASCEND_INSTALL_PATH}/include/experiment/ascend_hal/driver/ascend_hal.h")
+    if (NOT EXISTS "${CANN_INSTALL_PATH}/include/experiment/ascend_hal/driver/ascend_hal.h")
         target_include_directories(ascend_hal_headers INTERFACE
-            ${ASCEND_INSTALL_PATH}/include/
-            ${ASCEND_INSTALL_PATH}/include/driver
+            ${CANN_INSTALL_PATH}/include/
+            ${CANN_INSTALL_PATH}/include/driver
         )
     else ()
         target_include_directories(ascend_hal_headers INTERFACE
-            ${ASCEND_INSTALL_PATH}/include/experiment
-            ${ASCEND_INSTALL_PATH}/include/experiment/ascend_hal
-            ${ASCEND_INSTALL_PATH}/include/experiment/ascend_hal/driver
+            ${CANN_INSTALL_PATH}/include/experiment
+            ${CANN_INSTALL_PATH}/include/experiment/ascend_hal
+            ${CANN_INSTALL_PATH}/include/experiment/ascend_hal/driver
         )
     endif ()
 endif()
