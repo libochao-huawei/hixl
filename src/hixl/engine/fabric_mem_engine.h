@@ -30,7 +30,7 @@
 namespace hixl {
 class FabricMemEngine : public hixl::Engine {
  public:
-  explicit FabricMemEngine(const AscendString &local_engine) : Engine(local_engine){};
+  explicit FabricMemEngine(const AscendString &local_engine) : Engine(local_engine) {};
 
   ~FabricMemEngine() override = default;
 
@@ -73,8 +73,7 @@ class FabricMemEngine : public hixl::Engine {
   // Ensures connection to remote without holding mutex_ during network I/O.
   // Uses double-checked locking: quick check under lock, network fetch without lock, install under lock.
   Status EnsureConnected(const AscendString &remote_engine, int32_t timeout_in_millis);
-  Status CreateAndRegisterRemoteMemory(const std::vector<ShareHandleInfo> &share_handles,
-                                       const std::string &remote);
+  Status CreateAndRegisterRemoteMemory(const std::vector<ShareHandleInfo> &share_handles, const std::string &remote);
   void RemoveChannelReqMapLocked(const std::string &remote_engine);
 
   // Lock hierarchy (must be acquired in this order):

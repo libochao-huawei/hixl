@@ -86,9 +86,8 @@ Status HixlOptions::Parse(const std::map<AscendString, AscendString> &options, H
 
 Status HixlOptions::CheckSupportedOptions(const std::unordered_set<std::string> &supported_keys) const {
   for (const auto &key : parsed_keys_) {
-    HIXL_CHK_BOOL_RET_SPECIAL_STATUS(
-        supported_keys.count(key) == 0, PARAM_INVALID,
-        "Unsupported option '%s' for this engine", key.c_str());
+    HIXL_CHK_BOOL_RET_SPECIAL_STATUS(supported_keys.count(key) == 0, PARAM_INVALID,
+                                     "Unsupported option '%s' for this engine", key.c_str());
   }
   return SUCCESS;
 }
@@ -109,10 +108,9 @@ Status HixlOptions::ParseRdmaOptions(const std::map<AscendString, AscendString> 
   }
   if (!traffic_class_str.empty()) {
     int32_t traffic_class = 0;
-    HIXL_CHK_STATUS_RET(ToNumber(traffic_class_str, traffic_class),
-                        "Traffic class is invalid, value = %s", traffic_class_str.c_str());
-    HIXL_CHK_BOOL_RET_STATUS(traffic_class >= 0 && traffic_class <= 255 && (traffic_class % 4 == 0),
-                             PARAM_INVALID,
+    HIXL_CHK_STATUS_RET(ToNumber(traffic_class_str, traffic_class), "Traffic class is invalid, value = %s",
+                        traffic_class_str.c_str());
+    HIXL_CHK_BOOL_RET_STATUS(traffic_class >= 0 && traffic_class <= 255 && (traffic_class % 4 == 0), PARAM_INVALID,
                              "Traffic class is invalid, value = %d, must be between 0-255 and a multiple of 4",
                              traffic_class);
     rdma_traffic_class_ = static_cast<uint8_t>(traffic_class);
@@ -134,8 +132,8 @@ Status HixlOptions::ParseRdmaOptions(const std::map<AscendString, AscendString> 
   }
   if (!service_level_str.empty()) {
     int32_t service_level = 0;
-    HIXL_CHK_STATUS_RET(ToNumber(service_level_str, service_level),
-                        "Service level is invalid, value = %s", service_level_str.c_str());
+    HIXL_CHK_STATUS_RET(ToNumber(service_level_str, service_level), "Service level is invalid, value = %s",
+                        service_level_str.c_str());
     HIXL_CHK_BOOL_RET_STATUS(service_level >= 0 && service_level <= 7, PARAM_INVALID,
                              "service_level must be in [0, 7], value = %d", service_level);
     rdma_service_level_ = static_cast<uint8_t>(service_level);
@@ -166,11 +164,10 @@ Status HixlOptions::ParseFabricMemOptions(const std::map<AscendString, AscendStr
   const auto &efm_it = options.find(hixl::OPTION_ENABLE_USE_FABRIC_MEM);
   if (efm_it != options.end() && !std::string(efm_it->second.GetString()).empty()) {
     uint32_t enabled = 0U;
-    HIXL_CHK_STATUS_RET(ToNumber(std::string(efm_it->second.GetString()), enabled),
-                        "%s is invalid, value = %s",
+    HIXL_CHK_STATUS_RET(ToNumber(std::string(efm_it->second.GetString()), enabled), "%s is invalid, value = %s",
                         hixl::OPTION_ENABLE_USE_FABRIC_MEM, efm_it->second.GetString());
-    HIXL_CHK_BOOL_RET_STATUS(enabled == 0U || enabled == 1U, PARAM_INVALID,
-                             "%s is invalid, should be zero or one.", hixl::OPTION_ENABLE_USE_FABRIC_MEM);
+    HIXL_CHK_BOOL_RET_STATUS(enabled == 0U || enabled == 1U, PARAM_INVALID, "%s is invalid, should be zero or one.",
+                             hixl::OPTION_ENABLE_USE_FABRIC_MEM);
     enable_fabric_mem_ = (enabled == 1U);
     HIXL_LOGI("Set %s to %u.", hixl::OPTION_ENABLE_USE_FABRIC_MEM, enabled);
   }
@@ -178,11 +175,11 @@ Status HixlOptions::ParseFabricMemOptions(const std::map<AscendString, AscendStr
   const auto &ac_it = options.find(hixl::OPTION_AUTO_CONNECT);
   if (ac_it != options.end()) {
     std::string auto_connect_str = ac_it->second.GetString();
-    HIXL_CHK_BOOL_RET_STATUS(!auto_connect_str.empty(), PARAM_INVALID,
-                             "%s value is empty, should be zero or one.", hixl::OPTION_AUTO_CONNECT);
+    HIXL_CHK_BOOL_RET_STATUS(!auto_connect_str.empty(), PARAM_INVALID, "%s value is empty, should be zero or one.",
+                             hixl::OPTION_AUTO_CONNECT);
     uint32_t auto_connect = 0U;
-    HIXL_CHK_STATUS_RET(ToNumber(auto_connect_str, auto_connect),
-                        "%s is invalid, value = %s", hixl::OPTION_AUTO_CONNECT, auto_connect_str.c_str());
+    HIXL_CHK_STATUS_RET(ToNumber(auto_connect_str, auto_connect), "%s is invalid, value = %s",
+                        hixl::OPTION_AUTO_CONNECT, auto_connect_str.c_str());
     HIXL_CHK_BOOL_RET_STATUS(auto_connect == 0U || auto_connect == 1U, PARAM_INVALID,
                              "%s is invalid, should be zero or one.", hixl::OPTION_AUTO_CONNECT);
     auto_connect_ = (auto_connect == 1U);
@@ -217,14 +214,14 @@ Status HixlOptions::ParseGlobalResourceConfig(const std::map<AscendString, Ascen
     if (cfg.fabric_memory.start_address.has_value()) {
       size_t val = *cfg.fabric_memory.start_address;
       HIXL_CHK_BOOL_RET_STATUS(val >= kMinStartAddressTB && val <= kMaxStartAddressTB, PARAM_INVALID,
-                               "fabric_memory.start_address must be in [%zu, %zu] TB, got %zu",
-                               kMinStartAddressTB, kMaxStartAddressTB, val);
+                               "fabric_memory.start_address must be in [%zu, %zu] TB, got %zu", kMinStartAddressTB,
+                               kMaxStartAddressTB, val);
     }
     if (cfg.fabric_memory.task_stream_num.has_value()) {
       size_t val = *cfg.fabric_memory.task_stream_num;
       HIXL_CHK_BOOL_RET_STATUS(val >= kMinTaskStreamNum && val <= kMaxTaskStreamNum, PARAM_INVALID,
-                               "fabric_memory.task_stream_num must be between %zu and %zu, got %zu",
-                               kMinTaskStreamNum, kMaxTaskStreamNum, val);
+                               "fabric_memory.task_stream_num must be between %zu and %zu, got %zu", kMinTaskStreamNum,
+                               kMaxTaskStreamNum, val);
     }
 
     global_resource_config_ = std::move(cfg);

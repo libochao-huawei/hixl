@@ -121,7 +121,7 @@ class HixlEngineTest : public ::testing::Test {
             {
                 "protocol": "roce",
                 "comm_id": "127.0.0.1",
-                "placement": "host" 
+                "placement": "host"
             },
             {
                 "protocol": "ub_ctp",
@@ -147,7 +147,7 @@ class HixlEngineTest : public ::testing::Test {
             {
                 "protocol": "roce",
                 "comm_id": "127.0.0.1",
-                "placement": "host" 
+                "placement": "host"
             }
         ],
         "version": "1.3"
@@ -429,8 +429,7 @@ TEST_F(HixlEngineTest, TestTransferAsync) {
   std::vector<TransferResult> results;
   for (int32_t i = 0; i < kMaxRetryCount && status == TransferStatus::WAITING; i++) {
     engine1.GetTransferStatus(args, results);
-    auto it = std::find_if(results.begin(), results.end(),
-                           [req](const TransferResult &r) { return r.req == req; });
+    auto it = std::find_if(results.begin(), results.end(), [req](const TransferResult &r) { return r.req == req; });
     status = (it != results.end()) ? it->status : status;
     std::this_thread::sleep_for(std::chrono::milliseconds(kInterval));
   }

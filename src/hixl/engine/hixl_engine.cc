@@ -24,10 +24,10 @@
 namespace hixl {
 
 const std::unordered_set<std::string> HixlEngine::kSupportedOptions = {
-    OPTION_RDMA_TRAFFIC_CLASS, adxl::OPTION_RDMA_TRAFFIC_CLASS,
-    OPTION_RDMA_SERVICE_LEVEL, adxl::OPTION_RDMA_SERVICE_LEVEL,
-    OPTION_LOCAL_COMM_RES, adxl::OPTION_LOCAL_COMM_RES,
-    OPTION_BUFFER_POOL, adxl::OPTION_BUFFER_POOL,
+    OPTION_RDMA_TRAFFIC_CLASS,    adxl::OPTION_RDMA_TRAFFIC_CLASS,
+    OPTION_RDMA_SERVICE_LEVEL,    adxl::OPTION_RDMA_SERVICE_LEVEL,
+    OPTION_LOCAL_COMM_RES,        adxl::OPTION_LOCAL_COMM_RES,
+    OPTION_BUFFER_POOL,           adxl::OPTION_BUFFER_POOL,
     OPTION_GLOBAL_RESOURCE_CONFIG};
 
 bool HixlEngine::IsInitialized() const {
@@ -44,22 +44,18 @@ Status HixlEngine::InitServer() {
                       "current local_engine:%s",
                       local_engine_.c_str());
   HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_),
-                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s",
-                      local_engine_.c_str());
+                      "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s", local_engine_.c_str());
   return SUCCESS;
 }
 
 Status HixlEngine::Initialize(const HixlOptions &options) {
   HIXL_LOGI("[HixlEngine] Initialization started, local_engine:%s", local_engine_.c_str());
   std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_CHK_STATUS_RET(options.CheckSupportedOptions(kSupportedOptions),
-                      "[HixlEngine] Unsupported option");
+  HIXL_CHK_STATUS_RET(options.CheckSupportedOptions(kSupportedOptions), "[HixlEngine] Unsupported option");
   std::string local_comm_res;
-  Status ret = EndpointGenerator::BuildEndpointList(
-      options, local_engine_, local_comm_res, endpoint_list_);
+  Status ret = EndpointGenerator::BuildEndpointList(options, local_engine_, local_comm_res, endpoint_list_);
   HIXL_CHK_STATUS_RET(ret, "[HixlEngine] Failed to build endpoint list from options");
-  HIXL_CHK_STATUS_RET(InitServer(),
-                      "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
+  HIXL_CHK_STATUS_RET(InitServer(), "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
                       local_engine_.c_str(), local_comm_res.c_str());
   rdma_traffic_class_ = options.RdmaTrafficClass().value_or(kRdmaTrafficClass);
   rdma_service_level_ = options.RdmaServiceLevel().value_or(kRdmaServiceLevel);
@@ -227,9 +223,9 @@ Status HixlEngine::GetTransferStatusInner(const TransferReq &req, TransferStatus
   HIXL_CHECK_NOTNULL(client,
                      "[HixlEngine] Failed to get client through remote engine, local_engine:%s, remote_engine:%s",
                      local_engine_.c_str(), remote_engine.GetString());
-  HIXL_CHK_STATUS_RET(client->GetTransferStatus(req, status), 
-                      "[HixlEngine] Failed to get status through client, req:%p, status:%d", 
-                      req, static_cast<int>(status));
+  HIXL_CHK_STATUS_RET(client->GetTransferStatus(req, status),
+                      "[HixlEngine] Failed to get status through client, req:%p, status:%d", req,
+                      static_cast<int>(status));
   if (status == TransferStatus::COMPLETED) {
     auto op_type = it->second.op_type;
     auto start_time = it->second.start_time;

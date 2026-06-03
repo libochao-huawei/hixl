@@ -26,8 +26,7 @@
 namespace hixl {
 
 const std::unordered_set<std::string> FabricMemEngine::kSupportedOptions = {
-    OPTION_ENABLE_USE_FABRIC_MEM, OPTION_AUTO_CONNECT,
-    OPTION_GLOBAL_RESOURCE_CONFIG};
+    OPTION_ENABLE_USE_FABRIC_MEM, OPTION_AUTO_CONNECT, OPTION_GLOBAL_RESOURCE_CONFIG};
 
 namespace {
 std::mutex g_fabric_mem_vm_mutex;
@@ -122,8 +121,7 @@ Status FabricMemEngine::InitFabricMem() {
 Status FabricMemEngine::Initialize(const HixlOptions &options) {
   HIXL_LOGI("[FabricMemEngine] Initialization started, local_engine:%s", local_engine_.c_str());
   std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_CHK_STATUS_RET(options.CheckSupportedOptions(kSupportedOptions),
-                      "[FabricMemEngine] Unsupported option");
+  HIXL_CHK_STATUS_RET(options.CheckSupportedOptions(kSupportedOptions), "[FabricMemEngine] Unsupported option");
   HIXL_CHK_BOOL_RET_STATUS(options.EnableFabricMem().value_or(false), PARAM_INVALID,
                            "[FabricMemEngine] EnableUseFabricMem must be 1.");
 
@@ -218,7 +216,7 @@ Status FabricMemEngine::ConnectLocked(const AscendString &remote_engine, int32_t
 }
 
 Status FabricMemEngine::CreateAndRegisterRemoteMemory(const std::vector<ShareHandleInfo> &share_handles,
-                                                       const std::string &remote) {
+                                                      const std::string &remote) {
   auto remote_memory = MakeUnique<FabricMemRemoteMemory>();
   HIXL_CHECK_NOTNULL(remote_memory.get(), "[FabricMemEngine] Failed to create remote memory.");
   int32_t device_id = -1;
@@ -242,8 +240,7 @@ Status FabricMemEngine::EnsureConnected(const AscendString &remote_engine, int32
   std::vector<ShareHandleInfo> share_handles;
   int32_t keepalive_fd = -1;
   Status ret = FabricMemControlClient::Fetch(remote, timeout_in_millis, share_handles, keepalive_fd);
-  HIXL_CHK_STATUS_RET(ret,
-                      "[FabricMemEngine] Failed to fetch share handles from remote:%s.", remote.c_str());
+  HIXL_CHK_STATUS_RET(ret, "[FabricMemEngine] Failed to fetch share handles from remote:%s.", remote.c_str());
   std::lock_guard<std::mutex> lock(mutex_);
   if (fabric_mem_remote_mems_.find(remote) != fabric_mem_remote_mems_.end()) {
     if (keepalive_fd >= 0) {

@@ -342,9 +342,8 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsParsesManualJsonAndFi
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(
-        EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", parsed_local_comm_res, endpoint_list),
-        SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", parsed_local_comm_res, endpoint_list),
+              SUCCESS);
   }
   EXPECT_EQ(parsed_local_comm_res, local_comm_res);
   ASSERT_EQ(endpoint_list.size(), 2U);
@@ -375,9 +374,8 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2) {
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(
-        EndpointGenerator::BuildEndpointList(parsed, "192.168.1.8:26000", local_comm_res, endpoint_list),
-        SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "192.168.1.8:26000", local_comm_res, endpoint_list),
+              SUCCESS);
   }
   EXPECT_EQ(local_comm_res, R"({"version":"1.3"})");
   ASSERT_EQ(endpoint_list.size(), 2U);
@@ -411,9 +409,8 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2Wit
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(
-        EndpointGenerator::BuildEndpointList(parsed, "192.168.1.8:26000", local_comm_res, endpoint_list),
-        SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "192.168.1.8:26000", local_comm_res, endpoint_list),
+              SUCCESS);
   }
   EXPECT_EQ(local_comm_res, R"({})");
   ASSERT_EQ(endpoint_list.size(), 2U);
@@ -444,9 +441,8 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2Wit
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(
-        EndpointGenerator::BuildEndpointList(parsed, "192.168.1.8:26000", local_comm_res, endpoint_list),
-        SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "192.168.1.8:26000", local_comm_res, endpoint_list),
+              SUCCESS);
   }
   EXPECT_EQ(local_comm_res, R"({"net_instance_id":"manual_input"})");
   ASSERT_EQ(endpoint_list.size(), 2U);
@@ -477,9 +473,8 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2Reg
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(
-        EndpointGenerator::BuildEndpointList(parsed, "192.168.1.8:26000", local_comm_res, endpoint_list),
-        SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "192.168.1.8:26000", local_comm_res, endpoint_list),
+              SUCCESS);
   }
   EXPECT_EQ(local_comm_res, R"({"version":"legacy"})");
   ASSERT_EQ(endpoint_list.size(), 2U);
@@ -514,9 +509,8 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2And
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(
-        EndpointGenerator::BuildEndpointList(parsed, "192.168.1.8:26000", local_comm_res, endpoint_list),
-        SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "192.168.1.8:26000", local_comm_res, endpoint_list),
+              SUCCESS);
   }
   EXPECT_EQ(local_comm_res, R"({"version":"1.3"})");
   ASSERT_EQ(endpoint_list.size(), 1U);
@@ -541,8 +535,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsPrefersHixlOptionOver
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
-              SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
   }
   EXPECT_EQ(local_comm_res, hixl_local_comm_res);
   ASSERT_EQ(endpoint_list.size(), 1U);
@@ -562,8 +555,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsEmptyLocalComm
   {
     HixlOptions parsed;
     HixlOptions::Parse(options, parsed);
-    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
-              FAILED);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), FAILED);
   }
 }
 
@@ -590,8 +582,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesBaseEndp
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
-              SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
   }
   EXPECT_TRUE(local_comm_res.empty());
   ASSERT_EQ(endpoint_list.size(), 1U);
@@ -618,8 +609,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsGeneratesOnlyUboeWhen
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
-              SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
   }
   EXPECT_TRUE(local_comm_res.empty());
   ExpectSingleUboeEndpoint(endpoint_list, "192.168.100.205");
@@ -641,8 +631,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsDoesNotAppendUboeWhen
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
-              SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
   }
   ASSERT_EQ(endpoint_list.size(), 1U);
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolRoce);
@@ -679,8 +668,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsGeneratesUboeWhenLoca
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
-              SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
   }
   ASSERT_EQ(endpoint_list.size(), 1U);
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolUboe);
@@ -708,8 +696,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolD
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
-              SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
   }
   ExpectSingleUboeEndpoint(endpoint_list, "192.168.100.201");
 
@@ -733,8 +720,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolD
   {
     HixlOptions parsed;
     ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
-              SUCCESS);
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
   }
   ExpectSingleUboeEndpoint(endpoint_list, "192.168.100.202");
 

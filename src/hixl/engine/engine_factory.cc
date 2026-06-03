@@ -26,8 +26,7 @@ bool UseUboe(const HixlOptions &options) {
   auto grc = options.GlobalResourceCfg();
   if (!grc.has_value()) return false;
   auto desc = grc->comm_resource_config.protocol_desc;
-  return desc.has_value() && !desc->empty() &&
-         std::find(desc->begin(), desc->end(), "uboe:device") != desc->end();
+  return desc.has_value() && !desc->empty() && std::find(desc->begin(), desc->end(), "uboe:device") != desc->end();
 }
 }  // namespace
 std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engine,

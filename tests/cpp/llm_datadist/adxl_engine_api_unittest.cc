@@ -385,7 +385,7 @@ TEST_F(AdxlEngineUTest, TestDeregisterUnregisterMem) {
 
 TEST_F(AdxlEngineUTest, TestHeartbeat) {
   ChannelManager::SetHeartbeatWaitTime(10);  // 10ms
-  CommChannel::SetHeartbeatTimeout(50);          // 50ms
+  CommChannel::SetHeartbeatTimeout(50);      // 50ms
   AdxlEngine engine1;
   llm::AutoCommResRuntimeMock::SetDevice(0);
   std::map<AscendString, AscendString> options1;
