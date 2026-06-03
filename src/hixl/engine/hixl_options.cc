@@ -151,14 +151,6 @@ Status HixlOptions::ParseEndpointOptions(const std::map<AscendString, AscendStri
   if (lcr_it != options.cend()) {
     local_comm_res_ = std::string(lcr_it->second.GetString());
   }
-
-  const auto &hixl_bp_it = options.find(hixl::OPTION_BUFFER_POOL);
-  const auto &adxl_bp_it = options.find(adxl::OPTION_BUFFER_POOL);
-  auto bp_it = (hixl_bp_it != options.cend()) ? hixl_bp_it : adxl_bp_it;
-  if (bp_it != options.cend()) {
-    HIXL_CHK_BOOL_RET_STATUS(std::string(bp_it->second.GetString()) == "0:0", PARAM_INVALID,
-                             "Invalid option fields, OPTION_BUFFER_POOL for hixl engine only supports 0:0");
-  }
   return SUCCESS;
 }
 

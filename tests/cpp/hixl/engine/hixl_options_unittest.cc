@@ -146,18 +146,18 @@ TEST_F(HixlOptionsUTest, ParseLocalCommResAdxlPrefix) {
   EXPECT_EQ(*result.LocalCommRes(), R"({"version":"1.2"})");
 }
 
-TEST_F(HixlOptionsUTest, ParseBufferPoolValid) {
+TEST_F(HixlOptionsUTest, ParseBufferPool) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_BUFFER_POOL] = "0:0";
   HixlOptions result;
   EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
 }
 
-TEST_F(HixlOptionsUTest, ParseBufferPoolInvalid) {
+TEST_F(HixlOptionsUTest, ParseBufferPoolNonZero) {
   std::map<AscendString, AscendString> options;
-  options[hixl::OPTION_BUFFER_POOL] = "1:0";
+  options[hixl::OPTION_BUFFER_POOL] = "4:8";
   HixlOptions result;
-  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
 }
 
 TEST_F(HixlOptionsUTest, ParseEnableFabricMemTrue) {

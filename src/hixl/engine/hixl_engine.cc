@@ -54,6 +54,14 @@ Status HixlEngine::Initialize(const HixlOptions &options) {
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(options.CheckSupportedOptions(kSupportedOptions),
                       "[HixlEngine] Unsupported option");
+  const auto &raw = options.RawOptions();
+  const auto &hixl_bp_it = raw.find(hixl::OPTION_BUFFER_POOL);
+  const auto &adxl_bp_it = raw.find(adxl::OPTION_BUFFER_POOL);
+  auto bp_it = (hixl_bp_it != raw.cend()) ? hixl_bp_it : adxl_bp_it;
+  if (bp_it != raw.cend()) {
+    HIXL_CHK_BOOL_RET_STATUS(std::string(bp_it->second.GetString()) == "0:0", PARAM_INVALID,
+                             "Invalid option fields, OPTION_BUFFER_POOL for hixl engine only supports 0:0");
+  }
   std::string local_comm_res;
   Status ret = EndpointGenerator::BuildEndpointList(
       options, local_engine_, local_comm_res, endpoint_list_);
