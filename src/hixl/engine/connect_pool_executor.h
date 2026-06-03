@@ -23,7 +23,7 @@
 #include <thread>
 #include "acl/acl.h"
 #include "hixl/hixl_types.h"
-#include "hixl_engine_options.h"
+#include "hixl_options.h"
 
 namespace hixl {
 struct ConnectPoolExecutorTask {
@@ -37,7 +37,7 @@ class ConnectPoolExecutor {
   ConnectPoolExecutor();
   ~ConnectPoolExecutor();
 
-  Status Initialize(const HixlEngineOptions &options);
+  Status Initialize(const HixlOptions &options);
 
   void Shutdown();
 

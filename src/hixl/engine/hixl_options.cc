@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "hixl_engine_options.h"
+#include "hixl_options.h"
 
 #include <cstdlib>
 #include <string>
@@ -72,7 +72,7 @@ void from_json(const nlohmann::json &j, GlobalResourceConfig &cfg) {
 }
 }  // namespace
 
-Status HixlEngineOptions::Parse(const std::map<AscendString, AscendString> &options, HixlEngineOptions &result) {
+Status HixlOptions::Parse(const std::map<AscendString, AscendString> &options, HixlOptions &result) {
   result.raw_options_ = options;
   for (const auto &pair : options) {
     result.parsed_keys_.insert(pair.first.GetString());
@@ -84,7 +84,7 @@ Status HixlEngineOptions::Parse(const std::map<AscendString, AscendString> &opti
   return SUCCESS;
 }
 
-Status HixlEngineOptions::CheckSupportedOptions(const std::unordered_set<std::string> &supported_keys) const {
+Status HixlOptions::CheckSupportedOptions(const std::unordered_set<std::string> &supported_keys) const {
   for (const auto &key : parsed_keys_) {
     HIXL_CHK_BOOL_RET_SPECIAL_STATUS(
         supported_keys.count(key) == 0, PARAM_INVALID,
@@ -93,7 +93,7 @@ Status HixlEngineOptions::CheckSupportedOptions(const std::unordered_set<std::st
   return SUCCESS;
 }
 
-Status HixlEngineOptions::ParseRdmaOptions(const std::map<AscendString, AscendString> &options) {
+Status HixlOptions::ParseRdmaOptions(const std::map<AscendString, AscendString> &options) {
   std::string traffic_class_str;
   const auto &hixl_tc_it = options.find(hixl::OPTION_RDMA_TRAFFIC_CLASS);
   const auto &adxl_tc_it = options.find(adxl::OPTION_RDMA_TRAFFIC_CLASS);
@@ -144,7 +144,7 @@ Status HixlEngineOptions::ParseRdmaOptions(const std::map<AscendString, AscendSt
   return SUCCESS;
 }
 
-Status HixlEngineOptions::ParseEndpointOptions(const std::map<AscendString, AscendString> &options) {
+Status HixlOptions::ParseEndpointOptions(const std::map<AscendString, AscendString> &options) {
   const auto &hixl_lcr_it = options.find(hixl::OPTION_LOCAL_COMM_RES);
   const auto &adxl_lcr_it = options.find(adxl::OPTION_LOCAL_COMM_RES);
   auto lcr_it = (hixl_lcr_it != options.cend()) ? hixl_lcr_it : adxl_lcr_it;
@@ -162,7 +162,7 @@ Status HixlEngineOptions::ParseEndpointOptions(const std::map<AscendString, Asce
   return SUCCESS;
 }
 
-Status HixlEngineOptions::ParseFabricMemOptions(const std::map<AscendString, AscendString> &options) {
+Status HixlOptions::ParseFabricMemOptions(const std::map<AscendString, AscendString> &options) {
   const auto &efm_it = options.find(hixl::OPTION_ENABLE_USE_FABRIC_MEM);
   if (efm_it != options.end() && !std::string(efm_it->second.GetString()).empty()) {
     uint32_t enabled = 0U;
@@ -191,7 +191,7 @@ Status HixlEngineOptions::ParseFabricMemOptions(const std::map<AscendString, Asc
   return SUCCESS;
 }
 
-Status HixlEngineOptions::ParseGlobalResourceConfig(const std::map<AscendString, AscendString> &options) {
+Status HixlOptions::ParseGlobalResourceConfig(const std::map<AscendString, AscendString> &options) {
   const auto &config_it = options.find(hixl::OPTION_GLOBAL_RESOURCE_CONFIG);
   if (config_it == options.end()) {
     return SUCCESS;

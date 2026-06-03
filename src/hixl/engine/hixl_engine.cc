@@ -11,7 +11,7 @@
 #include <string>
 
 #include "hixl_engine.h"
-#include "hixl_engine_options.h"
+#include "hixl_options.h"
 #include "engine/endpoint_generator.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
@@ -49,7 +49,7 @@ Status HixlEngine::InitServer() {
   return SUCCESS;
 }
 
-Status HixlEngine::Initialize(const HixlEngineOptions &options) {
+Status HixlEngine::Initialize(const HixlOptions &options) {
   HIXL_LOGI("[HixlEngine] Initialization started, local_engine:%s", local_engine_.c_str());
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(options.CheckSupportedOptions(kSupportedOptions),

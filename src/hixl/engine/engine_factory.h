@@ -14,7 +14,7 @@
 #include <map>
 #include "engine.h"
 #include "hixl_engine.h"
-#include "hixl_engine_options.h"
+#include "hixl_options.h"
 #include "comm_engine.h"
 
 namespace hixl {
@@ -22,7 +22,7 @@ class EngineFactory {
  public:
   static std::unique_ptr<Engine> CreateEngine(const std::string local_engine,
                                               const std::map<AscendString, AscendString> &options,
-                                              HixlEngineOptions &parsed_options);
+                                              HixlOptions &parsed_options);
 };
 }  // namespace hixl
 

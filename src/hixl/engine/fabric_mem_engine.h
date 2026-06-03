@@ -19,7 +19,7 @@
 
 #include "common/hixl_inner_types.h"
 #include "engine.h"
-#include "hixl_engine_options.h"
+#include "hixl_options.h"
 #include "fabric_mem/fabric_mem_config.h"
 #include "fabric_mem/fabric_mem_control.h"
 #include "fabric_mem/fabric_mem_remote_memory.h"
@@ -34,7 +34,7 @@ class FabricMemEngine : public hixl::Engine {
 
   ~FabricMemEngine() override = default;
 
-  Status Initialize(const HixlEngineOptions &options) override;
+  Status Initialize(const HixlOptions &options) override;
   void Finalize() override;
   bool IsInitialized() const override;
 

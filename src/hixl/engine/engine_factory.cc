@@ -22,7 +22,7 @@
 
 namespace hixl {
 namespace {
-bool UseUboe(const HixlEngineOptions &options) {
+bool UseUboe(const HixlOptions &options) {
   auto grc = options.GlobalResourceCfg();
   if (!grc.has_value()) return false;
   auto desc = grc->comm_resource_config.protocol_desc;
@@ -32,8 +32,8 @@ bool UseUboe(const HixlEngineOptions &options) {
 }  // namespace
 std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engine,
                                                     const std::map<AscendString, AscendString> &options,
-                                                    HixlEngineOptions &parsed_options) {
-  Status ret = HixlEngineOptions::Parse(options, parsed_options);
+                                                    HixlOptions &parsed_options) {
+  Status ret = HixlOptions::Parse(options, parsed_options);
   if (ret != SUCCESS) {
     HIXL_LOGE(ret, "[EngineFactory] Failed to parse options");
     return nullptr;

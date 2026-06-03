@@ -30,7 +30,7 @@ ConnectPoolExecutor::~ConnectPoolExecutor() {
   }
 }
 
-Status ConnectPoolExecutor::Initialize(const HixlEngineOptions &options) {
+Status ConnectPoolExecutor::Initialize(const HixlOptions &options) {
   HIXL_LOGI("ConnectPoolExecutor initialize start");
   if (IsInitialized()) {
     HIXL_LOGW("ConnectPoolExecutor is already initialized");

@@ -17,7 +17,7 @@
 #include "adxl/adxl_checker.h"
 #include "engine/engine_factory.h"
 #include "engine/engine.h"
-#include "engine/hixl_engine_options.h"
+#include "engine/hixl_options.h"
 #include "fabric_mem/fabric_mem_transfer_service.h"
 #include "hixl/hixl_types.h"
 
@@ -102,7 +102,7 @@ Status AdxlEngine::AdxlEngineImpl::Initialize(const std::map<AscendString, Ascen
   if (engine_ != nullptr) {
     ADXL_CHK_BOOL_RET_SPECIAL_STATUS(engine_->IsInitialized(), SUCCESS, "Already initialized");
   }
-  hixl::HixlEngineOptions parsed_options;
+  hixl::HixlOptions parsed_options;
   engine_ = hixl::EngineFactory::CreateEngine(local_engine_, options, parsed_options);
   ADXL_CHECK_NOTNULL(engine_, "Failed to create engine, local_engine:%s", local_engine_.c_str());
   ADXL_CHK_STATUS_RET(engine_->Initialize(parsed_options), "Failed to initialize AdxlEngine.");
