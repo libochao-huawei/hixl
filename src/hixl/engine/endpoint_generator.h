@@ -18,13 +18,13 @@
 #include "nlohmann/json.hpp"
 #include "cs/hixl_cs.h"
 #include "hixl/hixl_types.h"
-#include "hixl_engine_options.h"
+#include "hixl_options.h"
 #include "common/hixl_inner_types.h"
 
 namespace hixl {
 class EndpointGenerator {
  public:
-  static Status BuildEndpointList(const HixlEngineOptions &options,
+  static Status BuildEndpointList(const HixlOptions &options,
                                   const std::string &local_engine,
                                   std::string &local_comm_res,
                                   std::vector<EndpointConfig> &endpoint_list);
@@ -60,10 +60,10 @@ class EndpointGenerator {
   static Status BuildNetInstanceId(int32_t device_id,
                                    const std::string &local_engine,
                                    std::string &net_instance_id);
-  static Status ParseEndpointListFromLocalCommRes(const HixlEngineOptions &options,
+  static Status ParseEndpointListFromLocalCommRes(const HixlOptions &options,
                                                   std::string &local_comm_res,
                                                   std::vector<EndpointConfig> &endpoint_list);
-  static Status GenEndpointFromProtocolDesc(const HixlEngineOptions &options,
+  static Status GenEndpointFromProtocolDesc(const HixlOptions &options,
                                             std::vector<EndpointConfig> &endpoint_list);
   static Status BuildEndpointListFromLocalCommRes(const nlohmann::json &config,
                                                   bool has_endpoint_list,

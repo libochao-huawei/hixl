@@ -12,7 +12,7 @@
 #define HIXL_SRC_HIXL_ENGINE_ENGINE_H_
 
 #include "hixl/hixl_types.h"
-#include "hixl_engine_options.h"
+#include "hixl_options.h"
 
 namespace hixl {
 using CallbackProcessor = std::function<Status(int32_t fd, const char *msg, uint64_t msg_len, bool &keep_fd)>;
@@ -23,7 +23,7 @@ class Engine {
 
   virtual ~Engine() = default;
 
-  virtual Status Initialize(const HixlEngineOptions &options) = 0;
+  virtual Status Initialize(const HixlOptions &options) = 0;
 
   virtual void Finalize() = 0;
 

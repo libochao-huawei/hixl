@@ -22,7 +22,7 @@
 #include "engine/hixl_engine.h"
 #undef private
 #include "hixl/hixl_types.h"
-#include "engine/hixl_engine_options.h"
+#include "engine/hixl_options.h"
 #include "cs/hixl_cs_client.h"
 #include "hixl/hixl.h"
 #include "slog_stub.h"
@@ -197,13 +197,13 @@ class HixlEngineTest : public ::testing::Test {
   void InitializeAndConnectEngines(HixlEngine &engine1, const std::map<AscendString, AscendString> &opts1,
                                    HixlEngine &engine2, const std::map<AscendString, AscendString> &opts2) {
     {
-      HixlEngineOptions parsed;
-      ASSERT_EQ(HixlEngineOptions::Parse(opts1, parsed), SUCCESS);
+      HixlOptions parsed;
+      ASSERT_EQ(HixlOptions::Parse(opts1, parsed), SUCCESS);
       EXPECT_EQ(engine1.Initialize(parsed), SUCCESS);
     }
     {
-      HixlEngineOptions parsed;
-      ASSERT_EQ(HixlEngineOptions::Parse(opts2, parsed), SUCCESS);
+      HixlOptions parsed;
+      ASSERT_EQ(HixlOptions::Parse(opts2, parsed), SUCCESS);
       EXPECT_EQ(engine2.Initialize(parsed), SUCCESS);
     }
     EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
@@ -312,16 +312,16 @@ TEST_F(HixlEngineTest, TestHixlEngine) {
   // IPV4
   HixlEngine engine1("127.0.0.1");
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options1, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
     EXPECT_EQ(engine1.Initialize(parsed), SUCCESS);
   }
 
   // IPV4 with port
   HixlEngine engine2("127.0.0.1:16000");
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options2, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options2, parsed), SUCCESS);
     EXPECT_EQ(engine2.Initialize(parsed), SUCCESS);
   }
 
@@ -353,16 +353,16 @@ TEST_F(HixlEngineTest, TestHixlEngine) {
     // IPV6
     HixlEngine engine3("[::1]");
     {
-      HixlEngineOptions parsed;
-      ASSERT_EQ(HixlEngineOptions::Parse(options1, parsed), SUCCESS);
+      HixlOptions parsed;
+      ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
       EXPECT_EQ(engine3.Initialize(parsed), SUCCESS);
     }
 
     // IPV6 with port
     HixlEngine engine4("[::1]:26000");
     {
-      HixlEngineOptions parsed;
-      ASSERT_EQ(HixlEngineOptions::Parse(options2, parsed), SUCCESS);
+      HixlOptions parsed;
+      ASSERT_EQ(HixlOptions::Parse(options2, parsed), SUCCESS);
       EXPECT_EQ(engine4.Initialize(parsed), SUCCESS);
     }
 
@@ -397,16 +397,16 @@ TEST_F(HixlEngineTest, TestTransferAsync) {
   std::string local_engine1 = "127.0.0.1";
   HixlEngine engine1(AscendString(local_engine1.c_str()));
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options1, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
     EXPECT_EQ(engine1.Initialize(parsed), SUCCESS);
   }
 
   std::string local_engine2 = "127.0.0.1:16000";
   HixlEngine engine2(AscendString(local_engine2.c_str()));
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options2, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options2, parsed), SUCCESS);
     EXPECT_EQ(engine2.Initialize(parsed), SUCCESS);
   }
 
@@ -464,8 +464,8 @@ TEST_F(HixlEngineTest, TestInitFailed) {
   std::string local_engine = "ad.0.0.1:26000";
   HixlEngine engine(AscendString(local_engine.c_str()));
   {
-    HixlEngineOptions parsed;
-    HixlEngineOptions::Parse(options1, parsed);
+    HixlOptions parsed;
+    HixlOptions::Parse(options1, parsed);
     EXPECT_EQ(engine.Initialize(parsed), PARAM_INVALID);
   }
   engine.Finalize();
@@ -476,8 +476,8 @@ TEST_F(HixlEngineTest, TestNotListenFailed) {
   std::string local_engine = "127.0.0.1:16000";
   HixlEngine engine(AscendString(local_engine.c_str()));
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options1, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
     EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
   }
   // not listen
@@ -490,16 +490,16 @@ TEST_F(HixlEngineTest, TestAlreadyConnectedFailed) {
   std::string local_engine1 = "127.0.0.1";
   HixlEngine engine1(AscendString(local_engine1.c_str()));
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options1, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
     EXPECT_EQ(engine1.Initialize(parsed), SUCCESS);
   }
 
   std::string local_engine2 = "127.0.0.1:16000";
   HixlEngine engine2(AscendString(local_engine2.c_str()));
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options2, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options2, parsed), SUCCESS);
     EXPECT_EQ(engine2.Initialize(parsed), SUCCESS);
   }
   EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
@@ -513,8 +513,8 @@ TEST_F(HixlEngineTest, TestDeregisterUnregisteredMem) {
   std::string local_engine = "127.0.0.1";
   HixlEngine engine(AscendString(local_engine.c_str()));
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options1, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
     EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
   }
   MemHandle handle = (MemHandle)0x100;
@@ -532,13 +532,13 @@ TEST_F(HixlEngineTest, TestGetTransferStatusWithInterrupt) {
   HixlEngine engine2(AscendString(local_engine2.c_str()));
 
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options1, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
     EXPECT_EQ(engine1.Initialize(parsed), SUCCESS);
   }
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options2, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options2, parsed), SUCCESS);
     EXPECT_EQ(engine2.Initialize(parsed), SUCCESS);
   }
 
@@ -566,16 +566,16 @@ TEST_F(HixlEngineTest, TestSendAndGetNotifies) {
   std::string local_engine1 = "127.0.0.1";
   HixlEngine engine1(AscendString(local_engine1.c_str()));
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options1, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
     EXPECT_EQ(engine1.Initialize(parsed), SUCCESS);
   }
 
   std::string local_engine2 = "127.0.0.1:16000";
   HixlEngine engine2(AscendString(local_engine2.c_str()));
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options2, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options2, parsed), SUCCESS);
     EXPECT_EQ(engine2.Initialize(parsed), SUCCESS);
   }
 
@@ -617,28 +617,28 @@ TEST_F(HixlEngineTest, TestParseTcAndSlWithValidValue) {
 TEST_F(HixlEngineTest, TestParseTcSlInvalidValue) {
   options1[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "-1";
   {
-    HixlEngineOptions parsed;
-    EXPECT_EQ(HixlEngineOptions::Parse(options1, parsed), PARAM_INVALID);
+    HixlOptions parsed;
+    EXPECT_EQ(HixlOptions::Parse(options1, parsed), PARAM_INVALID);
   }
   options1[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "256";
   {
-    HixlEngineOptions parsed;
-    EXPECT_EQ(HixlEngineOptions::Parse(options1, parsed), PARAM_INVALID);
+    HixlOptions parsed;
+    EXPECT_EQ(HixlOptions::Parse(options1, parsed), PARAM_INVALID);
   }
   options1[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "invalid";
   {
-    HixlEngineOptions parsed;
-    EXPECT_EQ(HixlEngineOptions::Parse(options1, parsed), PARAM_INVALID);
+    HixlOptions parsed;
+    EXPECT_EQ(HixlOptions::Parse(options1, parsed), PARAM_INVALID);
   }
   options2[hixl::OPTION_RDMA_SERVICE_LEVEL] = "8";
   {
-    HixlEngineOptions parsed;
-    EXPECT_EQ(HixlEngineOptions::Parse(options2, parsed), PARAM_INVALID);
+    HixlOptions parsed;
+    EXPECT_EQ(HixlOptions::Parse(options2, parsed), PARAM_INVALID);
   }
   options2[hixl::OPTION_RDMA_SERVICE_LEVEL] = "-1";
   {
-    HixlEngineOptions parsed;
-    EXPECT_EQ(HixlEngineOptions::Parse(options2, parsed), PARAM_INVALID);
+    HixlOptions parsed;
+    EXPECT_EQ(HixlOptions::Parse(options2, parsed), PARAM_INVALID);
   }
 }
 
@@ -711,8 +711,8 @@ TEST_F(HixlEngineTest, TestInitializeFillDeviceInfoForV2FullConfigured) {
   HixlEngine engine("127.0.0.1");
   auto options = BuildOptions(local_comm_res);
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
     EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
   }
   ASSERT_EQ(engine.endpoint_list_.size(), 2U);
@@ -736,8 +736,8 @@ TEST_F(HixlEngineTest, TestInitializeFillDeviceInfoForV3FullConfigured) {
   HixlEngine engine("127.0.0.1");
   auto options = BuildOptions(local_comm_res);
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
     EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
   }
   ASSERT_EQ(engine.endpoint_list_.size(), 2U);
@@ -760,8 +760,8 @@ TEST_F(HixlEngineTest, TestInitializeParsesConfiguredEndpointListRegardlessOfVer
   HixlEngine engine("127.0.0.1");
   auto options = BuildOptions(local_comm_res);
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
     EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
   }
   ASSERT_EQ(engine.endpoint_list_.size(), 1U);
@@ -784,8 +784,8 @@ TEST_F(HixlEngineTest, TestInitializeFillDeviceInfoOnlyForDevicePlacement) {
   HixlEngine engine("127.0.0.1");
   auto options = BuildOptions(local_comm_res);
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
     EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
   }
   ASSERT_EQ(engine.endpoint_list_.size(), 2U);
@@ -812,8 +812,8 @@ TEST_F(HixlEngineTest, TestInitializeAutoGenerateForV2FillsDeviceInfo) {
   HixlEngine engine("127.0.0.1");
   auto options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
     EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
   }
   ASSERT_EQ(engine.endpoint_list_.size(), 2U);
@@ -844,8 +844,8 @@ TEST_F(HixlEngineTest, TestInitializeAutoGenerateForV3FillsDeviceInfo) {
   HixlEngine engine("127.0.0.1");
   auto options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
   {
-    HixlEngineOptions parsed;
-    ASSERT_EQ(HixlEngineOptions::Parse(options, parsed), SUCCESS);
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
     EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
   }
   ASSERT_EQ(engine.endpoint_list_.size(), 2U);

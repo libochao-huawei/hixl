@@ -17,7 +17,7 @@
 #include "connect_pool_executor.h"
 #include "engine.h"
 #include "engine_factory.h"
-#include "hixl_engine_options.h"
+#include "hixl_options.h"
 
 namespace hixl {
 namespace {
@@ -90,7 +90,7 @@ Status Hixl::HixlImpl::Initialize(const std::map<AscendString, AscendString> &op
   if (engine_ != nullptr) {
     HIXL_CHK_BOOL_RET_SPECIAL_STATUS(engine_->IsInitialized(), SUCCESS, "Already initialized");
   }
-  HixlEngineOptions parsed_options;
+  HixlOptions parsed_options;
   engine_ = hixl::EngineFactory::CreateEngine(local_engine_, options, parsed_options);
   HIXL_CHECK_NOTNULL(engine_, "[HixlEngine] Created engine is null, please check your parameters! local_engine:%s",
                      local_engine_.c_str());

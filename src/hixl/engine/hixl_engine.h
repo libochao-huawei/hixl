@@ -15,7 +15,7 @@
 #include <map>
 #include <unordered_set>
 #include "engine.h"
-#include "hixl_engine_options.h"
+#include "hixl_options.h"
 #include "client_manager.h"
 #include "hixl_server.h"
 #include "hixl/hixl_types.h"
@@ -49,7 +49,7 @@ class HixlEngine : public hixl::Engine {
    * @param [in] options 初始化所需的选项
    * @return 成功:SUCCESS, 失败:其它.
    */
-  Status Initialize(const HixlEngineOptions &options) override;
+  Status Initialize(const HixlOptions &options) override;
 
   /**
    * @brief 注册内存

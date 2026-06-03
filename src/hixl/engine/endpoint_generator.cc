@@ -257,7 +257,7 @@ Status ParseEndpointProtocol(const EndpointConfig &endpoint_config, EndpointDesc
 }
 }  // namespace
 
-Status EndpointGenerator::ParseEndpointListFromLocalCommRes(const HixlEngineOptions &options,
+Status EndpointGenerator::ParseEndpointListFromLocalCommRes(const HixlOptions &options,
                                                             std::string &local_comm_res,
                                                             std::vector<EndpointConfig> &endpoint_list) {
   endpoint_list.clear();
@@ -286,7 +286,7 @@ Status EndpointGenerator::ParseEndpointListFromLocalCommRes(const HixlEngineOpti
   return SUCCESS;
 }
 
-Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlEngineOptions &options,
+Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options,
                                                       std::vector<EndpointConfig> &endpoint_list) {
   endpoint_list.clear();
 
@@ -311,7 +311,7 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlEngineOptions &o
   return SUCCESS;
 }
 
-Status EndpointGenerator::BuildEndpointList(const HixlEngineOptions &options,
+Status EndpointGenerator::BuildEndpointList(const HixlOptions &options,
                                              const std::string &local_engine, std::string &local_comm_res,
                                              std::vector<EndpointConfig> &endpoint_list) {
   endpoint_list.clear();

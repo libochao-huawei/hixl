@@ -8,8 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef HIXL_SRC_HIXL_ENGINE_HIXL_ENGINE_OPTIONS_H_
-#define HIXL_SRC_HIXL_ENGINE_HIXL_ENGINE_OPTIONS_H_
+#ifndef HIXL_SRC_HIXL_ENGINE_HIXL_OPTIONS_H_
+#define HIXL_SRC_HIXL_ENGINE_HIXL_OPTIONS_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -45,9 +45,9 @@ struct GlobalResourceConfig {
   CommResourceConfigDesc comm_resource_config;
 };
 
-class HixlEngineOptions {
+class HixlOptions {
  public:
-  static Status Parse(const std::map<AscendString, AscendString> &options, HixlEngineOptions &result);
+  static Status Parse(const std::map<AscendString, AscendString> &options, HixlOptions &result);
 
   Status CheckSupportedOptions(const std::unordered_set<std::string> &supported_keys) const;
   const std::map<AscendString, AscendString>& RawOptions() const { return raw_options_; }
@@ -79,4 +79,4 @@ class HixlEngineOptions {
 
 }  // namespace hixl
 
-#endif  // HIXL_SRC_HIXL_ENGINE_HIXL_ENGINE_OPTIONS_H_
+#endif  // HIXL_SRC_HIXL_ENGINE_HIXL_OPTIONS_H_

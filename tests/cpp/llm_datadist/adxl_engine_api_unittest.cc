@@ -24,7 +24,7 @@
 #include "engine/engine_factory.h"
 #include "engine/fabric_mem_engine.h"
 #include "engine/hixl_engine.h"
-#include "engine/hixl_engine_options.h"
+#include "engine/hixl_options.h"
 #include "engine/comm_engine.h"
 #include "dlog_pub.h"
 #include "depends/mmpa/src/mmpa_stub.h"
@@ -150,7 +150,7 @@ TEST_F(AdxlEngineUTest, TestEngineFactoryFallbackToAdxlEngineWithoutLocalCommRes
   options[OPTION_RDMA_TRAFFIC_CLASS] = "4";
   options[OPTION_RDMA_SERVICE_LEVEL] = "1";
 
-  hixl::HixlEngineOptions parsed_options;
+  hixl::HixlOptions parsed_options;
   auto engine = hixl::EngineFactory::CreateEngine("127.0.0.1", options, parsed_options);
   ASSERT_NE(engine, nullptr);
   EXPECT_NE(dynamic_cast<hixl::CommEngine *>(engine.get()), nullptr);
@@ -159,7 +159,7 @@ TEST_F(AdxlEngineUTest, TestEngineFactoryFallbackToAdxlEngineWithoutLocalCommRes
 
 TEST_F(AdxlEngineUTest, TestEngineFactoryUseHixlEngineWithLocalCommRes) {
   auto opts = BuildHixlCsOptions("127.0.0.1");
-  hixl::HixlEngineOptions parsed_options;
+  hixl::HixlOptions parsed_options;
   auto engine = hixl::EngineFactory::CreateEngine("127.0.0.1", opts, parsed_options);
   ASSERT_NE(engine, nullptr);
   EXPECT_NE(dynamic_cast<hixl::HixlEngine *>(engine.get()), nullptr);
@@ -174,7 +174,7 @@ TEST_F(AdxlEngineUTest, TestEngineFactoryUseHixlEngineWhenUboeNotFirstInProtocol
     }
   )";
 
-  hixl::HixlEngineOptions parsed_options;
+  hixl::HixlOptions parsed_options;
   auto engine = hixl::EngineFactory::CreateEngine("127.0.0.1", options, parsed_options);
   ASSERT_NE(engine, nullptr);
   EXPECT_NE(dynamic_cast<hixl::HixlEngine *>(engine.get()), nullptr);
@@ -184,7 +184,7 @@ TEST_F(AdxlEngineUTest, TestEngineFactoryUseHixlEngineWhenUboeNotFirstInProtocol
 TEST_F(AdxlEngineUTest, TestEngineFactoryUseFabricMemEngineWhenFabricMemEnabled) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = AscendString("1");
-  hixl::HixlEngineOptions parsed_options;
+  hixl::HixlOptions parsed_options;
   auto engine = hixl::EngineFactory::CreateEngine("127.0.0.1", options, parsed_options);
   ASSERT_NE(engine, nullptr);
   EXPECT_NE(dynamic_cast<hixl::FabricMemEngine *>(engine.get()), nullptr);
@@ -313,7 +313,7 @@ TEST_F(AdxlEngineUTest, TestEngineFactoryCreateEngineFailedWhenLocalCommResJsonI
   std::map<AscendString, AscendString> options;
   options[OPTION_LOCAL_COMM_RES] = "{invalid json}";
 
-  hixl::HixlEngineOptions parsed_options;
+  hixl::HixlOptions parsed_options;
   auto engine = hixl::EngineFactory::CreateEngine("127.0.0.1", options, parsed_options);
   EXPECT_EQ(engine, nullptr);
 }

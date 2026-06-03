@@ -119,7 +119,7 @@ Status FabricMemEngine::InitFabricMem() {
   return SUCCESS;
 }
 
-Status FabricMemEngine::Initialize(const HixlEngineOptions &options) {
+Status FabricMemEngine::Initialize(const HixlOptions &options) {
   HIXL_LOGI("[FabricMemEngine] Initialization started, local_engine:%s", local_engine_.c_str());
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(options.CheckSupportedOptions(kSupportedOptions),

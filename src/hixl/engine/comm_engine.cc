@@ -12,7 +12,7 @@
 #include "common/hixl_checker.h"
 
 namespace hixl {
-Status CommEngine::Initialize(const HixlEngineOptions &options) {
+Status CommEngine::Initialize(const HixlOptions &options) {
   return adxl_inner_engine_.Initialize(options.RawOptions());
 }
 

@@ -10,14 +10,14 @@
 
 #include <cstdlib>
 #include <gtest/gtest.h>
-#include "engine/hixl_engine_options.h"
+#include "engine/hixl_options.h"
 #include "hixl/hixl_types.h"
 #include "adxl/adxl_types.h"
 #include "slog_stub.h"
 
 namespace hixl {
 
-class HixlEngineOptionsUTest : public ::testing::Test {
+class HixlOptionsUTest : public ::testing::Test {
  protected:
   void SetUp() override {
     unsetenv("HCCL_RDMA_TC");
@@ -30,10 +30,10 @@ class HixlEngineOptionsUTest : public ::testing::Test {
   }
 };
 
-TEST_F(HixlEngineOptionsUTest, ParseEmptyOptions) {
+TEST_F(HixlOptionsUTest, ParseEmptyOptions) {
   std::map<AscendString, AscendString> options;
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   EXPECT_FALSE(result.RdmaTrafficClass().has_value());
   EXPECT_FALSE(result.RdmaServiceLevel().has_value());
   EXPECT_FALSE(result.LocalCommRes().has_value());
@@ -42,171 +42,171 @@ TEST_F(HixlEngineOptionsUTest, ParseEmptyOptions) {
   EXPECT_FALSE(result.GlobalResourceCfg().has_value());
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseRdmaTrafficClassHixlPrefix) {
+TEST_F(HixlOptionsUTest, ParseRdmaTrafficClassHixlPrefix) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "132";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.RdmaTrafficClass().has_value());
   EXPECT_EQ(*result.RdmaTrafficClass(), 132);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseRdmaTrafficClassAdxlPrefix) {
+TEST_F(HixlOptionsUTest, ParseRdmaTrafficClassAdxlPrefix) {
   std::map<AscendString, AscendString> options;
   options[adxl::OPTION_RDMA_TRAFFIC_CLASS] = "128";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.RdmaTrafficClass().has_value());
   EXPECT_EQ(*result.RdmaTrafficClass(), 128);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseRdmaTrafficClassHixlPrefixTakesPrecedence) {
+TEST_F(HixlOptionsUTest, ParseRdmaTrafficClassHixlPrefixTakesPrecedence) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "132";
   options[adxl::OPTION_RDMA_TRAFFIC_CLASS] = "128";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.RdmaTrafficClass().has_value());
   EXPECT_EQ(*result.RdmaTrafficClass(), 132);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseRdmaTrafficClassFromEnv) {
+TEST_F(HixlOptionsUTest, ParseRdmaTrafficClassFromEnv) {
   setenv("HCCL_RDMA_TC", "136", 1);
   std::map<AscendString, AscendString> options;
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.RdmaTrafficClass().has_value());
   EXPECT_EQ(*result.RdmaTrafficClass(), 136);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseRdmaTrafficClassOptionOverridesEnv) {
+TEST_F(HixlOptionsUTest, ParseRdmaTrafficClassOptionOverridesEnv) {
   setenv("HCCL_RDMA_TC", "136", 1);
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "132";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.RdmaTrafficClass().has_value());
   EXPECT_EQ(*result.RdmaTrafficClass(), 132);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseRdmaTrafficClassInvalidValue) {
+TEST_F(HixlOptionsUTest, ParseRdmaTrafficClassInvalidValue) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "256";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), PARAM_INVALID);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseRdmaTrafficClassNotMultipleOf4) {
+TEST_F(HixlOptionsUTest, ParseRdmaTrafficClassNotMultipleOf4) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "130";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), PARAM_INVALID);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseRdmaServiceLevelHixlPrefix) {
+TEST_F(HixlOptionsUTest, ParseRdmaServiceLevelHixlPrefix) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_RDMA_SERVICE_LEVEL] = "4";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.RdmaServiceLevel().has_value());
   EXPECT_EQ(*result.RdmaServiceLevel(), 4);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseRdmaServiceLevelFromEnv) {
+TEST_F(HixlOptionsUTest, ParseRdmaServiceLevelFromEnv) {
   setenv("HCCL_RDMA_SL", "7", 1);
   std::map<AscendString, AscendString> options;
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.RdmaServiceLevel().has_value());
   EXPECT_EQ(*result.RdmaServiceLevel(), 7);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseRdmaServiceLevelInvalidValue) {
+TEST_F(HixlOptionsUTest, ParseRdmaServiceLevelInvalidValue) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_RDMA_SERVICE_LEVEL] = "8";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), PARAM_INVALID);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseLocalCommResHixlPrefix) {
+TEST_F(HixlOptionsUTest, ParseLocalCommResHixlPrefix) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_LOCAL_COMM_RES] = R"({"version":"1.3"})";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.LocalCommRes().has_value());
   EXPECT_EQ(*result.LocalCommRes(), R"({"version":"1.3"})");
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseLocalCommResAdxlPrefix) {
+TEST_F(HixlOptionsUTest, ParseLocalCommResAdxlPrefix) {
   std::map<AscendString, AscendString> options;
   options[adxl::OPTION_LOCAL_COMM_RES] = R"({"version":"1.2"})";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.LocalCommRes().has_value());
   EXPECT_EQ(*result.LocalCommRes(), R"({"version":"1.2"})");
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseBufferPoolValid) {
+TEST_F(HixlOptionsUTest, ParseBufferPoolValid) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_BUFFER_POOL] = "0:0";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseBufferPoolInvalid) {
+TEST_F(HixlOptionsUTest, ParseBufferPoolInvalid) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_BUFFER_POOL] = "1:0";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), PARAM_INVALID);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseEnableFabricMemTrue) {
+TEST_F(HixlOptionsUTest, ParseEnableFabricMemTrue) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.EnableFabricMem().has_value());
   EXPECT_TRUE(*result.EnableFabricMem());
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseEnableFabricMemFalse) {
+TEST_F(HixlOptionsUTest, ParseEnableFabricMemFalse) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "0";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.EnableFabricMem().has_value());
   EXPECT_FALSE(*result.EnableFabricMem());
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseEnableFabricMemInvalid) {
+TEST_F(HixlOptionsUTest, ParseEnableFabricMemInvalid) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "2";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), PARAM_INVALID);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseAutoConnectTrue) {
+TEST_F(HixlOptionsUTest, ParseAutoConnectTrue) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_AUTO_CONNECT] = "1";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.AutoConnect().has_value());
   EXPECT_TRUE(*result.AutoConnect());
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseAutoConnectEmpty) {
+TEST_F(HixlOptionsUTest, ParseAutoConnectEmpty) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_AUTO_CONNECT] = "";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), PARAM_INVALID);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseGlobalResourceConfigFabricMemory) {
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigFabricMemory) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
       R"({"fabric_memory":{"max_capacity":"10","start_address":"50","task_stream_num":"4"}})";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.GlobalResourceCfg().has_value());
   auto grc = *result.GlobalResourceCfg();
   ASSERT_TRUE(grc.fabric_memory.max_capacity.has_value());
@@ -217,12 +217,12 @@ TEST_F(HixlEngineOptionsUTest, ParseGlobalResourceConfigFabricMemory) {
   EXPECT_EQ(*grc.fabric_memory.task_stream_num, 4U);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseGlobalResourceConfigConnectPool) {
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigConnectPool) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
       R"({"connect_pool.thread_num":"4","connect_pool.task_queue_capacity":"256"})";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.GlobalResourceCfg().has_value());
   auto grc = *result.GlobalResourceCfg();
   ASSERT_TRUE(grc.connect_pool.thread_num.has_value());
@@ -231,12 +231,12 @@ TEST_F(HixlEngineOptionsUTest, ParseGlobalResourceConfigConnectPool) {
   EXPECT_EQ(*grc.connect_pool.task_queue_capacity, 256);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseGlobalResourceConfigProtocolDesc) {
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigProtocolDesc) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
       R"({"comm_resource_config.protocol_desc":["uboe:device"]})";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   ASSERT_TRUE(result.GlobalResourceCfg().has_value());
   auto grc = *result.GlobalResourceCfg();
   ASSERT_TRUE(grc.comm_resource_config.protocol_desc.has_value());
@@ -244,79 +244,79 @@ TEST_F(HixlEngineOptionsUTest, ParseGlobalResourceConfigProtocolDesc) {
   EXPECT_EQ((*grc.comm_resource_config.protocol_desc)[0], "uboe:device");
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseGlobalResourceConfigInvalidJson) {
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigInvalidJson) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = "not json";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), PARAM_INVALID);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseGlobalResourceConfigNotObject) {
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigNotObject) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = "[]";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), PARAM_INVALID);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseFabricMemCapacityOutOfRange) {
+TEST_F(HixlOptionsUTest, ParseFabricMemCapacityOutOfRange) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
       R"({"fabric_memory":{"max_capacity":"2048"}})";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), PARAM_INVALID);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseFabricMemStartAddressOutOfRange) {
+TEST_F(HixlOptionsUTest, ParseFabricMemStartAddressOutOfRange) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
       R"({"fabric_memory":{"start_address":"250"}})";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), PARAM_INVALID);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, ParseFabricMemTaskStreamNumOutOfRange) {
+TEST_F(HixlOptionsUTest, ParseFabricMemTaskStreamNumOutOfRange) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
       R"({"fabric_memory":{"task_stream_num":"16"}})";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), PARAM_INVALID);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, CheckSupportedOptionsAllSupported) {
+TEST_F(HixlOptionsUTest, CheckSupportedOptionsAllSupported) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "132";
   options[hixl::OPTION_LOCAL_COMM_RES] = "{}";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   std::unordered_set<std::string> whitelist = {
       hixl::OPTION_RDMA_TRAFFIC_CLASS, hixl::OPTION_LOCAL_COMM_RES};
   EXPECT_EQ(result.CheckSupportedOptions(whitelist), SUCCESS);
 }
 
-TEST_F(HixlEngineOptionsUTest, CheckSupportedOptionsUnsupported) {
+TEST_F(HixlOptionsUTest, CheckSupportedOptionsUnsupported) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "132";
   options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   std::unordered_set<std::string> whitelist = {hixl::OPTION_RDMA_TRAFFIC_CLASS};
   EXPECT_EQ(result.CheckSupportedOptions(whitelist), PARAM_INVALID);
 }
 
-TEST_F(HixlEngineOptionsUTest, CheckSupportedOptionsEmpty) {
+TEST_F(HixlOptionsUTest, CheckSupportedOptionsEmpty) {
   std::map<AscendString, AscendString> options;
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   std::unordered_set<std::string> whitelist = {hixl::OPTION_RDMA_TRAFFIC_CLASS};
   EXPECT_EQ(result.CheckSupportedOptions(whitelist), SUCCESS);
 }
 
-TEST_F(HixlEngineOptionsUTest, RawOptionsPreserved) {
+TEST_F(HixlOptionsUTest, RawOptionsPreserved) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "132";
   options[hixl::OPTION_LOCAL_COMM_RES] = "test_value";
-  HixlEngineOptions result;
-  EXPECT_EQ(HixlEngineOptions::Parse(options, result), SUCCESS);
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
   EXPECT_EQ(result.RawOptions().size(), 2U);
   EXPECT_EQ(result.RawOptions().at(hixl::OPTION_RDMA_TRAFFIC_CLASS).GetString(), std::string("132"));
 }
