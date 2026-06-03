@@ -616,41 +616,30 @@ TEST_F(HixlEngineTest, TestParseTcAndSlWithValidValue) {
 
 TEST_F(HixlEngineTest, TestParseTcSlInvalidValue) {
   options1[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "-1";
-  HixlEngine engine("127.0.0.1");
   {
     HixlEngineOptions parsed;
-    HixlEngineOptions::Parse(options1, parsed);
-    EXPECT_EQ(engine.Initialize(parsed), PARAM_INVALID);
+    EXPECT_EQ(HixlEngineOptions::Parse(options1, parsed), PARAM_INVALID);
   }
-  engine.Finalize();
   options1[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "256";
   {
     HixlEngineOptions parsed;
-    HixlEngineOptions::Parse(options1, parsed);
-    EXPECT_EQ(engine.Initialize(parsed), PARAM_INVALID);
+    EXPECT_EQ(HixlEngineOptions::Parse(options1, parsed), PARAM_INVALID);
   }
-  engine.Finalize();
   options1[hixl::OPTION_RDMA_TRAFFIC_CLASS] = "invalid";
   {
     HixlEngineOptions parsed;
-    HixlEngineOptions::Parse(options1, parsed);
-    EXPECT_EQ(engine.Initialize(parsed), PARAM_INVALID);
+    EXPECT_EQ(HixlEngineOptions::Parse(options1, parsed), PARAM_INVALID);
   }
-  engine.Finalize();
   options2[hixl::OPTION_RDMA_SERVICE_LEVEL] = "8";
   {
     HixlEngineOptions parsed;
-    HixlEngineOptions::Parse(options2, parsed);
-    EXPECT_EQ(engine.Initialize(parsed), PARAM_INVALID);
+    EXPECT_EQ(HixlEngineOptions::Parse(options2, parsed), PARAM_INVALID);
   }
-  engine.Finalize();
   options2[hixl::OPTION_RDMA_SERVICE_LEVEL] = "-1";
   {
     HixlEngineOptions parsed;
-    HixlEngineOptions::Parse(options2, parsed);
-    EXPECT_EQ(engine.Initialize(parsed), PARAM_INVALID);
+    EXPECT_EQ(HixlEngineOptions::Parse(options2, parsed), PARAM_INVALID);
   }
-  engine.Finalize();
 }
 
 TEST_F(HixlEngineTest, TestParseTcAndSlWithEnv) {
