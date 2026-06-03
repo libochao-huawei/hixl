@@ -46,4 +46,4 @@ target_link_libraries(lcrgen PRIVATE
         stdc++fs
 )
 
-target_link_libraries(lcrgen PRIVATE ascend_hal)
+target_link_ascend_hal(lcrgen)
