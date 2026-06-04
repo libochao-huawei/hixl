@@ -1546,5 +1546,24 @@ TEST_F(LocalCommResTopoPathTest, ResolveDefaultPathsUnknownMainboardIdReturnsInv
   EXPECT_TRUE(route_path.empty());
 }
 
+TEST_F(LocalCommResTopoPathTest, TransLocalCommResDefaultOverloadTopoMissing) {
+  // 2 参 TransLocalCommRes 走默认路径，UT 环境 /usr/local/Ascend/driver/topo/950/ 不存在
+  // → ResolveDefaultLocalCommResPaths 返回 PARAM_INVALID → 2 参 TransLocalCommRes 透传
+  DcmiStubSetMainboardId(0x3, 0);  // Pod1
+
+  hixl::AscendString result;
+  int32_t ret = TransLocalCommRes(0, result);
+  EXPECT_EQ(ret, PARAM_INVALID);
+}
+
+TEST_F(LocalCommResTopoPathTest, TransLocalCommResDefaultOverloadGetMainboardIdFailed) {
+  // 2 参 TransLocalCommRes：GetMainboardId 失败 → ResolveDefaultLocalCommResPaths 透传 → 2 参 TransLocalCommRes 透传
+  DcmiStubSetMainboardId(0, -1);
+
+  hixl::AscendString result;
+  int32_t ret = TransLocalCommRes(0, result);
+  EXPECT_NE(ret, SUCCESS);
+}
+
 }  // namespace test
 }  // namespace hixl
