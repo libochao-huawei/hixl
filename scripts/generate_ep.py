@@ -26,25 +26,9 @@ Input files (supports POD and SERVER topologies):
 Output files: ub_endpoint_npu_*.json (one file per NPU device_id)
 
 CLI Arguments:
-- --local, -l: Use local testing paths (default, supports --pod or --server modes)
 - --pod, -p: POD mode: 1D PoD topology
 - --server, -s: Server mode: 0+8 server topology or 2+4 server topology
-- --dry-run, -n: Parse files but do not write output
-- --rootinfo-path: Path to hccl_rootinfo.json file (only valid with --local)
-- --topo-path: Path to topology JSON file (only valid with --local)
-- --route-path: Path to route.conf file (only valid with --local)
 
-Example topologies:
-- POD mode: 1D PoD topology with devices 8-15
-- SERVER mode: 0+8 server topology with devices 0-7
-
-Example usage:
-python generate_endpoint_configs.py --local --pod
-python generate_endpoint_configs.py --local --server
-python generate_endpoint_configs.py --local --pod --rootinfo-path pod06_cpu5/hccl_rootinfo.json
-     --topo-path pod06_cpu5/atlas_950_1.json --route-path pod06_cpu5/route.conf
-python generate_endpoint_configs.py --local --server --rootinfo-path server/hccl_rootinfo_08server.json
-     --topo-path server/atlas_850_1.json --route-path server/route.conf
 """
 import argparse
 import json
@@ -319,6 +303,8 @@ def generate_endpoint_list(
             # Add plane field for ub_tp protocol or for net_layer >= 1 (CLOS/P2N)
             # P2P (net_layer 0) direct connections should NOT have plane field
             if (net_layer >= 1 or protocol == 'ub_tp') and plane_id:
+                if plane_id == "plane_uboe":
+                    continue
                 endpoint["plane"] = plane_id
 
             # Add dst_eid for 1DMESH (net_layer 0) direct connections
@@ -454,7 +440,7 @@ if __name__ == "__main__":
                 "placement": "host",
                 "dst_eid": h2d_device_eid
             }
-            # Insert host endpoint at the end, disabled for server PD disaggregation
+            # Insert host endpoint at the end
             # endpoint_list.append(ub_host_endpoint_d)
             # endpoint_list.append(ub_host_endpoint)
 
@@ -473,7 +459,8 @@ if __name__ == "__main__":
         if use_local:
             output_path = Path(f"./hixlep/ub_endpoint_npu_{local_id}.json")
         else:
-            output_path = Path(f"/etc/hixlep/ub_endpoint_npu_{local_id}.json")
+            output_id = local_id % 8
+            output_path = Path(f"/etc/hixlep/ub_endpoint_npu_{output_id}.json")
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
