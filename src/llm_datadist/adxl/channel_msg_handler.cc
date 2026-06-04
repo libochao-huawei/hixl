@@ -353,6 +353,10 @@ Status ChannelMsgHandler::CreateChannel(const ChannelInfo &channel_info, bool is
 
 Status ChannelMsgHandler::ConnectInfoProcess(const ChannelConnectInfo &peer_channel_info,
                                              int32_t timeout, bool is_client) {
+  int32_t current_device_id = -1;
+  rtGetDevice(&current_device_id);
+  LLMLOGI("ConnectInfoProcess current device_id:%d, channel_id:%s, is_client:%d.",
+          current_device_id, peer_channel_info.channel_id.c_str(), is_client);
   if (user_config_channel_pool_) {
     auto start_time = std::chrono::steady_clock::now();
     NotifyEviction();
