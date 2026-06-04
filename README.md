@@ -16,11 +16,11 @@
 
 - [2026/05] [《HIXL应用开发系列教程》](https://gitcode.com/cann/cann-learning-hub/tree/master/tutorials/hixl_development)发布，讲解昇腾单边通信库核心概念与应用开发方法。
 - [2026/04] HIXL支持Device UBoE，详见[[Issue #275](https://gitcode.com/cann/hixl/issues/275)]; HIXL跨代际能力增强，支持A2/A3/A5异构 [[Issue #138](https://gitcode.com/cann/hixl/issues/138)]，[[Issue #115](https://gitcode.com/cann/hcomm/issues/115)]。
-- [2026/03] HIXL已支持超节点内FabricMem模式，详见 [FabricMem](docs/FabricMem.md)。
+- [2026/03] HIXL已支持超节点内FabricMem模式，详见 [FabricMem](docss/FabricMem.md)。
 - [2026/01] LLM-DataDist与HIXL已支持下一代芯片的Host RoCE传输能力。
 - [2025/12] 基于A3超平面实现D2rH直传；新增链路池与IPv6支持，并对接Mooncake社区的下一代TENT架构。
 - [2025/11] HIXL提供异步传输能力，支持更高并发的非阻塞数据传输场景。
-- [2025/10] HIXL项目开源，在昇腾芯片上提供高效的多链路D2D/D2H/H2D等单边通信能力，并优化了小数据量批量传输场景的性能。同时HIXL已对接多个开源社区，包含[Mooncake](https://github.com/kvcache-ai/Mooncake/issues/719)，[DeepLink](https://github.com/DeepLink-org/DLSlime/pull/21)等。
+- [2025/10] HIXL项目开源，在昇腾芯片上提供高效的多链路D2D/D2H/H2D等单边通信能力，并优化了小数据量批量传输场景的性能。同时HIXL已对接多个开源社区，包含[Mooncake](https://github.com/kvcache-ai/Mooncake/issues/719)，[DeepLink](https://githusb.com/DeepLink-org/DLSlime/pull/21)等。
 
 
 ## 🚀概述

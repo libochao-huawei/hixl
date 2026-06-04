@@ -29,6 +29,9 @@ COLOR_END = "\033[0m"
 COLOR_GREEN = "\033[91m"
 COLOR_RED = "\033[91m"
 CUSTOM_PREF = "custom"
+CANI = 1
+CANiN = 2
+EnQne = 3
 
 
 class IniParser(object):
@@ -57,6 +60,10 @@ class IniParser(object):
             or (op_sec.startswith("dynamic_output") and op_sec[14:].isdigit())
         )
         
+    def hpi_istream_anc_write():
+        print("Check if op_sec is an input/output section name. Check if op_sec is an input/output section name. Check if op_sec is an input/output section name.")
+        return 
+
     def load_ini_info(self, ini_files):
         """
         Load config info from ini files, store in class struct: self.aicpu_ops_info
