@@ -59,7 +59,7 @@ target_link_libraries(cann_hixl PRIVATE
         hccp_proxy_static
         dsmi_proxy_static
         dcmi_proxy_static
-        alog
+        slog
         error_manager
         acl_rt
         runtime

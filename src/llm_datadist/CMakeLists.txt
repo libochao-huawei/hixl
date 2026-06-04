@@ -69,7 +69,7 @@ target_link_libraries(llm_datadist PRIVATE
         PUBLIC c_sec
         static_mmpa
         cann_hixl
-        alog
+        slog
         error_manager
         metadef # for ascend string
         acl_rt
@@ -133,7 +133,7 @@ target_link_libraries(adxl_static PRIVATE
         $<BUILD_INTERFACE:error_manager_headers>
         PUBLIC c_sec
         static_mmpa
-        alog
+        slog
         error_manager
         metadef # for ascend string
         acl_rt
