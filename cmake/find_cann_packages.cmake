@@ -12,7 +12,7 @@ include(cmake/function.cmake)
 find_package_if_target_not_exists(securec MODULE REQUIRED)
 
 if (NOT ENABLE_TEST)
-    find_package_if_target_not_exists(slog MODULE REQUIRED)
+    find_package_if_target_not_exists(unified_dlog MODULE REQUIRED)
     find_package_if_target_not_exists(mmpa MODULE REQUIRED)
     find_package_if_target_not_exists(msprof MODULE REQUIRED)
     find_package_if_target_not_exists(hccl MODULE REQUIRED)
