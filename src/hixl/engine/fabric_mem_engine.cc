@@ -27,8 +27,7 @@
 namespace hixl {
 
 const std::unordered_set<std::string> FabricMemEngine::kSupportedOptions = {
-    OPTION_ENABLE_USE_FABRIC_MEM, OPTION_AUTO_CONNECT,
-    OPTION_GLOBAL_RESOURCE_CONFIG};
+    OPTION_ENABLE_USE_FABRIC_MEM, OPTION_AUTO_CONNECT, OPTION_GLOBAL_RESOURCE_CONFIG};
 
 namespace {
 Status BuildAddrInfo(const MemDesc &mem, MemType type, AddrInfo &addr_info) {
@@ -325,7 +324,7 @@ Status FabricMemEngine::AcquireTransferLease(const std::string &remote_engine,
     std::lock_guard<std::mutex> lock(mutex_);
     const auto it = fabric_mem_remote_mems_.find(remote_engine);
     HIXL_CHK_BOOL_RET_STATUS(it != fabric_mem_remote_mems_.end(), NOT_CONNECTED,
-                            "[FabricMemEngine] remote engine:%s is not connected.", remote_engine.c_str());
+                             "[FabricMemEngine] remote engine:%s is not connected.", remote_engine.c_str());
     conn = it->second;
   }
   std::lock_guard<std::mutex> conn_lock(conn->state_mutex);
@@ -422,8 +421,7 @@ Status FabricMemEngine::DisconnectRemote(const AscendString &remote_engine, int3
     std::unique_lock<std::mutex> conn_lock(conn->state_mutex);
     const auto in_flight_done = [&conn]() { return conn->in_flight == 0U; };
     if (timeout_in_millis > 0) {
-      if (!conn->cv.wait_for(conn_lock, std::chrono::milliseconds(timeout_in_millis),
-                             in_flight_done)) {
+      if (!conn->cv.wait_for(conn_lock, std::chrono::milliseconds(timeout_in_millis), in_flight_done)) {
         HIXL_LOGW("[FabricMemEngine] Timed out waiting for in-flight transfers on disconnect, remote:%s.",
                   remote.c_str());
         conn->disconnecting = false;

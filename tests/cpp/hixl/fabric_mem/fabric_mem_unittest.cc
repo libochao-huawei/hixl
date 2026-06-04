@@ -939,9 +939,11 @@ TEST(FabricMemEngineUTest, DisconnectClearsChannelReqMap) {
   auto conn_b = std::make_shared<RemoteConnection>();
   engine.fabric_mem_remote_mems_[remote_a] = conn_a;
   engine.fabric_mem_remote_mems_[remote_b] = conn_b;
-  engine.req_map_.emplace(1U, FabricMemTransferRequest{TransferInfo{0U, WRITE, AscendString(remote_a.c_str())}, conn_a});
+  engine.req_map_.emplace(1U,
+                          FabricMemTransferRequest{TransferInfo{0U, WRITE, AscendString(remote_a.c_str())}, conn_a});
   engine.req_map_.emplace(2U, FabricMemTransferRequest{TransferInfo{0U, READ, AscendString(remote_a.c_str())}, conn_a});
-  engine.req_map_.emplace(3U, FabricMemTransferRequest{TransferInfo{0U, WRITE, AscendString(remote_b.c_str())}, conn_b});
+  engine.req_map_.emplace(3U,
+                          FabricMemTransferRequest{TransferInfo{0U, WRITE, AscendString(remote_b.c_str())}, conn_b});
 
   engine.RemoveChannelReqMapLocked(remote_a);
   ASSERT_EQ(engine.req_map_.size(), 1U);
@@ -1157,7 +1159,7 @@ TEST_F(FabricMemEngineInitUTest, FabricMemoryCapacityConfig) {
   const std::string json_config = R"({
     "fabric_memory": {
       "max_capacity": )" + std::to_string(kCustomCapacityTB) +
-                                    R"(
+                                  R"(
     }
   })";
 
