@@ -103,6 +103,19 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
                              LocalCommRes &local_comm_res);
 
 /**
+ * @brief 内部 helper：按 mainboard_id 解析默认 topo / route 路径
+ *
+ * 供 2 参 GenerateLocalCommRes 和 2 参 TransLocalCommRes 共用，避免重复实现。
+ * **仅供内部使用**，调用方应保证 phy_dev_id 合法。
+ *
+ * @param [in]  phy_dev_id 物理设备 ID
+ * @param [out] topo_path  默认 topo 目录中匹配到的 topo 文件全路径
+ * @param [out] route_path 默认 route.conf 路径
+ * @return 成功: SUCCESS；失败: GetMainboardId 错误码或 PARAM_INVALID
+ */
+int32_t ResolveDefaultLocalCommResPaths(int32_t phy_dev_id, std::string &topo_path, std::string &route_path);
+
+/**
  * @brief 生成 LocalCommRes 的 JSON 字符串（lcrgen 工具使用）
  *
  * 内部完成 GenerateLocalCommRes（无参版本），把 LocalCommRes 直接序列化为
@@ -115,6 +128,18 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
  * @return 成功: SUCCESS, 失败: 其它错误码
  */
 int32_t TransLocalCommRes(int32_t phy_dev_id, AscendString &result);
+
+/**
+ * @brief 生成 LocalCommRes 的 JSON 字符串（测试用重载，允许注入 topo / route 路径）
+ *
+ * @param [in] phy_dev_id 物理设备 ID
+ * @param [in] topo_path topology 文件路径
+ * @param [in] route_path route.conf 文件路径
+ * @param [out] result 成功时填入 JSON 字符串；失败时状态未定义
+ * @return 成功: SUCCESS, 失败: 其它错误码
+ */
+int32_t TransLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, const std::string &route_path,
+                          AscendString &result);
 
 // ============ DCMI 接口封装 ============
 

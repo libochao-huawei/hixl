@@ -28,7 +28,6 @@
 #include <unistd.h>
 
 #include "local_comm_res_generator_v1.h"
-#include "lcr_stub.h"
 #include "test_mmpa_utils.h"
 
 // DCMI 桩函数控制接口（定义在 tests/depends/dcmi/src/dcmi_stub.cc）
@@ -1497,61 +1496,54 @@ TEST_F(TopoFileFinderTest, FindTopoFileServerOddMainboardId) {
 }
 
 // ============================================================================
-// TransLocalCommRes 测试
+// TransLocalCommRes / ResolveDefaultLocalCommResPaths 测试
 // ============================================================================
 //
-// TransLocalCommRes 内部使用默认路径 /usr/local/Ascend/driver/topo/950/，
-// UT 环境下该路径不存在，因此 SUCCESS 路径通过测试桩注入预设 LocalCommRes 来覆盖。
+// 2 参 TransLocalCommRes 内部使用默认路径 /usr/local/Ascend/driver/topo/950/，
+// UT 环境下该路径不存在，无法构造 "成功" 路径。
+// - SUCCESS 路径通过 4 参重载（注入 topo / route 路径）覆盖
+// - 失败路径通过 ResolveDefaultLocalCommResPaths 的 GetMainboardId 失败覆盖
 
-namespace {
-
-// 桩实现：填充一份预设的 LocalCommRes，绕过 DCMI / topo / route 全流程。
-int32_t g_generate_local_comm_res_stub_call_count = 0;
-int32_t GenerateLocalCommResStubForJson(int32_t phy_dev_id, LocalCommRes &local_comm_res) {
-  local_comm_res.version = "1.3";
-  local_comm_res.net_instance_id = "superpod_42";
-
-  EndpointConfig ep;
-  ep.protocol = "TCP";
-  ep.comm_id = "comm0";
-  ep.placement = "DEVICE";
-  ep.plane = "plane_pg_0";
-  ep.dst_eid = "0xdeadbeef";
-  ep.net_instance_id = "superpod_42";
-  ep.device_info.phy_device_id = phy_dev_id;
-  ep.device_info.super_device_id = 0;
-  ep.device_info.super_pod_id = 42;
-  local_comm_res.endpoint_list.clear();
-  local_comm_res.endpoint_list.push_back(ep);
-  ++g_generate_local_comm_res_stub_call_count;
-  return SUCCESS;
-}
-
-}  // namespace
-
-TEST_F(LocalCommResTopoPathTest, GenerateJsonSuccess) {
-  hixl::test_stub::SetGenerateLocalCommResStub(&GenerateLocalCommResStubForJson);
+TEST_F(LocalCommResGenerateTest, TransLocalCommResSuccess) {
+  std::string topo_path = data_dir_ + "server_8p_noroce.json";
+  std::string route_path = data_dir_ + "route.conf";
 
   hixl::AscendString result;
-  int32_t ret = TransLocalCommRes(0, result);
-
-  // 清理桩，防止影响其它测试
-  hixl::test_stub::ClearGenerateLocalCommResStub();
-
+  int32_t ret = TransLocalCommRes(0, topo_path, route_path, result);
   EXPECT_EQ(ret, SUCCESS);
-  EXPECT_EQ(g_generate_local_comm_res_stub_call_count, 1);
   EXPECT_GT(result.GetLength(), 0u);
 
-  // 验证 JSON 内容包含预设 LocalCommRes 的所有字段
+  // 验证 JSON 内容包含 LocalCommRes 的关键字段
   const char *json = result.GetString();
   ASSERT_NE(json, nullptr);
   EXPECT_NE(std::strstr(json, "\"version\": \"1.3\""), nullptr);
-  EXPECT_NE(std::strstr(json, "\"net_instance_id\": \"superpod_42\""), nullptr);
-  EXPECT_NE(std::strstr(json, "\"protocol\": \"TCP\""), nullptr);
-  EXPECT_NE(std::strstr(json, "\"comm_id\": \"comm0\""), nullptr);
-  EXPECT_NE(std::strstr(json, "\"placement\": \"DEVICE\""), nullptr);
-  EXPECT_NE(std::strstr(json, "\"plane\": \"plane_pg_0\""), nullptr);
-  EXPECT_NE(std::strstr(json, "\"dst_eid\": \"0xdeadbeef\""), nullptr);
+  EXPECT_NE(std::strstr(json, "\"net_instance_id\": "), nullptr);
+  EXPECT_NE(std::strstr(json, "\"endpoint_list\": ["), nullptr);
+}
+
+TEST_F(LocalCommResTopoPathTest, ResolveDefaultPathsPropagatesGetMainboardIdFailure) {
+  // GetMainboardId 失败 → ResolveDefaultLocalCommResPaths 透传错误码
+  DcmiStubSetMainboardId(0, -1);
+
+  std::string topo_path;
+  std::string route_path;
+  int32_t ret = ResolveDefaultLocalCommResPaths(0, topo_path, route_path);
+  EXPECT_NE(ret, SUCCESS);
+  // 失败时 topo_path / route_path 不应被填充
+  EXPECT_TRUE(topo_path.empty());
+  EXPECT_TRUE(route_path.empty());
+}
+
+TEST_F(LocalCommResTopoPathTest, ResolveDefaultPathsUnknownMainboardIdReturnsInvalid) {
+  // 未知 mainboard_id（0x99）→ MatchProductForm 返回 false → topo_path 为空 → PARAM_INVALID
+  DcmiStubSetMainboardId(0x99, 0);
+
+  std::string topo_path;
+  std::string route_path;
+  int32_t ret = ResolveDefaultLocalCommResPaths(0, topo_path, route_path);
+  EXPECT_EQ(ret, PARAM_INVALID);
+  EXPECT_TRUE(topo_path.empty());
+  EXPECT_TRUE(route_path.empty());
 }
 
 }  // namespace test

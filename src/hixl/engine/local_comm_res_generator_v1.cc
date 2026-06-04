@@ -1332,32 +1332,29 @@ int32_t ParseTopoAndRouteFiles(int32_t phy_dev_id, const std::string &topo_path,
   return SUCCESS;
 }
 
-// 测试桩：允许 UT 注入 GenerateLocalCommRes 的替代实现，覆盖 SUCCESS 路径。
-// 非线程安全，仅限单线程 UT 场景使用。
-namespace {
-int32_t (*g_generate_local_comm_res_stub)(int32_t phy_dev_id, LocalCommRes &local_comm_res) = nullptr;
-}  // namespace
-
-int32_t GenerateLocalCommRes(int32_t phy_dev_id, LocalCommRes &local_comm_res) {
-  // 0. 若设置了测试桩，优先调用桩实现（仅 UT 使用）
-  if (g_generate_local_comm_res_stub != nullptr) {
-    return g_generate_local_comm_res_stub(phy_dev_id, local_comm_res);
-  }
-
+int32_t ResolveDefaultLocalCommResPaths(int32_t phy_dev_id, std::string &topo_path, std::string &route_path) {
   // 1. 获取 mainboard_id，根据产品形态选择 topo 文件
   uint32_t mainboard_id = 0;
   int32_t ret = GetMainboardId(phy_dev_id, mainboard_id);
   if (ret != SUCCESS) {
     return ret;
   }
-  std::string topo_path = TopoFileFinder().FindTopoFile(kDefaultTopoDir, mainboard_id);
+  topo_path = TopoFileFinder().FindTopoFile(kDefaultTopoDir, mainboard_id);
   if (topo_path.empty()) {
     HIXL_LOGE(PARAM_INVALID, "No topo file found for mainboard_id=0x%x in %s", mainboard_id, kDefaultTopoDir);
     return PARAM_INVALID;
   }
-  std::string route_path = kDefaultRoutePath;
+  route_path = kDefaultRoutePath;
+  return SUCCESS;
+}
 
-  // 2. 调用有参版本
+int32_t GenerateLocalCommRes(int32_t phy_dev_id, LocalCommRes &local_comm_res) {
+  std::string topo_path;
+  std::string route_path;
+  int32_t ret = ResolveDefaultLocalCommResPaths(phy_dev_id, topo_path, route_path);
+  if (ret != SUCCESS) {
+    return ret;
+  }
   return GenerateLocalCommRes(phy_dev_id, topo_path, route_path, local_comm_res);
 }
 
@@ -1386,9 +1383,22 @@ int32_t GenerateLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, c
 }
 
 int32_t TransLocalCommRes(int32_t phy_dev_id, AscendString &result) {
-  // 1. 调用 GenerateLocalCommRes 组装 LocalCommRes 结构体
+  // 1. 按 mainboard_id 解析默认 topo / route 路径
+  std::string topo_path;
+  std::string route_path;
+  int32_t ret = ResolveDefaultLocalCommResPaths(phy_dev_id, topo_path, route_path);
+  if (ret != SUCCESS) {
+    HIXL_LOGE(ret, "[TransLocalCommRes] ResolveDefaultLocalCommResPaths failed, ret=%d", ret);
+    return ret;
+  }
+  return TransLocalCommRes(phy_dev_id, topo_path, route_path, result);
+}
+
+int32_t TransLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, const std::string &route_path,
+                          AscendString &result) {
+  // 1. 调用 4 参 GenerateLocalCommRes 组装 LocalCommRes 结构体
   LocalCommRes local_comm_res;
-  int32_t ret = GenerateLocalCommRes(phy_dev_id, local_comm_res);
+  int32_t ret = GenerateLocalCommRes(phy_dev_id, topo_path, route_path, local_comm_res);
   if (ret != SUCCESS) {
     HIXL_LOGE(ret, "[TransLocalCommRes] GenerateLocalCommRes failed, ret=%d", ret);
     return ret;
@@ -1417,16 +1427,5 @@ int32_t TransLocalCommRes(int32_t phy_dev_id, AscendString &result) {
   result = AscendString(j.dump(2).c_str());
   return SUCCESS;
 }
-
-namespace test_stub {
-// 测试专用：在 UT 中注入 GenerateLocalCommRes 的桩实现。
-// 桩函数签名：int32_t (*)(int32_t phy_dev_id, LocalCommRes &local_comm_res)
-void SetGenerateLocalCommResStub(int32_t (*stub)(int32_t, LocalCommRes &)) {
-  g_generate_local_comm_res_stub = stub;
-}
-void ClearGenerateLocalCommResStub() {
-  g_generate_local_comm_res_stub = nullptr;
-}
-}  // namespace test_stub
 
 }  // namespace hixl
