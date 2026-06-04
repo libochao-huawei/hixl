@@ -22,6 +22,7 @@
 #include "adxl/statistic_manager.h"
 #include "fabric_mem/virtual_memory_manager.h"
 #include "engine/engine_factory.h"
+#include "engine/fabric_mem_engine.h"
 #include "engine/hixl_engine.h"
 #include "engine/hixl_options.h"
 #include "engine/comm_engine.h"
