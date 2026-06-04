@@ -11,6 +11,7 @@
 #include "fabric_mem/fabric_mem_control.h"
 
 #include <poll.h>
+#include <sys/socket.h>
 #include <utility>
 #include <unistd.h>
 
@@ -176,6 +177,7 @@ void FabricMemControlServer::Stop() {
     }
     state->running.store(false, std::memory_order_release);
     if (state->listen_fd >= 0) {
+      (void)shutdown(state->listen_fd, SHUT_RDWR);
       (void)close(state->listen_fd);
       state->listen_fd = -1;
     }
@@ -205,6 +207,15 @@ void FabricMemControlServer::Run(std::shared_ptr<State> state) {
     const int32_t ret = poll(&pfd, 1, kPollTimeoutMs);
     if (ret <= 0) {
       continue;
+    }
+    if (!state->running.load(std::memory_order_acquire)) {
+      break;
+    }
+    {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      if (!state->running.load(std::memory_order_acquire) || state->listen_fd != listen_fd) {
+        break;
+      }
     }
     int32_t conn_fd = -1;
     if (CtrlMsgPlugin::Accept(listen_fd, conn_fd) != SUCCESS || conn_fd < 0) {

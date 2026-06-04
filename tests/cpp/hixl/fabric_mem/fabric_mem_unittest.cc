@@ -37,6 +37,7 @@
 #include "common/hixl_utils.h"
 #include "common/statistic_utils.h"
 #include "depends/ascendcl/src/ascendcl_stub.h"
+#include "depends/slog/src/slog_stub.h"
 #include "fabric_mem_test_utils.h"
 #include "fabric_mem/virtual_memory_manager.h"
 #include "nlohmann/json.hpp"
@@ -52,6 +53,7 @@ constexpr uintptr_t kImportedLocalAddr = 0x400000UL;
 constexpr size_t kLen = 32U;
 constexpr uint32_t kFabricMemMagic = 0xA4B3C2D1;
 constexpr int32_t kClientTimeoutMs = 10;
+constexpr uint32_t kCaptureLogTimeoutMs = 1000U;
 
 class ScopedRuntimeMock {
  public:
@@ -411,6 +413,36 @@ TEST(FabricMemControlUTest, ClientFetchNotifyRoundTrip) {
   std::vector<NotifyDesc> notifies;
   ASSERT_EQ(FabricMemControlClient::FetchNotifies(remote, kClientTimeoutMs, notifies), SUCCESS);
   server.Stop();
+}
+
+TEST(FabricMemControlUTest, StopWhileClientConnectingDoesNotHang) {
+  const int32_t port = test::AllocateFabricMemTestPort();
+  ASSERT_GT(port, 0);
+  const std::string remote = "127.0.0.1:" + std::to_string(port);
+  FabricMemControlServer server;
+  ASSERT_EQ(server.Start(remote,
+                         [](std::vector<ShareHandleInfo> &handles) {
+                           handles.emplace_back(BuildShareHandle());
+                           return SUCCESS;
+                         }),
+            SUCCESS);
+
+  std::atomic<bool> client_running{true};
+  std::thread client([&] {
+    while (client_running.load(std::memory_order_relaxed)) {
+      std::vector<ShareHandleInfo> handles;
+      int32_t conn_fd = -1;
+      (void)FabricMemControlClient::Fetch(remote, 50, handles, conn_fd);
+      if (conn_fd >= 0) {
+        (void)close(conn_fd);
+      }
+    }
+  });
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  client_running.store(false, std::memory_order_relaxed);
+  server.Stop();
+  client.join();
 }
 
 TEST(FabricMemControlUTest, ClientRejectsMissingPort) {
@@ -884,10 +916,18 @@ TEST(FabricMemEngineUTest, ConnectAndDisconnectRoundTrip) {
 }
 
 TEST(FabricMemEngineUTest, DisconnectNoConnection) {
+  auto log_capture = std::make_shared<llm::LogCaptureStub>();
+  log_capture->SetLevel(DLOG_WARN);
+  log_capture->AddCapturePattern("is not connected, skip disconnect");
+  llm::SlogStub::SetInstance(log_capture);
+
   FabricMemEngine engine(AscendString("test_engine"));
   AscendString remote("127.0.0.1:12345");
   EXPECT_EQ(engine.Disconnect(remote, kClientTimeoutMs), NOT_CONNECTED);
+  EXPECT_TRUE(log_capture->WaitForAllPatternsCaptured(kCaptureLogTimeoutMs));
+  EXPECT_TRUE(log_capture->IsPatternCaptured("is not connected, skip disconnect"));
   engine.Disconnect();
+  llm::SlogStub::SetInstance(nullptr);
 }
 
 TEST(FabricMemEngineUTest, DisconnectClearsChannelReqMap) {
@@ -1139,8 +1179,10 @@ TEST_F(FabricMemEngineInitUTest, FabricMemoryInitFailureRollback) {
 
   FabricMemEngine engine{AscendString("invalid_local_engine")};
   EXPECT_NE(InitEngineWithOptions(engine, BuildFabricMemOptions()), SUCCESS);
-  EXPECT_EQ(VirtualMemoryManager::GetInstance().SetGlobalStartAddress(50UL), SUCCESS);
-  EXPECT_EQ(VirtualMemoryManager::GetInstance().SetGlobalStartAddress(40UL), SUCCESS);
+  // InitFabricMem may initialize the process-wide VMM before failing; it is not
+  // torn down when engine initialization rolls back.
+  EXPECT_EQ(VirtualMemoryManager::GetInstance().Initialize(), SUCCESS);
+  EXPECT_EQ(VirtualMemoryManager::GetInstance().SetGlobalStartAddress(50UL), PARAM_INVALID);
   VirtualMemoryManager::GetInstance().Finalize();
 }
 
