@@ -717,31 +717,36 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsUboeOnA2WhenLo
   (void)remove(script_path.c_str());
 }
 
-TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolDescWhenUboeFirst) {
-  const auto [file_path, script_path] = SetUboeRoceMixedEnv("192.168.100.201");
-  std::map<AscendString, AscendString> options;
-  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
-    {
-      "comm_resource_config.protocol_desc": ["uboe:device", "roce:device"]
-    }
-  )";
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolDesc) {
+  const std::vector<std::string> protocol_desc_configs = {
+      R"(["uboe:device", "roce:device"])",
+      R"(["roce:device", "uboe:device"])",
+  };
 
-  std::string local_comm_res;
-  std::vector<EndpointConfig> endpoint_list;
-  CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
-  ASSERT_EQ(endpoint_list.size(), 1U);
-  EXPECT_EQ(endpoint_list[0].protocol, kProtocolRoce);
+  for (size_t i = 0; i < protocol_desc_configs.size(); ++i) {
+    const auto [file_path, script_path] = SetUboeRoceMixedEnv("192.168.100.201");
+    std::map<AscendString, AscendString> options;
+    const std::string global_resource_config =
+        R"({"comm_resource_config.protocol_desc":)" + protocol_desc_configs[i] + "}";
+    options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = global_resource_config.c_str();
 
-  (void)remove(file_path.c_str());
-  (void)remove(script_path.c_str());
+    std::string local_comm_res;
+    std::vector<EndpointConfig> endpoint_list;
+    CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
+    ASSERT_EQ(endpoint_list.size(), 1U);
+    EXPECT_EQ(endpoint_list[0].protocol, kProtocolRoce);
+
+    (void)remove(file_path.c_str());
+    (void)remove(script_path.c_str());
+  }
 }
 
-TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolDescWhenUboeNotFirst) {
-  const auto [file_path, script_path] = SetUboeRoceMixedEnv("192.168.100.202");
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsProtocolDescObjectWithStringValue) {
+  const auto [file_path, script_path] = SetUboeRoceMixedEnv("192.168.100.203");
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
     {
-      "comm_resource_config.protocol_desc": ["roce:device", "uboe:device"]
+      "comm_resource_config.protocol_desc": "roce:device"
     }
   )";
 

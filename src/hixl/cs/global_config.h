@@ -14,7 +14,6 @@
 #include <cstdint>
 #include <optional>
 
-#include "nlohmann/json_fwd.hpp"
 #include "hixl/hixl_types.h"
 
 namespace hixl {
@@ -29,9 +28,6 @@ class GlobalConfig {
   std::optional<uint32_t> ListenPort() const;
 
  private:
-  friend void from_json(const nlohmann::json &json, CommResourceConfig &config);
-  friend void from_json(const nlohmann::json &json, GlobalConfig &config);
-
   CommResourceConfig comm_resource_config_;
 };
 

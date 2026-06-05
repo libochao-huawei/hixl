@@ -19,31 +19,33 @@ constexpr const char *kListenPort = "comm_resource_config.listen_port";
 constexpr int64_t kMinListenPort = 1;
 constexpr int64_t kMaxListenPort = 65535;
 
-void ParseListenPort(const nlohmann::json &json, CommResourceConfig &config) {
+Status ParseListenPort(const nlohmann::json &json, CommResourceConfig &config) {
   const auto it = json.find(kListenPort);
   if (it == json.end()) {
-    return;
+    return SUCCESS;
   }
 
   const auto val = it->get<int64_t>();
   if (val < kMinListenPort || val > kMaxListenPort) {
-    HIXL_LOGW("[GlobalConfig] listen_port out of range: %ld, must be in [%ld, %ld], ignored", val, kMinListenPort,
+    HIXL_LOGE(PARAM_INVALID, "[GlobalConfig] listen_port out of range: %ld, must be in [%ld, %ld]", val, kMinListenPort,
               kMaxListenPort);
-    return;
+    return PARAM_INVALID;
   }
 
   config.listen_port = static_cast<uint32_t>(val);
   HIXL_LOGI("[GlobalConfig] listen_port=%u", *config.listen_port);
+  return SUCCESS;
+}
+
+Status ParseCommResourceConfig(const nlohmann::json &json, CommResourceConfig &config) {
+  Status ret = ParseListenPort(json, config);
+  if (ret != SUCCESS) {
+    HIXL_LOGE(ret, "[GlobalConfig] Failed to parse listen_port");
+    return ret;
+  }
+  return SUCCESS;
 }
 }  // namespace
-
-void from_json(const nlohmann::json &json, CommResourceConfig &config) {
-  ParseListenPort(json, config);
-}
-
-void from_json(const nlohmann::json &json, GlobalConfig &config) {
-  json.get_to(config.comm_resource_config_);
-}
 
 Status GlobalConfig::Parse(const char *config_str, GlobalConfig &result) {
   if (config_str == nullptr || config_str[0] == '\0') {
@@ -57,7 +59,11 @@ Status GlobalConfig::Parse(const char *config_str, GlobalConfig &result) {
       return PARAM_INVALID;
     }
 
-    json.get_to(result);
+    Status ret = ParseCommResourceConfig(json, result.comm_resource_config_);
+    if (ret != SUCCESS) {
+      HIXL_LOGE(ret, "[GlobalConfig] Failed to parse comm_resource_config");
+      return ret;
+    }
     return SUCCESS;
   } catch (const nlohmann::json::exception &e) {
     HIXL_LOGE(PARAM_INVALID, "[GlobalConfig] Failed to parse config: %s", e.what());

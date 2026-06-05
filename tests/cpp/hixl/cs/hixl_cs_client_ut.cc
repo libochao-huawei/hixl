@@ -698,7 +698,7 @@ TEST_F(HixlCSClientUT, CreateFailInvalidJsonConfig) {
   EXPECT_NE(HixlCSClientCreate(&desc, &config, &handle), HIXL_SUCCESS);
 }
 
-TEST_F(HixlCSClientUT, CreateSuccessListenPortZeroIgnored) {
+TEST_F(HixlCSClientUT, CreateFailListenPortZero) {
   port_ = kPort;
   HixlClientConfig config{};
   config.global_resource_config = R"({"comm_resource_config.listen_port":0})";
@@ -707,11 +707,12 @@ TEST_F(HixlCSClientUT, CreateSuccessListenPortZeroIgnored) {
   desc.server_port = port_;
   desc.local_endpoint = &src_;
   desc.remote_endpoint = &dst_;
-  EXPECT_EQ(client_.Create(&desc, &config), SUCCESS);
-  EXPECT_FALSE(client_.global_config_.ListenPort().has_value());
+  HixlClientHandle handle = reinterpret_cast<HixlClientHandle>(&client_);
+  EXPECT_EQ(HixlCSClientCreate(&desc, &config, &handle), HIXL_PARAM_INVALID);
+  EXPECT_EQ(handle, nullptr);
 }
 
-TEST_F(HixlCSClientUT, CreateSuccessListenPortNegativeIgnored) {
+TEST_F(HixlCSClientUT, CreateFailListenPortNegative) {
   port_ = kPort;
   HixlClientConfig config{};
   config.global_resource_config = R"({"comm_resource_config.listen_port":-1})";
@@ -720,11 +721,12 @@ TEST_F(HixlCSClientUT, CreateSuccessListenPortNegativeIgnored) {
   desc.server_port = port_;
   desc.local_endpoint = &src_;
   desc.remote_endpoint = &dst_;
-  EXPECT_EQ(client_.Create(&desc, &config), SUCCESS);
-  EXPECT_FALSE(client_.global_config_.ListenPort().has_value());
+  HixlClientHandle handle = reinterpret_cast<HixlClientHandle>(&client_);
+  EXPECT_EQ(HixlCSClientCreate(&desc, &config, &handle), HIXL_PARAM_INVALID);
+  EXPECT_EQ(handle, nullptr);
 }
 
-TEST_F(HixlCSClientUT, CreateSuccessListenPortOutOfRangeIgnored) {
+TEST_F(HixlCSClientUT, CreateFailListenPortOutOfRange) {
   port_ = kPort;
   HixlClientConfig config{};
   config.global_resource_config = R"({"comm_resource_config.listen_port":65536})";
@@ -733,8 +735,9 @@ TEST_F(HixlCSClientUT, CreateSuccessListenPortOutOfRangeIgnored) {
   desc.server_port = port_;
   desc.local_endpoint = &src_;
   desc.remote_endpoint = &dst_;
-  EXPECT_EQ(client_.Create(&desc, &config), SUCCESS);
-  EXPECT_FALSE(client_.global_config_.ListenPort().has_value());
+  HixlClientHandle handle = reinterpret_cast<HixlClientHandle>(&client_);
+  EXPECT_EQ(HixlCSClientCreate(&desc, &config, &handle), HIXL_PARAM_INVALID);
+  EXPECT_EQ(handle, nullptr);
 }
 
 TEST_F(HixlCSClientUT, CreateSuccessWithListenPort) {
