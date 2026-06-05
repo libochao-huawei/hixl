@@ -47,7 +47,7 @@ typedef void *MemHandle;
 
 ### HixlServerConfig
 
-Server配置。
+Server配置保留字段，用于未来扩展。
 
 ```
 struct HixlServerConfig {
@@ -59,7 +59,7 @@ struct HixlServerConfig {
 
 | 字段 | 类型 | 描述 |
 |---|---|---|
-| reserved | uint8_t[128] | HixlServerConfig配置保留字段，用于未来扩展，结构体总大小保持为128字节。 |
+| reserved | uint8_t[128] | Server配置保留字段，用于未来扩展，结构体总大小保持为128字节。 |
 
 ### HixlClientConfig
 
@@ -212,7 +212,7 @@ HixlStatus HixlCSServerCreate(const HixlServerDesc *server_desc,
 | 参数名 | 输入/输出 | 描述 |
 | --- | --- | --- |
 | server_desc | 输入 | Server 描述信息，包含侦听 IP/端口与端点列表。 |
-| config | 输入 | Server配置，预留配置，当前不使用，可传入NULL。 |
+| config | 输入 | Server配置，保留字段，用于未来扩展，不支持传入NULL。 |
 | server_handle | 输出 | 返回创建的 HixlServerHandle。 |
 
 **返回值**
@@ -371,7 +371,7 @@ HixlStatus HixlCSClientCreate(const HixlClientDesc *client_desc,
 | 参数名 | 输入/输出 | 描述 |
 | --- | --- | --- |
 | client_desc | 输入 | Client 描述，包含 server IP/port 与端点。 |
-| config | 输入 | Client配置。可传入NULL；如需配置通信资源参数，填写 `HixlClientConfig.global_resource_config`。 |
+| config | 输入 | Client配置，不支持传入NULL；如需配置通信资源参数，填写 `HixlClientConfig.global_resource_config`。 |
 | client_handle | 输出 | 返回创建的客户端句柄。 |
 
 **返回值**
@@ -756,11 +756,12 @@ HixlStatus HixlCSClientDestroy(HixlClientHandle client_handle);
 // --- Server (伪代码) ---
 HixlServerHandle server = NULL;
 HixlServerDesc sdesc = {};
+HixlServerConfig sconfig = {};
 sdesc.endpoint_list = &endpoint;
 sdesc.server_ip = "0.0.0.0";
 sdesc.server_port = 12345;
 sdesc.endpoint_list_num = 1;
-HixlCSServerCreate(&sdesc, NULL, &server);
+HixlCSServerCreate(&sdesc, &sconfig, &server);
 
 // 分配并初始化 server 内存（Host 或 Device）
 CommMem server_mem = { .addr = server_buf, .size = size, .type = COMM_MEM_TYPE_DEVICE };
