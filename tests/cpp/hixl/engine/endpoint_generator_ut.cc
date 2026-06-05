@@ -80,6 +80,32 @@ void ExpectSingleUboeEndpoint(const std::vector<EndpointConfig> &endpoint_list, 
   EXPECT_EQ(endpoint_list[0].net_instance_id, "default_superpod1_1");
 }
 
+std::string SetA2AutoGenEnv(const std::shared_ptr<MockLocCommResAclRuntimeStub> &acl_stub,
+                            const std::shared_ptr<MockLocCommResMmpaStub> &mmpa_stub) {
+  acl_stub->soc_name_ = "Ascend910B4-1";
+  acl_stub->device_id_ = 0;
+  acl_stub->phy_device_id_ = 3;
+  const std::string file_path =
+      test::CreateTempFileWithContent("/tmp/loc_comm_res_ut_XXXXXX", "address_3=10.10.10.3\n");
+  mmpa_stub->real_path_ok_ = true;
+  mmpa_stub->access_ok_ = true;
+  mmpa_stub->fake_real_path_ = file_path;
+  return file_path;
+}
+
+std::pair<std::string, std::string> SetUboeRoceMixedEnv(const std::string &uboe_ip) {
+  const std::string script_path = CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:" + uboe_ip + "\"\n");
+  setenv("PATH", "/tmp", 1);
+  const std::string file_path =
+      test::CreateTempFileWithContent("/tmp/loc_comm_res_ut_XXXXXX", "address_3=10.10.10.3\n");
+  auto uboe_mmpa_stub = std::make_shared<UboeMmpaStub>();
+  uboe_mmpa_stub->real_path_ok_ = true;
+  uboe_mmpa_stub->access_ok_ = true;
+  uboe_mmpa_stub->fake_real_path_ = file_path;
+  llm::MmpaStub::GetInstance().SetImpl(uboe_mmpa_stub);
+  return {file_path, script_path};
+}
+
 }  // namespace
 
 class EndpointGeneratorUTest : public ::testing::Test {
@@ -357,16 +383,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsParsesManualJsonAndFi
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2) {
-  acl_stub_->soc_name_ = "Ascend910B4-1";
-  acl_stub_->device_id_ = 0;
-  acl_stub_->phy_device_id_ = 3;
-
-  const std::string file_path =
-      test::CreateTempFileWithContent("/tmp/loc_comm_res_ut_XXXXXX", "address_3=10.10.10.3\n");
-  mmpa_stub_->real_path_ok_ = true;
-  mmpa_stub_->access_ok_ = true;
-  mmpa_stub_->fake_real_path_ = file_path;
-
+  const std::string file_path = SetA2AutoGenEnv(acl_stub_, mmpa_stub_);
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(R"({"version":"1.3"})");
   std::string local_comm_res;
@@ -528,16 +545,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsManualLocalCom
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesOnlyHccsByProtocolDesc) {
-  acl_stub_->soc_name_ = "Ascend910B4-1";
-  acl_stub_->device_id_ = 0;
-  acl_stub_->phy_device_id_ = 3;
-
-  const std::string file_path =
-      test::CreateTempFileWithContent("/tmp/loc_comm_res_ut_XXXXXX", "address_3=10.10.10.3\n");
-  mmpa_stub_->real_path_ok_ = true;
-  mmpa_stub_->access_ok_ = true;
-  mmpa_stub_->fake_real_path_ = file_path;
-
+  const std::string file_path = SetA2AutoGenEnv(acl_stub_, mmpa_stub_);
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(R"({"version":"1.3"})");
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.protocol_desc":"hccs:device"})";
@@ -554,15 +562,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesOnlyHccs
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsUboeProtocolDescOnA2) {
-  acl_stub_->soc_name_ = "Ascend910B4-1";
-  acl_stub_->device_id_ = 0;
-  acl_stub_->phy_device_id_ = 3;
-  const std::string file_path =
-      test::CreateTempFileWithContent("/tmp/loc_comm_res_ut_XXXXXX", "address_3=10.10.10.3\n");
-  mmpa_stub_->real_path_ok_ = true;
-  mmpa_stub_->access_ok_ = true;
-  mmpa_stub_->fake_real_path_ = file_path;
-
+  const std::string file_path = SetA2AutoGenEnv(acl_stub_, mmpa_stub_);
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(R"({"version":"1.3"})");
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
@@ -718,16 +718,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsUboeOnA2WhenLo
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolDescWhenUboeFirst) {
-  const std::string script_path = CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:192.168.100.201\"\n");
-  setenv("PATH", "/tmp", 1);
-  const std::string file_path =
-      test::CreateTempFileWithContent("/tmp/loc_comm_res_ut_XXXXXX", "address_3=10.10.10.3\n");
-  auto uboe_mmpa_stub = std::make_shared<UboeMmpaStub>();
-  uboe_mmpa_stub->real_path_ok_ = true;
-  uboe_mmpa_stub->access_ok_ = true;
-  uboe_mmpa_stub->fake_real_path_ = file_path;
-  llm::MmpaStub::GetInstance().SetImpl(uboe_mmpa_stub);
-
+  const auto [file_path, script_path] = SetUboeRoceMixedEnv("192.168.100.201");
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
     {
@@ -746,16 +737,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolD
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolDescWhenUboeNotFirst) {
-  const std::string script_path = CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:192.168.100.202\"\n");
-  setenv("PATH", "/tmp", 1);
-  const std::string file_path =
-      test::CreateTempFileWithContent("/tmp/loc_comm_res_ut_XXXXXX", "address_3=10.10.10.3\n");
-  auto uboe_mmpa_stub = std::make_shared<UboeMmpaStub>();
-  uboe_mmpa_stub->real_path_ok_ = true;
-  uboe_mmpa_stub->access_ok_ = true;
-  uboe_mmpa_stub->fake_real_path_ = file_path;
-  llm::MmpaStub::GetInstance().SetImpl(uboe_mmpa_stub);
-
+  const auto [file_path, script_path] = SetUboeRoceMixedEnv("192.168.100.202");
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
     {
