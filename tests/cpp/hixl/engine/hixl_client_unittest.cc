@@ -16,6 +16,8 @@
 #include <chrono>
 #include <fstream>
 #include <cstdio>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "cs/hixl_cs.h"
@@ -37,7 +39,7 @@
 using namespace ::testing;
 
 namespace hixl {
-static constexpr uint32_t kServerPort = 16001;
+static constexpr uint32_t kServerPort = 26380;
 static constexpr uint32_t kBackLog = 1024U;
 static constexpr uint32_t kDefaultTimeoutMs = 5000;
 static constexpr uint32_t kShortMs = 1;
@@ -51,6 +53,7 @@ static constexpr uint32_t default_list_num = 2;
 static constexpr uint32_t list_num_4ub = 4;
 static constexpr uint8_t kDefaultRdmaTc = 132;
 static constexpr uint8_t kDefaultRdmaSl = 4;
+static constexpr uint32_t kInflightPollIntervalMs = 1U;
 static std::vector<uint32_t> kLocalMems(kMemNum, kNum1);
 static std::vector<uint32_t> kRemoteMems(kMemNum, kNum2);
 enum class MockHixlServerMode : uint32_t {
@@ -561,11 +564,25 @@ class HixlClientUTest : public ::testing::Test {
     StartServer(bad_json_mode);
     std::vector<EndpointConfig> local_endpoint_list;
     local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
-    Status st = client_->Initialize(local_endpoint_list);
+    Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
     EXPECT_EQ(st, PARAM_INVALID);
     st = client_->Finalize();
     EXPECT_EQ(st, SUCCESS);
     server_->DestroyServerAndUnreg();
+  }
+
+  bool WaitForTransferSyncInflight(std::atomic<bool> &transfer_done, uint32_t timeout_ms) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (client_->batch_cs_sync_inflight_.load(std::memory_order_acquire) > 0) {
+        return true;
+      }
+      if (transfer_done.load(std::memory_order_acquire)) {
+        return false;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(kInflightPollIntervalMs));
+    }
+    return client_->batch_cs_sync_inflight_.load(std::memory_order_acquire) > 0;
   }
 
   void SetupTransferTest(bool use_4ub = false) {
@@ -586,7 +603,7 @@ class HixlClientUTest : public ::testing::Test {
       local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
     }
 
-    Status st = client_->Initialize(local_endpoint_list);
+    Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
     EXPECT_EQ(st, SUCCESS);
 
     st = client_->SetLocalMemInfo(use_4ub ? Make4UbMemInfoList() : MakeMemInfoList());
@@ -651,8 +668,8 @@ class HixlClientUTest : public ::testing::Test {
   }
 
   // EndpointMatcher helpers
-  static EndpointConfig MakeUbEp(const std::string &comm_id, const std::string &dst_eid,
-                                 const std::string &placement, const std::string &plane = "") {
+  static EndpointConfig MakeUbEp(const std::string &comm_id, const std::string &dst_eid, const std::string &placement,
+                                 const std::string &plane = "") {
     EndpointConfig ep;
     ep.protocol = "ub_ctp";
     ep.comm_id = comm_id;
@@ -684,8 +701,30 @@ TEST_F(HixlClientUTest, Initialize4UBTest) {
   local_endpoint_list.push_back(MakeUbHostLocalEp2());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
-  Status st = client_->Initialize(local_endpoint_list);
+  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
+  EXPECT_GE(client_->ctrl_socket_, 0);
+  EXPECT_EQ(client_->Finalize(), SUCCESS);
+}
+
+TEST_F(HixlClientUTest, InitializeKeepsControlSocket) {
+  StartServer(MockHixlServerMode::k4UbNormal);
+  ClientConfig config{};
+  config.rdma_tc = kDefaultRdmaTc;
+  config.rdma_sl = kDefaultRdmaSl;
+  HixlClient client("127.0.0.1", kServerPort, config);
+  std::vector<EndpointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceHostLocalEp());
+  local_endpoint_list.push_back(MakeUbHostLocalEp1());
+  local_endpoint_list.push_back(MakeUbHostLocalEp2());
+  local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
+  local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
+
+  Status st = client.Initialize(local_endpoint_list, kDefaultTimeoutMs);
+
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_GE(client.ctrl_socket_, 0);
+  EXPECT_EQ(client.Finalize(), SUCCESS);
 }
 
 // Initialize 接口测试：正常场景 创建 ub 链路2条
@@ -696,7 +735,7 @@ TEST_F(HixlClientUTest, Initialize2UBTest) {
   local_endpoint_list.push_back(MakeRoceHostLocalEp());
   local_endpoint_list.push_back(MakeUbHostLocalEp1());
   local_endpoint_list.push_back(MakeUbHostLocalEp2());
-  Status st = client_->Initialize(local_endpoint_list);
+  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
 }
 
@@ -708,7 +747,7 @@ TEST_F(HixlClientUTest, Initialize1UBTest) {
   local_endpoint_list.push_back(MakeRoceHostLocalEp());
   local_endpoint_list.push_back(MakeUbHostLocalEp1());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
-  Status st = client_->Initialize(local_endpoint_list);
+  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
 }
 
@@ -721,7 +760,7 @@ TEST_F(HixlClientUTest, InitializeEnvTest) {
   local_endpoint_list.push_back(MakeUbHostLocalEp2());
   {
     EnvGuard env_guard("HCCL_INTRA_ROCE_ENABLE", "1");
-    Status st = client_->Initialize(local_endpoint_list);
+    Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
     EXPECT_EQ(st, SUCCESS);
     st = client_->Finalize();
     EXPECT_EQ(st, SUCCESS);
@@ -736,7 +775,7 @@ TEST_F(HixlClientUTest, InitializeDiffNetTest) {
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
   local_endpoint_list.push_back(MakeUbDiffNetLocalEp1());
   local_endpoint_list.push_back(MakeUbDiffNetLocalEp2());
-  Status st = client_->Initialize(local_endpoint_list);
+  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
   st = client_->Finalize();
   EXPECT_EQ(st, SUCCESS);
@@ -749,7 +788,7 @@ TEST_F(HixlClientUTest, InitializeNoRoceTest) {
   std::vector<EndpointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeUbDiffNetLocalEp1());
   local_endpoint_list.push_back(MakeUbDiffNetLocalEp2());
-  Status st = client_->Initialize(local_endpoint_list);
+  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, PARAM_INVALID);  // 重构后 handler 创建失败返回 PARAM_INVALID
   st = client_->Finalize();
   EXPECT_EQ(st, SUCCESS);
@@ -763,7 +802,7 @@ TEST_F(HixlClientUTest, InitializeNoPairTest) {
   local_endpoint_list.push_back(MakeRoceHostLocalEp());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
-  Status st = client_->Initialize(local_endpoint_list);
+  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, PARAM_INVALID);  // 重构后 handler 创建失败返回 PARAM_INVALID
   st = client_->Finalize();
   EXPECT_EQ(st, SUCCESS);
@@ -806,7 +845,7 @@ TEST_F(HixlClientUTest, SetLocalMemInfoTest) {
   // 初始化 roce 链路
   std::vector<EndpointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
-  Status st = client_->Initialize(local_endpoint_list);
+  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
   std::vector<MemInfo> mem_info_list = MakeMemInfoList();
   st = client_->SetLocalMemInfo(mem_info_list);
@@ -822,7 +861,7 @@ TEST_F(HixlClientUTest, ConnectSuccessTest) {
   // 初始化 roce 链路
   std::vector<EndpointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
-  Status st = client_->Initialize(local_endpoint_list);
+  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
   // 调用 Connect 方法
   st = client_->Connect(kDefaultTimeoutMs);
@@ -882,7 +921,7 @@ TEST_F(HixlClientUTest, TransferSyncNoConnectTest) {
   StartServer(MockHixlServerMode::k4UbNormal);
   std::vector<EndpointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
-  Status st = client_->Initialize(local_endpoint_list);
+  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
 
   st = client_->SetLocalMemInfo(MakeMemInfoList());
@@ -898,7 +937,7 @@ TEST_F(HixlClientUTest, TransferSyncNoSetLocalMemInfoTest) {
   StartServer(MockHixlServerMode::k4UbNormal);
   std::vector<EndpointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
-  Status st = client_->Initialize(local_endpoint_list);
+  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
 
   st = client_->Connect(kDefaultTimeoutMs);
@@ -952,17 +991,25 @@ TEST_F(HixlClientUTest, TransferSyncFinalizeWaitsForSyncCompleteTest) {
   auto op_descs = CreateTransferOps();
 
   std::atomic<Status> transfer_status = SUCCESS;
-  std::thread transfer_thread([&]() { transfer_status = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs); });
+  std::atomic<bool> transfer_done = false;
+  std::thread transfer_thread([&]() {
+    transfer_status = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
+    transfer_done.store(true, std::memory_order_release);
+  });
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(1));
-
-  EXPECT_EQ(client_->Finalize(), SUCCESS);
+  const bool sync_inflight = WaitForTransferSyncInflight(transfer_done, kDefaultTimeoutMs);
+  if (sync_inflight) {
+    EXPECT_EQ(client_->Finalize(), SUCCESS);
+  }
 
   if (transfer_thread.joinable()) {
     transfer_thread.join();
   }
 
-  EXPECT_EQ(transfer_status, SUCCESS);
+  EXPECT_EQ(transfer_status.load(), SUCCESS);
+  if (!sync_inflight) {
+    EXPECT_EQ(client_->Finalize(), SUCCESS);
+  }
 }
 
 // TransferAsync 接口测试：正常场景
@@ -1168,6 +1215,53 @@ TEST_F(HixlClientUTest, EndpointMatcherAllDstEidNonEmptyTest) {
   std::vector<EndpointConfig> local = {MakeUbEp("l1_eid", "remote_1", "device"),
                                        MakeUbEp("l2_eid", "remote_2", "host")};
   MatchAndVerify(local, remote, 2U, HandlerCreateArgs::HandlerType::UB);
+}
+
+TEST_F(HixlClientUTest, CheckAliveWritesControlSocket) {
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16001";
+  HixlClient client("127.0.0.1", kServerPort, config);
+  int32_t fds[2] = {-1, -1};
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+  client.ctrl_socket_ = fds[0];
+
+  Status ret = client.CheckAlive();
+  EXPECT_EQ(ret, SUCCESS);
+
+  CtrlMsgHeader header{};
+  ASSERT_EQ(read(fds[1], &header, sizeof(header)), static_cast<ssize_t>(sizeof(header)));
+  EXPECT_EQ(header.magic, kMagicNumber);
+  EXPECT_EQ(header.body_size, sizeof(CtrlMsgType));
+  CtrlMsgType msg_type{};
+  ASSERT_EQ(read(fds[1], &msg_type, sizeof(msg_type)), static_cast<ssize_t>(sizeof(msg_type)));
+  EXPECT_EQ(msg_type, CtrlMsgType::kHeartBeat);
+
+  EXPECT_EQ(client.Finalize(), SUCCESS);
+  close(fds[1]);
+}
+
+TEST_F(HixlClientUTest, CheckAliveBrokenPipeReturnsFailed) {
+  CtrlMsgPlugin::Initialize();
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16001";
+  HixlClient client("127.0.0.1", kServerPort, config);
+  int32_t fds[2] = {-1, -1};
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+  client.ctrl_socket_ = fds[0];
+  close(fds[1]);
+
+  Status ret = client.CheckAlive();
+  EXPECT_EQ(ret, FAILED);
+  EXPECT_EQ(client.ctrl_socket_, -1);
+}
+
+TEST_F(HixlClientUTest, CheckAliveInvalidControlSocketFails) {
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16001";
+  HixlClient client("127.0.0.1", kServerPort, config);
+
+  Status ret = client.CheckAlive();
+  EXPECT_EQ(ret, FAILED);
 }
 
 }  // namespace hixl
