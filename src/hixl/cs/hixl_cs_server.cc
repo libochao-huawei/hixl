@@ -321,16 +321,20 @@ Status HixlCSServer::MatchEndpointMsg(int32_t fd, const char *msg, uint64_t msg_
     HIXL_DISMISS_GUARD(failed);
     return SUCCESS;
   }
-  //获取监听端口
   uint32_t listen_port = 0;
-  auto ret = HcommProxy::EndpointGetListenPort(handle, &listen_port);
-  if (ret == HCCL_SUCCESS) {
+  if (req.listen_port > 0) {
+    listen_port = req.listen_port;
     ep->SetPort(listen_port);
-  } else if (ret == HCCL_E_NOT_SUPPORT) {
-    HIXL_LOGW("HcommEndpointGetListenPort is not supported.");
   } else {
-    HIXL_LOGE(FAILED, "HcommEndpointGetListenPort failed, ret: 0x%X.", static_cast<uint32_t>(ret));
-    return FAILED;
+    auto ret = HcommProxy::EndpointGetListenPort(handle, &listen_port);
+    if (ret == HCCL_SUCCESS) {
+      ep->SetPort(listen_port);
+    } else if (ret == HCCL_E_NOT_SUPPORT) {
+      HIXL_LOGW("HcommEndpointGetListenPort is not supported.");
+    } else {
+      HIXL_LOGE(FAILED, "HcommEndpointGetListenPort failed, ret: 0x%X.", static_cast<uint32_t>(ret));
+      return FAILED;
+    }
   }
   resp.result = SUCCESS;
   resp.dst_ep_handle = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(handle));

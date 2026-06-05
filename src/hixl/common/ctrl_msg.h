@@ -50,6 +50,7 @@ struct CtrlMsg {
 
 struct MatchEndpointReq {
   EndpointDesc dst;
+  uint32_t listen_port = 0;
 };
 
 struct MatchEndpointResp {
