@@ -258,14 +258,14 @@ class ProcfsRouteHandler {
 
  private:
   // 私有辅助方法
-  std::string FindProcBasePath();
-  bool ReadFileToString(const std::string &path, std::string &content);
-  bool WriteStringToFile(const std::string &path, const std::string &content);
-  std::string TrimString(const std::string &s);
-  bool ParseSlotIdFromLine(const std::string &line, std::string &slot_id);
-  bool ParseEidFromLine(const std::string &line, const std::string &prefix, std::string &eid);
-  std::string FormatEidValue(const std::string &eid);
-  size_t SelectEidIndexByNpuId(int32_t npu_id, size_t local_count, size_t remote_count);
+  std::string FindProcBasePath() const;
+  bool ReadFileToString(const std::string &path, std::string &content) const;
+  bool WriteStringToFile(const std::string &path, const std::string &content) const;
+  std::string TrimString(const std::string &s) const;
+  bool ParseSlotIdFromLine(const std::string &line, std::string &slot_id) const;
+  bool ParseEidFromLine(const std::string &line, const std::string &prefix, std::string &eid) const;
+  std::string FormatEidValue(const std::string &eid) const;
+  size_t SelectEidIndexByNpuId(int32_t npu_id, size_t local_count, size_t remote_count) const;
   bool CollectEidsFromPairInfo(const std::string &pair_info_content, std::string &found_slot_id,
                                std::vector<std::string> &local_eids, std::vector<std::string> &remote_eids);
   bool ParsePairInfoForDevice(const std::string &pair_info_content, int32_t npu_id, int32_t &slot_id,
@@ -297,8 +297,8 @@ class TopoFileFinder {
   std::string FindTopoFile(const std::string &topo_dir, uint32_t mainboard_id);
 
  private:
-  bool IsProductServer(uint32_t mainboard_id);
-  bool MatchProductForm(uint32_t mainboard_id, std::string &topo_prefix);
+  bool IsProductServer(uint32_t mainboard_id) const;
+  bool MatchProductForm(uint32_t mainboard_id, std::string &topo_prefix) const;
 };
 
 }  // namespace hixl

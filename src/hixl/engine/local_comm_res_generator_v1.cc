@@ -76,6 +76,19 @@ inline bool IsFileExists(const std::string &path) {
   return (stat(path.c_str(), &buffer) == 0);
 }
 
+// 文件路径规范化与校验：使用 mmRealPath 解析符号链接、"."、".." 等
+// 解析成功返回规范化后的绝对路径；失败返回空字符串
+inline std::string CanonicalizeFilePath(const std::string &path) {
+  if (path.empty()) {
+    return "";
+  }
+  char resolved_path[MMPA_MAX_PATH] = {0};
+  if (mmRealPath(path.c_str(), resolved_path, MMPA_MAX_PATH) != EN_OK) {
+    return "";
+  }
+  return std::string(resolved_path);
+}
+
 // 魔法数字常量
 constexpr size_t kHexPrefixLength = 2;    // "0x" 前缀长度
 constexpr size_t kNpuGroupSize = 8;       // NPU 分组大小
@@ -84,13 +97,17 @@ constexpr size_t kPgEidSecondIndex = 1;   // PG EID 第二索引
 constexpr size_t kSecondElementSize = 2;  // 第二元素 size 检查
 constexpr uint32_t kOddParity = 1;        // 奇校验
 constexpr uint32_t kEvenParity = 0;       // 偶校验
+constexpr size_t kEidNamePrefixLen = 3;   // "eid" 前缀长度
+constexpr uint32_t kParityModuloBase = 2; // 奇偶校验模基数
+constexpr size_t kSkipReasonCount = 4;    // ShouldSkipD2DLink 跳过原因分类数
+constexpr int32_t kJsonIndentSpaces = 2;  // JSON 输出缩进空格数
 
 // 产品形态判断函数
 inline bool IsProductServer(uint32_t mainboard_id) {
   return ((mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax1 &&
-           (mainboard_id % 2 == kOddParity)) ||
+           (mainboard_id % kParityModuloBase == kOddParity)) ||
           (mainboard_id >= kMainboardIdServerMin2 && mainboard_id <= kMainboardIdServerMax2 &&
-           (mainboard_id % 2 == kEvenParity)));
+           (mainboard_id % kParityModuloBase == kEvenParity)));
 }
 
 // topo 文件名前缀
@@ -172,8 +189,22 @@ std::string GetUrmaAdminPath() {
   return "urma_admin";  // 相对路径，从 PATH 查找
 }
 
+// 检查 urma_admin 子命令是否安全：拒绝包含 shell 元字符的输入，避免命令注入
+inline bool IsCommandSafe(const std::string &cmd) {
+  if (cmd.empty()) {
+    return false;
+  }
+  // 拒绝任何 shell 元字符或控制字符
+  const std::string forbidden = ";&|`$<>\\\"'*?\n\r\t (){}[]#~!";
+  return cmd.find_first_of(forbidden) == std::string::npos;
+}
+
 // urma_admin 命令执行函数
 int32_t DefaultUrmaAdminExec(const std::string &cmd, std::string &output) {
+  if (!IsCommandSafe(cmd)) {
+    HIXL_LOGW("[DefaultUrmaAdminExec] rejected unsafe command input");
+    return FAILED;
+  }
   auto urma_path = GetUrmaAdminPath();
   HIXL_LOGI("[DefaultUrmaAdminExec] resolved urma_admin path: '%s'", urma_path.c_str());
   if (urma_path.empty()) {
@@ -234,7 +265,7 @@ int32_t ParseUrmaAdminOutput(const std::string &cmd_output, std::vector<UrmaEidE
     // 提取 eid_index: "eid1" → 1
     int eid_index = 0;
     try {
-      eid_index = std::stoi(eid_name.substr(3));
+      eid_index = std::stoi(eid_name.substr(kEidNamePrefixLen));
     } catch (const std::exception &) {
       continue;
     }
@@ -382,7 +413,7 @@ TopoFileFinder::TopoFileFinder() {}
 
 TopoFileFinder::~TopoFileFinder() {}
 
-bool TopoFileFinder::MatchProductForm(uint32_t mainboard_id, std::string &topo_prefix) {
+bool TopoFileFinder::MatchProductForm(uint32_t mainboard_id, std::string &topo_prefix) const {
   if (mainboard_id == kMainboardIdPod1 || mainboard_id == kMainboardIdPod2 || mainboard_id == kMainboardIdPod3) {
     topo_prefix = kTopoPrefixAtlas950;
     return true;
@@ -394,11 +425,11 @@ bool TopoFileFinder::MatchProductForm(uint32_t mainboard_id, std::string &topo_p
   return false;
 }
 
-bool TopoFileFinder::IsProductServer(uint32_t mainboard_id) {
+bool TopoFileFinder::IsProductServer(uint32_t mainboard_id) const {
   return ((mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax1 &&
-           (mainboard_id % 2 == kOddParity)) ||
+           (mainboard_id % kParityModuloBase == kOddParity)) ||
           (mainboard_id >= kMainboardIdServerMin2 && mainboard_id <= kMainboardIdServerMax2 &&
-           (mainboard_id % 2 == kEvenParity)));
+           (mainboard_id % kParityModuloBase == kEvenParity)));
 }
 
 std::string TopoFileFinder::FindTopoFile(const std::string &topo_dir, uint32_t mainboard_id) {
@@ -451,7 +482,7 @@ ProcfsRouteHandler::ProcfsRouteHandler(std::string proc_base_path)
 
 ProcfsRouteHandler::~ProcfsRouteHandler() {}
 
-std::string ProcfsRouteHandler::FindProcBasePath() {
+std::string ProcfsRouteHandler::FindProcBasePath() const {
   // 显式注入的路径优先；空字符串表示走默认 ascend_ub / asdrv_ub 自动发现
   if (!injected_proc_base_path_.empty()) {
     if (IsFileExists(injected_proc_base_path_ + "/" + kProcDevIdFile)) {
@@ -469,14 +500,22 @@ std::string ProcfsRouteHandler::FindProcBasePath() {
   return "";
 }
 
-bool ProcfsRouteHandler::ReadFileToString(const std::string &path, std::string &content) {
-  if (mmAccess(path.c_str()) != EN_OK) {
-    HIXL_LOGW("[ReadFileToString] File access check failed: %s, errno=%d(%s)", path.c_str(), errno, strerror(errno));
+bool ProcfsRouteHandler::ReadFileToString(const std::string &path, std::string &content) const {
+  std::string canonical_path = CanonicalizeFilePath(path);
+  if (canonical_path.empty()) {
+    HIXL_LOGW("[ReadFileToString] Failed to canonicalize file path: %s, errno=%d(%s)", path.c_str(), errno,
+              strerror(errno));
     return false;
   }
-  std::ifstream file(path);
+  if (mmAccess(canonical_path.c_str()) != EN_OK) {
+    HIXL_LOGW("[ReadFileToString] File access check failed: %s, errno=%d(%s)", canonical_path.c_str(), errno,
+              strerror(errno));
+    return false;
+  }
+  std::ifstream file(canonical_path);
   if (!file.is_open()) {
-    HIXL_LOGW("[ReadFileToString] Failed to open file: %s, errno=%d(%s)", path.c_str(), errno, strerror(errno));
+    HIXL_LOGW("[ReadFileToString] Failed to open file: %s, errno=%d(%s)", canonical_path.c_str(), errno,
+              strerror(errno));
     return false;
   }
   std::ostringstream oss;
@@ -485,27 +524,34 @@ bool ProcfsRouteHandler::ReadFileToString(const std::string &path, std::string &
   return true;
 }
 
-bool ProcfsRouteHandler::WriteStringToFile(const std::string &path, const std::string &content) {
-  int fd = open(path.c_str(), O_WRONLY);
+bool ProcfsRouteHandler::WriteStringToFile(const std::string &path, const std::string &content) const {
+  std::string canonical_path = CanonicalizeFilePath(path);
+  if (canonical_path.empty()) {
+    HIXL_LOGW("[WriteStringToFile] Failed to canonicalize file path: %s, errno=%d(%s)", path.c_str(), errno,
+              strerror(errno));
+    return false;
+  }
+  int fd = open(canonical_path.c_str(), O_WRONLY);
   if (fd < 0) {
-    HIXL_LOGW("[WriteStringToFile] Failed to open %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
+    HIXL_LOGW("[WriteStringToFile] Failed to open %s: errno=%d(%s)", canonical_path.c_str(), errno, strerror(errno));
     return false;
   }
   ssize_t written = write(fd, content.c_str(), content.size());
   if (written < 0) {
-    HIXL_LOGW("[WriteStringToFile] write() failed for %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
+    HIXL_LOGW("[WriteStringToFile] write() failed for %s: errno=%d(%s)", canonical_path.c_str(), errno,
+              strerror(errno));
   }
   close(fd);
   fd = -1;
   if (written != static_cast<ssize_t>(content.size())) {
-    HIXL_LOGW("[WriteStringToFile] Incomplete write to %s: written=%zd, expected=%zu", path.c_str(), written,
+    HIXL_LOGW("[WriteStringToFile] Incomplete write to %s: written=%zd, expected=%zu", canonical_path.c_str(), written,
               content.size());
     return false;
   }
   return true;
 }
 
-std::string ProcfsRouteHandler::TrimString(const std::string &s) {
+std::string ProcfsRouteHandler::TrimString(const std::string &s) const {
   size_t start = s.find_first_not_of(" \t\r\n");
   if (start == std::string::npos) {
     return "";
@@ -514,7 +560,7 @@ std::string ProcfsRouteHandler::TrimString(const std::string &s) {
   return s.substr(start, end - start + 1);
 }
 
-bool ProcfsRouteHandler::ParseSlotIdFromLine(const std::string &line, std::string &slot_id) {
+bool ProcfsRouteHandler::ParseSlotIdFromLine(const std::string &line, std::string &slot_id) const {
   if (line.find("dev_id=") == std::string::npos) {
     return false;
   }
@@ -526,7 +572,7 @@ bool ProcfsRouteHandler::ParseSlotIdFromLine(const std::string &line, std::strin
   return true;
 }
 
-bool ProcfsRouteHandler::ParseEidFromLine(const std::string &line, const std::string &prefix, std::string &eid) {
+bool ProcfsRouteHandler::ParseEidFromLine(const std::string &line, const std::string &prefix, std::string &eid) const {
   if (line.find(prefix) == std::string::npos) {
     return false;
   }
@@ -538,18 +584,18 @@ bool ProcfsRouteHandler::ParseEidFromLine(const std::string &line, const std::st
   return !eid.empty();
 }
 
-std::string ProcfsRouteHandler::FormatEidValue(const std::string &eid) {
+std::string ProcfsRouteHandler::FormatEidValue(const std::string &eid) const {
   std::string result = eid;
   // 去掉 0x 前缀
-  if (result.size() >= 2 && result[0] == '0' && (result[1] == 'x' || result[1] == 'X')) {
-    result = result.substr(2);
+  if (result.size() >= kHexPrefixLength && result[0] == '0' && (result[1] == 'x' || result[1] == 'X')) {
+    result = result.substr(kHexPrefixLength);
   }
   // 去掉所有冒号
   result.erase(std::remove(result.begin(), result.end(), ':'), result.end());
   return result;
 }
 
-size_t ProcfsRouteHandler::SelectEidIndexByNpuId(int32_t npu_id, size_t local_count, size_t remote_count) {
+size_t ProcfsRouteHandler::SelectEidIndexByNpuId(int32_t npu_id, size_t local_count, size_t remote_count) const {
   int32_t group_offset = npu_id % 8;
   size_t eid_idx = (group_offset < 4) ? 0 : 1;  // 前4个用第一组，后4个用第二组
   if (eid_idx >= local_count || eid_idx >= remote_count) {
@@ -883,13 +929,21 @@ static int32_t ParseSingleLink(const nlohmann::json &edge, TopoLink &link) {
 }
 
 static int32_t ParseTopoJson(const std::string &topo_path, nlohmann::json &j) {
-  if (mmAccess(topo_path.c_str()) != EN_OK) {
-    HIXL_LOGE(PARAM_INVALID, "Topo file access failed: %s, errno=%d(%s)", topo_path.c_str(), errno, strerror(errno));
+  std::string canonical_path = CanonicalizeFilePath(topo_path);
+  if (canonical_path.empty()) {
+    HIXL_LOGE(PARAM_INVALID, "Topo file path canonicalize failed: %s, errno=%d(%s)", topo_path.c_str(), errno,
+              strerror(errno));
     return PARAM_INVALID;
   }
-  std::ifstream file(topo_path);
+  if (mmAccess(canonical_path.c_str()) != EN_OK) {
+    HIXL_LOGE(PARAM_INVALID, "Topo file access failed: %s, errno=%d(%s)", canonical_path.c_str(), errno,
+              strerror(errno));
+    return PARAM_INVALID;
+  }
+  std::ifstream file(canonical_path);
   if (!file.is_open()) {
-    HIXL_LOGE(PARAM_INVALID, "Failed to open topo file: %s, errno=%d(%s)", topo_path.c_str(), errno, strerror(errno));
+    HIXL_LOGE(PARAM_INVALID, "Failed to open topo file: %s, errno=%d(%s)", canonical_path.c_str(), errno,
+              strerror(errno));
     return PARAM_INVALID;
   }
 
@@ -902,7 +956,7 @@ static int32_t ParseTopoJson(const std::string &topo_path, nlohmann::json &j) {
   file.close();
 
   if (!j.contains("edge_list") || !j["edge_list"].is_array() || j["edge_list"].empty()) {
-    HIXL_LOGE(FAILED, "No or empty edge_list found in: %s", topo_path.c_str());
+    HIXL_LOGE(FAILED, "No or empty edge_list found in: %s", canonical_path.c_str());
     return FAILED;
   }
   return SUCCESS;
@@ -1018,7 +1072,7 @@ int32_t GenerateD2DEdges(const TopoData &topo_data, const std::map<int32_t, NpuR
   HIXL_LOGI("D2D: phy_id=%d, topo_links=%zu, self_rootinfo_size=%zu", phy_id, topo_data.links.size(),
             self_rootinfo.port_to_eid.size());
 
-  std::array<size_t, 4> skip_reason = {0, 0, 0, 0};
+  std::array<size_t, kSkipReasonCount> skip_reason = {0, 0, 0, 0};
   size_t no_rootinfo_peer = 0;
   size_t no_port_match_local = 0;
   size_t no_port_match_peer = 0;
@@ -1091,7 +1145,8 @@ int32_t GenerateD2HEdges(const RouteData &route_data, int32_t phy_dev_id, std::v
   HIXL_LOGI("D2H: route_entries=%zu, phy_dev_id=%d", route_data.entries.size(), phy_dev_id);
 
   for (const auto &entry : route_data.entries) {
-    if (entry.device_id != (phy_dev_id % 8)) {
+    auto target_device_id = static_cast<int32_t>(phy_dev_id % kNpuGroupSize);
+    if (entry.device_id != target_device_id) {
       continue;
     }
     EndpointConfig edge;
@@ -1422,7 +1477,7 @@ int32_t TransLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, cons
   }
 
   // 3. 通过 AscendString 返回（内部封装 shared_ptr<std::string>，跨 .so 边界 ABI 安全）
-  result = AscendString(j.dump(2).c_str());
+  result = AscendString(j.dump(kJsonIndentSpaces).c_str());
   return SUCCESS;
 }
 
