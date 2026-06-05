@@ -19,13 +19,13 @@
 
 HixlStatus HixlCSServerCreate(const HixlServerDesc *server_desc,
                               const HixlServerConfig *config, HixlServerHandle *server_handle) {
+  (void)config;
   HIXL_CHECK_NOTNULL(server_handle);
   HIXL_CHECK_NOTNULL(server_desc);
-  HIXL_CHECK_NOTNULL(config);
   auto server = new (std::nothrow) hixl::HixlCSServer(server_desc->server_ip, server_desc->server_port);
   HIXL_CHECK_NOTNULL(server);
   HIXL_DISMISSABLE_GUARD(rollback, ([server]() { delete server; }));
-  HIXL_CHK_STATUS_RET(server->Initialize(server_desc->endpoint_list, server_desc->endpoint_list_num, config),
+  HIXL_CHK_STATUS_RET(server->Initialize(server_desc->endpoint_list, server_desc->endpoint_list_num),
                       "Failed to init hixl cs server, ip:%s, port:%u",
                       server_desc->server_ip, server_desc->server_port);
   HIXL_DISMISS_GUARD(rollback);

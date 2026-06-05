@@ -355,18 +355,16 @@ TEST_F(HixlCSTest, TestEndpointGetListenPortError) {
   EXPECT_EQ(HixlCSServerDestroy(server_handle), SUCCESS);
 }
 
-TEST_F(HixlCSTest, TestCreateServerInvalidJsonConfig) {
-  HixlServerConfig config{};
-  config.global_resource_config = "{invalid json";
+TEST_F(HixlCSTest, TestCreateServerWithNullConfig) {
   HixlServerHandle server_handle = nullptr;
   HixlServerDesc desc{};
   desc.server_ip = "127.0.0.1";
   desc.server_port = kPort;
   desc.endpoint_list = &default_eps[0];
   desc.endpoint_list_num = default_eps.size();
-  auto ret = HixlCSServerCreate(&desc, &config, &server_handle);
+  auto ret = HixlCSServerCreate(&desc, nullptr, &server_handle);
   EXPECT_EQ(ret, SUCCESS);
-  HixlCSServerDestroy(server_handle);
+  EXPECT_EQ(HixlCSServerDestroy(server_handle), SUCCESS);
 }
 
 TEST_F(HixlCSTest, TestStructSize) {

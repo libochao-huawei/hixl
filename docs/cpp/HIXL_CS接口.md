@@ -51,8 +51,7 @@ Server配置。
 
 ```
 struct HixlServerConfig {
-  const char *global_resource_config = nullptr;
-  uint8_t reserved[120] = {};
+  uint8_t reserved[128] = {};
 };
 ```
 
@@ -60,8 +59,7 @@ struct HixlServerConfig {
 
 | 字段 | 类型 | 描述 |
 |---|---|---|
-| global_resource_config | const char* | 预留字段，当前Server侧不使用。建议传入NULL。 |
-| reserved | uint8_t[120] | HixlServerConfig配置保留字段，用于未来扩展，结构体总大小保持为128字节。 |
+| reserved | uint8_t[128] | HixlServerConfig配置保留字段，用于未来扩展，结构体总大小保持为128字节。 |
 
 ### HixlClientConfig
 
@@ -214,7 +212,7 @@ HixlStatus HixlCSServerCreate(const HixlServerDesc *server_desc,
 | 参数名 | 输入/输出 | 描述 |
 | --- | --- | --- |
 | server_desc | 输入 | Server 描述信息，包含侦听 IP/端口与端点列表。 |
-| config | 输入 | Server配置。可传入NULL；`HixlServerConfig.global_resource_config`当前不使用。 |
+| config | 输入 | Server配置，预留配置，当前不使用，可传入NULL。 |
 | server_handle | 输出 | 返回创建的 HixlServerHandle。 |
 
 **返回值**

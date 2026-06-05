@@ -30,8 +30,7 @@ static const uint32_t HIXL_TIMEOUT = 103901U;
 static const uint32_t HIXL_FAILED = 503900U;
 
 struct HixlServerConfig {
-  const char *global_resource_config = nullptr;
-  uint8_t reserved[120] = {};
+  uint8_t reserved[128] = {};
 };
 
 struct HixlClientConfig {

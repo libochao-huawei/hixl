@@ -128,9 +128,8 @@ Status HixlCSServer::RegisterDeviceTransFinishedFlag() {
   return SUCCESS;
 }
 
-Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list_num, const HixlServerConfig *config) {
+Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list_num) {
   HIXL_CHECK_NOTNULL(endpoint_list);
-  HIXL_CHECK_NOTNULL(config);
   HIXL_CHK_BOOL_RET_STATUS(list_num > 0, PARAM_INVALID, "endpoint list num:%u is invalid, must > 0", list_num);
   for (uint32_t i = 0U; i < list_num; ++i) {
     EndpointHandle handle = nullptr;
