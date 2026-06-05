@@ -244,6 +244,27 @@ TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigProtocolDesc) {
   EXPECT_EQ((*grc.comm_resource_config.protocol_desc)[0], "uboe:device");
 }
 
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigProtocolDescString) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
+      R"({"comm_resource_config.protocol_desc":"roce:device"})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  auto grc = *result.GlobalResourceCfg();
+  ASSERT_TRUE(grc.comm_resource_config.protocol_desc.has_value());
+  ASSERT_EQ(grc.comm_resource_config.protocol_desc->size(), 1U);
+  EXPECT_EQ((*grc.comm_resource_config.protocol_desc)[0], "roce:device");
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigProtocolDescInvalidType) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
+      R"({"comm_resource_config.protocol_desc":123})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
+}
+
 TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigInvalidJson) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = "not json";

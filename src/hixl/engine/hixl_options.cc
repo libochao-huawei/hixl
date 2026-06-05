@@ -63,7 +63,12 @@ void from_json(const nlohmann::json &j, ConnectPoolConfig &cfg) {
 
 void from_json(const nlohmann::json &j, CommResourceConfigDesc &cfg) {
   if (j.contains("comm_resource_config.protocol_desc")) {
-    cfg.protocol_desc = j.at("comm_resource_config.protocol_desc").get<std::vector<std::string>>();
+    const auto &protocol_desc = j.at("comm_resource_config.protocol_desc");
+    if (protocol_desc.is_string()) {
+      cfg.protocol_desc = std::vector<std::string>{protocol_desc.get<std::string>()};
+      return;
+    }
+    cfg.protocol_desc = protocol_desc.get<std::vector<std::string>>();
   }
 }
 

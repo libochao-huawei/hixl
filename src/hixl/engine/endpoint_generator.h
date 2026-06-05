@@ -65,6 +65,8 @@ class EndpointGenerator {
                                                   std::vector<EndpointConfig> &endpoint_list);
   static Status GenEndpointFromProtocolDesc(const HixlOptions &options,
                                             std::vector<EndpointConfig> &endpoint_list);
+  static Status FilterEndpointListByProtocolDesc(const HixlOptions &options,
+                                                 std::vector<EndpointConfig> &endpoint_list);
   static Status BuildEndpointListFromLocalCommRes(const nlohmann::json &config,
                                                   bool has_endpoint_list,
                                                   const std::string &local_engine,

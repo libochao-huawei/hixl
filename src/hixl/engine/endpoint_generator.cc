@@ -14,6 +14,7 @@
 #include <arpa/inet.h>
 #include <cctype>
 #include <cstdlib>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <set>
@@ -45,11 +46,6 @@ bool IsIntraRoceEnabled() {
   const char *env_ret = std::getenv("HCCL_INTRA_ROCE_ENABLE");
   HIXL_CHK_BOOL_RET_SPECIAL_STATUS(env_ret == nullptr, false, "HCCL_INTRA_ROCE_ENABLE is not set");
   return std::string(env_ret) == "1";
-}
-
-bool IsUboeProtocolDescEnabled(const std::vector<std::string> &protocol_desc) {
-  return !protocol_desc.empty() &&
-         std::find(protocol_desc.begin(), protocol_desc.end(), kUboeProtocolDesc) != protocol_desc.end();
 }
 
 Status GetUboeIp(std::string &ip) {
@@ -255,6 +251,59 @@ Status ParseEndpointProtocol(const EndpointConfig &endpoint_config, EndpointDesc
   endpoint.protocol = protocol_it->second;
   return SUCCESS;
 }
+
+std::string BuildProtocolDescKey(const std::string &protocol, const std::string &placement) {
+  return protocol + ":" + placement;
+}
+
+bool IsSupportedProtocolDesc(const std::string &protocol, const std::string &placement) {
+  static const std::set<std::string> kSupportedProtocols = {kProtocolRoce, kProtocolHccs, kProtocolUbCtp,
+                                                            kProtocolUbTp, kProtocolUboe};
+  static const std::set<std::string> kSupportedPlacements = {kPlacementHost, kPlacementDevice};
+  return kSupportedProtocols.find(protocol) != kSupportedProtocols.end() &&
+         kSupportedPlacements.find(placement) != kSupportedPlacements.end();
+}
+
+Status ParseProtocolDesc(const std::vector<std::string> &protocol_desc, std::set<std::string> &desc_set) {
+  desc_set.clear();
+  for (const auto &desc : protocol_desc) {
+    const auto split_pos = desc.find(':');
+    if (split_pos == std::string::npos || split_pos == 0U || split_pos + 1U >= desc.size() ||
+        desc.find(':', split_pos + 1U) != std::string::npos) {
+      HIXL_LOGE(PARAM_INVALID, "Invalid protocol_desc: %s, expected format protocol:placement", desc.c_str());
+      return PARAM_INVALID;
+    }
+    const std::string protocol = desc.substr(0, split_pos);
+    const std::string placement = desc.substr(split_pos + 1U);
+    if (!IsSupportedProtocolDesc(protocol, placement)) {
+      HIXL_LOGE(PARAM_INVALID, "Unsupported protocol_desc: %s", desc.c_str());
+      return PARAM_INVALID;
+    }
+    desc_set.insert(BuildProtocolDescKey(protocol, placement));
+  }
+  return SUCCESS;
+}
+
+std::vector<std::string> GetProtocolDesc(const HixlOptions &options) {
+  auto grc = options.GlobalResourceCfg();
+  if (!grc.has_value() || !grc->comm_resource_config.protocol_desc.has_value()) {
+    return {};
+  }
+  return *grc->comm_resource_config.protocol_desc;
+}
+
+bool NeedBuildDefaultEndpointList(const HixlOptions &options) {
+  std::vector<std::string> protocol_desc = GetProtocolDesc(options);
+  if (protocol_desc.empty()) {
+    return true;
+  }
+
+  std::set<std::string> desc_set;
+  if (ParseProtocolDesc(protocol_desc, desc_set) != SUCCESS) {
+    return false;
+  }
+  return desc_set.size() > 1U || desc_set.find(kUboeProtocolDesc) == desc_set.end();
+}
 }  // namespace
 
 Status EndpointGenerator::ParseEndpointListFromLocalCommRes(const HixlOptions &options,
@@ -279,6 +328,8 @@ Status EndpointGenerator::ParseEndpointListFromLocalCommRes(const HixlOptions &o
       return SUCCESS;
     }
     HIXL_CHK_STATUS_RET(ParseLocalCommRes(config, endpoint_list), "ParseLocalCommRes failed");
+    HIXL_CHK_STATUS_RET(FilterEndpointListByProtocolDesc(options, endpoint_list),
+                        "FilterEndpointListByProtocolDesc failed");
   } catch (const nlohmann::json::exception &e) {
     HIXL_LOGE(PARAM_INVALID, "Parse local_comm_res failed, exception:%s", e.what());
     return PARAM_INVALID;
@@ -290,24 +341,41 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options
                                                       std::vector<EndpointConfig> &endpoint_list) {
   endpoint_list.clear();
 
-  auto grc = options.GlobalResourceCfg();
-  std::vector<std::string> protocol_desc;
-  if (grc.has_value() && grc->comm_resource_config.protocol_desc.has_value()) {
-    protocol_desc = *grc->comm_resource_config.protocol_desc;
-  }
-
+  std::vector<std::string> protocol_desc = GetProtocolDesc(options);
   if (protocol_desc.empty()) {
     return SUCCESS;
   }
 
-  if (!IsUboeProtocolDescEnabled(protocol_desc)) {
-    HIXL_LOGE(PARAM_INVALID, "Unsupported protocol_desc, currently only support uboe:device");
-    return PARAM_INVALID;
+  std::set<std::string> desc_set;
+  HIXL_CHK_STATUS_RET(ParseProtocolDesc(protocol_desc, desc_set), "ParseProtocolDesc failed");
+
+  if (desc_set.find(kUboeProtocolDesc) != desc_set.end()) {
+    EndpointConfig uboe_endpoint{};
+    HIXL_CHK_STATUS_RET(GenDefaultUboeEndpointConfig(uboe_endpoint), "GenDefaultUboeEndpointConfig failed");
+    endpoint_list.emplace_back(uboe_endpoint);
+  }
+  return SUCCESS;
+}
+
+Status EndpointGenerator::FilterEndpointListByProtocolDesc(const HixlOptions &options,
+                                                           std::vector<EndpointConfig> &endpoint_list) {
+  std::vector<std::string> protocol_desc = GetProtocolDesc(options);
+  if (protocol_desc.empty()) {
+    return SUCCESS;
   }
 
-  EndpointConfig uboe_endpoint{};
-  HIXL_CHK_STATUS_RET(GenDefaultUboeEndpointConfig(uboe_endpoint), "GenDefaultUboeEndpointConfig failed");
-  endpoint_list.emplace_back(uboe_endpoint);
+  std::set<std::string> desc_set;
+  HIXL_CHK_STATUS_RET(ParseProtocolDesc(protocol_desc, desc_set), "ParseProtocolDesc failed");
+  std::vector<EndpointConfig> filtered;
+  filtered.reserve(endpoint_list.size());
+  for (auto &ep : endpoint_list) {
+    if (desc_set.find(BuildProtocolDescKey(ep.protocol, ep.placement)) != desc_set.end()) {
+      filtered.emplace_back(std::move(ep));
+    }
+  }
+  endpoint_list = std::move(filtered);
+  HIXL_CHK_BOOL_RET_STATUS(!endpoint_list.empty(), PARAM_INVALID,
+                           "endpoint_list is empty after filtering by protocol_desc");
   return SUCCESS;
 }
 
@@ -321,8 +389,8 @@ Status EndpointGenerator::BuildEndpointList(const HixlOptions &options,
                       "ParseEndpointListFromLocalCommRes failed");
   bool has_endpoint_list = !endpoint_list.empty();
 
-  // Step 2: Generate endpoint from protocol_desc (currently only support uboe)
-  if (endpoint_list.empty()) {
+  // Step 2: For pure uboe:device protocol_desc, keep the existing direct generation path.
+  if (endpoint_list.empty() && !NeedBuildDefaultEndpointList(options)) {
     HIXL_CHK_STATUS_RET(GenEndpointFromProtocolDesc(options, endpoint_list), "GenEndpointFromProtocolDesc failed");
   }
 
@@ -339,12 +407,19 @@ Status EndpointGenerator::BuildEndpointList(const HixlOptions &options,
     }
     HIXL_CHK_STATUS_RET(BuildEndpointListFromLocalCommRes(config, has_endpoint_list, local_engine, endpoint_list),
                         "BuildEndpointListFromLocalCommRes failed");
+    std::vector<EndpointConfig> protocol_desc_endpoints;
+    HIXL_CHK_STATUS_RET(GenEndpointFromProtocolDesc(options, protocol_desc_endpoints),
+                        "GenEndpointFromProtocolDesc failed");
+    endpoint_list.insert(endpoint_list.end(), std::make_move_iterator(protocol_desc_endpoints.begin()),
+                         std::make_move_iterator(protocol_desc_endpoints.end()));
 
     HIXL_CHK_BOOL_RET_STATUS(!endpoint_list.empty(), PARAM_INVALID,
                              "[HixlEngine] endpoint_list is empty after all generation attempts");
   }
 
   // Step 4: Fill device info if needed
+  HIXL_CHK_STATUS_RET(FilterEndpointListByProtocolDesc(options, endpoint_list),
+                      "FilterEndpointListByProtocolDesc failed");
   HIXL_CHK_STATUS_RET(FillDeviceInfoIfNeeded(endpoint_list), "FillDeviceInfoIfNeeded failed");
   return SUCCESS;
 }
