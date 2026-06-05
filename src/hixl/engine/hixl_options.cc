@@ -112,6 +112,14 @@ Status HixlOptions::CheckSupportedOptions(const std::unordered_set<std::string> 
   return SUCCESS;
 }
 
+std::vector<std::string> HixlOptions::GetProtocolDesc() const {
+  if (!global_resource_config_.has_value() ||
+      !global_resource_config_->comm_resource_config.protocol_desc.has_value()) {
+    return {};
+  }
+  return *global_resource_config_->comm_resource_config.protocol_desc;
+}
+
 Status HixlOptions::ParseRdmaOptions(const std::map<AscendString, AscendString> &options) {
   std::string traffic_class_str;
   const auto &hixl_tc_it = options.find(hixl::OPTION_RDMA_TRAFFIC_CLASS);

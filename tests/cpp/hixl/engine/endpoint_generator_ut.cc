@@ -553,14 +553,15 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesOnlyHccs
   (void)remove(file_path.c_str());
 }
 
-TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2AndAppendsUboe) {
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsUboeProtocolDescOnA2) {
   acl_stub_->soc_name_ = "Ascend910B4-1";
   acl_stub_->device_id_ = 0;
   acl_stub_->phy_device_id_ = 3;
-  llm::MmpaStub::GetInstance().SetImpl(std::make_shared<UboeMmpaStub>());
-
-  const std::string script_path = CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:192.168.100.200\"\n");
-  setenv("PATH", "/tmp", 1);
+  const std::string file_path =
+      test::CreateTempFileWithContent("/tmp/loc_comm_res_ut_XXXXXX", "address_3=10.10.10.3\n");
+  mmpa_stub_->real_path_ok_ = true;
+  mmpa_stub_->access_ok_ = true;
+  mmpa_stub_->fake_real_path_ = file_path;
 
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(R"({"version":"1.3"})");
@@ -572,15 +573,12 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2And
 
   std::string local_comm_res;
   std::vector<EndpointConfig> endpoint_list;
-  CallBuildEndpointList(options, "192.168.1.8:26000", local_comm_res, endpoint_list);
-  EXPECT_EQ(local_comm_res, R"({"version":"1.3"})");
-  ASSERT_EQ(endpoint_list.size(), 1U);
-  EXPECT_EQ(endpoint_list[0].protocol, kProtocolUboe);
-  EXPECT_EQ(endpoint_list[0].comm_id, "192.168.100.200");
-  EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
-  EXPECT_EQ(endpoint_list[0].net_instance_id, "default_superpod1_1");
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+  EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "192.168.1.8:26000", local_comm_res, endpoint_list),
+            PARAM_INVALID);
 
-  (void)remove(script_path.c_str());
+  (void)remove(file_path.c_str());
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsPrefersHixlOptionOverAdxl) {
@@ -620,7 +618,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsEmptyLocalComm
   }
 }
 
-TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesBaseEndpointsAndUboeWhenLocalCommResMissing) {
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsUboeProtocolDescOnA3) {
   acl_stub_->soc_name_ = "Ascend910_9391";
   acl_stub_->device_id_ = 0;
   acl_stub_->phy_device_id_ = 3;
@@ -632,28 +630,24 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesBaseEndp
       test::CreateTempFileWithContent("/tmp/loc_comm_res_ut_XXXXXX", "address_3=10.10.10.3\n");
   uboe_mmpa_stub->fake_real_path_ = file_path;
   llm::MmpaStub::GetInstance().SetImpl(uboe_mmpa_stub);
-  const std::string script_path = CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:192.168.100.200\"\n");
-  setenv("PATH", "/tmp", 1);
 
   std::map<AscendString, AscendString> options;
   SetUboeProtocolDescOption(options);
 
   std::string local_comm_res;
   std::vector<EndpointConfig> endpoint_list;
-  CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
-  EXPECT_TRUE(local_comm_res.empty());
-  ASSERT_EQ(endpoint_list.size(), 1U);
-  EXPECT_EQ(endpoint_list[0].protocol, kProtocolUboe);
-  EXPECT_EQ(endpoint_list[0].comm_id, "192.168.100.200");
-  EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
-  EXPECT_EQ(endpoint_list[0].net_instance_id, "default_superpod1_1");
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+  EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
+            PARAM_INVALID);
 
   (void)remove(file_path.c_str());
-  (void)remove(script_path.c_str());
 }
 
-TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsGeneratesOnlyUboeWhenLocalCommResMissingOnOtherSoc) {
-  acl_stub_->soc_name_ = "Ascend310P";
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsGeneratesUboeWhenConfiguredOnA5) {
+  acl_stub_->soc_name_ = "Ascend950A";
+  acl_stub_->device_id_ = 0;
+  acl_stub_->phy_device_id_ = 3;
   llm::MmpaStub::GetInstance().SetImpl(std::make_shared<UboeMmpaStub>());
   const std::string script_path = CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:192.168.100.205\"\n");
   setenv("PATH", "/tmp", 1);
@@ -670,7 +664,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsGeneratesOnlyUboeWhen
   (void)remove(script_path.c_str());
 }
 
-TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsDoesNotAppendUboeWhenLocalCommResHasEndpointList) {
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsManualLocalCommResWhenUboeOnly) {
   llm::MmpaStub::GetInstance().SetImpl(std::make_shared<UboeMmpaStub>());
   const std::string script_path = CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:192.168.100.203\"\n");
   setenv("PATH", "/tmp", 1);
@@ -681,15 +675,15 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsDoesNotAppendUboeWhen
 
   std::string local_comm_res;
   std::vector<EndpointConfig> endpoint_list;
-  CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
-  ASSERT_EQ(endpoint_list.size(), 1U);
-  EXPECT_EQ(endpoint_list[0].protocol, kProtocolRoce);
-  EXPECT_EQ(endpoint_list[0].comm_id, "127.0.0.1");
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+  EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
+            PARAM_INVALID);
 
   (void)remove(script_path.c_str());
 }
 
-TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsGeneratesUboeWhenLocalCommResEndpointListIsEmpty) {
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsUboeOnA2WhenLocalCommResEndpointListIsEmpty) {
   llm::MmpaStub::GetInstance().SetImpl(std::make_shared<UboeMmpaStub>());
   acl_stub_->soc_name_ = "Ascend910B4-1";
   acl_stub_->device_id_ = 0;
@@ -714,11 +708,10 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsGeneratesUboeWhenLoca
 
   std::string local_comm_res;
   std::vector<EndpointConfig> endpoint_list;
-  CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
-  ASSERT_EQ(endpoint_list.size(), 1U);
-  EXPECT_EQ(endpoint_list[0].protocol, kProtocolUboe);
-  EXPECT_EQ(endpoint_list[0].comm_id, "192.168.100.204");
-  EXPECT_EQ(endpoint_list[0].net_instance_id, "default_superpod1_1");
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+  EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
+            PARAM_INVALID);
 
   (void)remove(file_path.c_str());
   (void)remove(script_path.c_str());
@@ -745,10 +738,8 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolD
   std::string local_comm_res;
   std::vector<EndpointConfig> endpoint_list;
   CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
-  ASSERT_EQ(endpoint_list.size(), 2U);
+  ASSERT_EQ(endpoint_list.size(), 1U);
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolRoce);
-  EXPECT_EQ(endpoint_list[1].protocol, kProtocolUboe);
-  EXPECT_EQ(endpoint_list[1].comm_id, "192.168.100.201");
 
   (void)remove(file_path.c_str());
   (void)remove(script_path.c_str());
@@ -775,10 +766,8 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolD
   std::string local_comm_res;
   std::vector<EndpointConfig> endpoint_list;
   CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
-  ASSERT_EQ(endpoint_list.size(), 2U);
+  ASSERT_EQ(endpoint_list.size(), 1U);
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolRoce);
-  EXPECT_EQ(endpoint_list[1].protocol, kProtocolUboe);
-  EXPECT_EQ(endpoint_list[1].comm_id, "192.168.100.202");
 
   (void)remove(file_path.c_str());
   (void)remove(script_path.c_str());
