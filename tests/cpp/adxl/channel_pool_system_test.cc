@@ -19,7 +19,44 @@
 #include "adxl/channel_msg_handler.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
 #include "depends/mmpa/src/mmpa_stub.h"
-namespace hixl{
+namespace hixl {
+namespace {
+constexpr char kClientPoolClientAddr[] = "127.0.0.1:26110";
+constexpr char kClientPoolServer0Addr[] = "127.0.0.1:26111";
+constexpr char kClientPoolServer1Addr[] = "127.0.0.1:26112";
+constexpr char kClientPoolServer2Addr[] = "127.0.0.1:26113";
+constexpr char kClientPoolServer3Addr[] = "127.0.0.1:26114";
+constexpr char kServerPoolServerAddr[] = "127.0.0.1:27100";
+constexpr char kServerPoolClient0Addr[] = "127.0.0.1:27101";
+constexpr char kServerPoolClient1Addr[] = "127.0.0.1:27102";
+constexpr char kServerPoolClient2Addr[] = "127.0.0.1:27103";
+constexpr char kServerPoolClient3Addr[] = "127.0.0.1:27104";
+constexpr char kTransferEvictionServerAddr[] = "127.0.0.1:27105";
+constexpr char kTransferEvictionClient0Addr[] = "127.0.0.1:27106";
+constexpr char kTransferEvictionClient1Addr[] = "127.0.0.1:27107";
+constexpr char kTransferEvictionClient2Addr[] = "127.0.0.1:27108";
+constexpr char kTransferEvictionClient3Addr[] = "127.0.0.1:27110";
+constexpr char kWaterlineTestAddr[] = "127.0.0.1:27111";
+constexpr char kConcurrentSyncClientAddr[] = "127.0.0.1:26120";
+constexpr char kConcurrentSyncServer0Addr[] = "127.0.0.1:26121";
+constexpr char kConcurrentSyncServer1Addr[] = "127.0.0.1:26122";
+constexpr char kConcurrentSyncServer2Addr[] = "127.0.0.1:26123";
+constexpr char kConcurrentSyncServer3Addr[] = "127.0.0.1:26124";
+constexpr char kConcurrentAsyncClientAddr[] = "127.0.0.1:26130";
+constexpr char kConcurrentAsyncServer0Addr[] = "127.0.0.1:26131";
+constexpr char kConcurrentAsyncServer1Addr[] = "127.0.0.1:26132";
+constexpr char kConcurrentAsyncServer2Addr[] = "127.0.0.1:26133";
+constexpr char kConcurrentAsyncServer3Addr[] = "127.0.0.1:26134";
+constexpr char kConcurrentSyncSingleClientAddr[] = "127.0.0.1:26140";
+constexpr char kConcurrentSyncSingleServerAddr[] = "127.0.0.1:26141";
+constexpr char kConcurrentAsyncSingleClientAddr[] = "127.0.0.1:26150";
+constexpr char kConcurrentAsyncSingleServerAddr[] = "127.0.0.1:26151";
+constexpr char kResourceExhaustedClientAddr[] = "127.0.0.1:26160";
+constexpr char kResourceExhaustedServer0Addr[] = "127.0.0.1:26161";
+constexpr char kResourceExhaustedServer1Addr[] = "127.0.0.1:26162";
+constexpr char kResourceExhaustedServer2Addr[] = "127.0.0.1:26163";
+constexpr char kResourceExhaustedServer3Addr[] = "127.0.0.1:26164";
+}  // namespace
 
 class ChannelPoolSystemTest : public ::testing::Test {
  protected:
@@ -42,33 +79,33 @@ class ChannelPoolSystemTest : public ::testing::Test {
 TEST_F(ChannelPoolSystemTest, ClientChannelPoolSystemTest) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl client_;
-  client_.Initialize("127.0.0.1:20000", options_);
+  client_.Initialize(kClientPoolClientAddr, options_);
   llm::AutoCommResRuntimeMock::SetDevice(1);
   Hixl server_;
-  server_.Initialize("127.0.0.1:20001", options_);
+  server_.Initialize(kClientPoolServer0Addr, options_);
   // set device 2
   llm::AutoCommResRuntimeMock::SetDevice(2);
   Hixl server1_;
-  server1_.Initialize("127.0.0.1:20002", options_);
+  server1_.Initialize(kClientPoolServer1Addr, options_);
   // set device 3
   llm::AutoCommResRuntimeMock::SetDevice(3);
   Hixl server2_;
-  server2_.Initialize("127.0.0.1:20003", options_);
+  server2_.Initialize(kClientPoolServer2Addr, options_);
   // set device 4
   llm::AutoCommResRuntimeMock::SetDevice(4);
   Hixl server3_;
-  server3_.Initialize("127.0.0.1:20004", options_);
-  EXPECT_EQ(client_.Connect("127.0.0.1:20001"), SUCCESS);
-  EXPECT_EQ(client_.Connect("127.0.0.1:20001"), ALREADY_CONNECTED);
-  EXPECT_EQ(client_.Connect("127.0.0.1:20002"), SUCCESS);
-  EXPECT_EQ(client_.Connect("127.0.0.1:20003"), SUCCESS);
-  EXPECT_EQ(client_.Connect("127.0.0.1:20004"), SUCCESS);
+  server3_.Initialize(kClientPoolServer3Addr, options_);
+  EXPECT_EQ(client_.Connect(kClientPoolServer0Addr), SUCCESS);
+  EXPECT_EQ(client_.Connect(kClientPoolServer0Addr), ALREADY_CONNECTED);
+  EXPECT_EQ(client_.Connect(kClientPoolServer1Addr), SUCCESS);
+  EXPECT_EQ(client_.Connect(kClientPoolServer2Addr), SUCCESS);
+  EXPECT_EQ(client_.Connect(kClientPoolServer3Addr), SUCCESS);
   // sleep 500 ms for eviction
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
   
-  EXPECT_EQ(client_.Disconnect("127.0.0.1:20001"), NOT_CONNECTED);
-  EXPECT_EQ(client_.Disconnect("127.0.0.1:20002"), NOT_CONNECTED);
-  EXPECT_EQ(client_.Connect("127.0.0.1:20001"), SUCCESS);
+  EXPECT_EQ(client_.Disconnect(kClientPoolServer0Addr), NOT_CONNECTED);
+  EXPECT_EQ(client_.Disconnect(kClientPoolServer1Addr), NOT_CONNECTED);
+  EXPECT_EQ(client_.Connect(kClientPoolServer0Addr), SUCCESS);
 
   client_.Finalize();
   server_.Finalize();
@@ -80,32 +117,32 @@ TEST_F(ChannelPoolSystemTest, ClientChannelPoolSystemTest) {
 TEST_F(ChannelPoolSystemTest, ServerChannelPoolSystemTest) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl server_;
-  server_.Initialize("127.0.0.1:26000", options_);
+  server_.Initialize(kServerPoolServerAddr, options_);
   llm::AutoCommResRuntimeMock::SetDevice(1);
   Hixl client_;
-  client_.Initialize("127.0.0.1:26001", options_);
+  client_.Initialize(kServerPoolClient0Addr, options_);
   // set device 2
   llm::AutoCommResRuntimeMock::SetDevice(2);
   Hixl client1_;
-  client1_.Initialize("127.0.0.1:26002", options_);
+  client1_.Initialize(kServerPoolClient1Addr, options_);
   // set device 3
   llm::AutoCommResRuntimeMock::SetDevice(3);
   Hixl client2_;
-  client2_.Initialize("127.0.0.1:26003", options_);
+  client2_.Initialize(kServerPoolClient2Addr, options_);
   // set device 4
   llm::AutoCommResRuntimeMock::SetDevice(4);
   Hixl client3_;
-  client3_.Initialize("127.0.0.1:26004", options_);
-  EXPECT_EQ(client_.Connect("127.0.0.1:26000"), SUCCESS);
-  EXPECT_EQ(client_.Connect("127.0.0.1:26000"), ALREADY_CONNECTED);
-  EXPECT_EQ(client1_.Connect("127.0.0.1:26000"), SUCCESS);
-  EXPECT_EQ(client2_.Connect("127.0.0.1:26000"), SUCCESS);
-  EXPECT_EQ(client3_.Connect("127.0.0.1:26000"), SUCCESS);
+  client3_.Initialize(kServerPoolClient3Addr, options_);
+  EXPECT_EQ(client_.Connect(kServerPoolServerAddr), SUCCESS);
+  EXPECT_EQ(client_.Connect(kServerPoolServerAddr), ALREADY_CONNECTED);
+  EXPECT_EQ(client1_.Connect(kServerPoolServerAddr), SUCCESS);
+  EXPECT_EQ(client2_.Connect(kServerPoolServerAddr), SUCCESS);
+  EXPECT_EQ(client3_.Connect(kServerPoolServerAddr), SUCCESS);
   // sleep 2000 ms for eviction
   std::this_thread::sleep_for(std::chrono::milliseconds(2000));
-  EXPECT_EQ(client_.Disconnect("127.0.0.1:26000"), NOT_CONNECTED);
-  EXPECT_EQ(client1_.Disconnect("127.0.0.1:26000"), NOT_CONNECTED);
-  EXPECT_EQ(client_.Connect("127.0.0.1:26000"), SUCCESS);
+  EXPECT_EQ(client_.Disconnect(kServerPoolServerAddr), NOT_CONNECTED);
+  EXPECT_EQ(client1_.Disconnect(kServerPoolServerAddr), NOT_CONNECTED);
+  EXPECT_EQ(client_.Connect(kServerPoolServerAddr), SUCCESS);
 
   server_.Finalize();
   client_.Finalize();
@@ -117,11 +154,11 @@ TEST_F(ChannelPoolSystemTest, ServerChannelPoolSystemTest) {
 TEST_F(ChannelPoolSystemTest, ClientDisconnectHandling) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
+  EXPECT_EQ(engine1.Initialize(kTransferEvictionServerAddr, options_), SUCCESS);
 
   llm::AutoCommResRuntimeMock::SetDevice(1);
   Hixl engine2;
-  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options_), SUCCESS);
+  EXPECT_EQ(engine2.Initialize(kTransferEvictionClient0Addr, options_), SUCCESS);
 
   hixl::MemDesc mem{};
   // mock addr 1234
@@ -137,14 +174,14 @@ TEST_F(ChannelPoolSystemTest, ClientDisconnectHandling) {
   int32_t src = 1;
   int32_t dst = 2;
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", READ, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kTransferEvictionClient0Addr, READ, {desc}), SUCCESS);
   // after transfer, src set to 2
   EXPECT_EQ(src, 2);
   src = 1;
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", WRITE, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kTransferEvictionClient0Addr, WRITE, {desc}), SUCCESS);
   EXPECT_EQ(dst, 1);
 
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+  EXPECT_EQ(engine1.Disconnect(kTransferEvictionClient0Addr), SUCCESS);
   EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
@@ -154,23 +191,23 @@ TEST_F(ChannelPoolSystemTest, ClientDisconnectHandling) {
 TEST_F(ChannelPoolSystemTest, TestEvictionWithTransfer) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
+  EXPECT_EQ(engine1.Initialize(kTransferEvictionServerAddr, options_), SUCCESS);
 
   llm::AutoCommResRuntimeMock::SetDevice(1);
   Hixl engine2;
-  EXPECT_EQ(engine2.Initialize("127.0.0.1:26001", options_), SUCCESS);
+  EXPECT_EQ(engine2.Initialize(kTransferEvictionClient0Addr, options_), SUCCESS);
   // set device 2
   llm::AutoCommResRuntimeMock::SetDevice(2);
   Hixl engine3;
-  EXPECT_EQ(engine3.Initialize("127.0.0.1:26002", options_), SUCCESS);
+  EXPECT_EQ(engine3.Initialize(kTransferEvictionClient1Addr, options_), SUCCESS);
   // set device 3
   llm::AutoCommResRuntimeMock::SetDevice(3);
   Hixl engine4;
-  EXPECT_EQ(engine4.Initialize("127.0.0.1:26003", options_), SUCCESS);
+  EXPECT_EQ(engine4.Initialize(kTransferEvictionClient2Addr, options_), SUCCESS);
   // set device 4
   llm::AutoCommResRuntimeMock::SetDevice(4);
   Hixl engine5;
-  EXPECT_EQ(engine5.Initialize("127.0.0.1:26004", options_), SUCCESS);
+  EXPECT_EQ(engine5.Initialize(kTransferEvictionClient3Addr, options_), SUCCESS);
 
   hixl::MemDesc mem_{};
   // mock addr 1234
@@ -186,18 +223,18 @@ TEST_F(ChannelPoolSystemTest, TestEvictionWithTransfer) {
   int32_t src = 1;
   int32_t dst = 2;
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
-  EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), SUCCESS);
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26001", READ, {desc}), SUCCESS);
-  EXPECT_EQ(engine1.Connect("127.0.0.1:26002"), SUCCESS);
-  EXPECT_EQ(engine1.Connect("127.0.0.1:26003"), SUCCESS);
-  EXPECT_EQ(engine1.Connect("127.0.0.1:26004"), SUCCESS);
+  EXPECT_EQ(engine1.Connect(kTransferEvictionClient0Addr), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kTransferEvictionClient0Addr, READ, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.Connect(kTransferEvictionClient1Addr), SUCCESS);
+  EXPECT_EQ(engine1.Connect(kTransferEvictionClient2Addr), SUCCESS);
+  EXPECT_EQ(engine1.Connect(kTransferEvictionClient3Addr), SUCCESS);
   // sleep 200 ms for eviction
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26002"), NOT_CONNECTED);
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26003"), NOT_CONNECTED);
-  EXPECT_EQ(engine1.Connect("127.0.0.1:26001"), ALREADY_CONNECTED);
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26001"), SUCCESS);
+  EXPECT_EQ(engine1.Disconnect(kTransferEvictionClient1Addr), NOT_CONNECTED);
+  EXPECT_EQ(engine1.Disconnect(kTransferEvictionClient2Addr), NOT_CONNECTED);
+  EXPECT_EQ(engine1.Connect(kTransferEvictionClient0Addr), ALREADY_CONNECTED);
+  EXPECT_EQ(engine1.Disconnect(kTransferEvictionClient0Addr), SUCCESS);
   EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
@@ -212,44 +249,44 @@ TEST_F(ChannelPoolSystemTest, TestWaterline) {
   Hixl engine1;
   
   options_["GlobalResourceConfig"] = "invalid json string";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
+  EXPECT_EQ(engine1.Initialize(kWaterlineTestAddr, options_), PARAM_INVALID);
   
   options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"0.1","channel_pool.low_waterline":"0.3"})";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
+  EXPECT_EQ(engine1.Initialize(kWaterlineTestAddr, options_), PARAM_INVALID);
 
   options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"0","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
+  EXPECT_EQ(engine1.Initialize(kWaterlineTestAddr, options_), PARAM_INVALID);
 
   options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"999","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
+  EXPECT_EQ(engine1.Initialize(kWaterlineTestAddr, options_), PARAM_INVALID);
 
   options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10"})";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
+  EXPECT_EQ(engine1.Initialize(kWaterlineTestAddr, options_), PARAM_INVALID);
 
   options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"1.0","channel_pool.low_waterline":"0.1"})";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
+  EXPECT_EQ(engine1.Initialize(kWaterlineTestAddr, options_), PARAM_INVALID);
 
   options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.0"})";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
+  EXPECT_EQ(engine1.Initialize(kWaterlineTestAddr, options_), PARAM_INVALID);
 
   options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"NaN","channel_pool.low_waterline":"0.1"})";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
+  EXPECT_EQ(engine1.Initialize(kWaterlineTestAddr, options_), PARAM_INVALID);
 
   options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"NaN","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), PARAM_INVALID);
+  EXPECT_EQ(engine1.Initialize(kWaterlineTestAddr, options_), PARAM_INVALID);
 
   options_["GlobalResourceConfig"] = R"({"channel_pool.max_channel":"10","channel_pool.high_waterline":"0.3","channel_pool.low_waterline":"0.1"})";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:26000", options_), SUCCESS);
+  EXPECT_EQ(engine1.Initialize(kWaterlineTestAddr, options_), SUCCESS);
 }
 
 TEST_F(ChannelPoolSystemTest, ClientDisconnectHandlingAsync) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1_;
-  EXPECT_EQ(engine1_.Initialize("127.0.0.1:26000", options_), SUCCESS);
+  EXPECT_EQ(engine1_.Initialize(kTransferEvictionServerAddr, options_), SUCCESS);
 
   llm::AutoCommResRuntimeMock::SetDevice(1);
   Hixl engine2_;
-  EXPECT_EQ(engine2_.Initialize("127.0.0.1:26001", options_), SUCCESS);
+  EXPECT_EQ(engine2_.Initialize(kTransferEvictionClient0Addr, options_), SUCCESS);
 
   hixl::MemDesc mem{};
   // mock addr 1234
@@ -268,14 +305,14 @@ TEST_F(ChannelPoolSystemTest, ClientDisconnectHandlingAsync) {
   int32_t dst = 2;
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
   TransferReq req = nullptr;
-  EXPECT_EQ(engine1_.TransferAsync("127.0.0.1:26001", READ, {desc}, {}, req), SUCCESS);
+  EXPECT_EQ(engine1_.TransferAsync(kTransferEvictionClient0Addr, READ, {desc}, {}, req), SUCCESS);
   // after transfer, src set to 2
   EXPECT_EQ(src, 2);
   src = 1;
-  EXPECT_EQ(engine1_.TransferAsync("127.0.0.1:26001", WRITE, {desc}, {}, req), SUCCESS);
+  EXPECT_EQ(engine1_.TransferAsync(kTransferEvictionClient0Addr, WRITE, {desc}, {}, req), SUCCESS);
   EXPECT_EQ(dst, 1);
 
-  EXPECT_EQ(engine1_.Disconnect("127.0.0.1:26001"), SUCCESS);
+  EXPECT_EQ(engine1_.Disconnect(kTransferEvictionClient0Addr), SUCCESS);
   EXPECT_EQ(engine1_.DeregisterMem(handle1), SUCCESS);
   EXPECT_EQ(engine2_.DeregisterMem(handle2), SUCCESS);
   engine1_.Finalize();
@@ -285,11 +322,14 @@ TEST_F(ChannelPoolSystemTest, ClientDisconnectHandlingAsync) {
 TEST_F(ChannelPoolSystemTest, ConcurrentTransferSyncAndEviction) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl client;
-  EXPECT_EQ(client.Initialize("127.0.0.1:30000", options_), SUCCESS);
+  EXPECT_EQ(client.Initialize(kConcurrentSyncClientAddr, options_), SUCCESS);
 
   // Initialize servers in a loop to reduce duplicate code
   const char* server_addrs[] = {
-    "127.0.0.1:30001", "127.0.0.1:30002", "127.0.0.1:30003", "127.0.0.1:30004"
+    kConcurrentSyncServer0Addr,
+    kConcurrentSyncServer1Addr,
+    kConcurrentSyncServer2Addr,
+    kConcurrentSyncServer3Addr,
   };
   Hixl servers[4];
   // init 4 servers
@@ -298,8 +338,8 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferSyncAndEviction) {
     EXPECT_EQ(servers[i].Initialize(server_addrs[i], options_), SUCCESS);
   }
 
-  EXPECT_EQ(client.Connect("127.0.0.1:30003"), SUCCESS);
-  EXPECT_EQ(client.Connect("127.0.0.1:30004"), SUCCESS);
+  EXPECT_EQ(client.Connect(kConcurrentSyncServer2Addr), SUCCESS);
+  EXPECT_EQ(client.Connect(kConcurrentSyncServer3Addr), SUCCESS);
 
   // Register memory for transfer
   hixl::MemDesc mem{};
@@ -327,8 +367,8 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferSyncAndEviction) {
   };
 
   // Start concurrent transfers on channels 1 and 2
-  std::thread transfer_thread1(transfer_func, "127.0.0.1:30001");
-  std::thread transfer_thread2(transfer_func, "127.0.0.1:30002");
+  std::thread transfer_thread1(transfer_func, kConcurrentSyncServer0Addr);
+  std::thread transfer_thread2(transfer_func, kConcurrentSyncServer1Addr);
 
   // Sleep 200 ms to allow transfers to start and eviction to happen
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -336,12 +376,12 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferSyncAndEviction) {
   // Verify that channels with ongoing transfers are not evicted
   // Channels 1 and 2 should still be connected because they have ongoing transfers
   // Channels 3 and 4 should be evicted since they have no transfers
-  EXPECT_EQ(client.Disconnect("127.0.0.1:30003"), NOT_CONNECTED);
-  EXPECT_EQ(client.Disconnect("127.0.0.1:30004"), NOT_CONNECTED);
+  EXPECT_EQ(client.Disconnect(kConcurrentSyncServer2Addr), NOT_CONNECTED);
+  EXPECT_EQ(client.Disconnect(kConcurrentSyncServer3Addr), NOT_CONNECTED);
 
   // Verify that channels with ongoing transfers are still connected
-  EXPECT_EQ(client.Connect("127.0.0.1:30001"), ALREADY_CONNECTED);
-  EXPECT_EQ(client.Connect("127.0.0.1:30002"), ALREADY_CONNECTED);
+  EXPECT_EQ(client.Connect(kConcurrentSyncServer0Addr), ALREADY_CONNECTED);
+  EXPECT_EQ(client.Connect(kConcurrentSyncServer1Addr), ALREADY_CONNECTED);
 
   if (transfer_thread1.joinable()) {
     transfer_thread1.join();
@@ -364,11 +404,14 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferSyncAndEviction) {
 TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl client;
-  EXPECT_EQ(client.Initialize("127.0.0.1:40000", options_), SUCCESS);
+  EXPECT_EQ(client.Initialize(kConcurrentAsyncClientAddr, options_), SUCCESS);
 
   // Initialize servers in a loop to reduce duplicate code
   const char* server_addrs[] = {
-    "127.0.0.1:40001", "127.0.0.1:40002", "127.0.0.1:40003", "127.0.0.1:40004"
+    kConcurrentAsyncServer0Addr,
+    kConcurrentAsyncServer1Addr,
+    kConcurrentAsyncServer2Addr,
+    kConcurrentAsyncServer3Addr,
   };
   Hixl servers_async[4];
   // initialize 4 servers
@@ -377,8 +420,8 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
     EXPECT_EQ(servers_async[i].Initialize(server_addrs[i], options_), SUCCESS);
   }
 
-  EXPECT_EQ(client.Connect("127.0.0.1:40003"), SUCCESS);
-  EXPECT_EQ(client.Connect("127.0.0.1:40004"), SUCCESS);
+  EXPECT_EQ(client.Connect(kConcurrentAsyncServer2Addr), SUCCESS);
+  EXPECT_EQ(client.Connect(kConcurrentAsyncServer3Addr), SUCCESS);
 
   hixl::MemDesc mem{};
   // mock mem addr 1134
@@ -403,8 +446,8 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
     client.TransferAsync(server_addr, READ, {desc}, {}, req);
   };
 
-  std::thread transfer_thread1(transfer_async_func, "127.0.0.1:40001");
-  std::thread transfer_thread2(transfer_async_func, "127.0.0.1:40002");
+  std::thread transfer_thread1(transfer_async_func, kConcurrentAsyncServer0Addr);
+  std::thread transfer_thread2(transfer_async_func, kConcurrentAsyncServer1Addr);
 
   // Sleep 200 ms to allow transfers to start and eviction to happen
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -412,11 +455,11 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
   // Verify that channels with ongoing transfers are not evicted
   // Channels 1 and 2 should still be connected because they have ongoing transfers
   // Channels 3 and 4 should be evicted since they have no transfers
-  EXPECT_EQ(client.Disconnect("127.0.0.1:40003"), NOT_CONNECTED);
-  EXPECT_EQ(client.Disconnect("127.0.0.1:40004"), NOT_CONNECTED); 
+  EXPECT_EQ(client.Disconnect(kConcurrentAsyncServer2Addr), NOT_CONNECTED);
+  EXPECT_EQ(client.Disconnect(kConcurrentAsyncServer3Addr), NOT_CONNECTED);
   // Verify that channels with ongoing transfers are still connected
-  EXPECT_EQ(client.Connect("127.0.0.1:40001"), ALREADY_CONNECTED);
-  EXPECT_EQ(client.Connect("127.0.0.1:40002"), ALREADY_CONNECTED);
+  EXPECT_EQ(client.Connect(kConcurrentAsyncServer0Addr), ALREADY_CONNECTED);
+  EXPECT_EQ(client.Connect(kConcurrentAsyncServer1Addr), ALREADY_CONNECTED);
 
   if (transfer_thread1.joinable()) {
     transfer_thread1.join();
@@ -440,11 +483,11 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransferAsyncAndEviction) {
 TEST_F(ChannelPoolSystemTest, ConcurrentTransfersWithoutConnectStatusErrors) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl client;
-  EXPECT_EQ(client.Initialize("127.0.0.1:50000", options_), SUCCESS);
+  EXPECT_EQ(client.Initialize(kConcurrentSyncSingleClientAddr, options_), SUCCESS);
 
   llm::AutoCommResRuntimeMock::SetDevice(1);
   Hixl server;
-  EXPECT_EQ(server.Initialize("127.0.0.1:50001", options_), SUCCESS);
+  EXPECT_EQ(server.Initialize(kConcurrentSyncSingleServerAddr, options_), SUCCESS);
 
   // Register memory for transfer
   hixl::MemDesc mem{};
@@ -474,7 +517,7 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransfersWithoutConnectStatusErrors) {
 
   for (int i = 0; i < total_threads; ++i) {
     threads.emplace_back([&client, &desc, timeout]() {
-      Status ret = client.TransferSync("127.0.0.1:50001", READ, {desc}, timeout);
+      Status ret = client.TransferSync(kConcurrentSyncSingleServerAddr, READ, {desc}, timeout);
       EXPECT_EQ(ret, SUCCESS);
     });
   }
@@ -493,11 +536,11 @@ TEST_F(ChannelPoolSystemTest, ConcurrentTransfersWithoutConnectStatusErrors) {
 TEST_F(ChannelPoolSystemTest, ConcurrentAsyncTransfersWithoutConnectStatusErrors) {
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl client;
-  EXPECT_EQ(client.Initialize("127.0.0.1:51000", options_), SUCCESS);
+  EXPECT_EQ(client.Initialize(kConcurrentAsyncSingleClientAddr, options_), SUCCESS);
 
   llm::AutoCommResRuntimeMock::SetDevice(1);
   Hixl server;
-  EXPECT_EQ(server.Initialize("127.0.0.1:51001", options_), SUCCESS);
+  EXPECT_EQ(server.Initialize(kConcurrentAsyncSingleServerAddr, options_), SUCCESS);
 
   // Register memory for transfer
   hixl::MemDesc mem{};
@@ -525,7 +568,7 @@ TEST_F(ChannelPoolSystemTest, ConcurrentAsyncTransfersWithoutConnectStatusErrors
                          sizeof(int32_t)};
       // This will trigger ConnectWhenTransfer internally
       TransferReq req = nullptr;
-      Status ret = client.TransferAsync("127.0.0.1:51001", READ, {desc}, {}, req);
+      Status ret = client.TransferAsync(kConcurrentAsyncSingleServerAddr, READ, {desc}, {}, req);
       EXPECT_EQ(ret, SUCCESS);
     });
   }
@@ -546,10 +589,13 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
     R"({"channel_pool.max_channel":"3","channel_pool.high_waterline":"0.67","channel_pool.low_waterline":"0.33"})";
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl client_exhausted;
-  EXPECT_EQ(client_exhausted.Initialize("127.0.0.1:60000", options_), SUCCESS);
+  EXPECT_EQ(client_exhausted.Initialize(kResourceExhaustedClientAddr, options_), SUCCESS);
   // Initialize servers in a loop to reduce duplicate code
   const char* server_addrs[] = {
-    "127.0.0.1:60001", "127.0.0.1:60002", "127.0.0.1:60003", "127.0.0.1:60004"
+    kResourceExhaustedServer0Addr,
+    kResourceExhaustedServer1Addr,
+    kResourceExhaustedServer2Addr,
+    kResourceExhaustedServer3Addr,
   };
   Hixl servers_async[4];
   // initialize 4 servers
@@ -583,14 +629,14 @@ TEST_F(ChannelPoolSystemTest, TestResourceExhausted) {
     client_exhausted.TransferAsync(server_addr, READ, {desc}, {}, req);
   };
 
-  std::thread transfer_thread1(transfer_async_func, "127.0.0.1:60001");
-  std::thread transfer_thread2(transfer_async_func, "127.0.0.1:60002");
-  std::thread transfer_thread3(transfer_async_func, "127.0.0.1:60003");
+  std::thread transfer_thread1(transfer_async_func, kResourceExhaustedServer0Addr);
+  std::thread transfer_thread2(transfer_async_func, kResourceExhaustedServer1Addr);
+  std::thread transfer_thread3(transfer_async_func, kResourceExhaustedServer2Addr);
 
   // Sleep 200 ms to allow transfers to start and eviction to happen
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-  EXPECT_EQ(client_exhausted.Connect("127.0.0.1:60004"), RESOURCE_EXHAUSTED);
+  EXPECT_EQ(client_exhausted.Connect(kResourceExhaustedServer3Addr), RESOURCE_EXHAUSTED);
 
   if (transfer_thread1.joinable()) {
     transfer_thread1.join();

@@ -18,6 +18,8 @@ int cnt = 0;
 int32_t AutoCommResRuntimeMock::device_id_ = 0;
 
 std::unique_ptr<HcclApiStub> HcclApiStub::instance_;
+
+#ifndef HIXL_SKIP_DATA_CACHE_ENGINE_TEST_CONTEXT
 void DataCacheEngineTestContext::Finalize() {
   cache_engine_.Finalize();
   comm_entity_.reset();
@@ -127,6 +129,7 @@ void DataCacheEngineTestContext::LinkEntities(CommEntity &src_comm_entity,
   src_comm_entity.MarkEntityIdle();
   dst_comm_entity.MarkEntityIdle();
 }
+#endif
 
 HcclResult HcclApiStub::HcclExchangeMemDesc(HcclComm comm,
                                             uint32_t remoteRank,

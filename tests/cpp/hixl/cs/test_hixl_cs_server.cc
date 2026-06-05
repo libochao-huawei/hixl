@@ -30,7 +30,7 @@ using ::testing::Invoke;
 using ::testing::Mock;
 
 namespace hixl {
-static constexpr uint32_t kPort = 16000;
+static constexpr uint32_t kPort = 26360;
 static constexpr uint32_t kEpAddrId0 = 1U;
 static constexpr uint32_t kEpAddrId1 = 2U;
 static constexpr uint32_t kEpAddrId2 = 3U;

@@ -33,7 +33,7 @@
 #include <securec.h>
 
 namespace hixl {
-static constexpr uint32_t kPort = 16000;
+static constexpr uint32_t kPort = 26370;
 static constexpr int kMemReqCnt = 0U;
 static constexpr uint32_t kSrcEpId = 1U;
 static constexpr uint32_t kDstEpId = 2U;

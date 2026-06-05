@@ -27,8 +27,8 @@
 
 namespace adxl {
 namespace {
-constexpr char kListenInfo[] = "127.0.0.1:26000";
-constexpr char kRemoteEngine[] = "127.0.0.1:26001";
+constexpr char kListenInfo[] = "127.0.0.1:28100";
+constexpr char kRemoteEngine[] = "127.0.0.1:28101";
 constexpr char kRemoteCommRes[] = "remote_comm_res";
 constexpr int32_t kTimeoutMs = 1000;
 constexpr uintptr_t kRemoteAddrStart = 0x1234U;

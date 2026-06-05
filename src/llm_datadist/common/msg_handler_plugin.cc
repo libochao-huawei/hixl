@@ -126,6 +126,7 @@ void MsgHandlerPlugin::Disconnect(int32_t conn_fd) {
 
 void MsgHandlerPlugin::ListenClose() {
   if (listen_fd_ >= 0) {
+    (void) shutdown(listen_fd_, SHUT_RDWR);
     close(listen_fd_);
     listen_fd_ = -1;
   }
@@ -214,10 +215,16 @@ ge::Status MsgHandlerPlugin::DoConnectedProcess(int32_t conn_fd) {
 }
 
 ge::Status MsgHandlerPlugin::DoAccept() {
+  if (!listener_running_ || listen_fd_ < 0) {
+    return ge::SUCCESS;
+  }
   struct sockaddr_storage addr;
   socklen_t addr_len = sizeof(addr);
   auto conn_fd = accept(listen_fd_, reinterpret_cast<sockaddr *>(&addr), &addr_len);
   if (conn_fd < 0) {
+    if (!listener_running_) {
+      return ge::SUCCESS;
+    }
     LLM_CHK_BOOL_RET_STATUS(errno == EWOULDBLOCK || errno == EINTR || errno == ECONNABORTED, ge::FAILED,
                            "Failed to accept, error msg=%s, errno=%d",
                            strerror(errno), errno);
@@ -293,7 +300,7 @@ ge::Status MsgHandlerPlugin::StartDaemon(const std::string &ip, uint32_t listen_
   listener_ = std::thread([this]() {
     while (listener_running_) {
       auto ret = DoAccept();
-      if (ret != ge::SUCCESS) {
+      if (ret != ge::SUCCESS && listener_running_) {
         std::this_thread::sleep_for(std::chrono::seconds(kDefaultSleepTime));
       }
     }
@@ -362,9 +369,11 @@ MsgHandlerPlugin::~MsgHandlerPlugin() {
 }
 
 void MsgHandlerPlugin::Finalize() {
-  ListenClose();
   if (listener_running_) {
     listener_running_ = false;
+  }
+  ListenClose();
+  if (listener_.joinable()) {
     listener_.join();
   }
 }
