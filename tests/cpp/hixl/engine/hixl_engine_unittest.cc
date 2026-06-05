@@ -10,6 +10,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 #include <memory>
 #include <thread>
 #include <gtest/gtest.h>
@@ -28,6 +29,7 @@
 #include "slog_stub.h"
 #include "test_mmpa_utils.h"
 #include "depends/mmpa/src/mmpa_stub.h"
+#include "hixl_test_helpers.h"
 
 namespace hixl {
 
@@ -121,7 +123,7 @@ class HixlEngineTest : public ::testing::Test {
             {
                 "protocol": "roce",
                 "comm_id": "127.0.0.1",
-                "placement": "host" 
+                "placement": "host"
             },
             {
                 "protocol": "ub_ctp",
@@ -147,7 +149,7 @@ class HixlEngineTest : public ::testing::Test {
             {
                 "protocol": "roce",
                 "comm_id": "127.0.0.1",
-                "placement": "host" 
+                "placement": "host"
             }
         ],
         "version": "1.3"
@@ -206,7 +208,7 @@ class HixlEngineTest : public ::testing::Test {
       ASSERT_EQ(HixlOptions::Parse(opts2, parsed), SUCCESS);
       EXPECT_EQ(engine2.Initialize(parsed), SUCCESS);
     }
-    EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
+    EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
   }
 
   void CreateAndInitEngine(HixlEngine &engine, const std::map<AscendString, AscendString> &opts) {
@@ -269,20 +271,6 @@ class HixlEngineTest : public ::testing::Test {
     return engine.endpoint_list_;
   }
 
-  static bool CheckIpv6Supported() {
-    int fd = socket(AF_INET6, SOCK_STREAM, 0);
-    if (fd < 0) {
-      return false;
-    }
-    struct sockaddr_in6 addr {};
-    addr.sin6_family = AF_INET6;
-    (void)inet_pton(AF_INET6, "::1", &addr.sin6_addr);
-    addr.sin6_port = htons(0U);
-    bool ok = (connect(fd, (sockaddr *)&addr, sizeof(addr)) != -1 || errno != EADDRNOTAVAIL);
-    close(fd);
-    return ok;
-  }
-
   std::shared_ptr<MockEngineAclRuntimeStub> acl_stub_;
 
   void SetSocStub(const std::string &soc_name, int32_t device_id, int32_t phy_device_id, int64_t super_device_id,
@@ -318,29 +306,23 @@ TEST_F(HixlEngineTest, TestHixl) {
   EXPECT_EQ(engine1.Initialize("127.0.0.1", options1), SUCCESS);
 
   Hixl engine2;
-  EXPECT_EQ(engine2.Initialize("127.0.0.1:16000", options2), SUCCESS);
+  EXPECT_EQ(engine2.Initialize("127.0.0.1:26300", options2), SUCCESS);
 
   int32_t src = 1;
-  hixl::MemDesc src_mem{};
-  src_mem.addr = reinterpret_cast<uintptr_t>(&src);
-  src_mem.len = sizeof(int32_t);
   MemHandle handle1 = nullptr;
-  EXPECT_EQ(engine1.RegisterMem(src_mem, MEM_DEVICE, handle1), SUCCESS);
+  test_helpers::RegisterInt32DeviceMem(engine1, src, handle1);
 
   int32_t dst = 2;
-  hixl::MemDesc dst_mem{};
-  dst_mem.addr = reinterpret_cast<uintptr_t>(&dst);
-  dst_mem.len = sizeof(int32_t);
   MemHandle handle2 = nullptr;
-  EXPECT_EQ(engine2.RegisterMem(dst_mem, MEM_DEVICE, handle2), SUCCESS);
+  test_helpers::RegisterInt32DeviceMem(engine2, dst, handle2);
 
-  EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
 
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:16000", READ, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}), SUCCESS);
   EXPECT_EQ(src, 2);
   src = 1;
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:16000", WRITE, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", WRITE, {desc}), SUCCESS);
   EXPECT_EQ(dst, 1);
 
   NotifyDesc notify;
@@ -348,12 +330,12 @@ TEST_F(HixlEngineTest, TestHixl) {
   notify.name = AscendString(notify_name.c_str());
   std::string notify_msg = "message";
   notify.notify_msg = AscendString(notify_msg.c_str());
-  EXPECT_EQ(engine1.SendNotify("127.0.0.1:16000", notify, kTimeOut), UNSUPPORTED);
+  EXPECT_EQ(engine1.SendNotify("127.0.0.1:26300", notify, kTimeOut), UNSUPPORTED);
 
   std::vector<NotifyDesc> notifies;
   EXPECT_EQ(engine2.GetNotifies(notifies), UNSUPPORTED);
 
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:16000"), SUCCESS);
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26300"), SUCCESS);
   EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
@@ -362,22 +344,22 @@ TEST_F(HixlEngineTest, TestHixl) {
 
 TEST_F(HixlEngineTest, TestHixlEngineIPv4) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
-  TransferSyncTest("127.0.0.1", "127.0.0.1:16000", "127.0.0.1:16000");
+  TransferSyncTest("127.0.0.1", "127.0.0.1:26300", "127.0.0.1:26300");
 }
 
 TEST_F(HixlEngineTest, TestHixlEngineIPv6) {
-  if (!HixlEngineTest::CheckIpv6Supported()) {
+  if (!test_helpers::CheckIpv6Supported()) {
     GTEST_SKIP() << "IPv6 not supported on this system";
   }
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
-  TransferSyncTest("[::1]", "[::1]:26000", "[::1]:26000");
+  TransferSyncTest("[::1]", "[::1]:26302", "[::1]:26302");
 }
 
 TEST_F(HixlEngineTest, TestTransferAsync) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
   HixlEngine engine1("127.0.0.1");
   CreateAndInitEngine(engine1, options1);
-  HixlEngine engine2("127.0.0.1:16000");
+  HixlEngine engine2("127.0.0.1:26300");
   CreateAndInitEngine(engine2, options2);
 
   int32_t src = 1;
@@ -388,25 +370,25 @@ TEST_F(HixlEngineTest, TestTransferAsync) {
   MemHandle handle2 = nullptr;
   Register(engine2, &dst, handle2);
 
-  EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
   TransferReq req = nullptr;
   TransferStatus status;
 
-  ASSERT_EQ(engine1.TransferAsync("127.0.0.1:16000", READ, {desc}, {}, req), SUCCESS);
+  ASSERT_EQ(engine1.TransferAsync("127.0.0.1:26300", READ, {desc}, {}, req), SUCCESS);
   EXPECT_EQ(WaitForTransferStatus(engine1, req), TransferStatus::COMPLETED);
   EXPECT_EQ(src, 2);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), PARAM_INVALID);
   EXPECT_EQ(status, TransferStatus::FAILED);
 
   src = 1;
-  ASSERT_EQ(engine1.TransferAsync("127.0.0.1:16000", WRITE, {desc}, {}, req), SUCCESS);
+  ASSERT_EQ(engine1.TransferAsync("127.0.0.1:26300", WRITE, {desc}, {}, req), SUCCESS);
   EXPECT_EQ(WaitForTransferStatus(engine1, req), TransferStatus::COMPLETED);
   EXPECT_EQ(dst, 1);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), PARAM_INVALID);
   EXPECT_EQ(status, TransferStatus::FAILED);
 
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26300", kTimeOut), SUCCESS);
   EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
@@ -416,7 +398,7 @@ TEST_F(HixlEngineTest, TestTransferAsync) {
 TEST_F(HixlEngineTest, TestInitFailed) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
   // invalid ip
-  std::string local_engine = "ad.0.0.1:26000";
+  std::string local_engine = "ad.0.0.1:26302";
   HixlEngine engine(AscendString(local_engine.c_str()));
   {
     HixlOptions parsed;
@@ -428,7 +410,7 @@ TEST_F(HixlEngineTest, TestInitFailed) {
 
 TEST_F(HixlEngineTest, TestNotListenFailed) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
-  std::string local_engine = "127.0.0.1:16000";
+  std::string local_engine = "127.0.0.1:26300";
   HixlEngine engine(AscendString(local_engine.c_str()));
   {
     HixlOptions parsed;
@@ -436,7 +418,7 @@ TEST_F(HixlEngineTest, TestNotListenFailed) {
     EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
   }
   // not listen
-  EXPECT_EQ(engine.Connect("127.0.0.1:16001", kTimeOut), FAILED);
+  EXPECT_EQ(engine.Connect("127.0.0.1:26301", kTimeOut), FAILED);
   engine.Finalize();
 }
 
@@ -444,10 +426,10 @@ TEST_F(HixlEngineTest, TestAlreadyConnectedFailed) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
   HixlEngine engine1("127.0.0.1");
   CreateAndInitEngine(engine1, options1);
-  HixlEngine engine2("127.0.0.1:16000");
+  HixlEngine engine2("127.0.0.1:26300");
   CreateAndInitEngine(engine2, options2);
-  EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
-  EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), ALREADY_CONNECTED);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), ALREADY_CONNECTED);
   engine1.Finalize();
   engine2.Finalize();
 }
@@ -471,7 +453,7 @@ TEST_F(HixlEngineTest, TestGetTransferStatusWithInterrupt) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
   HixlEngine engine1("127.0.0.1");
   CreateAndInitEngine(engine1, options1);
-  HixlEngine engine2("127.0.0.1:16000");
+  HixlEngine engine2("127.0.0.1:26300");
   CreateAndInitEngine(engine2, options2);
 
   int32_t src = 1;
@@ -481,12 +463,12 @@ TEST_F(HixlEngineTest, TestGetTransferStatusWithInterrupt) {
   Register(engine1, &src, handle1);
   Register(engine2, &dst, handle2);
 
-  EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
 
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
   TransferReq req = nullptr;
-  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:16000", WRITE, {desc}, {}, req), SUCCESS);
-  engine1.Disconnect("127.0.0.1:16000", kTimeOut);
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26300", WRITE, {desc}, {}, req), SUCCESS);
+  engine1.Disconnect("127.0.0.1:26300", kTimeOut);
   TransferStatus status = TransferStatus::WAITING;
   EXPECT_EQ(engine1.GetTransferStatus(req, status), PARAM_INVALID);
   engine1.Finalize();
@@ -497,16 +479,16 @@ TEST_F(HixlEngineTest, TestSendAndGetNotifies) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
   HixlEngine engine1("127.0.0.1");
   CreateAndInitEngine(engine1, options1);
-  HixlEngine engine2("127.0.0.1:16000");
+  HixlEngine engine2("127.0.0.1:26300");
   CreateAndInitEngine(engine2, options2);
 
-  EXPECT_EQ(engine1.Connect("127.0.0.1:16000", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
   NotifyDesc notify;
   std::string notify_name = "test_notify";
   notify.name = AscendString(notify_name.c_str());
   std::string notify_msg = "message";
   notify.notify_msg = AscendString(notify_msg.c_str());
-  EXPECT_EQ(engine1.SendNotify("127.0.0.1:16000", notify, kTimeOut), UNSUPPORTED);
+  EXPECT_EQ(engine1.SendNotify("127.0.0.1:26300", notify, kTimeOut), UNSUPPORTED);
   std::vector<NotifyDesc> notifies;
   EXPECT_EQ(engine2.GetNotifies(notifies), UNSUPPORTED);
   engine1.Finalize();
@@ -525,7 +507,7 @@ TEST_F(HixlEngineTest, TestParseTcAndSlWithValidValue) {
   options1[adxl::OPTION_RDMA_SERVICE_LEVEL] = "5";
 
   HixlEngine engine1("127.0.0.1");
-  HixlEngine engine2("127.0.0.1:16000");
+  HixlEngine engine2("127.0.0.1:26300");
   InitializeAndConnectEngines(engine1, options1, engine2, options2);
   CleanupEngines(engine1, engine2);
 
@@ -573,7 +555,7 @@ TEST_F(HixlEngineTest, TestParseTcAndSlWithEnv) {
   mmSetEnv("HCCL_RDMA_SL", "5", 1);
 
   HixlEngine engine1("127.0.0.1");
-  HixlEngine engine2("127.0.0.1:16000");
+  HixlEngine engine2("127.0.0.1:26300");
   InitializeAndConnectEngines(engine1, options1, engine2, options2);
   CleanupEngines(engine1, engine2);
 
@@ -588,7 +570,7 @@ TEST_F(HixlEngineTest, TestParseTcAndSlWithDefault) {
   auto log_capture = SetupLogCapture({channel_desc_log_pattern});
 
   HixlEngine engine1("127.0.0.1");
-  HixlEngine engine2("127.0.0.1:16000");
+  HixlEngine engine2("127.0.0.1:26300");
   InitializeAndConnectEngines(engine1, options1, engine2, options2);
   CleanupEngines(engine1, engine2);
 
@@ -615,7 +597,7 @@ TEST_F(HixlEngineTest, TestTcAndSlWithUb) {
     }
     )";
   HixlEngine engine1("127.0.0.1");
-  HixlEngine engine2("127.0.0.1:16000");
+  HixlEngine engine2("127.0.0.1:26300");
   InitializeAndConnectEngines(engine1, options1, engine2, options3);
   CleanupEngines(engine1, engine2);
 
