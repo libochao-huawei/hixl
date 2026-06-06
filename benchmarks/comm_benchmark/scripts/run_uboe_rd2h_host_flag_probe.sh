@@ -97,16 +97,11 @@ for run_id in $(seq 1 "${RUNS}"); do
     fail_count=$((fail_count + 1))
   fi
 
-  run_log_counts="$(count_probe_logs "${log_file}")"
-  run_log_done="${run_log_counts%% *}"
-  run_log_not_visible="${run_log_counts##* }"
   after_counts="$(count_probe_logs "${PLOG_DIR}")"
   after_done="${after_counts%% *}"
   after_not_visible="${after_counts##* }"
-  debug_done=$((after_done - before_done))
-  debug_not_visible=$((after_not_visible - before_not_visible))
-  run_done=$((run_log_done + debug_done))
-  run_not_visible=$((run_log_not_visible + debug_not_visible))
+  run_done=$((after_done - before_done))
+  run_not_visible=$((after_not_visible - before_not_visible))
   host_flag_done_count=$((host_flag_done_count + run_done))
   host_flag_not_visible_count=$((host_flag_not_visible_count + run_not_visible))
 
