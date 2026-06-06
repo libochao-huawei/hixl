@@ -90,6 +90,7 @@ Status DirectClientHandler::TransferAsync(const std::vector<TransferOpDesc> &op_
 Status DirectClientHandler::TransferSync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
                                          uint32_t timeout_ms) {
   std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_LOGI("[zc] DirectClientHandler start");
   uint32_t list_num = static_cast<uint32_t>(op_descs.size());
   std::vector<HixlOneSideOpDesc> hixl_descs(list_num);
   for (size_t i = 0; i < list_num; i++) {

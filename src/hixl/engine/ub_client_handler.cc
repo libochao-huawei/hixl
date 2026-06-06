@@ -205,11 +205,13 @@ Status UbClientHandler::TransferSync(const std::vector<TransferOpDesc> &op_descs
     uint32_t remaining_ms = 0;
     HIXL_CHK_STATUS_RET(ComputeRemainingMs(sync_start, timeout_ms, remaining_ms));
 
+    HIXL_LOGI("[zc] ubClientHandler transferSync start!");
     HixlClientHandle handle = nullptr;
     {
       std::lock_guard<std::mutex> lock(handle_mutex_);
       auto it = handles_.find(type);
       if (it == handles_.end()) {
+        HIXL_LOGI("[zc] ubClientHandler transferSync failed, no handle for type:%s", CommTypeToString(type));
         return FAILED;
       }
       handle = it->second;
