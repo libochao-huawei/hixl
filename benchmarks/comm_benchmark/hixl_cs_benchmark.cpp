@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -13,7 +13,6 @@
 #include <thread>
 #include <iostream>
 #include <vector>
-#include <atomic>
 #include <arpa/inet.h>
 #include <map>
 #include <cstring>
@@ -67,18 +66,20 @@ void from_json(const json &j, EndpointDesc &info) {
 }
 
 namespace {
+constexpr int32_t kWaitTransTime = 20;
 constexpr int32_t kClientConnectTimeoutMs = 5000;
-constexpr int32_t kExpectedArgCnt = 10;
+constexpr int32_t kExpectedArgCnt = 9;
 constexpr uint32_t kArgIndexDeviceId = 1;
 constexpr uint32_t kArgIndexLocalEngine = 2;
 constexpr uint32_t kArgIndexRemoteEngine = 3;
 constexpr uint32_t kArgIndexTcpPort = 4;
 constexpr uint32_t kArgIndexTransferMode = 5;
 constexpr uint32_t kArgIndexTransferOp = 6;
-constexpr uint32_t kArgIndexNumThreads = 7;
-constexpr uint32_t kArgIndexLocalCommRes = 8;
-constexpr uint32_t kArgIndexRemoteCommRes = 9;
+constexpr uint32_t kArgIndexLocalCommRes = 7;
+constexpr uint32_t kArgIndexRemoteCommRes = 8;
 constexpr uint32_t kTransferMemSize = 134217728;  // 128M
+constexpr uint32_t kBaseBlockSize = 262144;       // 0.25M
+constexpr uint32_t kExecuteRepeatNum = 5;
 constexpr int32_t kPortMaxValue = 65535;
 constexpr int32_t kBackLog = 1024;
 constexpr const char *kServerMemTagName = "server_mem";
@@ -100,16 +101,8 @@ struct Args {
   uint16_t tcp_port;
   std::string transfer_mode;
   std::string transfer_op;
-  int32_t num_threads;
   std::string local_comm_res;
   std::string remote_comm_res;
-};
-
-struct TransferResult {
-  int32_t thread_id;
-  bool success;
-  int64_t time_us;
-  uint64_t transfer_size;
 };
 
 int32_t InitEndPointInfo(const std::string &comm_res, EndpointDesc &ep) {
@@ -122,82 +115,12 @@ int32_t InitEndPointInfo(const std::string &comm_res, EndpointDesc &ep) {
   return 0;
 }
 
-void PrintThroughput(uint64_t size_bytes, int64_t time_us, int32_t thread_id) {
-  double time_second = static_cast<double>(time_us) / 1000 / 1000;
-  double throughput_gb = static_cast<double>(size_bytes) / 1024 / 1024 / 1024 / time_second;
-  (void)printf("[INFO] Thread %d: Size: %.2f MB, Time: %.3f s, Throughput: %.3f GB/s\n",
-               thread_id,
-               static_cast<double>(size_bytes) / 1024 / 1024,
-               time_second,
-               throughput_gb);
-}
-
-// Single-threaded transfer function for multi-threaded scenario
-int32_t DoTransfer(HixlClientHandle client_handle, uint8_t *local_addr, uint8_t *remote_addr,
-                   const std::string &transfer_op, int32_t thread_id, uint64_t offset, uint64_t chunk_size,
-                   TransferResult *result) {
-  HixlOneSideOpDesc desc = {
-    .remote_buf = remote_addr + offset,
-    .local_buf = local_addr + offset,
-    .len = chunk_size
-  };
-
-  void *complete_handle = nullptr;
-  const auto start = std::chrono::steady_clock::now();
-
-  HixlStatus ret;
-  if (transfer_op == "write") {
-    HIXL_LOGI("Thread %d: HixlCSClientBatchPutAsync start, offset=%lu, size=%lu",
-               thread_id, offset, chunk_size);
-    ret = HixlCSClientBatchPutAsync(client_handle, 1, &desc, &complete_handle);
-  } else {
-    HIXL_LOGI("Thread %d: HixlCSClientBatchGetAsync start, offset=%lu, size=%lu",
-               thread_id, offset, chunk_size);
-    ret = HixlCSClientBatchGetAsync(client_handle, 1, &desc, &complete_handle);
-  }
-
-  if (ret != HIXL_SUCCESS) {
-    (void)printf("[ERROR] Thread %d: Batch operation failed, ret = %u\n", thread_id, ret);
-    result->success = false;
-    return -1;
-  }
-
-  // Wait for completion
-  HixlCompleteStatus status = HIXL_COMPLETE_STATUS_WAITING;
-  while (true) {
-    ret = HixlCSClientQueryCompleteStatus(client_handle, complete_handle, &status);
-    if (status == HIXL_COMPLETE_STATUS_COMPLETED) {
-      break;
-    } else if (status == HIXL_COMPLETE_STATUS_WAITING) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      continue;
-    }
-    if (ret != HIXL_SUCCESS) {
-      (void)printf("[ERROR] Thread %d: QueryCompleteStatus failed, ret = %u\n", thread_id, ret);
-      result->success = false;
-      return -1;
-    }
-  }
-
-  auto time_cost = std::chrono::duration_cast<std::chrono::microseconds>(
-      std::chrono::steady_clock::now() - start).count();
-
-  result->thread_id = thread_id;
-  result->success = true;
-  result->time_us = time_cost;
-  result->transfer_size = chunk_size;
-
-  PrintThroughput(chunk_size, time_cost, thread_id);
-  return 0;
-}
-
-// Get remote memory address
-int32_t GetRemoteMem(HixlClientHandle client_handle, uint8_t **remote_addr) {
+int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std::string &transfer_op) {
   CommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
-  auto ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list,
-                                       &list_num, kClientConnectTimeoutMs);
+  auto ret =
+      HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientGetRemoteMem failed, ret = %u\n", ret);
     return -1;
@@ -206,7 +129,55 @@ int32_t GetRemoteMem(HixlClientHandle client_handle, uint8_t **remote_addr) {
   for (uint32_t i = 0; i < list_num; ++i) {
     server_mems[mem_tag_list[i]] = remote_mem_list[i];
   }
-  *remote_addr = static_cast<uint8_t *>(server_mems[kServerMemTagName].addr);
+  uint8_t *remote_addr = static_cast<uint8_t *>(server_mems[kServerMemTagName].addr);
+
+  for (uint32_t i = 0; i <= kExecuteRepeatNum; i++) {
+    auto block_size = kBaseBlockSize * (1U << i);
+    auto trans_num = kTransferMemSize / block_size;
+    std::vector<HixlOneSideOpDesc> desc_list(trans_num);
+    std::vector<uint64_t> lens;
+    for (uint32_t j = 0; j < trans_num; j++) {
+      desc_list[j].local_buf = local_addr + j * block_size;
+      desc_list[j].remote_buf = remote_addr + j * block_size;
+      desc_list[j].len = block_size;
+    }
+    void *complete_handle = nullptr;
+    const auto start = std::chrono::steady_clock::now();
+    if (transfer_op == "write") {
+      HIXL_LOGI("HixlCSClientBatchPutAsync start, trans_num is:%u, remote_addrs is:%p, local_addrs is:%p, lens is:%u.", trans_num, desc_list[0].remote_buf, desc_list[0].local_buf, desc_list[0].len);
+      ret =
+          HixlCSClientBatchPutAsync(client_handle, trans_num, desc_list.data(), &complete_handle);
+    } else {
+      HIXL_LOGI("HixlCSClientBatchGetAsync start, trans_num is:%u, local_addrs is:%p, remote_addrs is:%p, lens is:%u.", trans_num, desc_list[0].local_buf, desc_list[0].remote_buf, desc_list[0].len);
+      ret =
+          HixlCSClientBatchGetAsync(client_handle, trans_num, desc_list.data(), &complete_handle);
+    }
+    if (ret != HIXL_SUCCESS) {
+      (void)printf("[ERROR] HixlCSClientBatchPutAsync/HixlCSClientBatchGetAsync failed, ret = %u\n", ret);
+      return -1;
+    }
+    HixlCompleteStatus status = HIXL_COMPLETE_STATUS_WAITING;
+    while (true) {
+      ret = HixlCSClientQueryCompleteStatus(client_handle, complete_handle, &status);
+      if (status == HIXL_COMPLETE_STATUS_COMPLETED) {
+        break;
+      } else if (status == HIXL_COMPLETE_STATUS_WAITING) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1)); //一毫秒查一次
+        continue;
+      }
+      if (ret != HIXL_SUCCESS) {
+        (void)printf("[ERROR] HixlCSClientQueryCompleteStatus failed, ret = %u\n", ret);
+        return -1;
+      }
+    }
+    auto time_cost =
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+    double time_second = static_cast<double>(time_cost) / 1000 / 1000;
+    double throughput = static_cast<double>(kTransferMemSize) / 1024 / 1024 / 1024 / time_second;
+    (void)printf(
+        "[INFO] Transfer success, block size: %u Bytes, transfer num: %u, time cost: %ld us, throughput: %.3lf GB/s\n",
+        block_size, trans_num, time_cost, throughput);
+  }
   return 0;
 }
 
@@ -216,56 +187,63 @@ void ClientFinalize(HixlClientHandle client_handle, const std::vector<MemHandle>
       HixlCSClientUnregMem(client_handle, handle);
     }
   }
+
   if (client_handle != nullptr) {
     HixlCSClientDestroy(client_handle);
   }
 }
 
-void ServerFinalize(HixlServerHandle server_handle, const std::vector<MemHandle> &handles) {
+void ServerFinalize(HixlClientHandle server_handle, const std::vector<MemHandle> &handles) {
   for (auto handle : handles) {
     if (handle != nullptr) {
       HixlCSServerUnregMem(server_handle, handle);
     }
   }
+
   if (server_handle != nullptr) {
     HixlCSServerDestroy(server_handle);
   }
 }
 
-uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyKind copy_kind,
-                    void *mem_addr, uint64_t mem_size) {
+uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyKind copy_kind, CommMem mem) {
   void *tmp = nullptr;
-  std::string device = is_client ? "client" : "server";
-
-  auto ret = aclrtMallocHost(&tmp, mem_size);
-  if (ret != ACL_ERROR_NONE) {
-    (void)printf("[ERROR] %s transfer_data aclrtMallocHost failed, ret = %d\n", device.c_str(), ret);
-    return nullptr;
+  std::string device;
+  if (is_client) {
+    device = "client";
+  } else {
+    device = "server";
   }
-  uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
+  auto ret = aclrtMallocHost(&tmp, kTransferMemSize);
+  if (ret != ACL_ERROR_NONE) {
+    (void)printf("[ERROR] %s transfer_data aclrtMalloc failed, ret = %d\n", device.c_str(), ret);
+    ret = aclrtFreeHost(tmp);
+  }
+  uint32_t *transfer_data = static_cast<uint32_t *>(tmp); //初始化后的内存
   HIXL_LOGI("The %s transfer_data addr is : %p", device.c_str(), transfer_data);
-
-  if ((transfer_op == "write" && is_client) || (transfer_op == "read" && !is_client)) {
-    for (uint32_t i = 0; i < mem_size / sizeof(uint32_t); i++) {
+  // 如果是写数据，申请内存后，还需要设置内存为1，之后再复制给需要传输的内存
+  if ((transfer_op == "write" and is_client) || (transfer_op == "read" and not is_client)) {
+    for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
       transfer_data[i] = 1;
     }
-    ret = aclrtMemcpy(mem_addr, mem_size, transfer_data, mem_size, copy_kind);
+    ret = aclrtMemcpy(mem.addr, kTransferMemSize, transfer_data, kTransferMemSize, copy_kind);
     if (ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] %s transfer_data aclrtMemcpy failed, ret = %d\n", device.c_str(), ret);
     }
+    HIXL_LOGI("The %s transfer_data have been copy to client_mem.", device.c_str());
   }
-
-  if ((transfer_op == "read" && is_client) || (transfer_op == "write" && !is_client)) {
-    for (uint32_t i = 0; i < mem_size / sizeof(uint32_t); i++) {
+  if ((transfer_op == "read" and is_client )|| (transfer_op == "write" and not is_client)) {
+    for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
       transfer_data[i] = 0;
     }
-    ret = aclrtMemcpy(transfer_data, mem_size, mem_addr, mem_size, copy_kind);
+    ret = aclrtMemcpy(transfer_data, kTransferMemSize, mem.addr, kTransferMemSize, copy_kind);
     if (ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] %s transfer_data aclrtMemcpy failed, ret = %d\n", device.c_str(), ret);
     }
+    HIXL_LOGI("The client transfer_data have been copy to client_mem.");
 
     uint32_t error_num = 0;
-    for (uint32_t i = 0; i < mem_size / sizeof(uint32_t); i++) {
+    HIXL_LOGI("The num of this data transfer task is %u", kTransferMemSize/sizeof(uint32_t));
+    for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
       if (transfer_data[i] != 1) {
         error_num++;
       }
@@ -276,66 +254,66 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
 }
 
 int32_t RunClient(const Args &args) {
-  (void)printf("[INFO] Multi-thread client start, num_threads = %d\n", args.num_threads);
+  (void)printf("[INFO] client start\n");
 
-  // Start TCP server to receive completion signal from server
+  // 通过TCP接收Server侧的内存地址
   TCPServer tcp_server;
   if (!tcp_server.StartServer(args.tcp_port)) {
     (void)printf("[ERROR] Failed to start TCP server.\n");
     return -1;
   }
-  (void)printf("[INFO] TCP server started on port %d.\n", args.tcp_port);
+  (void)printf("[INFO] TCP server started.\n");
   if (!tcp_server.AcceptConnection()) {
     return -1;
   }
 
-  // 1. Initialize endpoint info
+  // 1. 初始化
   EndpointDesc local_ep;
   EndpointDesc remote_ep;
-  if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 ||
-      InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
+  if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 || InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
     (void)printf("[ERROR] Initialize EndPoint list failed\n");
     return -1;
   }
-
-  // 2. Create client
   HixlClientHandle client_handle = nullptr;
   std::string ip = args.remote_engine.substr(0U, args.remote_engine.find(':'));
   int32_t port = std::stoi(args.remote_engine.substr(args.remote_engine.find(':') + 1U));
-  HixlClientDesc client_desc = {.server_ip = ip.c_str(),
+  // 创建 HixlClientDesc 结构体
+  HixlClientDesc client_desc = {.local_endpoint = &local_ep,
+                                .remote_endpoint = &remote_ep,
+                                .server_ip = ip.c_str(),
                                 .server_port = static_cast<uint32_t>(port),
-                                .local_endpoint = &local_ep,
-                                .remote_endpoint = &remote_ep};
+                                .tc = 0U,
+                                .sl = 0U};
   HixlClientConfig client_config{};
   auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientCreate failed, ret = %u\n", ret);
     return -1;
   }
-
-  // 3. Register memory (128MB)
-  uint32_t *kClientTransferData = nullptr;
+  uint32_t *kClientTransferData =nullptr;
+  // 2. 注册内存地址
   MemHandle mem_handle = nullptr;
   CommMem mem{};
   aclrtMemcpyKind copy_kind;
+  aclError acl_ret = ACL_ERROR_NONE;
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
-
   if (is_host) {
-    void *tmp = malloc(kTransferMemSize);
+    void *tmp  = nullptr;
+    tmp = malloc(kTransferMemSize);
+    // acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize); endpoint暂不支持该方式申请的内存
     mem.addr = tmp;
     copy_kind = ACL_MEMCPY_HOST_TO_HOST;
     mem.type = COMM_MEM_TYPE_HOST;
     mem.size = kTransferMemSize;
     if (tmp == nullptr) {
       HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Client host addr malloc failed.");
-      ClientFinalize(client_handle, {mem_handle});
       return hixl::RESOURCE_EXHAUSTED;
     }
   } else {
-    aclError acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
+    acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
     if (args.transfer_op == "read") {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
-    } else {
+    }else {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     }
     mem.type = COMM_MEM_TYPE_DEVICE;
@@ -346,121 +324,72 @@ int32_t RunClient(const Args &args) {
       return -1;
     }
   }
-
   ret = HixlCSClientRegMem(client_handle, kClientMemTagName, &mem, &mem_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientRegMem failed, ret = %u\n", ret);
     ClientFinalize(client_handle, {mem_handle});
     return -1;
   }
-  (void)printf("[INFO] Client memory registered, size: %u bytes\n", kTransferMemSize);
-
-  // Initialize memory data if write operation
+  HIXL_LOGI("The client memory has been registered.");
+  (void)printf("[INFO] The client memory has been registered.\n");
+  // 如果是写数据，需要再传输开始之前复制初始化后的数据到mem中
   if (args.transfer_op == "write") {
-    kClientTransferData = mem_alloc(args.transfer_op, true, copy_kind, mem.addr, kTransferMemSize);
+    kClientTransferData = mem_alloc(args.transfer_op,true,copy_kind,mem);
   }
 
-  // 4. Connect to server
+  // 3. 建链
   ret = HixlCSClientConnect(client_handle, kClientConnectTimeoutMs);
   if (ret != HIXL_SUCCESS) {
     ClientFinalize(client_handle, {});
     (void)printf("[ERROR] HixlCSClientConnect failed, ret = %u\n", ret);
     return -1;
   }
-  (void)printf("[INFO] Client connected to server\n");
 
-  // Get remote memory address
-  uint8_t *remote_addr = nullptr;
-  if (GetRemoteMem(client_handle, &remote_addr) != 0) {
+  // 4. 与server进行内存传输
+  if (Transfer(client_handle, static_cast<uint8_t *>(mem.addr), args.transfer_op) != 0) {
     ClientFinalize(client_handle, {mem_handle});
     return -1;
   }
-  (void)printf("[INFO] Got remote memory address: %p\n", remote_addr);
 
-  // 5. Multi-threaded parallel transfer
-  uint64_t chunk_size = kTransferMemSize / args.num_threads;
-  std::vector<std::thread> threads;
-  std::vector<TransferResult> results(args.num_threads);
-
-  (void)printf("[INFO] Starting %d threads for parallel transfer, chunk_size = %lu bytes\n",
-               args.num_threads, chunk_size);
-
-  for (int32_t i = 0; i < args.num_threads; i++) {
-    threads.emplace_back(DoTransfer, client_handle,
-                        static_cast<uint8_t *>(mem.addr), remote_addr,
-                        args.transfer_op, i, i * chunk_size, chunk_size,
-                        &results[i]);
-  }
-
-  // Wait for all threads to complete
-  for (auto &t : threads) {
-    t.join();
-  }
-
-  // Check results
-  bool all_success = true;
-  int64_t total_time = 0;
-  for (const auto &result : results) {
-    if (!result.success) {
-      (void)printf("[ERROR] Thread %d failed\n", result.thread_id);
-      all_success = false;
-    }
-    total_time += result.time_us;
-  }
-
-  if (all_success) {
-    // Calculate aggregate throughput
-    double total_time_sec = static_cast<double>(total_time) / 1000 / 1000;
-    double total_size_gb = static_cast<double>(kTransferMemSize) / 1024 / 1024 / 1024;
-    (void)printf("[INFO] All transfers completed successfully!\n");
-    (void)printf("[INFO] Total data: %.2f MB, Total time: %.3f s, Aggregate throughput: %.3f GB/s\n",
-                 static_cast<double>(kTransferMemSize) / 1024 / 1024,
-                 total_time_sec,
-                 total_size_gb / total_time_sec);
-  }
-
-  // If read operation, verify data
+  // 5.如果是读数据，传输完成后，基于copy_kind拷贝内存
   if (args.transfer_op == "read") {
-    kClientTransferData = mem_alloc(args.transfer_op, true, copy_kind, mem.addr, kTransferMemSize);
+    kClientTransferData = mem_alloc(args.transfer_op,true,copy_kind,mem);
   }
 
-  // 6. Cleanup
+  // 6. 解注册，释放内存，析构
   ClientFinalize(client_handle, {mem_handle});
-  if (kClientTransferData != nullptr) {
-    auto free_ret = aclrtFreeHost(kClientTransferData);
-    if (free_ret != ACL_ERROR_NONE) {
-      HIXL_LOGI("kClientTransferData rtFreeHost failed, ret=%d", free_ret);
-    }
+  auto free_ret = aclrtFreeHost(kClientTransferData);
+  if (free_ret != ACL_ERROR_NONE) {
+    HIXL_LOGI("kClientTransferData rtFreeHost failed, ret=%d", free_ret);
   }
 
-  // Notify server via TCP
+  // 通过TCP通知Server侧已传输完成
   (void)tcp_server.SendTaskStatus();
   tcp_server.DisConnectClient();
   tcp_server.StopServer();
-
-  (void)printf("[INFO] Client end\n");
-  return all_success ? 0 : -1;
+  (void)printf("[INFO] Client Sample end\n");
+  return 0;
 }
 
 int32_t RunServer(const Args &args) {
-  (void)printf("[INFO] Multi-thread server start\n");
-
-  // 1. Initialize endpoint info
+  (void)printf("[INFO] server start\n");
+  // 1. 初始化
   EndpointDesc ep;
   if (InitEndPointInfo(args.local_comm_res, ep) != 0) {
     (void)printf("[ERROR] Initialize EndPoint list failed\n");
     return -1;
   }
 
+  uint32_t *kServerTransferData = nullptr;
   HixlServerHandle server_handle = nullptr;
   std::string ip = args.local_engine.substr(0, args.local_engine.find(':'));
   int32_t port = std::stoi(args.local_engine.substr(args.local_engine.find(':') + 1));
   HixlServerConfig config{};
-  HixlServerDesc server_desc = {.server_ip = ip.c_str(),
+  // 创建 HixlClientDesc 结构体
+  HixlServerDesc server_desc = {.endpoint_list = &ep,
+                                .server_ip = ip.c_str(),
                                 .server_port = static_cast<uint32_t>(port),
-                                .endpoint_list = &ep,
                                 .endpoint_list_num = 1U};
-
   auto ret = HixlCSServerCreate(&server_desc, &config, &server_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSServerCreate failed, ret = %u\n", ret);
@@ -473,41 +402,43 @@ int32_t RunServer(const Args &args) {
     (void)printf("[ERROR] HixlCSServerListen failed, ret = %u\n", ret);
     return -1;
   }
-  (void)printf("[INFO] Server listening on %s:%d\n", ip.c_str(), port);
+  (void)printf("[INFO] Server listen success, %s:%d\n", ip.c_str(), port);
 
-  // 2. Register memory (128MB)
-  uint32_t *kServerTransferData = nullptr;
+  // 2. 注册内存地址
   MemHandle mem_handle = nullptr;
   aclrtMemcpyKind copy_kind;
   CommMem mem{};
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
-
+  aclError acl_ret = ACL_ERROR_NONE;
   if (is_host) {
-    void *tmp = malloc(kTransferMemSize);
+    void *tmp  = nullptr;
+    tmp = malloc(kTransferMemSize);
+    // acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize); endpoint暂不支持该方式申请的内存
     mem.addr = tmp;
     copy_kind = ACL_MEMCPY_HOST_TO_HOST;
     mem.type = COMM_MEM_TYPE_HOST;
     mem.size = kTransferMemSize;
     if (tmp == nullptr) {
       HIXL_LOGE(hixl::RESOURCE_EXHAUSTED, "Server host addr malloc failed.");
-      ServerFinalize(server_handle, {mem_handle});
       return hixl::RESOURCE_EXHAUSTED;
     }
   } else {
-    aclError acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
+    acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
     if (args.transfer_op == "read") {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
-    } else {
+    }else {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
     }
     mem.type = COMM_MEM_TYPE_DEVICE;
     mem.size = kTransferMemSize;
     if (acl_ret != ACL_ERROR_NONE) {
-      (void)printf("[ERROR] Server aclrtMalloc failed, ret = %d\n", acl_ret);
+      (void)printf("[ERROR]Server host addr aclrtMalloc failed, ret = %d\n", acl_ret);
       ServerFinalize(server_handle, {mem_handle});
       return -1;
     }
+    HIXL_LOGI("Server host addr malloc success. addr is %p, size is %u", mem.addr, mem.size);
   }
+
 
   ret = HixlCSServerRegMem(server_handle, kServerMemTagName, &mem, &mem_handle);
   if (ret != HIXL_SUCCESS) {
@@ -515,19 +446,16 @@ int32_t RunServer(const Args &args) {
     ServerFinalize(server_handle, {mem_handle});
     return -1;
   }
-  (void)printf("[INFO] Server memory registered, size: %u bytes\n", kTransferMemSize);
+  HIXL_LOGI("The server memory has been registered.");
+  (void)printf("[INFO] The server memory has been registered.\n");
 
-  // Initialize memory if read operation
+  // 3.申请host侧地址，初始化内容之后复制给第二步申请的内存
   if (args.transfer_op == "read") {
-    kServerTransferData = mem_alloc(args.transfer_op, false, copy_kind, mem.addr, kTransferMemSize);
+    kServerTransferData = mem_alloc(args.transfer_op,false,copy_kind,mem);
   }
-
-  // 3. Wait for client to complete transfer
+  // 4. 等待client transfer
   TCPClient tcp_client;
-  std::string remote_ip = args.remote_engine.substr(0U, args.remote_engine.find(':'));
-  if (!tcp_client.ConnectToServer(remote_ip, args.tcp_port)) {
-    (void)printf("[ERROR] Failed to connect to client via TCP\n");
-    ServerFinalize(server_handle, {mem_handle});
+  if (!tcp_client.ConnectToServer(args.remote_engine, args.tcp_port)) {
     return -1;
   }
   (void)printf("[INFO] Wait transfer begin\n");
@@ -536,49 +464,27 @@ int32_t RunServer(const Args &args) {
   }
   tcp_client.Disconnect();
 
-  // Copy data if write operation
+  // 如果是写，则要再数据传输完成后再复制内存
   if (args.transfer_op == "write") {
-    kServerTransferData = mem_alloc(args.transfer_op, false, copy_kind, mem.addr, kTransferMemSize);
+    kServerTransferData = mem_alloc(args.transfer_op,false,copy_kind,mem);
   }
 
-  // 4. Cleanup
+  // 5. 解注册，释放内存，析构
   ServerFinalize(server_handle, {mem_handle});
-  if (kServerTransferData != nullptr) {
-    auto free_ret = aclrtFreeHost(kServerTransferData);
-    if (free_ret != ACL_ERROR_NONE) {
-      HIXL_LOGI("kServerTransferData rtFreeHost failed, ret=%d", free_ret);
-    }
+  auto free_ret = aclrtFreeHost(kServerTransferData);
+  if (free_ret != ACL_ERROR_NONE) {
+    HIXL_LOGI("kServerTransferData rtFreeHost failed, ret=%d", free_ret);
   }
-
-  (void)printf("[INFO] Server end\n");
+  (void)printf("[INFO] Server Sample end\n");
   return 0;
 }
-
 }  // namespace
-
-void PrintUsage(const char *prog_name) {
-  (void)printf("Usage: %s <device_id> <local_engine> <remote_engine> <tcp_port> <transfer_mode> "
-               "<transfer_op> <num_threads> <local_comm_res> <remote_comm_res>\n",
-               prog_name);
-  (void)printf("  device_id: Device ID (e.g., 0)\n");
-  (void)printf("  local_engine: Server engine address (e.g., 127.0.0.1:19999)\n");
-  (void)printf("  remote_engine: Client connects to server address (e.g., 127.0.0.1:19998)\n");
-  (void)printf("  tcp_port: TCP port for control channel\n");
-  (void)printf("  transfer_mode: d2d, d2h, h2h, h2d\n");
-  (void)printf("  transfer_op: write or read\n");
-  (void)printf("  num_threads: Number of parallel transfer threads\n");
-  (void)printf("  local_comm_res: Local endpoint JSON\n");
-  (void)printf("  remote_comm_res: Remote endpoint JSON\n");
-  (void)printf("Example (server): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write 4 h2h h2h\n", prog_name);
-  (void)printf("Example (client): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write 4 h2h h2h\n", prog_name);
-}
 
 int32_t main(int32_t argc, char **argv) {
   bool is_client = false;
   Args args{};
   std::string device_id_str;
   std::string tcp_port_str;
-
   if (argc == kExpectedArgCnt) {
     device_id_str = argv[kArgIndexDeviceId];
     args.local_engine = argv[kArgIndexLocalEngine];
@@ -586,25 +492,22 @@ int32_t main(int32_t argc, char **argv) {
     tcp_port_str = argv[kArgIndexTcpPort];
     args.transfer_mode = argv[kArgIndexTransferMode];
     args.transfer_op = argv[kArgIndexTransferOp];
-    args.num_threads = std::stoi(argv[kArgIndexNumThreads]);
     args.local_comm_res = argv[kArgIndexLocalCommRes];
     args.remote_comm_res = argv[kArgIndexRemoteCommRes];
     is_client = (args.remote_engine.find(':') != std::string::npos);
     (void)printf(
         "[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, "
-        "transfer_op = %s, num_threads = %d, local_comm_res = %s, remote_comm_res = %s\n",
+        "transfer_op = %s, local_comm_res = %s, remote_comm_res = %s\n",
         device_id_str.c_str(), args.local_engine.c_str(), args.remote_engine.c_str(), tcp_port_str.c_str(),
-        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.num_threads,
-        args.local_comm_res.c_str(), args.remote_comm_res.c_str());
+        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.local_comm_res.c_str(),
+        args.remote_comm_res.c_str());
   } else {
     (void)printf(
-        "[ERROR] Expect 9 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, "
-        "transfer_op, num_threads, local_comm_res, remote_comm_res), but got %d\n",
+        "[ERROR] Expect 8 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, "
+        "transfer_op, local_comm_res, remote_comm_res), but got %d\n",
         argc - 1);
-    PrintUsage(argv[0]);
     return -1;
   }
-
   args.device_id = std::stoi(device_id_str);
   int32_t input_tcp_port = std::stoi(tcp_port_str);
   if (input_tcp_port < 0 || input_tcp_port > kPortMaxValue) {
@@ -625,18 +528,12 @@ int32_t main(int32_t argc, char **argv) {
     return -1;
   }
 
-  if (args.num_threads < 1 || args.num_threads > 16) {
-    (void)printf("[ERROR] Invalid num_threads: %d (should be 1-16)\n", args.num_threads);
-    return -1;
-  }
-
   int32_t ret = 0;
   if (is_client) {
     ret = RunClient(args);
   } else {
     ret = RunServer(args);
   }
-
   CHECK_ACL_RETURN(aclrtResetDevice(args.device_id));
   return ret;
 }

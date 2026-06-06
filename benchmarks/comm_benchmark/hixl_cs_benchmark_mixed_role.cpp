@@ -320,10 +320,12 @@ int32_t RunClientThread(const std::string &connect_engine,
     return -1;
   }
 
-  HixlClientDesc client_desc = {.server_ip = server_ip.c_str(),
+  HixlClientDesc client_desc = {.local_endpoint = &local_ep,
+                                .remote_endpoint = &remote_ep,
+                                .server_ip = server_ip.c_str(),
                                 .server_port = static_cast<uint32_t>(server_port),
-                                .local_endpoint = &local_ep,
-                                .remote_endpoint = &remote_ep};
+                                .tc = 0U,
+                                .sl = 0U};
   HixlClientConfig client_config{};
   auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
   if (ret != HIXL_SUCCESS) {
@@ -452,9 +454,9 @@ int32_t RunServerThread(const std::string &listen_engine,
 
   HixlServerHandle server_handle = nullptr;
   HixlServerConfig config{};
-  HixlServerDesc server_desc = {.server_ip = listen_ip.c_str(),
+  HixlServerDesc server_desc = {.endpoint_list = &ep,
+                                .server_ip = listen_ip.c_str(),
                                 .server_port = static_cast<uint32_t>(listen_port),
-                                .endpoint_list = &ep,
                                 .endpoint_list_num = 1U};
 
   auto ret = HixlCSServerCreate(&server_desc, &config, &server_handle);

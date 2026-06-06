@@ -406,10 +406,12 @@ int32_t Scene8Test(const Args &args, bool is_client) {
     std::string ip = args.remote_engine.substr(0U, args.remote_engine.find(':'));
     int32_t port = std::stoi(args.remote_engine.substr(args.remote_engine.find(':') + 1U));
 
-    HixlClientDesc client_desc = {.server_ip = ip.c_str(),
+    HixlClientDesc client_desc = {.local_endpoint = &local_ep,
+                                  .remote_endpoint = &remote_ep,
+                                  .server_ip = ip.c_str(),
                                   .server_port = static_cast<uint32_t>(port),
-                                  .local_endpoint = &local_ep,
-                                  .remote_endpoint = &remote_ep};
+                                  .tc = 0U,
+                                  .sl = 0U};
     HixlClientConfig client_config{};
     auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
     if (ret != HIXL_SUCCESS) {
@@ -555,10 +557,12 @@ int32_t RunClient(const Args &args) {
   HixlClientHandle client_handle = nullptr;
   std::string ip = args.remote_engine.substr(0U, args.remote_engine.find(':'));
   int32_t port = std::stoi(args.remote_engine.substr(args.remote_engine.find(':') + 1U));
-  HixlClientDesc client_desc = {.server_ip = ip.c_str(),
+  HixlClientDesc client_desc = {.local_endpoint = &local_ep,
+                                .remote_endpoint = &remote_ep,
+                                .server_ip = ip.c_str(),
                                 .server_port = static_cast<uint32_t>(port),
-                                .local_endpoint = &local_ep,
-                                .remote_endpoint = &remote_ep};
+                                .tc = 0U,
+                                .sl = 0U};
   HixlClientConfig client_config{};
   auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
   if (ret != HIXL_SUCCESS) {
@@ -687,9 +691,9 @@ int32_t RunServer(const Args &args) {
   std::string ip = args.local_engine.substr(0, args.local_engine.find(':'));
   int32_t port = std::stoi(args.local_engine.substr(args.local_engine.find(':') + 1));
   HixlServerConfig config{};
-  HixlServerDesc server_desc = {.server_ip = ip.c_str(),
+  HixlServerDesc server_desc = {.endpoint_list = &ep,
+                                .server_ip = ip.c_str(),
                                 .server_port = static_cast<uint32_t>(port),
-                                .endpoint_list = &ep,
                                 .endpoint_list_num = 1U};
   auto ret = HixlCSServerCreate(&server_desc, &config, &server_handle);
   if (ret != HIXL_SUCCESS) {
