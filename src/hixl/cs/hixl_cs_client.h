@@ -41,6 +41,8 @@ struct DeviceCompleteHandle {
   uint32_t reserved;
   std::shared_ptr<TransferPool::SlotHandle> shared_slot;
   void *host_flag;
+  MemHandle host_flag_mem_handle;
+  void *host_flag_kernel_addr;
   void *dev_op_desc_buf;
 };
 
@@ -130,6 +132,8 @@ class HixlCSClient {
   void ReleaseSharedSlotRef(std::shared_ptr<TransferPool::SlotHandle> &slot_ref);
   void CleanupActiveSlot();
   Status AllocateHostFlag(void *&host_flag) const;
+  Status RegisterDeviceSyncHostFlag(DeviceCompleteHandle &handle);
+  Status CheckDeviceSyncHostFlag(const DeviceCompleteHandle &handle) const;
   Status AllocateDeviceDescBuf(DeviceCompleteHandle &handle, uint32_t total_list_num,
                                const HixlOneSideOpDesc *desc_list);
   Status BuildDeviceChunkParam(DeviceCompleteHandle &handle, uint32_t chunk_offset,

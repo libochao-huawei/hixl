@@ -476,12 +476,52 @@ TEST_F(HixlCSClientSlotReuseFixture, HostFlagInDeviceCompleteHandle) {
   DeviceCompleteHandle handle{};
   handle.magic = 0x55425548U;  // kDeviceCompleteMagic
   handle.host_flag = nullptr;
+  handle.host_flag_mem_handle = nullptr;
+  handle.host_flag_kernel_addr = nullptr;
   EXPECT_EQ(handle.host_flag, nullptr);
+  EXPECT_EQ(handle.host_flag_mem_handle, nullptr);
+  EXPECT_EQ(handle.host_flag_kernel_addr, nullptr);
 
   // Verify structure has the field
   void *test_flag = reinterpret_cast<void *>(0x1234);
   handle.host_flag = test_flag;
   EXPECT_EQ(handle.host_flag, test_flag);
+}
+
+TEST_F(HixlCSClientSlotReuseFixture, CheckDeviceSyncHostFlagCompleted) {
+  uint64_t flag = 1ULL;
+  DeviceCompleteHandle handle{};
+  handle.host_flag = &flag;
+
+  EXPECT_EQ(cli_.CheckDeviceSyncHostFlag(handle), SUCCESS);
+}
+
+TEST_F(HixlCSClientSlotReuseFixture, CheckDeviceSyncHostFlagNotVisible) {
+  uint64_t flag = 0ULL;
+  DeviceCompleteHandle handle{};
+  handle.host_flag = &flag;
+
+  EXPECT_EQ(cli_.CheckDeviceSyncHostFlag(handle), FAILED);
+}
+
+TEST_F(HixlCSClientSlotReuseFixture, BuildDeviceChunkParamIncludesHostFlag) {
+  HixlOneSideOpDesc desc{};
+  DeviceCompleteHandle handle{};
+  handle.shared_slot = std::make_shared<TransferPool::SlotHandle>();
+  handle.shared_slot->slot_index = 0U;
+  handle.shared_slot->thread = 9U;
+  handle.shared_slot->notify_id = 7U;
+  handle.dev_op_desc_buf = &desc;
+  handle.host_flag_kernel_addr = reinterpret_cast<void *>(0x3333);
+
+  cli_.slot_notify_addrs_.assign(1U, 0x2222ULL);
+  cli_.notify_len_ = sizeof(uint64_t);
+
+  HixlOneSideOpParam param{};
+  ASSERT_EQ(cli_.BuildDeviceChunkParam(handle, 0U, 1U, true, param), SUCCESS);
+  EXPECT_EQ(param.remote_flag_addr, reinterpret_cast<uint64_t>(&remote_flag_dev_));
+  EXPECT_EQ(param.local_flag_addr, 0x2222ULL);
+  EXPECT_EQ(param.host_local_flag_addr, 0x3333ULL);
 }
 
 TEST_F(HixlCSClientSlotReuseFixture, DeviceLaunchMutexExists) {
