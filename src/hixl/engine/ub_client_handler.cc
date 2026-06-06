@@ -18,6 +18,7 @@
 #include "common/hixl_utils.h"
 #include "common/thread_pool.h"
 #include "engine/endpoint_generator.h"
+#include "nlohmann/json.hpp"
 
 namespace hixl {
 namespace {
@@ -33,12 +34,21 @@ Status ComputeRemainingMs(const std::chrono::steady_clock::time_point &start, ui
   return SUCCESS;
 }
 
+std::string BuildGlobalResourceConfig(const std::optional<uint32_t> &listen_port) {
+  if (!listen_port.has_value()) {
+    return "";
+  }
+  nlohmann::json json{{"comm_resource_config.listen_port", *listen_port}};
+  return json.dump();
+}
+
 }  // namespace
 
 UbClientHandler::UbClientHandler(std::map<CommType, HixlClientHandle> handles) : handles_(std::move(handles)) {}
 
 Status UbClientHandler::Create(const HandlerCreateArgs &args, std::unique_ptr<UbClientHandler> &out) {
   std::map<CommType, HixlClientHandle> handles;
+  const std::string global_resource_config = BuildGlobalResourceConfig(args.local_listen_port);
   for (const auto &pair : args.matched_pairs) {
     int32_t dev_logic_id = 0;
     int32_t dev_phy_id = 0;
@@ -56,7 +66,10 @@ Status UbClientHandler::Create(const HandlerCreateArgs &args, std::unique_ptr<Ub
     desc.tc = args.rdma_tc;
     desc.sl = args.rdma_sl;
     HixlClientHandle handle = nullptr;
-    const HixlClientConfig config{};
+    HixlClientConfig config{};
+    if (!global_resource_config.empty()) {
+      config.global_resource_config = global_resource_config.c_str();
+    }
     HIXL_CHK_STATUS_RET(HixlCSClientCreate(&desc, &config, &handle), "HixlCSClientCreate failed for type %s",
                         CommTypeToString(pair.type));
     handles[pair.type] = handle;

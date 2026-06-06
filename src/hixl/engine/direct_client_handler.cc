@@ -13,8 +13,18 @@
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
 #include "engine/endpoint_generator.h"
+#include "nlohmann/json.hpp"
 
 namespace hixl {
+namespace {
+std::string BuildGlobalResourceConfig(const std::optional<uint32_t> &listen_port) {
+  if (!listen_port.has_value()) {
+    return "";
+  }
+  nlohmann::json json{{"comm_resource_config.listen_port", *listen_port}};
+  return json.dump();
+}
+}  // namespace
 
 DirectClientHandler::DirectClientHandler(HixlClientHandle handle) : handle_(handle) {}
 
@@ -36,7 +46,11 @@ Status DirectClientHandler::Create(const HandlerCreateArgs &args, std::unique_pt
   desc.tc = args.rdma_tc;
   desc.sl = args.rdma_sl;
   HixlClientHandle handle = nullptr;
-  const HixlClientConfig config{};
+  HixlClientConfig config{};
+  const std::string global_resource_config = BuildGlobalResourceConfig(args.local_listen_port);
+  if (!global_resource_config.empty()) {
+    config.global_resource_config = global_resource_config.c_str();
+  }
   HIXL_CHK_STATUS_RET(HixlCSClientCreate(&desc, &config, &handle), "HixlCSClientCreate failed for type %s",
                       CommTypeToString(pair.type));
   out = MakeUnique<DirectClientHandler>(handle);
