@@ -22,6 +22,7 @@ DEVICES="${DEVICES:-0,1}"
 SOC_VARIANT="${SOC_VARIANT:-a5}"
 OUT_ROOT="${OUT_ROOT:-${ROOT_DIR}/comm_benchmark/output/uboe_rd2h_host_flag_probe}"
 PLOG_DIR="${PWD}/plog"
+PLOG_FLUSH_WAIT_SEC="${PLOG_FLUSH_WAIT_SEC:-2}"
 
 if [[ ! -x "${BENCH_BIN}" ]]; then
   echo "[ERROR] benchmark binary not found: ${BENCH_BIN}"
@@ -34,6 +35,7 @@ mkdir -p "${OUT_ROOT}"
 pass_count=0
 fail_count=0
 host_flag_done_count=0
+host_flag_retry_done_count=0
 host_flag_not_visible_count=0
 
 count_probe_logs() {
@@ -42,8 +44,10 @@ import pathlib
 import sys
 
 done_key = "D2H host flag done after stream sync"
+retry_done_key = "D2H host flag becomes visible after retry"
 not_visible_key = "stream sync success but D2H host flag is not visible"
 done = 0
+retry_done = 0
 not_visible = 0
 
 for root in sys.argv[1:]:
@@ -57,9 +61,10 @@ for root in sys.argv[1:]:
         except OSError:
             continue
         done += text.count(done_key)
+        retry_done += text.count(retry_done_key)
         not_visible += text.count(not_visible_key)
 
-print(f"{done} {not_visible}")
+print(f"{done} {retry_done} {not_visible}")
 PY
 }
 
@@ -72,8 +77,7 @@ for run_id in $(seq 1 "${RUNS}"); do
 
   echo "[INFO] run ${run_id}/${RUNS}, size=${SIZE}, devices=${DEVICES}, output=${run_dir}"
   before_counts="$(count_probe_logs "${PLOG_DIR}")"
-  before_done="${before_counts%% *}"
-  before_not_visible="${before_counts##* }"
+  read -r before_done before_retry_done before_not_visible <<< "${before_counts}"
 
   set +e
   python3 "${RUNNER}" \
@@ -90,6 +94,7 @@ for run_id in $(seq 1 "${RUNS}"); do
     >"${log_file}" 2>&1
   rc=$?
   set -e
+  sleep "${PLOG_FLUSH_WAIT_SEC}"
 
   if [[ ${rc} -eq 0 ]]; then
     pass_count=$((pass_count + 1))
@@ -98,15 +103,16 @@ for run_id in $(seq 1 "${RUNS}"); do
   fi
 
   after_counts="$(count_probe_logs "${PLOG_DIR}")"
-  after_done="${after_counts%% *}"
-  after_not_visible="${after_counts##* }"
+  read -r after_done after_retry_done after_not_visible <<< "${after_counts}"
   run_done=$((after_done - before_done))
+  run_retry_done=$((after_retry_done - before_retry_done))
   run_not_visible=$((after_not_visible - before_not_visible))
   host_flag_done_count=$((host_flag_done_count + run_done))
+  host_flag_retry_done_count=$((host_flag_retry_done_count + run_retry_done))
   host_flag_not_visible_count=$((host_flag_not_visible_count + run_not_visible))
 
-  echo "[INFO] run ${run_id} rc=${rc}, host_flag_done=${run_done}, host_flag_not_visible=${run_not_visible}"
+  echo "[INFO] run ${run_id} rc=${rc}, host_flag_done=${run_done}, host_flag_retry_done=${run_retry_done}, host_flag_not_visible=${run_not_visible}, plog_before=${before_counts}, plog_after=${after_counts}"
 done
 
 echo "[RESULT] pass=${pass_count}, fail=${fail_count}, total=${RUNS}"
-echo "[RESULT] host_flag_done=${host_flag_done_count}, host_flag_not_visible=${host_flag_not_visible_count}"
+echo "[RESULT] host_flag_done=${host_flag_done_count}, host_flag_retry_done=${host_flag_retry_done_count}, host_flag_not_visible=${host_flag_not_visible_count}"
