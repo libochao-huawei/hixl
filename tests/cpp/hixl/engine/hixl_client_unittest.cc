@@ -21,6 +21,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "cs/hixl_cs.h"
+#include "cs/hixl_cs_client.h"
 #include "engine/endpoint_test_utils.h"
 #define private public
 #include "engine/hixl_client.h"
@@ -1119,6 +1120,26 @@ TEST_F(HixlClientUTest, DirectClientHandlerSingleHandle) {
   auto handle = reinterpret_cast<HixlClientHandle>(0x1234);
   DirectClientHandler handler(handle);
   EXPECT_NE(&handler, nullptr);
+}
+
+TEST_F(HixlClientUTest, DirectClientHandlerGetTransferStatusWaiting) {
+  constexpr uint32_t kRoceCompleteMagicForTest = 0x524F4345U;
+  HixlCSClient client;
+  DirectClientHandler handler(static_cast<HixlClientHandle>(&client));
+
+  uint64_t flag = 0;
+  CompleteHandleInfo complete_handle{};
+  complete_handle.magic = kRoceCompleteMagicForTest;
+  complete_handle.flag_index = 0;
+  complete_handle.flag_address = &flag;
+
+  auto req = reinterpret_cast<TransferReq>(0x1234);
+  handler.complete_handles_[req] = static_cast<CompleteHandle>(&complete_handle);
+
+  TransferStatus status = TransferStatus::TIMEOUT;
+  EXPECT_EQ(handler.GetTransferStatus(req, status), SUCCESS);
+  EXPECT_EQ(status, TransferStatus::WAITING);
+  EXPECT_EQ(handler.complete_handles_.count(req), 1U);
 }
 
 TEST_F(HixlClientUTest, UbHandlerClassifyD2D) {
