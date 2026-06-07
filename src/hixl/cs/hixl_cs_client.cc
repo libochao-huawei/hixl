@@ -51,8 +51,6 @@ constexpr uint64_t kFlagDoneValue = 1ULL;
 constexpr uint64_t kFlagResetValue = 0ULL;
 constexpr uint32_t kCustomTimeoutMs = 1800;
 constexpr uint32_t kMaxKernelBatchSize = 128U;
-constexpr uint32_t kHostFlagRetryIntervalUs = 100U;
-constexpr uint32_t kHostFlagRetryTimeoutMs = 10000U;
 // notifywait默认1836ms等待时长，通过异步接口提供给用户使用，由用户感知超时主动退出，不使用notify的超时时间
 constexpr uint16_t kNotifyDefaultWaitTimeMs = 27 * 68;
 void FreeExportDesc(std::vector<hixl::HixlMemDesc> &desc_list) {
@@ -793,22 +791,7 @@ Status HixlCSClient::CheckDeviceSyncHostFlag(const DeviceCompleteHandle &handle)
     return SUCCESS;
   }
 
-  HIXL_LOGW("[HixlClient] D2H host flag is not visible after stream sync, retry start, flag=%lu", flag_val);
-  const auto retry_start = std::chrono::steady_clock::now();
-  uint32_t retry_idx = 0U;
-  while (std::chrono::steady_clock::now() - retry_start < std::chrono::milliseconds(kHostFlagRetryTimeoutMs)) {
-    ++retry_idx;
-    std::this_thread::sleep_for(std::chrono::microseconds(kHostFlagRetryIntervalUs));
-    const uint64_t retry_flag_val = *flag_ptr;
-    if (retry_flag_val == kDeviceFlagDoneValue) {
-      HIXL_LOGW("[HixlClient] D2H host flag becomes visible after retry, retry_idx=%u, wait_us=%u",
-                retry_idx, retry_idx * kHostFlagRetryIntervalUs);
-      return SUCCESS;
-    }
-  }
-
-  HIXL_LOGE(FAILED, "[HixlClient] stream sync success but D2H host flag is not visible after %u ms, flag=%lu",
-            kHostFlagRetryTimeoutMs, *flag_ptr);
+  HIXL_LOGE(FAILED, "[HixlClient] stream sync success but D2H host flag is not visible, flag=%lu", flag_val);
   return FAILED;
 }
 
