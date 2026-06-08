@@ -130,8 +130,8 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
     if (param->use_notify_record == 0) {
       if (param->host_local_flag_addr != 0) {
         HIXL_LOGI("[HixlBatchPutAndGet] HcommReadOnThread start to read D2H host flag, "
-                  "local_flag=%lu, remote_flag=%lu",
-                  param->host_local_flag_addr, param->remote_flag_addr);
+                  "thread=%lu, channel=%lu, local_flag=%lu, remote_flag=%lu",
+                  param->thread, param->channel, param->host_local_flag_addr, param->remote_flag_addr);
         ret = HcommProxy::ReadOnThread(
             param->thread, param->channel, reinterpret_cast<void *>(static_cast<uintptr_t>(param->host_local_flag_addr)),
             reinterpret_cast<void *>(static_cast<uintptr_t>(param->remote_flag_addr)), sizeof(uint64_t));

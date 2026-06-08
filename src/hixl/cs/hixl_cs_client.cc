@@ -782,8 +782,8 @@ Status HixlCSClient::RegisterDeviceSyncHostFlag(DeviceCompleteHandle &handle) {
                       "[HixlClient] query device sync probe host flag desc failed");
   handle.probe_host_flag_kernel_addr =
       desc.registered_dev_mem != nullptr ? desc.registered_dev_mem : handle.probe_host_flag;
-  HIXL_LOGI("[HixlClient] device sync probe host flag registered, host_addr=%p, kernel_addr=%p",
-            handle.probe_host_flag, handle.probe_host_flag_kernel_addr);
+  HIXL_LOGI("[HixlClient] device sync probe host flag registered, host_addr=%p, kernel_addr=%p, mem_handle=%p",
+            handle.probe_host_flag, handle.probe_host_flag_kernel_addr, handle.probe_host_flag_mem_handle);
   return SUCCESS;
 }
 
@@ -795,11 +795,14 @@ Status HixlCSClient::CheckDeviceSyncHostFlag(const DeviceCompleteHandle &handle)
   const volatile uint64_t *flag_ptr = static_cast<const volatile uint64_t *>(handle.probe_host_flag);
   const uint64_t flag_val = *flag_ptr;
   if (flag_val == kDeviceFlagDoneValue) {
-    HIXL_LOGI("[HixlClient] D2H host flag done after stream sync, flag=%lu", flag_val);
+    HIXL_LOGI("[HixlClient] D2H host flag done after stream sync, flag=%lu, host_addr=%p, kernel_addr=%p",
+              flag_val, handle.probe_host_flag, handle.probe_host_flag_kernel_addr);
     return SUCCESS;
   }
 
-  HIXL_LOGW("[HixlClient] D2H host flag is not visible after stream sync, poll start, flag=%lu", flag_val);
+  HIXL_LOGW("[HixlClient] D2H host flag is not visible after stream sync, poll start, flag=%lu, "
+            "host_addr=%p, kernel_addr=%p",
+            flag_val, handle.probe_host_flag, handle.probe_host_flag_kernel_addr);
   const auto poll_start = std::chrono::steady_clock::now();
   uint32_t poll_count = 0U;
   while (std::chrono::steady_clock::now() - poll_start < std::chrono::milliseconds(kHostFlagPollTimeoutMs)) {
@@ -809,8 +812,9 @@ Status HixlCSClient::CheckDeviceSyncHostFlag(const DeviceCompleteHandle &handle)
     if (poll_flag_val == kDeviceFlagDoneValue) {
       const auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
           std::chrono::steady_clock::now() - poll_start).count();
-      HIXL_LOGW("[HixlClient] D2H host flag becomes visible after poll, poll_count=%u, elapsed_us=%ld",
-                poll_count, static_cast<long>(elapsed_us));
+      HIXL_LOGW("[HixlClient] D2H host flag becomes visible after poll, poll_count=%u, elapsed_us=%ld, "
+                "host_addr=%p, kernel_addr=%p",
+                poll_count, static_cast<long>(elapsed_us), handle.probe_host_flag, handle.probe_host_flag_kernel_addr);
       return SUCCESS;
     }
   }
@@ -818,7 +822,8 @@ Status HixlCSClient::CheckDeviceSyncHostFlag(const DeviceCompleteHandle &handle)
   const auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
       std::chrono::steady_clock::now() - poll_start).count();
   HIXL_LOGE(FAILED, "[HixlClient] stream sync success but D2H host flag is not visible after poll, "
-            "elapsed_us=%ld, flag=%lu", static_cast<long>(elapsed_us), *flag_ptr);
+            "elapsed_us=%ld, flag=%lu, host_addr=%p, kernel_addr=%p",
+            static_cast<long>(elapsed_us), *flag_ptr, handle.probe_host_flag, handle.probe_host_flag_kernel_addr);
   return FAILED;
 }
 
