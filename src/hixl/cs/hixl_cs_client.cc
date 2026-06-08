@@ -784,10 +784,15 @@ Status HixlCSClient::RegisterDeviceSyncHostFlag(DeviceCompleteHandle &handle) {
   HixlMemDesc desc{};
   HIXL_CHK_STATUS_RET(local_endpoint_->GetMemDesc(handle.probe_host_flag_mem_handle, desc),
                       "[HixlClient] query device sync probe host flag desc failed");
-  handle.probe_host_flag_kernel_addr =
-      desc.registered_dev_mem != nullptr ? desc.registered_dev_mem : handle.probe_host_flag;
-  HIXL_LOGI("[HixlClient] device sync probe host flag registered, host_addr=%p, kernel_addr=%p, mem_handle=%p",
-            handle.probe_host_flag, handle.probe_host_flag_kernel_addr, handle.probe_host_flag_mem_handle);
+  if (protocol == COMM_PROTOCOL_UBOE && desc.registered_dev_mem != nullptr) {
+    handle.probe_host_flag_kernel_addr = desc.registered_dev_mem;
+  } else {
+    handle.probe_host_flag_kernel_addr = desc.mem.addr;
+  }
+  HIXL_LOGI("[HixlClient] device sync probe host flag registered, protocol=%u, host_addr=%p, "
+            "kernel_addr=%p, registered_dev_mem=%p, mem_handle=%p",
+            protocol, handle.probe_host_flag, handle.probe_host_flag_kernel_addr, desc.registered_dev_mem,
+            handle.probe_host_flag_mem_handle);
   return SUCCESS;
 }
 
