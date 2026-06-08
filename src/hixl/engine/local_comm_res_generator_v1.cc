@@ -84,10 +84,7 @@ constexpr size_t kPgEidSecondIndex = 1;    // PG EID 第二索引
 constexpr size_t kSecondElementSize = 2;   // 第二元素 size 检查
 constexpr uint32_t kOddParity = 1;         // 奇校验
 constexpr uint32_t kEvenParity = 0;        // 偶校验
-constexpr size_t kEidNamePrefixLen = 3;    // "eid" 前缀长度
 constexpr uint32_t kParityModuloBase = 2;  // 奇偶校验模基数
-constexpr size_t kSkipReasonCount = 4;     // ShouldSkipD2DLink 跳过原因分类数
-constexpr int32_t kJsonIndentSpaces = 2;   // JSON 输出缩进空格数
 
 // 产品形态判断函数
 inline bool IsProductServer(uint32_t mainboard_id) {
@@ -238,7 +235,8 @@ int32_t ParseUrmaAdminOutput(const std::string &cmd_output, std::vector<UrmaEidE
     // 提取 eid_index: "eid1" → 1
     int eid_index = 0;
     try {
-      eid_index = std::stoi(eid_name.substr(kEidNamePrefixLen));
+      // "eid" 前缀长度为 3，跳过前缀取数字部分
+      eid_index = std::stoi(eid_name.substr(std::strlen("eid")));
     } catch (const std::exception &) {
       continue;
     }
@@ -386,7 +384,7 @@ TopoFileFinder::TopoFileFinder() {}
 
 TopoFileFinder::~TopoFileFinder() {}
 
-bool TopoFileFinder::MatchProductForm(uint32_t mainboard_id, std::string &topo_prefix) const {
+bool TopoFileFinder::MatchProductForm(uint32_t mainboard_id, std::string &topo_prefix) {
   if (mainboard_id == kMainboardIdPod1 || mainboard_id == kMainboardIdPod2 || mainboard_id == kMainboardIdPod3) {
     topo_prefix = kTopoPrefixAtlas950;
     return true;
@@ -398,7 +396,7 @@ bool TopoFileFinder::MatchProductForm(uint32_t mainboard_id, std::string &topo_p
   return false;
 }
 
-bool TopoFileFinder::IsProductServer(uint32_t mainboard_id) const {
+bool TopoFileFinder::IsProductServer(uint32_t mainboard_id) {
   return ((mainboard_id >= kMainboardIdServerMin1 && mainboard_id <= kMainboardIdServerMax1 &&
            (mainboard_id % kParityModuloBase == kOddParity)) ||
           (mainboard_id >= kMainboardIdServerMin2 && mainboard_id <= kMainboardIdServerMax2 &&
@@ -473,7 +471,7 @@ std::string ProcfsRouteHandler::FindProcBasePath() const {
   return "";
 }
 
-bool ProcfsRouteHandler::ReadFileToString(const std::string &path, std::string &content) const {
+bool ProcfsRouteHandler::ReadFileToString(const std::string &path, std::string &content) {
   if (mmAccess(path.c_str()) != EN_OK) {
     HIXL_LOGW("[ReadFileToString] File access check failed: %s, errno=%d(%s)", path.c_str(), errno, strerror(errno));
     return false;
@@ -489,7 +487,7 @@ bool ProcfsRouteHandler::ReadFileToString(const std::string &path, std::string &
   return true;
 }
 
-bool ProcfsRouteHandler::WriteStringToFile(const std::string &path, const std::string &content) const {
+bool ProcfsRouteHandler::WriteStringToFile(const std::string &path, const std::string &content) {
   int fd = open(path.c_str(), O_WRONLY);
   if (fd < 0) {
     HIXL_LOGW("[WriteStringToFile] Failed to open %s: errno=%d(%s)", path.c_str(), errno, strerror(errno));
@@ -509,7 +507,7 @@ bool ProcfsRouteHandler::WriteStringToFile(const std::string &path, const std::s
   return true;
 }
 
-std::string ProcfsRouteHandler::TrimString(const std::string &s) const {
+std::string ProcfsRouteHandler::TrimString(const std::string &s) {
   size_t start = s.find_first_not_of(" \t\r\n");
   if (start == std::string::npos) {
     return "";
@@ -518,7 +516,7 @@ std::string ProcfsRouteHandler::TrimString(const std::string &s) const {
   return s.substr(start, end - start + 1);
 }
 
-bool ProcfsRouteHandler::ParseSlotIdFromLine(const std::string &line, std::string &slot_id) const {
+bool ProcfsRouteHandler::ParseSlotIdFromLine(const std::string &line, std::string &slot_id) {
   if (line.find("dev_id=") == std::string::npos) {
     return false;
   }
@@ -530,7 +528,7 @@ bool ProcfsRouteHandler::ParseSlotIdFromLine(const std::string &line, std::strin
   return true;
 }
 
-bool ProcfsRouteHandler::ParseEidFromLine(const std::string &line, const std::string &prefix, std::string &eid) const {
+bool ProcfsRouteHandler::ParseEidFromLine(const std::string &line, const std::string &prefix, std::string &eid) {
   if (line.find(prefix) == std::string::npos) {
     return false;
   }
@@ -542,7 +540,7 @@ bool ProcfsRouteHandler::ParseEidFromLine(const std::string &line, const std::st
   return !eid.empty();
 }
 
-std::string ProcfsRouteHandler::FormatEidValue(const std::string &eid) const {
+std::string ProcfsRouteHandler::FormatEidValue(const std::string &eid) {
   std::string result = eid;
   if (result.size() >= kHexPrefixLength && result[0] == '0' && (result[1] == 'x' || result[1] == 'X')) {
     result = result.substr(kHexPrefixLength);
@@ -552,7 +550,7 @@ std::string ProcfsRouteHandler::FormatEidValue(const std::string &eid) const {
   return result;
 }
 
-size_t ProcfsRouteHandler::SelectEidIndexByNpuId(int32_t npu_id, size_t local_count, size_t remote_count) const {
+size_t ProcfsRouteHandler::SelectEidIndexByNpuId(int32_t npu_id, size_t local_count, size_t remote_count) {
   int32_t group_offset = npu_id % 8;
   size_t eid_idx = (group_offset < 4) ? 0 : 1;  // 前4个用第一组，后4个用第二组
   if (eid_idx >= local_count || eid_idx >= remote_count) {
@@ -959,7 +957,7 @@ int32_t ParseRouteFile(const std::string &route_path, RouteData &route_data) {
 
 // ============ 边生成实现 ============
 
-bool ShouldSkipD2DLink(const TopoLink &link, std::array<size_t, kSkipReasonCount> &skip_reason) {
+bool ShouldSkipD2DLink(const TopoLink &link, std::array<size_t, 4> &skip_reason) {  // 4: skip reason categories
   if (link.net_layer != 0) {
     ++skip_reason[0];
     return true;
@@ -1425,7 +1423,9 @@ int32_t TransLocalCommRes(int32_t phy_dev_id, const std::string &topo_path, cons
   }
 
   // 3. 通过 AscendString 返回（内部封装 shared_ptr<std::string>，跨 .so 边界 ABI 安全）
-  result = AscendString(j.dump(kJsonIndentSpaces).c_str());
+  // JSON 输出使用 2 空格缩进
+  constexpr int32_t kJsonIndent = 2;
+  result = AscendString(j.dump(kJsonIndent).c_str());
   return SUCCESS;
 }
 
