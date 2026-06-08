@@ -478,11 +478,9 @@ TEST_F(HixlCSClientSlotReuseFixture, HostFlagInDeviceCompleteHandle) {
   handle.host_flag = nullptr;
   handle.host_flag_mem_handle = nullptr;
   handle.host_flag_kernel_addr = nullptr;
-  handle.owns_host_flag = false;
   EXPECT_EQ(handle.host_flag, nullptr);
   EXPECT_EQ(handle.host_flag_mem_handle, nullptr);
   EXPECT_EQ(handle.host_flag_kernel_addr, nullptr);
-  EXPECT_FALSE(handle.owns_host_flag);
 
   // Verify structure has the field
   void *test_flag = reinterpret_cast<void *>(0x1234);
@@ -516,25 +514,6 @@ TEST_F(HixlCSClientSlotReuseFixture, BuildDeviceChunkParamIncludesHostFlag) {
   EXPECT_EQ(param.remote_flag_addr, reinterpret_cast<uint64_t>(&remote_flag_dev_));
   EXPECT_EQ(param.local_flag_addr, 0x2222ULL);
   EXPECT_EQ(param.host_local_flag_addr, 0x3333ULL);
-}
-
-TEST_F(HixlCSClientSlotReuseFixture, InitAndPrepareDeviceSyncHostFlagResource) {
-  cli_.local_endpoint_->endpoint_.protocol = COMM_PROTOCOL_UBOE;
-
-  ASSERT_EQ(cli_.InitDeviceSyncHostFlagResource(), SUCCESS);
-  ASSERT_NE(cli_.device_sync_host_flag_, nullptr);
-  ASSERT_NE(cli_.device_sync_host_flag_mem_handle_, nullptr);
-  ASSERT_NE(cli_.device_sync_host_flag_kernel_addr_, nullptr);
-
-  *static_cast<uint64_t *>(cli_.device_sync_host_flag_) = 1ULL;
-  DeviceCompleteHandle handle{};
-  ASSERT_EQ(cli_.PrepareDeviceSyncHostFlag(handle), SUCCESS);
-  EXPECT_EQ(handle.host_flag, cli_.device_sync_host_flag_);
-  EXPECT_EQ(handle.host_flag_kernel_addr, cli_.device_sync_host_flag_kernel_addr_);
-  EXPECT_FALSE(handle.owns_host_flag);
-  EXPECT_EQ(*static_cast<uint64_t *>(handle.host_flag), 0ULL);
-
-  cli_.ReleaseDeviceSyncHostFlagResource();
 }
 
 TEST_F(HixlCSClientSlotReuseFixture, DeviceLaunchMutexExists) {

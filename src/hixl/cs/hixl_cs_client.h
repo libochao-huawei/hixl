@@ -43,7 +43,6 @@ struct DeviceCompleteHandle {
   void *host_flag;
   MemHandle host_flag_mem_handle;
   void *host_flag_kernel_addr;
-  bool owns_host_flag;
   void *dev_op_desc_buf;
 };
 
@@ -133,9 +132,7 @@ class HixlCSClient {
   void ReleaseSharedSlotRef(std::shared_ptr<TransferPool::SlotHandle> &slot_ref);
   void CleanupActiveSlot();
   Status AllocateHostFlag(void *&host_flag) const;
-  Status InitDeviceSyncHostFlagResource();
-  void ReleaseDeviceSyncHostFlagResource();
-  Status PrepareDeviceSyncHostFlag(DeviceCompleteHandle &handle);
+  Status RegisterDeviceSyncHostFlag(DeviceCompleteHandle &handle);
   Status CheckDeviceSyncHostFlag(const DeviceCompleteHandle &handle) const;
   Status AllocateDeviceDescBuf(DeviceCompleteHandle &handle, uint32_t total_list_num,
                                const HixlOneSideOpDesc *desc_list);
@@ -184,9 +181,6 @@ class HixlCSClient {
   aclrtBinHandle device_kernel_handle_{nullptr};
   void *device_func_get_{nullptr};
   void *device_func_put_{nullptr};
-  void *device_sync_host_flag_{nullptr};
-  MemHandle device_sync_host_flag_mem_handle_{nullptr};
-  void *device_sync_host_flag_kernel_addr_{nullptr};
   std::vector<MemHandle> notify_mem_handles_{};
   std::vector<uint64_t> slot_notify_addrs_{};
   uint32_t notify_len_{0U};
