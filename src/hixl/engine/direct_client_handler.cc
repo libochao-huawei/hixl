@@ -16,18 +16,13 @@
 #include "engine/endpoint_generator.h"
 
 namespace hixl {
-
 DirectClientHandler::DirectClientHandler(HixlClientHandle handle) : handle_(handle) {}
 
 Status DirectClientHandler::Create(const HandlerCreateArgs &args, std::unique_ptr<DirectClientHandler> &out) {
   const auto &pair = args.matched_pairs[0];
-  int32_t dev_logic_id = 0;
-  int32_t dev_phy_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
-  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
   EndpointDesc local_endpoint{};
   EndpointDesc remote_endpoint{};
-  HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(pair.local, local_endpoint, static_cast<uint32_t>(dev_phy_id)));
+  HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(pair.local, local_endpoint));
   HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(pair.remote, remote_endpoint));
   HixlClientDesc desc{};
   desc.server_ip = args.server_ip.c_str();
@@ -69,7 +64,7 @@ Status DirectClientHandler::RegisterMem(const MemInfo &mem_info) {
 }
 
 Status DirectClientHandler::TransferAsync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
-                                           TransferReq &req) {
+                                          TransferReq &req) {
   uint32_t list_num = static_cast<uint32_t>(op_descs.size());
   std::vector<HixlOneSideOpDesc> hixl_descs(list_num);
   for (size_t i = 0; i < list_num; i++) {
