@@ -41,8 +41,9 @@ struct DeviceCompleteHandle {
   uint32_t reserved;
   std::shared_ptr<TransferPool::SlotHandle> shared_slot;
   void *host_flag;
-  MemHandle host_flag_mem_handle;
-  void *host_flag_kernel_addr;
+  void *probe_host_flag;
+  MemHandle probe_host_flag_mem_handle;
+  void *probe_host_flag_kernel_addr;
   void *dev_op_desc_buf;
 };
 

@@ -476,11 +476,13 @@ TEST_F(HixlCSClientSlotReuseFixture, HostFlagInDeviceCompleteHandle) {
   DeviceCompleteHandle handle{};
   handle.magic = 0x55425548U;  // kDeviceCompleteMagic
   handle.host_flag = nullptr;
-  handle.host_flag_mem_handle = nullptr;
-  handle.host_flag_kernel_addr = nullptr;
+  handle.probe_host_flag = nullptr;
+  handle.probe_host_flag_mem_handle = nullptr;
+  handle.probe_host_flag_kernel_addr = nullptr;
   EXPECT_EQ(handle.host_flag, nullptr);
-  EXPECT_EQ(handle.host_flag_mem_handle, nullptr);
-  EXPECT_EQ(handle.host_flag_kernel_addr, nullptr);
+  EXPECT_EQ(handle.probe_host_flag, nullptr);
+  EXPECT_EQ(handle.probe_host_flag_mem_handle, nullptr);
+  EXPECT_EQ(handle.probe_host_flag_kernel_addr, nullptr);
 
   // Verify structure has the field
   void *test_flag = reinterpret_cast<void *>(0x1234);
@@ -491,7 +493,7 @@ TEST_F(HixlCSClientSlotReuseFixture, HostFlagInDeviceCompleteHandle) {
 TEST_F(HixlCSClientSlotReuseFixture, CheckDeviceSyncHostFlagCompleted) {
   uint64_t flag = 1ULL;
   DeviceCompleteHandle handle{};
-  handle.host_flag = &flag;
+  handle.probe_host_flag = &flag;
 
   EXPECT_EQ(cli_.CheckDeviceSyncHostFlag(handle), SUCCESS);
 }
@@ -504,7 +506,7 @@ TEST_F(HixlCSClientSlotReuseFixture, BuildDeviceChunkParamIncludesHostFlag) {
   handle.shared_slot->thread = 9U;
   handle.shared_slot->notify_id = 7U;
   handle.dev_op_desc_buf = &desc;
-  handle.host_flag_kernel_addr = reinterpret_cast<void *>(0x3333);
+  handle.probe_host_flag_kernel_addr = reinterpret_cast<void *>(0x3333);
 
   cli_.slot_notify_addrs_.assign(1U, 0x2222ULL);
   cli_.notify_len_ = sizeof(uint64_t);
