@@ -170,28 +170,94 @@ device侧网卡默认监听端口为16666，如果在多个进程使用同一个
 - 调用TransferSync或TransferAsync接口时，若不存在可用链路，链路池会自动执行建链操作。
 - 链路池机制会引入额外的传输与建链开销，可能导致性能下降。
 
-**表 2**  options（Ascend 950PR/Ascend 950DT）
-| 参数名 | 可选/必选 | 描述 |
+**表2** options（Ascend950PR/Ascend950DT）
+
+| 参数名 | 可选/必选 | 描述  |
 | --- | --- | --- |
-| OPTION_LOCAL_COMM_RES | 必选 | 配置本地通信资源信息，格式是json格式的字符串。配置格式参考[通信资源配置字段说明](#通信资源配置字段说明)。配置为空不会自动生成相关信息。<br>配置样例：<br>UB：<br>最小配置（仅配置version字段，其他字段自动生成）：<pre>{<br>    "version": "1.3"<br>}</pre>完整配置：<pre>{<br>  "version": "1.3",<br>  "net_instance_id": "superpod1_1",<br>  "endpoint_list": [<br>    {<br>      "protocol": "ub_ctp",<br>      "comm_id": "00000000007f020000100000df149001",<br>      "placement": "host",<br>      "dst_eid": "00000000007f030000100000df141c01"<br>    }<br>  ]<br>}</pre>ROCE：<br><pre>{<br>  "version": "1.3",<br>  "net_instance_id": "superpod1_1",<br>  "endpoint_list": [<br>    {<br>      "protocol": "roce",<br>      "comm_id": "192.168.100.100",<br>      "placement": "host"<br>    }<br>  ]<br>}</pre>UBOE：<pre>{<br>  "version": "1.3",<br>  "net_instance_id": "superpod1_1",<br>  "endpoint_list": [<br>    {<br>      "protocol": "uboe",<br>      "comm_id": "192.168.100.123",<br>      "placement": "device"<br>    }<br>  ]<br>}</pre>**注意：**<br>1. 以上配置样例中的具体值仅为格式参考示例，实际使用时必须从当前环境上查询真实的通信资源配置信息进行替换，直接照抄样例值将导致通信失败。<br>2. 自动生成localcommres能力依赖使用root用户权限调用hixl接口，且要求LCNE版本不低于UBM_2.0.0.B011，可前往1213前台执行dis startup查看LCNE版本信息；HDK版本不低于25.1.RC1.B108，可通过npu-smi info查看HDK版本信息。<br>3. 目前仅UB场景支持自动生成net_instance_id与endpoint_list。如果用户想要自行配置localcommres信息，也可以使用工具来辅助生成npu的localcommres信息，具体使用方法详见scripts/tools/lcrgen/README.md。 |
-| OPTION_GLOBAL_RESOURCE_CONFIG | 可选 | 字符串取值"GlobalResourceConfig"。用于开启并配置全局资源，格式为json格式的字符串，字段说明参考[全局资源配置字段说明](#全局资源配置字段说明)。 |
+| OPTION_LOCAL_COMM_RES | 必选  | 配置本地通信资源信息，格式是 json格式的字符串。配置格式参考[通信资源配置字段说明](#通信资源配置字段说明)。配置为空不会自动生成相关信息。<br>配置样例见下方「配置样例」章节。<br>**注意：**<br>1. 配置样例中的具体值仅为格式参考示例，实际使用时必须从当前环境上查询真实的通信资源配置信息进行替换，直接照抄样例值将导致通信失败。<br>2. 自动生成 localcommres能力依赖使用 root 用户权限调用 hixl 接口，且要求 LCNE 版本不低于 UBM_2.0.0.B011，可前往1213 前台执行 dis startup 查看 LCNE 版本信息；HDK 版本不低于25.1.RC1.B108，可通过 npu-smi info 查看 HDK 版本信息。<br>3. 目前仅 UB场景支持自动生成 net_instance_id 与 endpoint_list。如果用户想要自行配置 localcommres 信息，也可以使用工具来辅助生成 npu 的 localcommres 信息，具体使用方法详见 scripts/tools/lcrgen/README.md。 |
+| OPTION_GLOBAL_RESOURCE_CONFIG | 可选  | 字符串取值 "GlobalResourceConfig"。用于开启并配置全局资源，格式为 json格式的字符串，字段说明参考[全局资源配置字段说明](#全局资源配置字段说明)。 |
 
-<a name="通信资源配置字段说明"></a>**通信资源配置字段说明**  
-| 字段名 | 数据类型 | 必选/可选 | 说明 | 支持值/填写规则 |
-| ---- | ---- | ---- | ---- | ---- |
-| version | 字符串 | 必选 | 版本号 | "1.3"。需要HDK版本大于等于25.5.0且toolkit包版本大于等于9.1.0。 |
-| net_instance_id | 字符串 | 必选 | 当前超节点的唯一标识 | 每个超节点唯一即可 |
-| endpoint_list | 数组 | 必选 | 可以使用的通信设备列表 | - |
-| endpoint_list[].protocol | 字符串 | 必选 | 通信协议 | "roce"/"ub_ctp"/"ub_tp"/"uboe" |
-| endpoint_list[].comm_id | 字符串 | 必选 | 通信标识 | protocol为ub_ctp/ub_tp时填${eid}；protocol为roce时填ipv4/ipv6网卡地址；protocol为uboe时填device uboe网卡ip地址 |
-| endpoint_list[].placement | 字符串 | 必选 | 通信设备位置 | "host"/"device" |
-| endpoint_list[].plane | 字符串 | 可选 | 通信设备平面 | protocol为ub_ctp/ub_tp时，设备区分平面则填写，每个平面唯一（如"plane-a"/"plane-b"） |
-| endpoint_list[].dst_eid | 字符串 | 可选 | 与当前通信设备连接的对端通信设备的${eid} | protocol为ub_ctp时，存在full-mesh直连对端则填写对端${eid} |
+### 配置样例
 
-<a name="全局资源配置字段说明"></a>**全局资源配置字段说明**  
-| 字段名 | 数据类型 | 必选/可选 | 说明 | 支持值/填写规则 |
-| ---- | ---- | ---- | ---- | ---- |
-| comm_resource_config.protocol_desc | 字符串数组 | 可选 | 配置通信协议以及通信设备位置 | 当前仅支持["uboe:device"]，表示使用uboe协议，通信设备在device；当没有配置OPTION_LOCAL_COMM_RES或配置的OPTION_LOCAL_COMM_RES中endpoint_list为空时，会自动生成uboe的endpoint信息，否则配置项不起作用. |
+**UB ——最小配置**（仅配置 version字段，其他字段自动生成）
+
+```json
+{
+ "version": "1.3"
+}
+```
+
+**UB ——完整配置**
+
+```json
+{
+ "version": "1.3",
+ "net_instance_id": "superpod1_1",
+ "endpoint_list": [
+ {
+ "protocol": "ub_ctp",
+ "comm_id": "00000000007f020000100000df149001",
+ "placement": "host",
+ "dst_eid": "00000000007f030000100000df141c01"
+ }
+ ]
+}
+```
+
+**ROCE**
+
+```json
+{
+ "version": "1.3",
+ "net_instance_id": "superpod1_1",
+ "endpoint_list": [
+ {
+ "protocol": "roce",
+ "comm_id": "192.168.100.100",
+ "placement": "host"
+ }
+ ]
+}
+```
+
+**UBOE**
+
+```json
+{
+ "version": "1.3",
+ "net_instance_id": "superpod1_1",
+ "endpoint_list": [
+ {
+ "protocol": "uboe",
+ "comm_id": "192.168.100.123",
+ "placement": "device"
+ }
+ ]
+}
+```
+
+<a name="通信资源配置字段说明"></a>
+
+###通信资源配置字段说明
+
+| 字段名 | 数据类型 | 必选/可选 | 说明  | 支持值/填写规则 |
+| --- | --- | --- | --- | --- |
+| version | 字符串 | 必选  | 版本号 | "1.3"。需要 HDK 版本大于等于25.5.0 且 toolkit 包版本大于等于9.1.0。 |
+| net_instance_id | 字符串 | 必选  | 当前超节点的唯一标识 | 每个超节点唯一即可 |
+| endpoint_list | 数组  | 必选  | 可以使用的通信设备列表 | -   |
+| endpoint_list[].protocol | 字符串 | 必选  | 通信协议 | "roce"/"ub_ctp"/"ub_tp"/"uboe" |
+| endpoint_list[].comm_id | 字符串 | 必选  | 通信标识 | protocol 为 ub_ctp/ub_tp 时填 ${eid}；protocol 为 roce 时填 ipv4/ipv6 网卡地址；protocol 为 uboe 时填 device uboe 网卡 ip 地址 |
+| endpoint_list[].placement | 字符串 | 必选  | 通信设备位置 | "host"/"device" |
+| endpoint_list[].plane | 字符串 | 可选  | 通信设备平面 | protocol 为 ub_ctp/ub_tp 时，设备区分平面则填写，每个平面唯一（如 "plane-a"/"plane-b"） |
+| endpoint_list[].dst_eid | 字符串 | 可选  | 与当前通信设备连接的对端通信设备的 ${eid} | protocol 为 ub_ctp 时，存在 full-mesh 直连对端则填写对端 ${eid} |
+
+<a name="全局资源配置字段说明"></a>
+
+### 全局资源配置字段说明
+
+| 字段名 | 数据类型 | 必选/可选 | 说明  | 支持值/填写规则 |
+| --- | --- | --- | --- | --- |
+| comm_resource_config.protocol_desc | 字符串数组 | 可选  | 配置通信协议以及通信设备位置 | 当前仅支持 ["uboe:device"]，表示使用 uboe协议，通信设备在 device；当没有配置 OPTION_LOCAL_COMM_RES 或配置的 OPTION_LOCAL_COMM_RES 中 endpoint_list 为空时，会自动生成 uboe 的 endpoint 信息，否则配置项不起作用。 |
 
 **调用示例**
 
