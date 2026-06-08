@@ -1082,4 +1082,60 @@ TEST(ClientManagerTest, HeartbeatDestroysClientWithInvalidSocket) {
   EXPECT_EQ(manager.GetClient("127.0.0.1:26300"), nullptr);
   EXPECT_EQ(manager.Finalize(), SUCCESS);
 }
+
+TEST(ClientManagerTest, TransferReqIndexKeepsSubmitOrderAndFindsClient) {
+  ClientManager manager;
+  EXPECT_EQ(manager.Initialize(false), SUCCESS);
+  auto client = CreateMockClient();
+
+  TransferReq req1 = reinterpret_cast<TransferReq>(0x1000);
+  TransferReq req2 = reinterpret_cast<TransferReq>(0x2000);
+  manager.RegisterTransferReq(req1, client);
+  manager.RegisterTransferReq(req2, client);
+
+  EXPECT_EQ(manager.GetClientByReq(req1), client);
+  auto reqs = manager.GetOrderedReqs(0);
+  ASSERT_EQ(reqs.size(), 2U);
+  EXPECT_EQ(reqs[0].first, req1);
+  EXPECT_EQ(reqs[1].first, req2);
+
+  manager.EraseTransferReq(req1);
+  EXPECT_EQ(manager.GetClientByReq(req1), nullptr);
+  reqs = manager.GetOrderedReqs(0);
+  ASSERT_EQ(reqs.size(), 1U);
+  EXPECT_EQ(reqs[0].first, req2);
+  EXPECT_EQ(manager.Finalize(), SUCCESS);
+}
+
+TEST(ClientManagerTest, RegisterDuplicateTransferReqRemovesOldOrderNode) {
+  ClientManager manager;
+  EXPECT_EQ(manager.Initialize(false), SUCCESS);
+  auto client = CreateMockClient();
+
+  TransferReq req1 = reinterpret_cast<TransferReq>(0x1000);
+  TransferReq req2 = reinterpret_cast<TransferReq>(0x2000);
+  manager.RegisterTransferReq(req1, client);
+  manager.RegisterTransferReq(req2, client);
+  manager.RegisterTransferReq(req1, client);
+
+  auto reqs = manager.GetOrderedReqs(0);
+  ASSERT_EQ(reqs.size(), 2U);
+  EXPECT_EQ(reqs[0].first, req2);
+  EXPECT_EQ(reqs[1].first, req1);
+  EXPECT_EQ(manager.Finalize(), SUCCESS);
+}
+
+TEST(ClientManagerTest, DestroyClientClearsTransferReqIndex) {
+  ClientManager manager;
+  EXPECT_EQ(manager.Initialize(false), SUCCESS);
+  auto client = CreateMockClient();
+  manager.clients_["127.0.0.1:26300"] = client;
+
+  TransferReq req = reinterpret_cast<TransferReq>(0x1000);
+  manager.RegisterTransferReq(req, client);
+  EXPECT_EQ(manager.DestroyClient("127.0.0.1:26300"), SUCCESS);
+  EXPECT_EQ(manager.GetClientByReq(req), nullptr);
+  EXPECT_TRUE(manager.GetOrderedReqs(0).empty());
+  EXPECT_EQ(manager.Finalize(), SUCCESS);
+}
 }  // namespace hixl
