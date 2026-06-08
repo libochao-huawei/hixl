@@ -765,7 +765,11 @@ Status HixlCSClient::AllocateHostFlag(void *&host_flag) const {
 }
 
 Status HixlCSClient::RegisterDeviceSyncHostFlag(DeviceCompleteHandle &handle) {
-  if (local_endpoint_ == nullptr || local_endpoint_->GetEndpoint().protocol != COMM_PROTOCOL_UBOE) {
+  if (local_endpoint_ == nullptr) {
+    return SUCCESS;
+  }
+  const CommProtocol protocol = local_endpoint_->GetEndpoint().protocol;
+  if (protocol != COMM_PROTOCOL_ROCE && protocol != COMM_PROTOCOL_UBOE) {
     return SUCCESS;
   }
 
