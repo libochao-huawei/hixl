@@ -21,7 +21,7 @@
 #include <set>
 #include <vector>
 #include <thread>
-#include "acl/acl.h"
+#include "common/optional_aclrt_context.h"
 #include "hixl/hixl_types.h"
 #include "hixl_options.h"
 
@@ -67,8 +67,8 @@ class ConnectPoolExecutor {
   std::mutex task_result_mutex_;
   std::map<AscendString, AsyncConnectStatus> task_result_;
 
-  aclrtContext ctx_ = nullptr;
+  OptionalAclrtContext ctx_;
 };
 }  // namespace hixl
 
-#endif // CANN_HIXL_SRC_HIXL_ENGINE_CONNECT_POOL_EXECUTOR_H_
+#endif  // CANN_HIXL_SRC_HIXL_ENGINE_CONNECT_POOL_EXECUTOR_H_
