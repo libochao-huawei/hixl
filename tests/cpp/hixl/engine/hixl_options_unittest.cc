@@ -241,6 +241,88 @@ TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigProtocolDesc) {
   ASSERT_TRUE(grc.comm_resource_config.protocol_desc.has_value());
   EXPECT_EQ(grc.comm_resource_config.protocol_desc->size(), 1U);
   EXPECT_EQ((*grc.comm_resource_config.protocol_desc)[0], "uboe:device");
+  ASSERT_EQ(result.GetProtocolDesc().size(), 1U);
+  EXPECT_EQ(result.GetProtocolDesc()[0], "uboe:device");
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigProtocolDescString) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
+      R"({"comm_resource_config.protocol_desc":"roce:device"})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  auto grc = *result.GlobalResourceCfg();
+  ASSERT_TRUE(grc.comm_resource_config.protocol_desc.has_value());
+  ASSERT_EQ(grc.comm_resource_config.protocol_desc->size(), 1U);
+  EXPECT_EQ((*grc.comm_resource_config.protocol_desc)[0], "roce:device");
+  ASSERT_EQ(result.GetProtocolDesc().size(), 1U);
+  EXPECT_EQ(result.GetProtocolDesc()[0], "roce:device");
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigListenPort) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.listen_port":26300})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  auto grc = *result.GlobalResourceCfg();
+  ASSERT_TRUE(grc.comm_resource_config.listen_port.has_value());
+  EXPECT_EQ(*grc.comm_resource_config.listen_port, 26300U);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigListenPortString) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.listen_port":"26300"})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  auto grc = *result.GlobalResourceCfg();
+  ASSERT_TRUE(grc.comm_resource_config.listen_port.has_value());
+  EXPECT_EQ(*grc.comm_resource_config.listen_port, 26300U);
+}
+
+TEST_F(HixlOptionsUTest, GetProtocolDescReturnsEmptyWhenNotConfigured) {
+  std::map<AscendString, AscendString> options;
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  EXPECT_TRUE(result.GetProtocolDesc().empty());
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigProtocolDescInvalidType) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
+      R"({"comm_resource_config.protocol_desc":123})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigListenPortZeroInvalid) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.listen_port":0})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigListenPortOutOfRangeInvalid) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.listen_port":65536})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigListenPortNegativeInvalid) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.listen_port":-1})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigListenPortTypeInvalid) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.listen_port":"invalid"})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
 TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigInvalidJson) {

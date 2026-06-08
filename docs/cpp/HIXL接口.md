@@ -251,13 +251,10 @@ device侧网卡默认监听端口为16666，如果在多个进程使用同一个
 | endpoint_list[].plane | 字符串 | 可选  | 通信设备平面 | protocol 为 ub_ctp/ub_tp 时，设备区分平面则填写，每个平面唯一（如 "plane-a"/"plane-b"） |
 | endpoint_list[].dst_eid | 字符串 | 可选  | 与当前通信设备连接的对端通信设备的 ${eid} | protocol 为 ub_ctp 时，存在 full-mesh 直连对端则填写对端 ${eid} |
 
-<a name="全局资源配置字段说明"></a>
-
-### 全局资源配置字段说明
-
-| 字段名 | 数据类型 | 必选/可选 | 说明  | 支持值/填写规则 |
-| --- | --- | --- | --- | --- |
-| comm_resource_config.protocol_desc | 字符串数组 | 可选  | 配置通信协议以及通信设备位置 | 当前仅支持 ["uboe:device"]，表示使用 uboe协议，通信设备在 device；当没有配置 OPTION_LOCAL_COMM_RES 或配置的 OPTION_LOCAL_COMM_RES 中 endpoint_list 为空时，会自动生成 uboe 的 endpoint 信息，否则配置项不起作用。 |
+<a name="全局资源配置字段说明"></a>**全局资源配置字段说明**  
+| 字段名 | 数据类型 | 必选/可选 | 说明 | 支持值/填写规则 |
+| ---- | ---- | ---- | ---- | ---- |
+| comm_resource_config.protocol_desc | 字符串或字符串数组 | 可选 | 配置可使用的通信协议以及通信设备位置范围，格式为"${protocol}:${placement}" | 支持"roce:device"/"hccs:device"/"ub_ctp:device"/"ub_tp:device"/"uboe:device"/"roce:host"/"hccs:host"/"ub_ctp:host"/"ub_tp:host"/"uboe:host"。配置后会对OPTION_LOCAL_COMM_RES中显式配置的endpoint_list和自动生成的endpoint_list按该范围进行过滤。 |
 
 **调用示例**
 

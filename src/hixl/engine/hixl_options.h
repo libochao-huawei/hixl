@@ -37,6 +37,7 @@ struct ConnectPoolConfig {
 
 struct CommResourceConfigDesc {
   std::optional<std::vector<std::string>> protocol_desc;
+  std::optional<uint32_t> listen_port;
 };
 
 struct GlobalResourceConfig {
@@ -59,6 +60,7 @@ class HixlOptions {
   std::optional<bool> AutoConnect() const { return auto_connect_; }
 
   std::optional<GlobalResourceConfig> GlobalResourceCfg() const { return global_resource_config_; }
+  std::vector<std::string> GetProtocolDesc() const;
 
  private:
   std::map<AscendString, AscendString> raw_options_;

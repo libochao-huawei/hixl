@@ -12,6 +12,7 @@
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
+#include "engine/client_handler_config_helper.h"
 #include "engine/endpoint_generator.h"
 
 namespace hixl {
@@ -36,7 +37,12 @@ Status DirectClientHandler::Create(const HandlerCreateArgs &args, std::unique_pt
   desc.tc = args.rdma_tc;
   desc.sl = args.rdma_sl;
   HixlClientHandle handle = nullptr;
-  const HixlClientConfig config{};
+  HixlClientConfig config{};
+  const std::string global_resource_config = ClientHandlerConfigHelper::BuildGlobalResourceConfig(
+      args.local_listen_port);
+  if (!global_resource_config.empty()) {
+    config.global_resource_config = global_resource_config.c_str();
+  }
   HIXL_CHK_STATUS_RET(HixlCSClientCreate(&desc, &config, &handle), "HixlCSClientCreate failed for type %s",
                       CommTypeToString(pair.type));
   out = MakeUnique<DirectClientHandler>(handle);
@@ -106,13 +112,13 @@ Status DirectClientHandler::TransferSync(const std::vector<TransferOpDesc> &op_d
 Status DirectClientHandler::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
   std::scoped_lock lock(mutex_, complete_handles_mutex_);
   if (complete_handles_.empty()) {
-    HIXL_LOGE(FAILED, "DirectClientHandler GetTransferStatus failed, no transfer tasks in progress");
+    HIXL_LOGE(FAILED, "DirectClientHandler GetTransferStatus failed, no transfer tasks in progress, req:%p", req);
     status = TransferStatus::FAILED;
     return FAILED;
   }
   auto it = complete_handles_.find(req);
   if (it == complete_handles_.end()) {
-    HIXL_LOGE(PARAM_INVALID, "DirectClientHandler GetTransferStatus failed, invalid req");
+    HIXL_LOGE(PARAM_INVALID, "DirectClientHandler GetTransferStatus failed, invalid req:%p", req);
     status = TransferStatus::FAILED;
     return PARAM_INVALID;
   }
@@ -124,8 +130,10 @@ Status DirectClientHandler::GetTransferStatus(const TransferReq &req, TransferSt
     return ret;
   }
   if (cs == HIXL_COMPLETE_STATUS_WAITING) {
+    HIXL_LOGI("DirectClientHandler GetTransferStatus waiting, req:%p", req);
     status = TransferStatus::WAITING;
   } else {
+    HIXL_LOGI("DirectClientHandler GetTransferStatus completed, req:%p", req);
     status = TransferStatus::COMPLETED;
     complete_handles_.erase(req);
   }

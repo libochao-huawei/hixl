@@ -24,6 +24,7 @@
 #include "engine/hixl_engine.h"
 #undef private
 #include "hixl/hixl_types.h"
+#include "engine/engine_factory.h"
 #include "common/ctrl_msg_plugin.h"
 #include "engine/hixl_options.h"
 #include "cs/hixl_cs_client.h"
@@ -317,6 +318,46 @@ class HixlEngineTest : public ::testing::Test {
   std::vector<std::string> temp_files_;
   std::string old_intra_roce_enable_;
 };
+
+TEST_F(HixlEngineTest, EngineFactoryUsesHixlEngineWhenProtocolDescConfigured) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.protocol_desc":"roce:device"})";
+  HixlOptions parsed;
+  auto engine = EngineFactory::CreateEngine("127.0.0.1:26000", options, parsed);
+  ASSERT_NE(engine, nullptr);
+  EXPECT_NE(dynamic_cast<HixlEngine *>(engine.get()), nullptr);
+}
+
+TEST_F(HixlEngineTest, InitializeSetsClientListenPortFromGlobalResourceConfig) {
+  std::map<AscendString, AscendString> options = options1;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.listen_port":26301})";
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+
+  HixlEngine engine("127.0.0.1");
+  EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
+
+  ClientConfig config{};
+  std::vector<MemInfo> mem_info_list;
+  engine.BuildClientConfig(AscendString("127.0.0.1:26300"), config, mem_info_list, kTimeOut);
+  ASSERT_TRUE(config.local_listen_port.has_value());
+  EXPECT_EQ(*config.local_listen_port, 26301U);
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, InitializeWithoutListenPortDoesNotSetClientListenPort) {
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
+
+  HixlEngine engine("127.0.0.1");
+  EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
+
+  ClientConfig config{};
+  std::vector<MemInfo> mem_info_list;
+  engine.BuildClientConfig(AscendString("127.0.0.1:26300"), config, mem_info_list, kTimeOut);
+  EXPECT_FALSE(config.local_listen_port.has_value());
+  engine.Finalize();
+}
 
 TEST_F(HixlEngineTest, TestHixl) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
