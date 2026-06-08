@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <thread>
+#include <unordered_set>
 #include <iostream>
 #include <fstream>
 #include <string.h>
@@ -32,10 +33,9 @@ constexpr int32_t kServerMinArgCnt = 3;
 constexpr int32_t kServerMaxArgCnt = 4;
 constexpr uint32_t kArgIndexProtocolServer = 3;
 constexpr int32_t kSrcValue = 2;
-constexpr const char *kProtocolUboe = "uboe";
-constexpr const char *kProtocolRoce = "roce";
+const std::unordered_set<std::string> kProtocolSet = {"uboe", "roce", "hccs", "none"};
 constexpr const char *kProtocolNone = "none";
-constexpr const char *kUboeResourceConfig = "{\"comm_resource_config.protocol_desc\": [\"uboe:device\"]}";
+constexpr const char *kResourceConfigTemplate = "{\"comm_resource_config.protocol_desc\": [\"${protocol}:device\"]}";
 
 #define CHECK_ACL(x)                                                                  \
   do {                                                                                \
@@ -52,13 +52,21 @@ const char *GetRecentErrMsg() {
   }
   return errmsg;
 }
+
+std::string replace_var(std::string str, const std::string &key, const std::string &value) {
+  std::string pattern = "${" + key + "}";
+  size_t pos = str.find(pattern);
+  if (pos != std::string::npos) {
+    str.replace(pos, pattern.length(), value);
+  }
+  return str;
+}
 }  // namespace
 
 int Initialize(Hixl &hixl_engine, const char *local_engine, const char *protocol) {
   std::map<AscendString, AscendString> options;
-  if (strcmp(protocol, kProtocolUboe) == 0) {
-    options[OPTION_GLOBAL_RESOURCE_CONFIG] = kUboeResourceConfig;
-  }
+  options[OPTION_GLOBAL_RESOURCE_CONFIG] = AscendString(replace_var(kResourceConfigTemplate, 
+                                                                    "protocol", protocol).c_str());
   auto ret = hixl_engine.Initialize(local_engine, options);
   if (ret != SUCCESS) {
     printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, GetRecentErrMsg());
@@ -281,13 +289,9 @@ int main(int32_t argc, char **argv) {
            protocol.c_str());
   }
 
-  if (protocol != kProtocolUboe && protocol != kProtocolRoce && protocol != kProtocolNone) {
-    printf("[ERROR] Invalid protocol: %s, expected 'uboe', 'roce' or 'none'\n", protocol.c_str());
+  if (kProtocolSet.find(protocol) == kProtocolSet.end()) {
+    printf("[ERROR] Invalid protocol: %s, expected 'uboe', 'roce', 'hccs' or 'none'\n", protocol.c_str());
     return -1;
-  }
-  if (protocol == kProtocolRoce) {
-    setenv("HCCL_INTRA_ROCE_ENABLE", "1", 1);
-    printf("[INFO] Set HCCL_INTRA_ROCE_ENABLE=1 for roce protocol\n");
   }
   int32_t device = std::stoi(device_id);
   CHECK_ACL(aclrtSetDevice(device));
