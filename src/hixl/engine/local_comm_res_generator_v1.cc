@@ -1094,7 +1094,7 @@ int32_t GenerateD2HEdges(const RouteData &route_data, int32_t phy_dev_id, std::v
   HIXL_LOGI("D2H: route_entries=%zu, phy_dev_id=%d", route_data.entries.size(), phy_dev_id);
 
   for (const auto &entry : route_data.entries) {
-    if (entry.device_id != (phy_dev_id % kNpuGroupSize)) {
+    if (entry.device_id != static_cast<int32_t>(phy_dev_id % kNpuGroupSize)) {
       continue;
     }
     EndpointConfig edge;
