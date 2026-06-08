@@ -119,6 +119,97 @@ run_pair() {
     done
 }
 
+run_pair_b() {
+    local -a cmds=("$@")
+    local num_cmds=${#cmds[@]}
+    local has_error=0
+    local -a tmp_files=()
+    local -a pids=()
+
+    for((i=0; i<num_cmds; i++)); do
+        cmd="${cmds[i]}"
+        # 去掉环境变量
+        clean_cmd=$(echo "$cmd" | sed 's/[^ ]*=[^ ]* *//g')
+        first_word=$(echo "$clean_cmd" | awk '{print $1; exit}')
+        first_word=$(echo "$first_word" | sed 's|^\./||')
+        if [[ "$first_word" == "python3" || "$first_word" == "python3.9" ]]; then
+            # 是否为python文件
+            binary_name=$(echo "$clean_cmd" | awk '
+            {
+                for(i=1; i<=NF; i++) {
+                    if($i ~ /\.py$/) {
+                        print $i
+                        exit
+                    }
+                }
+            }')
+        else
+            binary_name="$first_word"
+        fi
+        if [ ! -f "$binary_name" ]; then
+        echo "Binary does not exist!"
+        has_error=1
+        flag=1
+        exit 1
+    fi
+    done
+
+    echo "Running smoke test: "
+    for((i=0; i<num_cmds; i++)); do
+        tmp_file=$(mktemp)
+        tmp_files+=("${tmp_file}")
+        echo "${cmds[i]}"
+    done
+    set +e
+    for((i=0; i<num_cmds; i++)); do
+        cmd="${cmds[i]}"
+        tmp="${tmp_files[i]}"
+        eval "$cmd" > "$tmp" 2>&1 &
+        pids+=($!)
+    done
+    wait "${pids[@]}"
+    set -e
+
+    for tmp in "${tmp_files[@]}"; do
+        cat "$tmp"
+    done
+
+    for tmp in "${tmp_files[@]}"; do
+        if grep -qi "ERROR" "$tmp"; then
+            has_error=1
+            break
+        fi
+    done
+
+    if [ "$flag" -eq "0" ] && [ "$has_error" -eq "1" ]; then
+        flag=1
+        echo -e "Execution failed.\n"
+        for tmp in "${tmp_files[@]}"; do
+            abs_path=$(readlink -f "$tmp" 2>/dev/null)
+            [[ -z "$abs_path" ]] && continue
+            if [[ "$abs_path" =~ ^/tmp/tmp\.[0-9a-zA-Z_]+$ && -f "$abs_path" ]]; then
+                rm -f "$abs_path" 
+                echo "Deleted safe temp file: $abs_path"
+            fi
+        done
+        sleep 2000
+        exit 1
+    fi
+
+    if [ "$has_error" -eq "0" ]; then
+        echo -e "Execution success.\n"
+    fi
+
+    for tmp in "${tmp_files[@]}"; do
+        abs_path=$(readlink -f "$tmp" 2>/dev/null)
+        [[ -z "$abs_path" ]] && continue
+        if [[ "$abs_path" =~ ^/tmp/tmp\.[0-9a-zA-Z_]+$ && -f "$abs_path" ]]; then
+            rm -f "$abs_path" 
+            echo "Deleted safe temp file: $abs_path"
+        fi
+    done
+}
+
 run_comm_bench_pair() {
     local bench_bin="$1"
     local transport="$2"
@@ -238,6 +329,7 @@ smoke_test_samples() {
     run_pair "./prompt_push_cache_and_blocks ${device_id_1} 127.0.0.1 127.0.0.1" "./decoder_push_cache_and_blocks ${device_id_2} 127.0.0.1"
     run_pair "./prompt_switch_roles ${device_id_1} 127.0.0.1 127.0.0.1" "./decoder_switch_roles ${device_id_2} 127.0.0.1 127.0.0.1"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 ./client_server_h2d ${device_id_1} 127.0.0.1 127.0.0.1:16000" "HCCL_INTRA_ROCE_ENABLE=1 ./client_server_h2d ${device_id_2} 127.0.0.1:16000"
+    run_pair_b "./client_server_h2d ${device_id_1} 127.0.0.1 127.0.0.1:16000 roce" "./client_server_h2d ${device_id_2} 127.0.0.1:16000 roce"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 ./server_server_d2d ${device_id_1} 127.0.0.1:16000 127.0.0.1:16001" "HCCL_INTRA_ROCE_ENABLE=1 ./server_server_d2d ${device_id_2} 127.0.0.1:16001 127.0.0.1:16000"
 
     # Python examples
