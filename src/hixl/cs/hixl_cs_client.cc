@@ -339,6 +339,7 @@ Status HixlCSClient::InitDeviceResource() {
     HIXL_CHK_STATUS_RET(RegisterNotifyMemForAllSlots(all_slots),
                         "[HixlClient] RegisterNotifyMemForAllSlots failed. devId=%d", device_id_);
   }
+  HIXL_CHK_STATUS_RET(InitDeviceSyncHostFlagResource(), "[HixlClient] InitDeviceSyncHostFlagResource failed");
 
   // 提前加载 kernel，避免传输时引入耗时
   {
@@ -623,8 +624,8 @@ Status HixlCSClient::ReleaseDevCompleteHandle(DeviceCompleteHandle *handle) {
     handle->host_flag_kernel_addr = nullptr;
   }
 
-  // Free independent host_flag (allocated for async transfers or UBOE sync probe)
-  if (handle->host_flag != nullptr) {
+  // Free independent host_flag (allocated for async transfers).
+  if (handle->owns_host_flag && handle->host_flag != nullptr) {
     HIXL_CHK_ACL(aclrtFreeHost(handle->host_flag));
     handle->host_flag = nullptr;
   }
@@ -759,25 +760,55 @@ Status HixlCSClient::AllocateHostFlag(void *&host_flag) const {
   return SUCCESS;
 }
 
-Status HixlCSClient::RegisterDeviceSyncHostFlag(DeviceCompleteHandle &handle) {
+Status HixlCSClient::InitDeviceSyncHostFlagResource() {
   if (local_endpoint_ == nullptr || local_endpoint_->GetEndpoint().protocol != COMM_PROTOCOL_UBOE) {
     return SUCCESS;
   }
+  if (device_sync_host_flag_ != nullptr) {
+    return SUCCESS;
+  }
 
-  HIXL_CHK_STATUS_RET(AllocateHostFlag(handle.host_flag), "[HixlClient] AllocateHostFlag failed");
+  HIXL_CHK_STATUS_RET(AllocateHostFlag(device_sync_host_flag_), "[HixlClient] AllocateHostFlag failed");
+  HIXL_DISMISSABLE_GUARD(resource_guard, [this]() { ReleaseDeviceSyncHostFlagResource(); });
   CommMem mem{};
   mem.type = COMM_MEM_TYPE_HOST;
-  mem.addr = handle.host_flag;
+  mem.addr = device_sync_host_flag_;
   mem.size = sizeof(uint64_t);
-  HIXL_CHK_STATUS_RET(RegMem(nullptr, &mem, &handle.host_flag_mem_handle),
+  HIXL_CHK_STATUS_RET(RegMem(nullptr, &mem, &device_sync_host_flag_mem_handle_),
                       "[HixlClient] register device sync host flag failed");
 
   HixlMemDesc desc{};
-  HIXL_CHK_STATUS_RET(local_endpoint_->GetMemDesc(handle.host_flag_mem_handle, desc),
+  HIXL_CHK_STATUS_RET(local_endpoint_->GetMemDesc(device_sync_host_flag_mem_handle_, desc),
                       "[HixlClient] query device sync host flag desc failed");
-  handle.host_flag_kernel_addr = desc.registered_dev_mem != nullptr ? desc.registered_dev_mem : handle.host_flag;
+  device_sync_host_flag_kernel_addr_ = desc.registered_dev_mem != nullptr ? desc.registered_dev_mem : device_sync_host_flag_;
   HIXL_LOGI("[HixlClient] device sync host flag registered, host_addr=%p, kernel_addr=%p",
-            handle.host_flag, handle.host_flag_kernel_addr);
+            device_sync_host_flag_, device_sync_host_flag_kernel_addr_);
+  HIXL_DISMISS_GUARD(resource_guard);
+  return SUCCESS;
+}
+
+void HixlCSClient::ReleaseDeviceSyncHostFlagResource() {
+  if (device_sync_host_flag_mem_handle_ != nullptr) {
+    (void)UnRegMem(device_sync_host_flag_mem_handle_);
+    device_sync_host_flag_mem_handle_ = nullptr;
+    device_sync_host_flag_kernel_addr_ = nullptr;
+  }
+  if (device_sync_host_flag_ != nullptr) {
+    HIXL_CHK_ACL(aclrtFreeHost(device_sync_host_flag_));
+    device_sync_host_flag_ = nullptr;
+  }
+}
+
+Status HixlCSClient::PrepareDeviceSyncHostFlag(DeviceCompleteHandle &handle) {
+  if (local_endpoint_ == nullptr || local_endpoint_->GetEndpoint().protocol != COMM_PROTOCOL_UBOE) {
+    return SUCCESS;
+  }
+  HIXL_CHECK_NOTNULL(device_sync_host_flag_, "[HixlClient] device sync host flag is null");
+  HIXL_CHECK_NOTNULL(device_sync_host_flag_kernel_addr_, "[HixlClient] device sync host flag kernel addr is null");
+  *static_cast<uint64_t *>(device_sync_host_flag_) = kDeviceFlagInitValue;
+  handle.host_flag = device_sync_host_flag_;
+  handle.host_flag_kernel_addr = device_sync_host_flag_kernel_addr_;
+  handle.owns_host_flag = false;
   return SUCCESS;
 }
 
@@ -966,6 +997,7 @@ Status HixlCSClient::BatchTransferDeviceAsync(bool is_get, uint32_t list_num, co
   handle->host_flag = host_flag;
   handle->host_flag_mem_handle = nullptr;
   handle->host_flag_kernel_addr = nullptr;
+  handle->owns_host_flag = true;
   handle->dev_op_desc_buf = nullptr;
   HIXL_DISMISS_GUARD(flag_guard);
 
@@ -1021,9 +1053,10 @@ Status HixlCSClient::BatchTransferDeviceSync(bool is_get, uint32_t list_num, con
   handle->host_flag = nullptr;
   handle->host_flag_mem_handle = nullptr;
   handle->host_flag_kernel_addr = nullptr;
+  handle->owns_host_flag = false;
   handle->dev_op_desc_buf = nullptr;
 
-  HIXL_CHK_STATUS_RET(RegisterDeviceSyncHostFlag(*handle), "[HixlClient] RegisterDeviceSyncHostFlag failed");
+  HIXL_CHK_STATUS_RET(PrepareDeviceSyncHostFlag(*handle), "[HixlClient] PrepareDeviceSyncHostFlag failed");
   HIXL_CHK_STATUS_RET(AllocateDeviceDescBuf(*handle, list_num, desc_list), "AllocateDeviceDescBuf failed");
 
   HIXL_LOGI("[HixlClient] BatchTransferDeviceSync. is_get=%d list_num=%u slot=%u", static_cast<int32_t>(is_get),
@@ -1463,6 +1496,7 @@ void HixlCSClient::AbortAllPendingDeviceHandlesLocked() {
 }
 
 void HixlCSClient::ReleaseDeviceResourcesLocked() {
+  ReleaseDeviceSyncHostFlagResource();
   for (size_t i = 0U; i < notify_mem_handles_.size(); ++i) {
     if (notify_mem_handles_[i] != nullptr) {
       if (local_endpoint_ != nullptr) {
