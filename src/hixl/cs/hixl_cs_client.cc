@@ -51,6 +51,8 @@ constexpr uint64_t kFlagDoneValue = 1ULL;
 constexpr uint64_t kFlagResetValue = 0ULL;
 constexpr uint32_t kCustomTimeoutMs = 1800;
 constexpr uint32_t kMaxKernelBatchSize = 128U;
+constexpr uint32_t kHostFlagPollIntervalUs = 1000U;
+constexpr uint32_t kHostFlagPollTimeoutMs = 60000U;
 // notifywait默认1836ms等待时长，通过异步接口提供给用户使用，由用户感知超时主动退出，不使用notify的超时时间
 constexpr uint16_t kNotifyDefaultWaitTimeMs = 27 * 68;
 void FreeExportDesc(std::vector<hixl::HixlMemDesc> &desc_list) {
@@ -791,7 +793,26 @@ Status HixlCSClient::CheckDeviceSyncHostFlag(const DeviceCompleteHandle &handle)
     return SUCCESS;
   }
 
-  HIXL_LOGE(FAILED, "[HixlClient] stream sync success but D2H host flag is not visible, flag=%lu", flag_val);
+  HIXL_LOGW("[HixlClient] D2H host flag is not visible after stream sync, poll start, flag=%lu", flag_val);
+  const auto poll_start = std::chrono::steady_clock::now();
+  uint32_t poll_count = 0U;
+  while (std::chrono::steady_clock::now() - poll_start < std::chrono::milliseconds(kHostFlagPollTimeoutMs)) {
+    ++poll_count;
+    std::this_thread::sleep_for(std::chrono::microseconds(kHostFlagPollIntervalUs));
+    const uint64_t poll_flag_val = *flag_ptr;
+    if (poll_flag_val == kDeviceFlagDoneValue) {
+      const auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - poll_start).count();
+      HIXL_LOGW("[HixlClient] D2H host flag becomes visible after poll, poll_count=%u, elapsed_us=%ld",
+                poll_count, static_cast<long>(elapsed_us));
+      return SUCCESS;
+    }
+  }
+
+  const auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::steady_clock::now() - poll_start).count();
+  HIXL_LOGE(FAILED, "[HixlClient] stream sync success but D2H host flag is not visible after poll, "
+            "elapsed_us=%ld, flag=%lu", static_cast<long>(elapsed_us), *flag_ptr);
   return FAILED;
 }
 
