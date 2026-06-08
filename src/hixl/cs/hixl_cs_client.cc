@@ -821,22 +821,9 @@ Status HixlCSClient::CheckDeviceSyncHostFlag(const DeviceCompleteHandle &handle)
 
   const auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
       std::chrono::steady_clock::now() - poll_start).count();
-  uint64_t runtime_copy = 0ULL;
-  void *dev_copy_buf = nullptr;
-  aclError copy_ret = aclrtMalloc(&dev_copy_buf, sizeof(uint64_t), ACL_MEM_MALLOC_HUGE_ONLY);
-  if (copy_ret == ACL_SUCCESS) {
-    copy_ret = aclrtMemcpy(dev_copy_buf, sizeof(uint64_t), handle.probe_host_flag, sizeof(uint64_t),
-                           ACL_MEMCPY_HOST_TO_DEVICE);
-    if (copy_ret == ACL_SUCCESS) {
-      copy_ret = aclrtMemcpy(&runtime_copy, sizeof(uint64_t), dev_copy_buf, sizeof(uint64_t),
-                             ACL_MEMCPY_DEVICE_TO_HOST);
-    }
-    HIXL_CHK_ACL(aclrtFree(dev_copy_buf));
-  }
   HIXL_LOGE(FAILED, "[HixlClient] stream sync success but D2H host flag is not visible after poll, "
-            "elapsed_us=%ld, flag=%lu, runtime_copy=%lu, copy_ret=%d, host_addr=%p, kernel_addr=%p",
-            static_cast<long>(elapsed_us), *flag_ptr, runtime_copy, static_cast<int32_t>(copy_ret),
-            handle.probe_host_flag, handle.probe_host_flag_kernel_addr);
+            "elapsed_us=%ld, flag=%lu, host_addr=%p, kernel_addr=%p",
+            static_cast<long>(elapsed_us), *flag_ptr, handle.probe_host_flag, handle.probe_host_flag_kernel_addr);
   return FAILED;
 }
 
