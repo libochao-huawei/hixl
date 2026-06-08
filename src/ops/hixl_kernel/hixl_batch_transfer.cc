@@ -138,6 +138,10 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
         HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED,
             "[HixlBatchPutAndGet] D2H host flag read failed. dst:%lu, src:%lu, len:%zu, ret=%d.",
             param->host_local_flag_addr, param->remote_flag_addr, sizeof(uint64_t), ret);
+        ret = HcommProxy::ChannelFenceOnThread(param->thread, param->channel);
+        HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED,
+            "[HixlBatchPutAndGet] D2H host flag fence failed. dst:%lu, src:%lu, ret=%d.",
+            param->host_local_flag_addr, param->remote_flag_addr, ret);
       }
       HIXL_LOGI("[HixlBatchPutAndGet] HcommReadOnThread start to read remote flag, flag_size=%u, "
                 "local_flag=%lu, remote_flag=%lu",
