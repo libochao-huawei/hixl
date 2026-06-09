@@ -33,6 +33,12 @@ logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 NUM_TENSORS = 1
 BLOCKS_NUM = 3
 KV_SHAPE = 10
+CONTROL_PORT_OFFSET = 100
+CONTROL_CONNECT_TIMEOUT = 60
+CONTROL_CONNECT_RETRY_INTERVAL = 0.1
+DECODER_READY_MESSAGE = b"LLM_DATADIST_DECODER_READY"
+PULL_DONE_MESSAGE = b"LLM_DATADIST_PULL_DONE"
+UNLINK_DONE_MESSAGE = b"LLM_DATADIST_UNLINK_DONE"
 
 
 def ip_port_to_int(ip_port):
@@ -49,6 +55,65 @@ def ip_port_to_int(ip_port):
     # 组合IP整数(32位)和端口(16位)为一个48位整数
     result = (ip_int << 16) | port
     return result
+
+
+def parse_ip_port(ip_port):
+    ip, port_str = ip_port.split(":")
+    return ip, int(port_str)
+
+
+def get_control_addr(ip_port):
+    ip, port = parse_ip_port(ip_port)
+    return ip, port + CONTROL_PORT_OFFSET
+
+
+def start_control_server(local_ip_port):
+    ip, port = get_control_addr(local_ip_port)
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((ip, port))
+    server.listen(4)
+    logging.info(f"control server listen on {ip}:{port}")
+    return server
+
+
+def wait_control_message(server, expected_message, message_desc):
+    server.settimeout(CONTROL_CONNECT_TIMEOUT)
+    try:
+        conn, _ = server.accept()
+    except socket.timeout as err:
+        raise TimeoutError(f"wait {message_desc} timeout") from err
+    with conn:
+        chunks = []
+        received_len = 0
+        while received_len < len(expected_message):
+            chunk = conn.recv(len(expected_message) - received_len)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            received_len += len(chunk)
+        message = b"".join(chunks)
+    if message != expected_message:
+        raise RuntimeError(
+            f"receive invalid {message_desc}, message={message}, expected={expected_message}"
+        )
+    logging.info(f"receive {message_desc} success")
+
+
+def send_control_message(remote_ip_port, message, message_desc):
+    ip, port = get_control_addr(remote_ip_port)
+    deadline = time.monotonic() + CONTROL_CONNECT_TIMEOUT
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((ip, port), timeout=1) as conn:
+                conn.sendall(message)
+                logging.info(f"send {message_desc} success")
+                return
+        except OSError:
+            time.sleep(CONTROL_CONNECT_RETRY_INTERVAL)
+    raise TimeoutError(
+        f"connect control server timeout for {message_desc}, remote={ip}:{port}"
+    )
 
 
 def init_llm_datadist(args) -> LLMDataDist:
@@ -86,7 +151,12 @@ def run_prompt_sample(datadist, args):
     logging.info("register_blocks_cache success")
     logging.info(f"before decoder pull, tensor={tensor.cpu()}")
 
-    time.sleep(30)
+    control_server = start_control_server(args.local_ip_port)
+    wait_control_message(control_server, DECODER_READY_MESSAGE, "decoder ready")
+    wait_control_message(control_server, PULL_DONE_MESSAGE, "pull done")
+    wait_control_message(control_server, UNLINK_DONE_MESSAGE, "unlink done")
+    control_server.close()
+
     cache_manager.unregister_cache(cache.cache_id)
     datadist.finalize()
     logging.info("[finalize] success")
@@ -110,7 +180,8 @@ def run_decoder_sample(datadist, args):
     )
     logging.info("register_blocks_cache success")
 
-    time.sleep(5)  # register end
+    for remote in remote_list:
+        send_control_message(remote, DECODER_READY_MESSAGE, "decoder ready")
 
     # 2. 向所有prompt建链
     cluster_list = []
@@ -136,10 +207,16 @@ def run_decoder_sample(datadist, args):
             f"after decoder pull from {ip_port_to_int(remote)}, tensor={tensor.cpu()}"
         )
 
+    for remote in remote_list:
+        send_control_message(remote, PULL_DONE_MESSAGE, "pull done")
+
     # 4. 断链
     ret, _ = datadist.unlink_clusters(cluster_list, 5000)
     if ret != LLMStatusCode.LLM_SUCCESS:
         raise Exception("unlink failed")
+
+    for remote in remote_list:
+        send_control_message(remote, UNLINK_DONE_MESSAGE, "unlink done")
 
     cache_manager.unregister_cache(cache.cache_id)
     datadist.finalize()
