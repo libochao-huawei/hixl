@@ -11,6 +11,7 @@
 # ----------------------------------------------------------------------------
 
 import argparse
+import datetime
 import json
 import logging
 import time
@@ -29,6 +30,7 @@ from llm_datadist import (
     Placement,
 )
 import torch
+import torch.distributed as dist
 
 PROMPT_HOST_IP = "10.10.10.0"
 PROMPT_IP_LIST = [
@@ -54,6 +56,23 @@ DECODER_IP_LIST = [
 ]
 
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
+
+
+def init_process_group(cluster_id, is_single: bool, host_ip: str, backend="gloo"):
+    master_ip = host_ip if is_single else PROMPT_HOST_IP
+    if not master_ip:
+        raise RuntimeError("host_ip is not set")
+    os.environ["MASTER_ADDR"] = master_ip
+    os.environ["MASTER_PORT"] = "29500"
+    rank = cluster_id - 1
+    logging.info(f"init group begin, rank={rank}, master_ip={master_ip}")
+    dist.init_process_group(
+        backend=backend,
+        rank=rank,
+        world_size=2,
+        timeout=datetime.timedelta(seconds=30),
+    )
+    logging.info("init group success")
 
 
 def init_llm_datadist(role: LLMRole, cluster_id, device_id: int) -> LLMDataDist:
@@ -197,8 +216,7 @@ def run_decoder_sample(datadist, device_id: int, is_single: bool, host_ip: str):
 
     comm_id = link(datadist, device_id, is_single, host_ip)
 
-    # wait prompt prepared
-    time.sleep(5)
+    dist.barrier()  # cache ready
     cache_manager.pull_blocks(
         BlocksCacheKey(1, 0), cache, src_blocks=[0, 1], dst_blocks=[0, 1]
     )
@@ -210,7 +228,9 @@ def run_decoder_sample(datadist, device_id: int, is_single: bool, host_ip: str):
     # swap in
     cache_manager.swap_blocks(cpu_cache, cache, {0: 0, 1: 1})
 
+    dist.barrier()  # pull_blocks end
     datadist.unlink(comm_id)
+    dist.barrier()  # wait peer unlink end
     datadist.finalize()
 
 
@@ -228,10 +248,10 @@ def run_prompt_sample(datadist, device_id: int, is_single: bool, host_ip: str):
     logging.info("[register_blocks_cache] success")
 
     comm_id = link(datadist, device_id, is_single, host_ip)
-    logging.info("wait for 30 seconds")
-    time.sleep(30)
-    logging.info("wait ended")
+    dist.barrier()  # cache ready
+    dist.barrier()  # decoder pull_blocks end
     datadist.unlink(comm_id)
+    dist.barrier()  # wait peer unlink end
     datadist.finalize()
     logging.info("[finalize] success")
 
@@ -255,6 +275,7 @@ if __name__ == "__main__":
     )
     torch.npu.set_device(args.device_id)
     role = LLMRole.PROMPT if args.cluster_id == 1 else LLMRole.DECODER
+    init_process_group(args.cluster_id, is_single, args.host_ip)
     datadist = init_llm_datadist(role, args.cluster_id, args.device_id)
     if role == LLMRole.PROMPT:
         run_prompt_sample(datadist, args.device_id, is_single, args.host_ip)
