@@ -102,6 +102,7 @@ run_pair() {
                 echo "Deleted safe temp file: $abs_path"
             fi
         done
+        sleep 2000
         exit 1
     fi
 
@@ -238,6 +239,7 @@ smoke_test_samples() {
     run_pair "./prompt_push_cache_and_blocks ${device_id_1} 127.0.0.1 127.0.0.1" "./decoder_push_cache_and_blocks ${device_id_2} 127.0.0.1"
     run_pair "./prompt_switch_roles ${device_id_1} 127.0.0.1 127.0.0.1" "./decoder_switch_roles ${device_id_2} 127.0.0.1 127.0.0.1"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 ./client_server_h2d ${device_id_1} 127.0.0.1 127.0.0.1:16000" "HCCL_INTRA_ROCE_ENABLE=1 ./client_server_h2d ${device_id_2} 127.0.0.1:16000"
+    run_pair "./client_server_h2d ${device_id_1} 127.0.0.1 127.0.0.1:16000 roce" "./client_server_h2d ${device_id_2} 127.0.0.1:16000 roce"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 ./server_server_d2d ${device_id_1} 127.0.0.1:16000 127.0.0.1:16001" "HCCL_INTRA_ROCE_ENABLE=1 ./server_server_d2d ${device_id_2} 127.0.0.1:16001 127.0.0.1:16000"
 
     # Python examples
