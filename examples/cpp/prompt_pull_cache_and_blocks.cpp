@@ -8,41 +8,30 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <numeric>
 #include <cstdio>
-#include <thread>
-#include <iostream>
+#include <string>
+#include <vector>
 #include "acl/acl.h"
+#include "cache_utils.h"
+#include "control_channel.h"
 #include "llm_datadist/llm_datadist.h"
 
 using namespace llm_datadist;
 namespace {
 constexpr uint16_t kPromptListenPort = 26000;
+constexpr uint16_t kPromptControlPort = 26002;
 constexpr uint16_t kPromptClusterId = 0;
 constexpr uint32_t kNumTensors = 4U;
 constexpr size_t kTensorSize = 8 * 16 * sizeof(int32_t);
 const std::vector<int64_t> kTensorShape = {8, 16};
-constexpr int32_t kWaitTime = 10;
+constexpr int32_t kSocketBacklog = 2;
 constexpr int32_t kExpectedArgCnt = 4;
 constexpr uint32_t kArgIndexDeviceId = 1;
 constexpr uint32_t kArgIndexLocalIp = 2;
 constexpr uint32_t kArgIndexLocalCommRes = 3;
+constexpr const char *kPromptReadyMessage = "LLM_DATADIST_PROMPT_READY_CHECK";
+constexpr const char *kUnlinkAckMessage = "LLM_DATADIST_UNLINKED";
 
-#define CHECK_ACL(x)                                                                  \
-  do {                                                                                \
-    aclError __ret = x;                                                               \
-    if (__ret != ACL_ERROR_NONE) {                                                    \
-      std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __ret << std::endl; \
-    }                                                                                 \
-  } while (0)
-
-const char *GetRecentErrMsg() {
-  const char *errmsg = aclGetRecentErrMsg();
-  if (errmsg == nullptr) {
-    return "no error";
-  }
-  return errmsg;
-}
 }  // namespace
 
 int Initialize(LlmDataDist &llm_datadist, const std::string &device_id, const std::string &local_ip,
@@ -56,26 +45,19 @@ int Initialize(LlmDataDist &llm_datadist, const std::string &device_id, const st
   }
   auto ret = llm_datadist.Initialize(options);
   if (ret != LLM_SUCCESS) {
-    printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, GetRecentErrMsg());
+    printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, sample::GetAclRecentErrMsg());
     return -1;
   }
   printf("[INFO] Initialize success\n");
   return LLM_SUCCESS;
 }
 
-void Finalize(LlmDataDist &llm_datadist, int64_t cache_id, const std::vector<void *> buffers) {
-  if (cache_id > 0) {
-    auto ret = llm_datadist.UnregisterKvCache(cache_id);
-    if (ret != 0) {
-      printf("[ERROR] UnregisterKvCache failed, ret = %u, errmsg: %s\n", ret, GetRecentErrMsg());
-    } else {
-      printf("[INFO] UnregisterKvCache success\n");
-    }
-  }
-  for (auto buffer : buffers) {
-    aclrtFree(buffer);
-  }
-  llm_datadist.Finalize();
+int32_t RegisterCache(LlmDataDist &llm_datadist, std::vector<void *> &buffers, int64_t &cache_id) {
+  CacheDesc cache_desc{};
+  cache_desc.num_tensors = kNumTensors;
+  cache_desc.data_type = DT_INT32;
+  cache_desc.shape = kTensorShape;
+  return sample::RegisterKvCache(llm_datadist, cache_desc, kTensorSize, kNumTensors, true, buffers, cache_id);
 }
 
 int32_t RunPromptSample(const char *device_id, const char *local_ip, const std::string &local_comm_res) {
@@ -86,43 +68,36 @@ int32_t RunPromptSample(const char *device_id, const char *local_ip, const std::
     printf("[ERROR] Initialize LlmDataDist failed\n");
     return -1;
   }
-  // 2. 注册内存地址
-  CacheDesc cache_desc{};
-  cache_desc.num_tensors = kNumTensors;
-  cache_desc.data_type = DT_INT32;
-  cache_desc.shape = kTensorShape;
-  std::vector<uint64_t> tensor_addrs;
   std::vector<void *> buffers;
-  for (uint32_t i = 0U; i < kNumTensors; ++i) {
-    int32_t *buffer = nullptr;
-    CHECK_ACL(aclrtMalloc((void **)&buffer, kTensorSize, ACL_MEM_MALLOC_HUGE_ONLY));
-
-    // init device buffer
-    std::vector<int32_t> host_buffer(kTensorSize / sizeof(int32_t));
-    std::iota(host_buffer.begin(), host_buffer.end(), 0);
-    CHECK_ACL(aclrtMemcpy(buffer, kTensorSize, &host_buffer[0], kTensorSize, ACL_MEMCPY_HOST_TO_DEVICE));
-
-    tensor_addrs.emplace_back(reinterpret_cast<uint64_t>(buffer));
-    buffers.emplace_back(reinterpret_cast<void *>(buffer));
-  }
   int64_t cache_id = -1;
-  auto ret = llm_datadist.RegisterKvCache(cache_desc, tensor_addrs, {}, cache_id);
-  if (ret != LLM_SUCCESS) {
-    printf("[ERROR] RegisterKvCache failed, ret = %u, errmsg: %s\n", ret, GetRecentErrMsg());
-    Finalize(llm_datadist, cache_id, buffers);
+  if (RegisterCache(llm_datadist, buffers, cache_id) != 0) {
+    sample::FinalizeCache(llm_datadist, cache_id, buffers);
     return -1;
   }
-  // 3. RegisterKvCache成功后，可以获取cache中各tensor的地址用于后续操作
-  printf("[INFO] RegisterKvCache success\n");
-  for (size_t i = 0U; i < tensor_addrs.size(); ++i) {
-    printf("[INFO] Tensor[%zu] addr = %p\n", i, reinterpret_cast<void *>(tensor_addrs[i]));
+
+  int control_fd = sample::StartControlServer(local_ip, kPromptControlPort, "Prompt", kSocketBacklog);
+  if (control_fd < 0) {
+    sample::ForceFinalizeCache(llm_datadist, buffers);
+    return -1;
   }
 
-  // 4. 等待decoder拉取cache
-  std::this_thread::sleep_for(std::chrono::seconds(kWaitTime));
+  // 4. 等待decoder确认prompt cache已就绪后再建链
+  if (sample::WaitControlMessage(control_fd, kPromptReadyMessage, "prompt ready check") != 0) {
+    sample::CloseFd(control_fd);
+    sample::ForceFinalizeCache(llm_datadist, buffers);
+    return -1;
+  }
 
-  // 5. 释放Cache与llmDataDist
-  Finalize(llm_datadist, cache_id, buffers);
+  // 5. 等待decoder完成UnlinkLlmClusters，确认本端comm已解绑
+  if (sample::WaitControlMessage(control_fd, kUnlinkAckMessage, "unlink ack") != 0) {
+    sample::CloseFd(control_fd);
+    sample::ForceFinalizeCache(llm_datadist, buffers);
+    return -1;
+  }
+  sample::CloseFd(control_fd);
+
+  // 6. 释放Cache与llmDataDist
+  sample::FinalizeCache(llm_datadist, cache_id, buffers);
   printf("[INFO] Prompt Sample end\n");
   return 0;
 }
