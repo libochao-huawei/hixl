@@ -6,19 +6,15 @@
 
 ## 传输模式
 
-该 benchmark 支持三种传输模式：
+该 benchmark 支持两种传输模式：
 
-### 1. pairwise（成对传输）
-- 每个 rank 从下一个 rank 获取数据（rank i 从 rank i+1 获取）
-- 适用于简单的点对点性能测试
-- 适合单卡或多卡环境
-
-### 2. full_mesh（全互联传输）
+### 1. full_mesh（全互联传输）
 - 所有 rank 相互之间都进行数据传输
-- 每个 rank 向其他所有 rank put 数据，并从其他所有 rank get 数据
+- 每个 rank 都 put 数据，并从其他所有 rank get 数据
 - 适用于测试复杂的分布式通信场景
+- **要求 `world_size >= 2`，单卡场景如需测试请使用 `one_to_many` 模式**
 
-### 3. one_to_many（一对多传输）
+### 2. one_to_many（一对多传输）
 - rank 0 向其他所有 rank put 数据
 - 其他 rank 从 rank 0 get 数据
 - 适用于测试广播场景的性能
@@ -50,8 +46,7 @@ bash run.sh benchmark_bandwidth.py [参数]
 
 - `--device_id`: （必填）当前进程所在的 NPU 设备 ID
 - `--schema`: （可选）传输模式，默认为 "d2d"，可选值：h2h, h2d, d2h, d2d
-- `--transfer_mode`: （可选）传输模式，默认为 "pairwise"，可选值：
-  - `pairwise`: 成对传输
+- `--transfer_mode`: （可选）传输模式，默认为 "full_mesh"，可选值：
   - `full_mesh`: 全互联传输
   - `one_to_many`: 一对多传输
 
@@ -71,13 +66,13 @@ bash run.sh benchmark_bandwidth.py [参数]
 
 ## 使用示例
 
-### 示例 1：单卡测试 pairwise 模式
+### 示例 1：单卡测试 one_to_many 模式
 
 ```bash
 bash run.sh benchmark_bandwidth.py \
   --device_id=0 \
   --schema="d2d" \
-  --transfer_mode="pairwise"
+  --transfer_mode="one_to_many"
 ```
 
 ### 示例 2：测试特定 block 大小
@@ -86,7 +81,7 @@ bash run.sh benchmark_bandwidth.py \
 bash run.sh benchmark_bandwidth.py \
   --device_id=0 \
   --schema="d2d" \
-  --transfer_mode="pairwise" \
+  --transfer_mode="one_to_many" \
   --block_sizes="64,144,256" \
   --num_blocks=50 \
   --num_iters=20
@@ -169,7 +164,7 @@ bash run.sh benchmark_bandwidth.py \
 bash run.sh benchmark_bandwidth.py \
   --device_id=0 \
   --schema="d2d" \
-  --transfer_mode="pairwise" \
+  --transfer_mode="full_mesh" \
   --register_size_gb=10 \
   --block_sizes="1024" \
   --num_blocks=10
@@ -182,8 +177,8 @@ bash run.sh benchmark_bandwidth.py \
 ```
 Starting bandwidth benchmark
 Schema: d2d
-Transfer mode: pairwise
-World size: 1
+Transfer mode: full_mesh
+World Size: 4
 ```
 
 ### 单个 Block Size 的输出
@@ -194,7 +189,7 @@ Benchmark Configuration:
   Block Size: 144 KB
   Number of Blocks: 100
   Iterations: 10
-  Transfer Mode: pairwise
+  Transfer Mode: full_mesh
 ================================================================================
 
 Performing warmup iteration...
@@ -213,8 +208,8 @@ Results for 144 KB:
 ```
 ================================================================================
 SUMMARY - Bandwidth Results
-Mode: pairwise
-World Size: 1
+Mode: full_mesh
+World Size: 4
 ================================================================================
 Block (KB)        Put (GB/s)        Get (GB/s)        
 --------------------------------------------------------------------------------
