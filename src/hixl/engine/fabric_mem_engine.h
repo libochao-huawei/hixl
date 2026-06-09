@@ -16,6 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 #include "common/hixl_inner_types.h"
@@ -74,6 +75,8 @@ class FabricMemEngine : public hixl::Engine {
   Status GetNotifies(std::vector<NotifyDesc> &notifies) override;
   Status RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor) override;
 
+  static void SetKeepaliveCheckIntervalMs(int64_t interval_ms);
+
  private:
   class OperationGuard {
    public:
@@ -106,18 +109,24 @@ class FabricMemEngine : public hixl::Engine {
   bool TryAcquireOperation(aclrtContext &ctx);
   void ReleaseOperation();
   static const std::unordered_set<std::string> kSupportedOptions;
+  static int64_t keepalive_check_interval_ms_;
   Status ApplyVirtualMemoryConfig();
   Status InitTransferService();
   Status StartControlServer();
   Status InitFabricMem();
+  Status InitializeLocked(const HixlOptions &options, bool &start_keepalive_monitor);
+  Status WaitForInflightDrain(const std::shared_ptr<RemoteConnection> &conn, int32_t timeout_in_millis,
+                              const std::string &remote);
   void CleanupFabricMemLocked();
   Status BuildTransferContext(const RemoteConnection &conn, const std::string &remote_engine,
                               FabricMemTransferContext &context);
   Status AcquireTransferLease(const std::string &remote_engine, std::shared_ptr<RemoteConnection> &conn);
   void ReleaseTransferLease(const std::shared_ptr<RemoteConnection> &conn);
   Status DisconnectRemote(const AscendString &remote_engine, int32_t timeout_in_millis, bool wait_in_flight = true);
+  Status DisconnectRemoteUnderLock(const std::string &remote, int32_t timeout_in_millis, bool wait_in_flight);
   // Ensures connection to remote without holding mutex_ during network I/O.
   Status EnsureConnected(const AscendString &remote_engine, int32_t timeout_in_millis);
+  Status FetchAndRegisterRemote(const std::string &remote, int32_t timeout_in_millis, Status if_already_connected);
   Status CreateAndRegisterRemoteMemory(const std::vector<ShareHandleInfo> &share_handles, const std::string &remote);
   void RemoveChannelReqMapLocked(const std::string &remote_engine);
   Status DisconnectOnTransferError(const AscendString &remote_engine, int32_t timeout_in_millis);
@@ -144,13 +153,20 @@ class FabricMemEngine : public hixl::Engine {
                                        FabricMemTransferContext &context,
                                        std::shared_ptr<FabricMemTransferService> &service, bool &conn_invalid);
   bool EraseRequestAndReleaseLease(uint64_t id, const std::shared_ptr<RemoteConnection> &conn);
+  Status StartKeepaliveMonitor();
+  void StopKeepaliveMonitor();
+  void CheckKeepaliveFds();
+  void SendOutboundHeartbeats();
+  void DisconnectDeadRemote(const std::string &remote);
+  std::shared_ptr<std::mutex> GetOrCreateRemoteConnectionMutex(const std::string &remote);
 
   // mutex_: engine lifecycle, mem_map_, remote connection table, keepalive_fds_.
-  // connection_mutex_: serializes remote install after network fetch.
+  // remote_connection_mutexes_: per-remote Fetch + install serialization.
   // req_map_mutex_: protects req_map_.
   // RemoteConnection::state_mutex: per-remote transfer/disconnect exclusion.
   std::mutex mutex_;
-  std::mutex connection_mutex_;
+  std::mutex remote_connection_mutexes_mutex_;
+  std::unordered_map<std::string, std::shared_ptr<std::mutex>> remote_connection_mutexes_;
   std::mutex req_map_mutex_;
   std::condition_variable lifecycle_cv_;
   uint32_t active_operations_{0U};
@@ -167,6 +183,10 @@ class FabricMemEngine : public hixl::Engine {
   std::unordered_map<uint64_t, FabricMemTransferRequest> req_map_;
   std::atomic<uint64_t> next_req_id_{1U};
   bool auto_connect_{false};
+  std::thread keepalive_monitor_;
+  std::atomic<bool> keepalive_stop_{false};
+  std::mutex keepalive_cv_mutex_;
+  std::condition_variable keepalive_cv_;
   int32_t device_id_{-1};
   std::shared_ptr<void> aclrt_context_holder_;
   aclrtContext aclrt_context_{nullptr};
