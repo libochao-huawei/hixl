@@ -22,8 +22,10 @@ DEVICES="${DEVICES:-0,1}"
 TRANSPORT="${TRANSPORT:-rdma}"
 if [[ "${TRANSPORT}" == "rdma" ]]; then
   SOC_VARIANT="a3"
+  HIXL_OPTIONS=(-H='GlobalResourceConfig={"comm_resource_config.protocol_desc":["roce:device"]}')
 elif [[ "${TRANSPORT}" == "uboe" ]]; then
   SOC_VARIANT="a5"
+  HIXL_OPTIONS=()
 else
   echo "[ERROR] unsupported TRANSPORT=${TRANSPORT}, expected rdma or uboe"
   exit 1
@@ -62,6 +64,7 @@ for run_id in $(seq 1 "${RUNS}"); do
     --max_block_size="${SIZE}" \
     --loops=1 \
     --output_dir="${run_dir}" \
+    "${HIXL_OPTIONS[@]}" \
     >"${log_file}" 2>&1
   rc=$?
   set -e
