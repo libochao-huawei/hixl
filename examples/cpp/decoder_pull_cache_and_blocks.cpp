@@ -17,15 +17,15 @@
 
 using namespace llm_datadist;
 namespace {
-constexpr uint16_t kPromptListenPort = 26000;
-constexpr uint16_t kDecoderListenPort = 26001;
+constexpr uint16_t kPromptListenPort = 25890;
+constexpr uint16_t kDecoderListenPort = 25891;
 constexpr uint16_t kPromptClusterId = 0;
 constexpr uint16_t kDecoderClusterId = 1;
 constexpr uint32_t kNumTensors = 4U;
 constexpr size_t kTensorSize = 8 * 16 * sizeof(int32_t);
 const std::vector<int64_t> kTensorShape = {8, 16};
 constexpr size_t kTensorBlockElementNum = 16;
-constexpr int32_t kWaitPromptTime = 5;
+constexpr int32_t kWaitPromptTime = 30;
 constexpr int32_t kExpectedArgCnt = 5;
 constexpr uint32_t kArgIndexDeviceId = 1;
 constexpr uint32_t kArgIndexLocalIp = 2;
@@ -81,7 +81,7 @@ int Link(LlmDataDist &llm_datadist, const char *local_ip, const char *remote_ip)
   remote_ip_info.port = kPromptListenPort;
   cluster_info.remote_ip_infos.emplace_back(std::move(remote_ip_info));
   clusters.emplace_back(std::move(cluster_info));
-  auto ret = llm_datadist.LinkLlmClusters(clusters, rets);
+  auto ret = llm_datadist.LinkLlmClusters(clusters, rets, 10000);
   if (ret != LLM_SUCCESS) {
     printf("[ERROR] LinkLlmClusters failed, ret = %u, errmsg: %s\n", ret, GetRecentErrMsg());
     return -1;
