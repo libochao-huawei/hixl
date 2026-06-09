@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -29,6 +30,7 @@
 #define private public
 #include "engine/fabric_mem_engine.h"
 #include "engine/hixl_options.h"
+#include "fabric_mem/fabric_mem_adxl_control.h"
 #include "fabric_mem/fabric_mem_control.h"
 #include "fabric_mem/fabric_mem_statistic.h"
 #include "fabric_mem/fabric_mem_transfer_service.h"
@@ -223,6 +225,10 @@ void SendRawFabricMemMsg(int32_t fd, int32_t msg_type, const std::string &payloa
   }
 }
 
+void SendAdxlHeartBeat(int32_t fd) {
+  ASSERT_EQ(FabricMemAdxlControl::SendHeartBeat(fd), SUCCESS);
+}
+
 int32_t RecvRawFabricMemMsg(int32_t fd, std::string &payload) {
   uint32_t magic = 0U;
   EXPECT_EQ(recv(fd, &magic, sizeof(magic), MSG_WAITALL), static_cast<ssize_t>(sizeof(magic)));
@@ -375,13 +381,19 @@ TEST(FabricMemControlUTest, ServerPrivateHandlersSerializeResponses) {
 
   int32_t fds[2] = {-1, -1};
   ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
-  EXPECT_EQ(server.HandleConnectRequest(server.state_, fds[0]), FAILED);
+  const int32_t epoll_fd = epoll_create1(0);
+  ASSERT_GE(epoll_fd, 0);
+  const std::string connect_payload =
+      R"({"channel_id":"client_a","comm_res":"","timeout":10,"addrs":[],"share_handles":[]})";
+  EXPECT_EQ(server.HandleConnectRequest(server.state_, fds[0], epoll_fd, connect_payload), FAILED);
   std::string payload;
   EXPECT_EQ(RecvRawFabricMemMsg(fds[1], payload), FabricMemMsgType::kConnect);
   const auto json = nlohmann::json::parse(payload);
   EXPECT_EQ(json.at("share_handles").size(), 1U);
+  EXPECT_EQ(json.at("channel_id").get<std::string>(), "client_a");
   (void)close(fds[0]);
   (void)close(fds[1]);
+  (void)close(epoll_fd);
 }
 
 TEST(FabricMemControlUTest, ClientFetchNotifyRoundTrip) {
@@ -398,7 +410,7 @@ TEST(FabricMemControlUTest, ClientFetchNotifyRoundTrip) {
   const std::string remote = "127.0.0.1:" + std::to_string(port);
   std::vector<ShareHandleInfo> handles;
   int32_t conn_fd = -1;
-  EXPECT_EQ(FabricMemControlClient::Fetch(remote, kClientTimeoutMs, handles, conn_fd), SUCCESS);
+  EXPECT_EQ(FabricMemControlClient::Fetch(remote, "client_engine", kClientTimeoutMs, handles, conn_fd), SUCCESS);
   EXPECT_GE(conn_fd, 0);
   ASSERT_EQ(handles.size(), 1U);
   EXPECT_EQ(handles[0].va_addr, 0x3456UL);
@@ -432,7 +444,7 @@ TEST(FabricMemControlUTest, StopWhileClientConnectingDoesNotHang) {
     while (client_running.load(std::memory_order_relaxed)) {
       std::vector<ShareHandleInfo> handles;
       int32_t conn_fd = -1;
-      (void)FabricMemControlClient::Fetch(remote, 50, handles, conn_fd);
+      (void)FabricMemControlClient::Fetch(remote, "client_engine", 50, handles, conn_fd);
       if (conn_fd >= 0) {
         (void)close(conn_fd);
       }
@@ -449,19 +461,29 @@ TEST(FabricMemControlUTest, HandleDisconnectRequestSendsStatus) {
   FabricMemControlServer server;
   int32_t fds[2] = {-1, -1};
   ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
-  server.state_->keepalive_fds.insert(fds[0]);
-  EXPECT_EQ(server.HandleDisconnectRequest(server.state_, fds[0]), SUCCESS);
+  const int32_t epoll_fd = epoll_create1(0);
+  ASSERT_GE(epoll_fd, 0);
+  FabricMemControlServer::ClientSession session;
+  session.fd = fds[0];
+  session.client_id = "client_a";
+  session.with_heartbeat = true;
+  session.last_heartbeat_time = std::chrono::steady_clock::now();
+  server.state_->sessions[fds[0]] = session;
+  server.state_->client_id_to_fd["client_a"] = fds[0];
+  EXPECT_EQ(server.HandleDisconnectRequest(server.state_, fds[0], epoll_fd), SUCCESS);
   std::string payload;
   EXPECT_EQ(RecvRawFabricMemMsg(fds[1], payload), FabricMemMsgType::kStatus);
   const auto json = nlohmann::json::parse(payload);
   EXPECT_EQ(json.at("error_code").get<uint32_t>(), static_cast<uint32_t>(SUCCESS));
+  EXPECT_TRUE(server.state_->sessions.empty());
   (void)close(fds[1]);
+  (void)close(epoll_fd);
 }
 
 TEST(FabricMemControlUTest, ClientRejectsMissingPort) {
   std::vector<ShareHandleInfo> handles;
   int32_t conn_fd = -1;
-  EXPECT_EQ(FabricMemControlClient::Fetch("127.0.0.1", kClientTimeoutMs, handles, conn_fd), PARAM_INVALID);
+  EXPECT_EQ(FabricMemControlClient::Fetch("127.0.0.1", "client", kClientTimeoutMs, handles, conn_fd), PARAM_INVALID);
   NotifyDesc notify;
   EXPECT_EQ(FabricMemControlClient::SendNotify("127.0.0.1", notify, kClientTimeoutMs), PARAM_INVALID);
   std::vector<NotifyDesc> notifies;
@@ -473,9 +495,119 @@ TEST(FabricMemControlUTest, HandleConnectionRejectsUnexpectedType) {
   int32_t fds[2] = {-1, -1};
   ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
   SendRawFabricMemMsg(fds[1], 99, "");
-  EXPECT_EQ(server.HandleConnection(server.state_, fds[0]), PARAM_INVALID);
-  (void)close(fds[0]);
+  const int32_t epoll_fd = epoll_create1(0);
+  ASSERT_GE(epoll_fd, 0);
+  EXPECT_EQ(server.HandleConnection(server.state_, fds[0], epoll_fd), PARAM_INVALID);
   (void)close(fds[1]);
+  (void)close(epoll_fd);
+}
+
+TEST(FabricMemControlUTest, ServerReceivesAdxlHeartbeatAndUpdatesSession) {
+  const int32_t port = test::AllocateFabricMemTestPort();
+  ASSERT_GT(port, 0);
+  FabricMemControlServer server;
+  ASSERT_EQ(server.Start("127.0.0.1:" + std::to_string(port),
+                         [](std::vector<ShareHandleInfo> &handles) {
+                           handles.emplace_back(BuildShareHandle());
+                           return SUCCESS;
+                         }),
+            SUCCESS);
+
+  const std::string remote = "127.0.0.1:" + std::to_string(port);
+  std::vector<ShareHandleInfo> handles;
+  int32_t conn_fd = -1;
+  ASSERT_EQ(FabricMemControlClient::Fetch(remote, "heartbeat_client", kClientTimeoutMs, handles, conn_fd), SUCCESS);
+  ASSERT_GE(conn_fd, 0);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  {
+    std::lock_guard<std::mutex> lock(server.state_->mutex);
+    ASSERT_EQ(server.state_->sessions.size(), 1U);
+    EXPECT_EQ(server.state_->sessions.begin()->second.client_id, "heartbeat_client");
+  }
+
+  SendAdxlHeartBeat(conn_fd);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  server.CheckClientHeartbeatTimeouts();
+  {
+    std::lock_guard<std::mutex> lock(server.state_->mutex);
+    EXPECT_EQ(server.state_->sessions.size(), 1U);
+  }
+
+  (void)close(conn_fd);
+  server.Stop();
+}
+
+TEST(FabricMemControlUTest, ServerClosesClientOnHeartbeatTimeout) {
+  FabricMemControlServer::SetHeartbeatTimeoutMs(100);
+  const int32_t port = test::AllocateFabricMemTestPort();
+  ASSERT_GT(port, 0);
+  FabricMemControlServer server;
+  ASSERT_EQ(server.Start("127.0.0.1:" + std::to_string(port),
+                         [](std::vector<ShareHandleInfo> &handles) {
+                           handles.emplace_back(BuildShareHandle());
+                           return SUCCESS;
+                         }),
+            SUCCESS);
+
+  const std::string remote = "127.0.0.1:" + std::to_string(port);
+  std::vector<ShareHandleInfo> handles;
+  int32_t conn_fd = -1;
+  ASSERT_EQ(FabricMemControlClient::Fetch(remote, "timeout_client", kClientTimeoutMs, handles, conn_fd), SUCCESS);
+  ASSERT_GE(conn_fd, 0);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  server.CheckClientHeartbeatTimeouts();
+  {
+    std::lock_guard<std::mutex> lock(server.state_->mutex);
+    EXPECT_TRUE(server.state_->sessions.empty());
+  }
+
+  (void)close(conn_fd);
+  server.Stop();
+  FabricMemControlServer::SetHeartbeatTimeoutMs(120000);
+}
+
+TEST(FabricMemControlUTest, SameClientIdReconnectReplacesOldSession) {
+  const int32_t port = test::AllocateFabricMemTestPort();
+  ASSERT_GT(port, 0);
+  FabricMemControlServer server;
+  ASSERT_EQ(server.Start("127.0.0.1:" + std::to_string(port),
+                         [](std::vector<ShareHandleInfo> &handles) {
+                           handles.emplace_back(BuildShareHandle());
+                           return SUCCESS;
+                         }),
+            SUCCESS);
+
+  const std::string remote = "127.0.0.1:" + std::to_string(port);
+  std::vector<ShareHandleInfo> handles;
+  int32_t first_client_fd = -1;
+  ASSERT_EQ(FabricMemControlClient::Fetch(remote, "same_client", kClientTimeoutMs, handles, first_client_fd), SUCCESS);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  int32_t first_server_fd = -1;
+  {
+    std::lock_guard<std::mutex> lock(server.state_->mutex);
+    ASSERT_EQ(server.state_->sessions.size(), 1U);
+    first_server_fd = server.state_->client_id_to_fd["same_client"];
+    ASSERT_GE(first_server_fd, 0);
+  }
+
+  int32_t second_client_fd = -1;
+  ASSERT_EQ(FabricMemControlClient::Fetch(remote, "same_client", kClientTimeoutMs, handles, second_client_fd), SUCCESS);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  {
+    std::lock_guard<std::mutex> lock(server.state_->mutex);
+    EXPECT_EQ(server.state_->sessions.size(), 1U);
+    const int32_t active_server_fd = server.state_->client_id_to_fd["same_client"];
+    EXPECT_EQ(server.state_->sessions.count(active_server_fd), 1U);
+    EXPECT_EQ(server.state_->sessions.count(first_server_fd), 0U);
+  }
+
+  (void)close(first_client_fd);
+  (void)close(second_client_fd);
+  server.Stop();
 }
 
 TEST_F(FabricMemTransferServiceUTest, InitializeRejectsInvalidInputAndAclFailure) {
@@ -959,6 +1091,99 @@ TEST(FabricMemEngineUTest, DisconnectNoConnection) {
   EXPECT_TRUE(log_capture->IsPatternCaptured("is not connected, skip disconnect"));
   engine.Disconnect();
   llm::SlogStub::SetInstance(nullptr);
+}
+
+TEST(FabricMemEngineUTest, CheckKeepaliveFdsAutoDisconnectsDeadRemote) {
+  FabricMemEngine engine(AscendString("127.0.0.1"));
+  AttachTestContext(engine);
+  engine.auto_connect_ = true;
+  engine.is_initialized_ = true;
+
+  const std::string remote = "127.0.0.1:28099";
+  int fds[2] = {-1, -1};
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+  auto conn = std::make_shared<RemoteConnection>();
+  engine.fabric_mem_remote_mems_[remote] = conn;
+  engine.keepalive_fds_[remote] = fds[0];
+  (void)close(fds[1]);
+
+  engine.SendOutboundHeartbeats();
+
+  EXPECT_EQ(engine.fabric_mem_remote_mems_.find(remote), engine.fabric_mem_remote_mems_.end());
+  EXPECT_EQ(engine.keepalive_fds_.find(remote), engine.keepalive_fds_.end());
+}
+
+TEST(FabricMemEngineUTest, OutboundHeartbeatFailureDoesNotDisconnectWithoutAutoConnect) {
+  FabricMemEngine engine(AscendString("127.0.0.1"));
+  AttachTestContext(engine);
+  engine.auto_connect_ = false;
+  engine.is_initialized_ = true;
+
+  const std::string remote = "127.0.0.1:28101";
+  int fds[2] = {-1, -1};
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+  auto conn = std::make_shared<RemoteConnection>();
+  engine.fabric_mem_remote_mems_[remote] = conn;
+  engine.keepalive_fds_[remote] = fds[0];
+  (void)close(fds[1]);
+
+  engine.SendOutboundHeartbeats();
+
+  EXPECT_NE(engine.fabric_mem_remote_mems_.find(remote), engine.fabric_mem_remote_mems_.end());
+  EXPECT_NE(engine.keepalive_fds_.find(remote), engine.keepalive_fds_.end());
+  (void)close(fds[0]);
+}
+
+TEST(FabricMemEngineUTest, RemoveConnectionEntryLockedFinalizesImportedMemory) {
+  VirtualMemoryManager::GetInstance().Finalize();
+  ASSERT_EQ(VirtualMemoryManager::GetInstance().Initialize(), SUCCESS);
+  FabricMemEngine engine(AscendString("127.0.0.1"));
+  AttachTestContext(engine);
+
+  const std::string remote = "127.0.0.1:28100";
+  auto conn = std::make_shared<RemoteConnection>();
+  conn->remote_memory = MakeUnique<FabricMemRemoteMemory>();
+  ShareHandleInfo handle_info{};
+  handle_info.va_addr = 0x5000UL;
+  handle_info.len = 512U;
+  ASSERT_EQ(conn->remote_memory->Import({handle_info}, 0), SUCCESS);
+  engine.fabric_mem_remote_mems_[remote] = conn;
+
+  {
+    TemporaryRtContext with_context(engine.aclrt_context_);
+    std::lock_guard<std::mutex> lock(engine.mutex_);
+    engine.RemoveConnectionEntryLocked(remote);
+  }
+
+  EXPECT_EQ(engine.fabric_mem_remote_mems_.find(remote), engine.fabric_mem_remote_mems_.end());
+  EXPECT_TRUE(conn->remote_memory->GetNewVaToOldVa().empty());
+  VirtualMemoryManager::GetInstance().Finalize();
+}
+
+TEST_F(FabricMemEngineInitUTest, KeepaliveMonitorStartsWithAutoConnect) {
+  auto options = BuildFabricMemOptions();
+  options[OPTION_AUTO_CONNECT] = AscendString("1");
+  FabricMemEngine engine(AscendString("127.0.0.1:26000"));
+  ASSERT_EQ(InitEngineWithOptions(engine, options), SUCCESS);
+  EXPECT_TRUE(engine.keepalive_monitor_.joinable());
+  engine.Finalize();
+  FabricMemEngine::SetKeepaliveCheckIntervalMs(10000);
+}
+
+TEST_F(FabricMemEngineInitUTest, KeepaliveMonitorNotStartedWithoutAutoConnect) {
+  FabricMemEngine engine(AscendString("127.0.0.1:0"));
+  ASSERT_EQ(InitEngineWithOptions(engine, BuildFabricMemOptions()), SUCCESS);
+  EXPECT_FALSE(engine.keepalive_monitor_.joinable());
+  engine.Finalize();
+}
+
+TEST_F(FabricMemEngineInitUTest, KeepaliveMonitorStartsWhenListeningWithoutAutoConnect) {
+  FabricMemEngine engine(AscendString("127.0.0.1:26002"));
+  ASSERT_EQ(InitEngineWithOptions(engine, BuildFabricMemOptions()), SUCCESS);
+  EXPECT_TRUE(engine.keepalive_monitor_.joinable());
+  engine.Finalize();
 }
 
 TEST(FabricMemEngineUTest, DisconnectClearsChannelReqMap) {
