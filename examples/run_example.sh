@@ -232,6 +232,7 @@ smoke_test_samples() {
     local device_id_1="$1"
     local device_id_2="$2"
     local flag=0
+
     # C++ examples
     cd "${BASEPATH}/../build/examples/cpp"
     run_pair "./prompt_pull_cache_and_blocks ${device_id_1} 127.0.0.1" "./decoder_pull_cache_and_blocks ${device_id_2} 127.0.0.1 127.0.0.1"
