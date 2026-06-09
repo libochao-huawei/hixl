@@ -470,7 +470,7 @@ Status LlmDataDist::SetRole(LlmRole role, const std::map<AscendString, AscendStr
 
 Status LlmDataDist::LinkLlmClusters(const std::vector<ClusterInfo> &clusters, std::vector<Status> &rets,
                                     int32_t timeout_in_millis) {
-  LLMLOGI("[LinkLlmClusters] start");
+  LLMLOGI("         timeout_in_millis: %d", timeout_in_millis);
   LLM_CHK_BOOL_RET_STATUS(impl_ != nullptr, LLM_FAILED, "impl is nullptr, check LlmDataDist construct");
   const auto ret = impl_->LinkLlmClusters(clusters, rets, timeout_in_millis);
   LLM_CHK_BOOL_RET_STATUS(ret == LLM_SUCCESS, ret, "[LinkLlmClusters] failed, number of clusters = %zu.",
