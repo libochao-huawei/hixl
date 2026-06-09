@@ -10,8 +10,11 @@
 
 #include "fabric_mem_engine.h"
 
+#include <cerrno>
 #include <limits>
+#include <poll.h>
 #include <string>
+#include <sys/socket.h>
 #include <unistd.h>
 #include <unordered_set>
 #include <utility>
@@ -28,6 +31,12 @@ namespace hixl {
 
 const std::unordered_set<std::string> FabricMemEngine::kSupportedOptions = {
     OPTION_ENABLE_USE_FABRIC_MEM, OPTION_AUTO_CONNECT, OPTION_GLOBAL_RESOURCE_CONFIG};
+
+int64_t FabricMemEngine::keepalive_check_interval_ms_ = 10000;
+
+void FabricMemEngine::SetKeepaliveCheckIntervalMs(int64_t interval_ms) {
+  keepalive_check_interval_ms_ = interval_ms > 0 ? interval_ms : 10000;
+}
 
 namespace {
 Status BuildAddrInfo(const MemDesc &mem, MemType type, AddrInfo &addr_info) {
@@ -118,51 +127,59 @@ Status FabricMemEngine::InitFabricMem() {
 
 Status FabricMemEngine::Initialize(const HixlOptions &options) {
   HIXL_LOGI("[FabricMemEngine] Initialization started, local_engine:%s", local_engine_.c_str());
-  std::lock_guard<std::mutex> lock(mutex_);
-  for (const auto &key : options.RawOptions()) {
-    if (kSupportedOptions.find(key.first.GetString()) == kSupportedOptions.end()) {
-      HIXL_LOGW("[FabricMemEngine] Unsupported option '%s' will be ignored", key.first.GetString());
+  bool start_keepalive_monitor = false;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto &key : options.RawOptions()) {
+      if (kSupportedOptions.find(key.first.GetString()) == kSupportedOptions.end()) {
+        HIXL_LOGW("[FabricMemEngine] Unsupported option '%s' will be ignored", key.first.GetString());
+      }
     }
-  }
-  HIXL_CHK_BOOL_RET_STATUS(options.EnableFabricMem().value_or(false), PARAM_INVALID,
-                           "[FabricMemEngine] EnableUseFabricMem must be 1.");
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id_), "[FabricMemEngine] Failed to get device id.");
-  TemporaryRtContext with_context(nullptr);
-  HIXL_CHK_ACL_RET(aclrtCreateContext(&aclrt_context_, device_id_),
-                   "[FabricMemEngine] Failed to create aclrt context.");
-  aclrt_context_holder_ = std::shared_ptr<void>(aclrt_context_, [](void *ctx) {
-    if (ctx != nullptr) {
-      (void)aclrtDestroyContext(static_cast<aclrtContext>(ctx));
-    }
-  });
-  HIXL_EVENT("[FabricMemEngine] Created aclrt ctx:%p, device:%d.", aclrt_context_, device_id_);
-  HIXL_DISMISSABLE_GUARD(fail_guard, ([this]() {
-                           if (aclrt_context_ != nullptr) {
-                             aclrt_context_holder_.reset();
-                             aclrt_context_ = nullptr;
-                           }
-                         }));
-  TemporaryRtContext engine_context(aclrt_context_);
+    HIXL_CHK_BOOL_RET_STATUS(options.EnableFabricMem().value_or(false), PARAM_INVALID,
+                             "[FabricMemEngine] EnableUseFabricMem must be 1.");
+    HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id_), "[FabricMemEngine] Failed to get device id.");
+    TemporaryRtContext with_context(nullptr);
+    HIXL_CHK_ACL_RET(aclrtCreateContext(&aclrt_context_, device_id_),
+                     "[FabricMemEngine] Failed to create aclrt context.");
+    aclrt_context_holder_ = std::shared_ptr<void>(aclrt_context_, [](void *ctx) {
+      if (ctx != nullptr) {
+        (void)aclrtDestroyContext(static_cast<aclrtContext>(ctx));
+      }
+    });
+    HIXL_EVENT("[FabricMemEngine] Created aclrt ctx:%p, device:%d.", aclrt_context_, device_id_);
+    HIXL_DISMISSABLE_GUARD(fail_guard, ([this]() {
+                             if (aclrt_context_ != nullptr) {
+                               aclrt_context_holder_.reset();
+                               aclrt_context_ = nullptr;
+                             }
+                           }));
+    TemporaryRtContext engine_context(aclrt_context_);
 
-  fabric_mem_config_.enabled = true;
-  auto grc = options.GlobalResourceCfg();
-  if (grc.has_value()) {
-    if (grc->fabric_memory.max_capacity.has_value()) {
-      fabric_mem_config_.capacity_tb = *grc->fabric_memory.max_capacity;
-      fabric_mem_config_.has_capacity_tb = true;
+    fabric_mem_config_.enabled = true;
+    auto grc = options.GlobalResourceCfg();
+    if (grc.has_value()) {
+      if (grc->fabric_memory.max_capacity.has_value()) {
+        fabric_mem_config_.capacity_tb = *grc->fabric_memory.max_capacity;
+        fabric_mem_config_.has_capacity_tb = true;
+      }
+      if (grc->fabric_memory.start_address.has_value()) {
+        fabric_mem_config_.start_address_tb = *grc->fabric_memory.start_address;
+        fabric_mem_config_.has_start_address_tb = true;
+      }
+      fabric_mem_config_.task_stream_num = grc->fabric_memory.task_stream_num.value_or(4U);
     }
-    if (grc->fabric_memory.start_address.has_value()) {
-      fabric_mem_config_.start_address_tb = *grc->fabric_memory.start_address;
-      fabric_mem_config_.has_start_address_tb = true;
-    }
-    fabric_mem_config_.task_stream_num = grc->fabric_memory.task_stream_num.value_or(4U);
-  }
-  auto_connect_ = options.AutoConnect().value_or(false);
+    auto_connect_ = options.AutoConnect().value_or(false);
 
-  HIXL_CHK_STATUS_RET(InitFabricMem(), "[FabricMemEngine] Failed to initialize.");
-  is_initialized_ = true;
-  HIXL_DISMISS_GUARD(fail_guard);
-  HIXL_LOGI("[FabricMemEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
+    HIXL_CHK_STATUS_RET(InitFabricMem(), "[FabricMemEngine] Failed to initialize.");
+    is_initialized_ = true;
+    start_keepalive_monitor = auto_connect_;
+    HIXL_DISMISS_GUARD(fail_guard);
+    HIXL_LOGI("[FabricMemEngine] Initialization succeeded, local_engine:%s", local_engine_.c_str());
+  }
+  if (start_keepalive_monitor) {
+    HIXL_CHK_STATUS_RET(StartKeepaliveMonitor(), "[FabricMemEngine] Failed to start keepalive monitor, local_engine:%s",
+                        local_engine_.c_str());
+  }
   return SUCCESS;
 }
 
@@ -374,6 +391,9 @@ void FabricMemEngine::RemoveConnectionEntryLocked(const std::string &remote) {
   if (it == fabric_mem_remote_mems_.end()) {
     return;
   }
+  if (it->second != nullptr && it->second->remote_memory != nullptr) {
+    it->second->remote_memory->Finalize();
+  }
   {
     std::lock_guard<std::mutex> req_lock(req_map_mutex_);
     RemoveChannelReqMapLocked(remote);
@@ -440,6 +460,12 @@ Status FabricMemEngine::DisconnectRemote(const AscendString &remote_engine, int3
       conn->cv.wait(conn_lock, in_flight_done);
     }
   }
+  aclrtContext ctx = nullptr;
+  {
+    std::lock_guard<std::mutex> ctx_lock(mutex_);
+    ctx = aclrt_context_;
+  }
+  TemporaryRtContext with_context(ctx);
   std::lock_guard<std::mutex> lock(mutex_);
   RemoveConnectionEntryLocked(remote);
   return SUCCESS;
@@ -760,6 +786,104 @@ Status FabricMemEngine::GetTransferStatus(const GetTransferStatusArgs &args, std
   return UNSUPPORTED;
 }
 
+Status FabricMemEngine::StartKeepaliveMonitor() {
+  keepalive_stop_.store(false);
+  keepalive_monitor_ = std::thread([this]() {
+    std::unique_lock<std::mutex> lock(keepalive_cv_mutex_);
+    while (!keepalive_stop_.load()) {
+      CheckKeepaliveFds();
+      keepalive_cv_.wait_for(lock, std::chrono::milliseconds(keepalive_check_interval_ms_),
+                             [this] { return keepalive_stop_.load(); });
+    }
+  });
+  return SUCCESS;
+}
+
+void FabricMemEngine::StopKeepaliveMonitor() {
+  keepalive_stop_.store(true);
+  keepalive_cv_.notify_all();
+  if (keepalive_monitor_.joinable()) {
+    keepalive_monitor_.join();
+  }
+}
+
+bool FabricMemEngine::IsKeepaliveFdAlive(int32_t fd) {
+  if (fd < 0) {
+    return false;
+  }
+  pollfd pfd{};
+  pfd.fd = fd;
+  pfd.events = POLLIN | POLLERR | POLLHUP;
+  const int poll_ret = poll(&pfd, 1, 0);
+  if (poll_ret < 0) {
+    return false;
+  }
+  if (poll_ret > 0 && (pfd.revents & (POLLERR | POLLHUP)) != 0) {
+    return false;
+  }
+  if (poll_ret > 0 && (pfd.revents & POLLIN) != 0) {
+    char peek_buf = 0;
+    const ssize_t recv_ret = recv(fd, &peek_buf, 1, MSG_PEEK | MSG_DONTWAIT);
+    if (recv_ret == 0) {
+      return false;
+    }
+    if (recv_ret < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void FabricMemEngine::CheckKeepaliveFds() {
+  if (!auto_connect_) {
+    return;
+  }
+  std::vector<std::pair<std::string, int32_t>> keepalive_copy;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (finalizing_ || !is_initialized_.load(std::memory_order_relaxed)) {
+      return;
+    }
+    keepalive_copy.reserve(keepalive_fds_.size());
+    for (const auto &item : keepalive_fds_) {
+      keepalive_copy.emplace_back(item.first, item.second);
+    }
+  }
+  for (const auto &item : keepalive_copy) {
+    if (IsKeepaliveFdAlive(item.second)) {
+      continue;
+    }
+    HIXL_LOGW("[FabricMemEngine] Keepalive check failed for remote:%s, fd:%d.", item.first.c_str(), item.second);
+    DisconnectDeadRemote(item.first);
+  }
+}
+
+void FabricMemEngine::DisconnectDeadRemote(const std::string &remote) {
+  aclrtContext ctx = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (finalizing_ || !is_initialized_.load(std::memory_order_relaxed)) {
+      return;
+    }
+    if (fabric_mem_remote_mems_.find(remote) == fabric_mem_remote_mems_.end()) {
+      return;
+    }
+    ctx = aclrt_context_;
+  }
+  if (ctx == nullptr) {
+    return;
+  }
+  TemporaryRtContext with_context(ctx);
+  constexpr int32_t kWaitForInflightDrain = -1;
+  const Status ret = DisconnectRemote(AscendString(remote.c_str()), kWaitForInflightDrain, true);
+  if (ret == SUCCESS) {
+    HIXL_LOGI("[FabricMemEngine] Auto-disconnected dead remote:%s due to keepalive failure.", remote.c_str());
+  } else if (ret != NOT_CONNECTED) {
+    HIXL_LOGW("[FabricMemEngine] Failed to auto-disconnect dead remote:%s, ret:%u.", remote.c_str(),
+              static_cast<uint32_t>(ret));
+  }
+}
+
 void FabricMemEngine::CleanupFabricMemLocked() {
   is_initialized_ = false;
   for (auto &item : fabric_mem_remote_mems_) {
@@ -779,6 +903,11 @@ void FabricMemEngine::CleanupFabricMemLocked() {
       fabric_mem_transfer_service_.reset();
     }
     fabric_mem_statistic_.StopPeriodicDump();
+    for (auto &item : fabric_mem_remote_mems_) {
+      if (item.second != nullptr && item.second->remote_memory != nullptr) {
+        item.second->remote_memory->Finalize();
+      }
+    }
     fabric_mem_remote_mems_.clear();
     for (auto &item : keepalive_fds_) {
       if (item.second >= 0) {
@@ -800,6 +929,7 @@ void FabricMemEngine::CleanupFabricMemLocked() {
 
 void FabricMemEngine::Finalize() {
   HIXL_LOGI("[FabricMemEngine] Finalization started");
+  StopKeepaliveMonitor();
   std::unique_lock<std::mutex> lock(mutex_);
   finalizing_ = true;
   lifecycle_cv_.wait(lock, [this]() { return active_operations_ == 0U; });

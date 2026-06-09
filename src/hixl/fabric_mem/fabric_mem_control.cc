@@ -393,6 +393,7 @@ Status FabricMemControlClient::Fetch(const std::string &remote_engine, int32_t t
   }
 
   HIXL_DISMISS_GUARD(close_fd);
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::SetTcpKeepAlive(conn_fd), "Failed to set tcp keep alive, fd:%d.", conn_fd);
   HIXL_LOGI("Fetch received %zu share handles from remote:%s, conn_fd:%d.", share_handles.size(), remote_engine.c_str(),
             conn_fd);
   return SUCCESS;

@@ -16,6 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 #include "common/hixl_inner_types.h"
@@ -73,6 +74,8 @@ class FabricMemEngine : public hixl::Engine {
                     int32_t timeout_in_millis = 1000) override;
   Status GetNotifies(std::vector<NotifyDesc> &notifies) override;
   Status RegisterCallbackProcessor(int32_t msg_type, CallbackProcessor processor) override;
+
+  static void SetKeepaliveCheckIntervalMs(int64_t interval_ms);
 
  private:
   class OperationGuard {
@@ -144,6 +147,11 @@ class FabricMemEngine : public hixl::Engine {
                                        FabricMemTransferContext &context,
                                        std::shared_ptr<FabricMemTransferService> &service, bool &conn_invalid);
   bool EraseRequestAndReleaseLease(uint64_t id, const std::shared_ptr<RemoteConnection> &conn);
+  Status StartKeepaliveMonitor();
+  void StopKeepaliveMonitor();
+  void CheckKeepaliveFds();
+  static bool IsKeepaliveFdAlive(int32_t fd);
+  void DisconnectDeadRemote(const std::string &remote);
 
   // mutex_: engine lifecycle, mem_map_, remote connection table, keepalive_fds_.
   // connection_mutex_: serializes remote install after network fetch.
@@ -167,6 +175,11 @@ class FabricMemEngine : public hixl::Engine {
   std::unordered_map<uint64_t, FabricMemTransferRequest> req_map_;
   std::atomic<uint64_t> next_req_id_{1U};
   bool auto_connect_{false};
+  static int64_t keepalive_check_interval_ms_;
+  std::thread keepalive_monitor_;
+  std::atomic<bool> keepalive_stop_{false};
+  std::mutex keepalive_cv_mutex_;
+  std::condition_variable keepalive_cv_;
   int32_t device_id_{-1};
   std::shared_ptr<void> aclrt_context_holder_;
   aclrtContext aclrt_context_{nullptr};
