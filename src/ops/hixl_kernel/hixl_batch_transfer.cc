@@ -128,6 +128,9 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
   HIXL_LOGI("[HixlBatchPutAndGet] HixlBatchTransfer use_notify_record=%u.", param->use_notify_record);
   if (param->remote_flag_addr != 0) {
     if (param->use_notify_record == 0) {
+      HIXL_LOGI("[HixlBatchPutAndGet] D2H host flag probe condition, host_local_flag=%lu, "
+                "remote_flag=%lu, thread=%lu, channel=%lu",
+                param->host_local_flag_addr, param->remote_flag_addr, param->thread, param->channel);
       if (param->host_local_flag_addr != 0) {
         HIXL_LOGI("[HixlBatchPutAndGet] HcommReadOnThread start to read D2H host flag, "
                   "thread=%lu, channel=%lu, local_flag=%lu, remote_flag=%lu",

@@ -765,25 +765,39 @@ Status HixlCSClient::AllocateHostFlag(void *&host_flag) const {
 }
 
 Status HixlCSClient::RegisterDeviceSyncHostFlag(DeviceCompleteHandle &handle) {
+  HIXL_LOGI("[HixlClient] RegisterDeviceSyncHostFlag enter, local_endpoint=%p, protocol=%u",
+            local_endpoint_.get(),
+            local_endpoint_ == nullptr ? static_cast<uint32_t>(COMM_PROTOCOL_RESERVED)
+                                       : static_cast<uint32_t>(local_endpoint_->GetEndpoint().protocol));
   if (local_endpoint_ == nullptr) {
+    HIXL_LOGI("[HixlClient] RegisterDeviceSyncHostFlag skip, local_endpoint is null");
     return SUCCESS;
   }
   const CommProtocol protocol = local_endpoint_->GetEndpoint().protocol;
   if (protocol != COMM_PROTOCOL_ROCE && protocol != COMM_PROTOCOL_UBOE) {
+    HIXL_LOGI("[HixlClient] RegisterDeviceSyncHostFlag skip, unsupported protocol=%u", protocol);
     return SUCCESS;
   }
 
   HIXL_CHK_STATUS_RET(AllocateHostFlag(handle.probe_host_flag), "[HixlClient] AllocateHostFlag failed");
+  HIXL_LOGI("[HixlClient] probe host flag allocated, protocol=%u, host_addr=%p", protocol, handle.probe_host_flag);
   CommMem mem{};
   mem.type = COMM_MEM_TYPE_HOST;
   mem.addr = handle.probe_host_flag;
   mem.size = sizeof(uint64_t);
+  HIXL_LOGI("[HixlClient] probe host flag RegMem begin, protocol=%u, addr=%p, size=%lu",
+            protocol, mem.addr, mem.size);
   HIXL_CHK_STATUS_RET(RegMem(nullptr, &mem, &handle.probe_host_flag_mem_handle),
                       "[HixlClient] register device sync probe host flag failed");
+  HIXL_LOGI("[HixlClient] probe host flag RegMem success, protocol=%u, mem_handle=%p",
+            protocol, handle.probe_host_flag_mem_handle);
 
   HixlMemDesc desc{};
   HIXL_CHK_STATUS_RET(local_endpoint_->GetMemDesc(handle.probe_host_flag_mem_handle, desc),
                       "[HixlClient] query device sync probe host flag desc failed");
+  HIXL_LOGI("[HixlClient] probe host flag GetMemDesc success, protocol=%u, desc_addr=%p, desc_size=%lu, "
+            "registered_dev_mem=%p",
+            protocol, desc.mem.addr, desc.mem.size, desc.registered_dev_mem);
   if (protocol == COMM_PROTOCOL_UBOE && desc.registered_dev_mem != nullptr) {
     handle.probe_host_flag_kernel_addr = desc.registered_dev_mem;
   } else {
@@ -797,6 +811,8 @@ Status HixlCSClient::RegisterDeviceSyncHostFlag(DeviceCompleteHandle &handle) {
 }
 
 Status HixlCSClient::CheckDeviceSyncHostFlag(const DeviceCompleteHandle &handle) const {
+  HIXL_LOGI("[HixlClient] CheckDeviceSyncHostFlag enter, host_addr=%p, kernel_addr=%p, mem_handle=%p",
+            handle.probe_host_flag, handle.probe_host_flag_kernel_addr, handle.probe_host_flag_mem_handle);
   if (handle.probe_host_flag == nullptr) {
     return SUCCESS;
   }
@@ -881,6 +897,10 @@ Status HixlCSClient::BuildDeviceChunkParam(DeviceCompleteHandle &handle, uint32_
     param.notify_id = handle.shared_slot->notify_id;
     if (handle.probe_host_flag_kernel_addr != nullptr) {
       param.host_local_flag_addr = reinterpret_cast<uint64_t>(handle.probe_host_flag_kernel_addr);
+      HIXL_LOGI("[HixlClient] BuildDeviceChunkParam set probe host flag, slot=%u, remote_flag=%lu, "
+                "notify_local_flag=%lu, host_local_flag=%lu",
+                handle.shared_slot->slot_index, param.remote_flag_addr, param.local_flag_addr,
+                param.host_local_flag_addr);
     }
   } else {
     param.remote_flag_addr = 0;
@@ -1044,8 +1064,12 @@ Status HixlCSClient::BatchTransferDeviceSync(bool is_get, uint32_t list_num, con
   handle->probe_host_flag_mem_handle = nullptr;
   handle->probe_host_flag_kernel_addr = nullptr;
   handle->dev_op_desc_buf = nullptr;
+  HIXL_LOGI("[HixlClient] BatchTransferDeviceSync handle initialized. is_get=%d list_num=%u slot=%u",
+            static_cast<int32_t>(is_get), list_num, handle->shared_slot->slot_index);
 
   HIXL_CHK_STATUS_RET(RegisterDeviceSyncHostFlag(*handle), "[HixlClient] RegisterDeviceSyncHostFlag failed");
+  HIXL_LOGI("[HixlClient] BatchTransferDeviceSync probe host flag ready, host_addr=%p, kernel_addr=%p, mem_handle=%p",
+            handle->probe_host_flag, handle->probe_host_flag_kernel_addr, handle->probe_host_flag_mem_handle);
   HIXL_CHK_STATUS_RET(AllocateDeviceDescBuf(*handle, list_num, desc_list), "AllocateDeviceDescBuf failed");
 
   HIXL_LOGI("[HixlClient] BatchTransferDeviceSync. is_get=%d list_num=%u slot=%u", static_cast<int32_t>(is_get),
