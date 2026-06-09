@@ -12,6 +12,13 @@
 #include <cstdio>
 #include <thread>
 #include <iostream>
+#include <cerrno>
+#include <cstring>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include "acl/acl.h"
 #include "llm_datadist/llm_datadist.h"
 
@@ -25,12 +32,19 @@ constexpr uint32_t kNumTensors = 4U;
 constexpr size_t kTensorSize = 8 * 16 * sizeof(int32_t);
 const std::vector<int64_t> kTensorShape = {8, 16};
 constexpr size_t kTensorBlockElementNum = 16;
-constexpr int32_t kWaitPromptInitTime = 5;
-constexpr int32_t kWaitPromptPushTime = 30;
+constexpr uint16_t kPromptControlPort = 26002;
+constexpr uint16_t kDecoderControlPort = 26003;
+constexpr int32_t kControlTimeoutSec = 60;
+constexpr int32_t kControlConnectTimeoutSec = 60;
+constexpr int32_t kControlConnectRetryIntervalUs = 100000;
+constexpr int32_t kSocketBacklog = 2;
 constexpr int32_t kExpectedArgCnt = 4;
 constexpr uint32_t kArgIndexDeviceId = 1;
 constexpr uint32_t kArgIndexLocalIp = 2;
 constexpr uint32_t kArgIndexRemoteIp = 3;
+constexpr const char *kPromptReadyMessage = "LLM_DATADIST_PROMPT_READY";
+constexpr const char *kDecoderPromptReadyMessage = "LLM_DATADIST_DECODER_PROMPT_READY";
+constexpr const char *kPushDoneMessage = "LLM_DATADIST_PUSH_DONE";
 
 #define CHECK_ACL(x)                                                                  \
   do {                                                                                \
@@ -46,6 +60,159 @@ const char *GetRecentErrMsg() {
     return "no error";
   }
   return errmsg;
+}
+
+void CloseFd(int &fd) {
+  if (fd >= 0) {
+    (void)close(fd);
+    fd = -1;
+  }
+}
+
+int StartDecoderControlServer(const std::string &local_ip) {
+  int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (listen_fd < 0) {
+    printf("[ERROR] Create decoder control socket failed, errno = %d\n", errno);
+    return -1;
+  }
+
+  const int reuse = 1;
+  if (setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) != 0) {
+    printf("[ERROR] Set decoder control socket option failed, errno = %d\n", errno);
+    CloseFd(listen_fd);
+    return -1;
+  }
+
+  sockaddr_in listen_addr{};
+  listen_addr.sin_family = AF_INET;
+  listen_addr.sin_port = htons(kDecoderControlPort);
+  if (inet_pton(AF_INET, local_ip.c_str(), &listen_addr.sin_addr) != 1) {
+    printf("[ERROR] Invalid decoder control listen ip: %s\n", local_ip.c_str());
+    CloseFd(listen_fd);
+    return -1;
+  }
+
+  if (bind(listen_fd, reinterpret_cast<sockaddr *>(&listen_addr), sizeof(listen_addr)) != 0) {
+    printf("[ERROR] Bind decoder control socket failed, ip = %s, port = %u, errno = %d\n", local_ip.c_str(),
+           static_cast<unsigned int>(kDecoderControlPort), errno);
+    CloseFd(listen_fd);
+    return -1;
+  }
+
+  if (listen(listen_fd, kSocketBacklog) != 0) {
+    printf("[ERROR] Listen decoder control socket failed, errno = %d\n", errno);
+    CloseFd(listen_fd);
+    return -1;
+  }
+
+  printf("[INFO] Decoder control server listen on %s:%u\n", local_ip.c_str(),
+         static_cast<unsigned int>(kDecoderControlPort));
+  return listen_fd;
+}
+
+int WaitControlMessage(int listen_fd, const char *expected_message, const char *message_desc) {
+  while (true) {
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(listen_fd, &read_fds);
+    timeval timeout{};
+    timeout.tv_sec = kControlTimeoutSec;
+    const int select_ret = select(listen_fd + 1, &read_fds, nullptr, nullptr, &timeout);
+    if (select_ret < 0 && errno == EINTR) {
+      continue;
+    }
+    if (select_ret == 0) {
+      printf("[ERROR] Wait %s timeout, timeout = %d seconds\n", message_desc, kControlTimeoutSec);
+      return -1;
+    }
+    if (select_ret < 0) {
+      printf("[ERROR] Wait %s failed, errno = %d\n", message_desc, errno);
+      return -1;
+    }
+    break;
+  }
+
+  sockaddr_in peer_addr{};
+  socklen_t peer_addr_len = sizeof(peer_addr);
+  int conn_fd = accept(listen_fd, reinterpret_cast<sockaddr *>(&peer_addr), &peer_addr_len);
+  if (conn_fd < 0) {
+    printf("[ERROR] Accept %s connection failed, errno = %d\n", message_desc, errno);
+    return -1;
+  }
+
+  const size_t expected_len = std::strlen(expected_message);
+  std::vector<char> buffer(expected_len + 1U, 0);
+  size_t received_len = 0U;
+  while (received_len < expected_len) {
+    const ssize_t recv_len = recv(conn_fd, buffer.data() + received_len, expected_len - received_len, 0);
+    if (recv_len < 0 && errno == EINTR) {
+      continue;
+    }
+    if (recv_len <= 0) {
+      printf("[ERROR] Receive %s failed, errno = %d\n", message_desc, errno);
+      CloseFd(conn_fd);
+      return -1;
+    }
+    received_len += static_cast<size_t>(recv_len);
+  }
+
+  CloseFd(conn_fd);
+  if (std::strncmp(buffer.data(), expected_message, expected_len) != 0) {
+    printf("[ERROR] Receive invalid %s, message = %s, expected = %s\n", message_desc, buffer.data(), expected_message);
+    return -1;
+  }
+  printf("[INFO] Receive %s success\n", message_desc);
+  return 0;
+}
+
+int SendPromptControlMessage(const char *remote_ip, const char *message, const char *message_desc) {
+  sockaddr_in prompt_addr{};
+  prompt_addr.sin_family = AF_INET;
+  prompt_addr.sin_port = htons(kPromptControlPort);
+  if (inet_pton(AF_INET, remote_ip, &prompt_addr.sin_addr) != 1) {
+    printf("[ERROR] Invalid prompt control ip: %s\n", remote_ip);
+    return -1;
+  }
+
+  int conn_fd = -1;
+  constexpr int32_t kUsecPerSec = 1000000;
+  constexpr int32_t kRetryTimes = kControlConnectTimeoutSec * kUsecPerSec / kControlConnectRetryIntervalUs;
+  for (int32_t i = 0; i < kRetryTimes; ++i) {
+    conn_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (conn_fd < 0) {
+      printf("[ERROR] Create socket for %s failed, errno = %d\n", message_desc, errno);
+      return -1;
+    }
+    if (connect(conn_fd, reinterpret_cast<sockaddr *>(&prompt_addr), sizeof(prompt_addr)) == 0) {
+      break;
+    }
+    CloseFd(conn_fd);
+    usleep(kControlConnectRetryIntervalUs);
+  }
+  if (conn_fd < 0) {
+    printf("[ERROR] Connect prompt control server timeout for %s, remote = %s:%u, timeout = %d seconds\n", message_desc,
+           remote_ip, static_cast<unsigned int>(kPromptControlPort), kControlConnectTimeoutSec);
+    return -1;
+  }
+
+  const size_t message_len = std::strlen(message);
+  size_t sent_len = 0U;
+  while (sent_len < message_len) {
+    const ssize_t ret = send(conn_fd, message + sent_len, message_len - sent_len, 0);
+    if (ret < 0 && errno == EINTR) {
+      continue;
+    }
+    if (ret <= 0) {
+      printf("[ERROR] Send %s failed, errno = %d\n", message_desc, errno);
+      CloseFd(conn_fd);
+      return -1;
+    }
+    sent_len += static_cast<size_t>(ret);
+  }
+
+  CloseFd(conn_fd);
+  printf("[INFO] Send %s success\n", message_desc);
+  return 0;
 }
 }  // namespace
 
@@ -212,9 +379,14 @@ int32_t RegisterCache(LlmDataDist &llm_datadist, std::vector<void *> &buffers, i
 
 int32_t RunDecoderSample(const char *device_id, const char *local_ip, const char *remote_ip) {
   printf("[INFO] Decoder Sample start\n");
+  int control_fd = StartDecoderControlServer(local_ip);
+  if (control_fd < 0) {
+    return -1;
+  }
   // 1. 初始化
   LlmDataDist llm_datadist(kDecoderClusterId, LlmRole::kDecoder);
   if (Initialize(llm_datadist, device_id) != 0) {
+    CloseFd(control_fd);
     return -1;
   }
 
@@ -224,15 +396,21 @@ int32_t RunDecoderSample(const char *device_id, const char *local_ip, const char
   bool linked = false;
   if (RegisterCache(llm_datadist, buffers, cache_id) != 0) {
     Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    CloseFd(control_fd);
     return -1;
   }
 
-  // 3. 等待prompt写完cache，实际业务场景可通过合适方式实现通知
-  std::this_thread::sleep_for(std::chrono::seconds(kWaitPromptInitTime));
+  // 3. 等待prompt写完cache
+  if (WaitControlMessage(control_fd, kPromptReadyMessage, "prompt ready") != 0) {
+    Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    CloseFd(control_fd);
+    return -1;
+  }
 
   // 4. 与prompt建链
   if (Link(llm_datadist, local_ip, remote_ip) != 0) {
     Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    CloseFd(control_fd);
     return -1;
   }
   linked = true;
@@ -240,17 +418,20 @@ int32_t RunDecoderSample(const char *device_id, const char *local_ip, const char
   // 5. 从prompt拉取cache
   if (PullCache(llm_datadist, cache_id) != 0) {
     Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    CloseFd(control_fd);
     return -1;
   }
 
   if (CheckBuffers(buffers, {0, 1, 2, 3}) != 0) {
     Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    CloseFd(control_fd);
     return -1;
   }
 
   // 6. 解除链路
   if (Unlink(llm_datadist, remote_ip) != 0) {
     Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    CloseFd(control_fd);
     return -1;
   }
   linked = false;
@@ -258,18 +439,30 @@ int32_t RunDecoderSample(const char *device_id, const char *local_ip, const char
   // 7. 切换角色
   if (SetRole(llm_datadist, LlmRole::kPrompt, local_ip) != 0) {
     Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    CloseFd(control_fd);
+    return -1;
+  }
+  if (SendPromptControlMessage(remote_ip, kDecoderPromptReadyMessage, "decoder prompt ready") != 0) {
+    Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    CloseFd(control_fd);
     return -1;
   }
 
-  // 8. 等待prompt push cache，实际业务场景可通过合适方式实现通知
-  std::this_thread::sleep_for(std::chrono::seconds(kWaitPromptPushTime));
+  // 8. 等待prompt push cache
+  if (WaitControlMessage(control_fd, kPushDoneMessage, "push done") != 0) {
+    Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    CloseFd(control_fd);
+    return -1;
+  }
 
   if (CheckBuffers(buffers, {4, 5, 6, 7}) != 0) {
     Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    CloseFd(control_fd);
     return -1;
   }
 
   // 9. 释放cache与llmDataDist
+  CloseFd(control_fd);
   llm_datadist.Finalize();
   printf("[INFO] Finalize success\n");
   printf("[INFO] Decoder Sample end\n");

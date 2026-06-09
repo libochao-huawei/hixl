@@ -8,22 +8,29 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <numeric>
+#include <arpa/inet.h>
+#include <cerrno>
+#include <cstring>
 #include <cstdio>
-#include <thread>
 #include <iostream>
+#include <netinet/in.h>
+#include <numeric>
+#include <string>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <vector>
 #include "acl/acl.h"
 #include "llm_datadist/llm_datadist.h"
 
 using namespace llm_datadist;
 namespace {
 constexpr uint16_t kDecoderListenPort = 26001;
+constexpr uint16_t kDecoderControlPort = 26003;
 constexpr uint16_t kPromptListenPort = 26000;
 constexpr uint16_t kPromptClusterId = 0;
 constexpr uint32_t kNumTensors = 4U;
 constexpr size_t kTensorSize = 8 * 16 * sizeof(int32_t);
 const std::vector<int64_t> kTensorShape = {8, 16};
-constexpr int32_t kWaitTime = 5;
 constexpr int32_t kExpectedArgCnt = 5;
 constexpr uint32_t kArgIndexDeviceId = 1;
 constexpr uint32_t kArgIndexLocalIp = 2;
@@ -31,6 +38,10 @@ constexpr uint32_t kArgIndexRemoteIp = 3;
 constexpr uint32_t kArgIndexLocalCommRes = 4;
 constexpr uint32_t kPushBatchIndex = 4;
 constexpr uint8_t kPushTensorNumPerLayer = 4;
+constexpr int32_t kControlConnectTimeoutSec = 60;
+constexpr int32_t kControlConnectRetryIntervalUs = 100000;
+constexpr const char *kDecoderReadyMessage = "LLM_DATADIST_DECODER_READY_CHECK";
+constexpr const char *kUnlinkAckMessage = "LLM_DATADIST_UNLINKED";
 
 #define CHECK_ACL(x)                                                                  \
   do {                                                                                \
@@ -46,6 +57,63 @@ const char *GetRecentErrMsg() {
     return "no error";
   }
   return errmsg;
+}
+
+void CloseFd(int &fd) {
+  if (fd >= 0) {
+    (void)close(fd);
+    fd = -1;
+  }
+}
+
+int SendDecoderControlMessage(const char *remote_ip, const char *message, const char *message_desc) {
+  sockaddr_in decoder_addr{};
+  decoder_addr.sin_family = AF_INET;
+  decoder_addr.sin_port = htons(kDecoderControlPort);
+  if (inet_pton(AF_INET, remote_ip, &decoder_addr.sin_addr) != 1) {
+    printf("[ERROR] Invalid decoder control ip: %s\n", remote_ip);
+    return -1;
+  }
+
+  int conn_fd = -1;
+  constexpr int32_t kUsecPerSec = 1000000;
+  constexpr int32_t kRetryTimes = kControlConnectTimeoutSec * kUsecPerSec / kControlConnectRetryIntervalUs;
+  for (int32_t i = 0; i < kRetryTimes; ++i) {
+    conn_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (conn_fd < 0) {
+      printf("[ERROR] Create socket for %s failed, errno = %d\n", message_desc, errno);
+      return -1;
+    }
+    if (connect(conn_fd, reinterpret_cast<sockaddr *>(&decoder_addr), sizeof(decoder_addr)) == 0) {
+      break;
+    }
+    CloseFd(conn_fd);
+    usleep(kControlConnectRetryIntervalUs);
+  }
+  if (conn_fd < 0) {
+    printf("[ERROR] Connect decoder control server timeout for %s, remote = %s:%u, timeout = %d seconds\n",
+           message_desc, remote_ip, static_cast<unsigned int>(kDecoderControlPort), kControlConnectTimeoutSec);
+    return -1;
+  }
+
+  const size_t message_len = std::strlen(message);
+  size_t sent_len = 0U;
+  while (sent_len < message_len) {
+    const ssize_t ret = send(conn_fd, message + sent_len, message_len - sent_len, 0);
+    if (ret < 0 && errno == EINTR) {
+      continue;
+    }
+    if (ret <= 0) {
+      printf("[ERROR] Send %s failed, errno = %d\n", message_desc, errno);
+      CloseFd(conn_fd);
+      return -1;
+    }
+    sent_len += static_cast<size_t>(ret);
+  }
+
+  CloseFd(conn_fd);
+  printf("[INFO] Send %s success\n", message_desc);
+  return 0;
 }
 }  // namespace
 
@@ -151,22 +219,26 @@ int32_t PushCache(LlmDataDist &llm_datadist, int64_t cache_id) {
 }
 
 void Finalize(LlmDataDist &llm_datadist, int64_t cache_id, bool linked, const char *remote_ip,
-              const std::vector<void *> buffers) {
+              const std::vector<void *> &buffers) {
+  bool can_unregister = true;
   if (linked) {
     auto ret = Unlink(llm_datadist, remote_ip);
     if (ret != 0) {
       printf("[ERROR] Unlink failed, ret = %d\n", ret);
+      can_unregister = false;
     } else {
       printf("[INFO] Unlink success\n");
     }
   }
-  if (cache_id > 0) {
+  if (cache_id > 0 && can_unregister) {
     auto ret = llm_datadist.UnregisterKvCache(cache_id);
     if (ret != 0) {
       printf("[ERROR] UnregisterKvCache failed, ret = %u, errmsg: %s\n", ret, GetRecentErrMsg());
     } else {
       printf("[INFO] UnregisterKvCache success\n");
     }
+  } else if (cache_id > 0) {
+    printf("[WARN] Skip UnregisterKvCache since Unlink failed and cache may still be bound\n");
   }
   for (auto buffer : buffers) {
     aclrtFree(buffer);
@@ -216,23 +288,37 @@ int32_t RunPromptSample(const char *device_id, const char *local_ip, const char 
     printf("[INFO] Tensor[%zu] addr = %p\n", i, reinterpret_cast<void *>(tensor_addrs[i]));
   }
 
-  // 等待decoder注册完成
-  std::this_thread::sleep_for(std::chrono::seconds(kWaitTime));
+  // 4. 确认decoder cache已注册完成，替代固定sleep等待
+  if (SendDecoderControlMessage(remote_ip, kDecoderReadyMessage, "decoder ready check") != 0) {
+    Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    return -1;
+  }
 
-  // 4. 与decoder建链
+  // 5. 与decoder建链
   if (Link(llm_datadist, local_ip, remote_ip) != 0) {
     Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
     return -1;
   }
   linked = true;
 
-  // 5. 向decoder push cache
+  // 6. 向decoder push cache
   if (PushCache(llm_datadist, cache_id) != 0) {
     Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
     return -1;
   }
 
-  // 6. 释放Cache与llmDataDist
+  // 7. 解除链路，确认decoder侧comm已解绑后通知decoder释放cache
+  if (Unlink(llm_datadist, remote_ip) != 0) {
+    Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    return -1;
+  }
+  linked = false;
+  if (SendDecoderControlMessage(remote_ip, kUnlinkAckMessage, "unlink ack") != 0) {
+    Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    return -1;
+  }
+
+  // 8. 释放Cache与llmDataDist
   Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
   printf("[INFO] Prompt Sample end\n");
   return 0;
