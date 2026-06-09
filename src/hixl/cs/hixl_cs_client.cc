@@ -339,7 +339,7 @@ Status HixlCSClient::InitDeviceResource() {
     HIXL_CHK_STATUS_RET(RegisterNotifyMemForAllSlots(all_slots),
                         "[HixlClient] RegisterNotifyMemForAllSlots failed. devId=%d", device_id_);
   }
-  HIXL_CHK_STATUS_RET(InitRoceDeviceSyncHostFlagResource(), "[HixlClient] InitRoceDeviceSyncHostFlagResource failed");
+  HIXL_CHK_STATUS_RET(InitDeviceSyncHostFlagResource(), "[HixlClient] InitDeviceSyncHostFlagResource failed");
 
   // 提前加载 kernel，避免传输时引入耗时
   {
@@ -765,53 +765,64 @@ Status HixlCSClient::AllocateHostFlag(void *&host_flag) const {
   return SUCCESS;
 }
 
-Status HixlCSClient::InitRoceDeviceSyncHostFlagResource() {
-  if (local_endpoint_ == nullptr || local_endpoint_->GetEndpoint().protocol != COMM_PROTOCOL_ROCE) {
+Status HixlCSClient::InitDeviceSyncHostFlagResource() {
+  if (local_endpoint_ == nullptr) {
     return SUCCESS;
   }
-  if (roce_probe_host_flag_ != nullptr) {
+  const CommProtocol protocol = local_endpoint_->GetEndpoint().protocol;
+  if (protocol != COMM_PROTOCOL_ROCE && protocol != COMM_PROTOCOL_UBOE) {
+    return SUCCESS;
+  }
+  if (device_sync_probe_host_flag_ != nullptr) {
     return SUCCESS;
   }
 
-  HIXL_CHK_STATUS_RET(AllocateHostFlag(roce_probe_host_flag_), "[HixlClient] AllocateHostFlag failed");
-  HIXL_DISMISSABLE_GUARD(resource_guard, [this]() { ReleaseRoceDeviceSyncHostFlagResource(); });
+  HIXL_CHK_STATUS_RET(AllocateHostFlag(device_sync_probe_host_flag_), "[HixlClient] AllocateHostFlag failed");
+  HIXL_DISMISSABLE_GUARD(resource_guard, [this]() { ReleaseDeviceSyncHostFlagResource(); });
   CommMem mem{};
   mem.type = COMM_MEM_TYPE_HOST;
-  mem.addr = roce_probe_host_flag_;
+  mem.addr = device_sync_probe_host_flag_;
   mem.size = sizeof(uint64_t);
-  HIXL_LOGI("[HixlClient] ROCE probe host flag RegMem begin, addr=%p, size=%lu", mem.addr, mem.size);
-  HIXL_CHK_STATUS_RET(RegMem(nullptr, &mem, &roce_probe_host_flag_mem_handle_),
-                      "[HixlClient] register ROCE device sync probe host flag failed");
+  HIXL_LOGI("[HixlClient] device sync probe host flag RegMem begin, protocol=%u, addr=%p, size=%lu",
+            protocol, mem.addr, mem.size);
+  HIXL_CHK_STATUS_RET(RegMem(nullptr, &mem, &device_sync_probe_host_flag_mem_handle_),
+                      "[HixlClient] register device sync probe host flag failed");
 
   HixlMemDesc desc{};
-  HIXL_CHK_STATUS_RET(local_endpoint_->GetMemDesc(roce_probe_host_flag_mem_handle_, desc),
-                      "[HixlClient] query ROCE device sync probe host flag desc failed");
-  roce_probe_host_flag_kernel_addr_ = desc.mem.addr;
-  HIXL_LOGI("[HixlClient] ROCE device sync probe host flag registered, host_addr=%p, kernel_addr=%p, mem_handle=%p",
-            roce_probe_host_flag_, roce_probe_host_flag_kernel_addr_, roce_probe_host_flag_mem_handle_);
+  HIXL_CHK_STATUS_RET(local_endpoint_->GetMemDesc(device_sync_probe_host_flag_mem_handle_, desc),
+                      "[HixlClient] query device sync probe host flag desc failed");
+  if (protocol == COMM_PROTOCOL_UBOE && desc.registered_dev_mem != nullptr) {
+    device_sync_probe_host_flag_kernel_addr_ = desc.registered_dev_mem;
+  } else {
+    device_sync_probe_host_flag_kernel_addr_ = desc.mem.addr;
+  }
+  HIXL_LOGI("[HixlClient] device sync probe host flag registered, protocol=%u, host_addr=%p, "
+            "kernel_addr=%p, registered_dev_mem=%p, mem_handle=%p",
+            protocol, device_sync_probe_host_flag_, device_sync_probe_host_flag_kernel_addr_, desc.registered_dev_mem,
+            device_sync_probe_host_flag_mem_handle_);
   HIXL_DISMISS_GUARD(resource_guard);
   return SUCCESS;
 }
 
-void HixlCSClient::ReleaseRoceDeviceSyncHostFlagResource() {
-  if (roce_probe_host_flag_mem_handle_ != nullptr) {
-    (void)UnRegMem(roce_probe_host_flag_mem_handle_);
-    roce_probe_host_flag_mem_handle_ = nullptr;
-    roce_probe_host_flag_kernel_addr_ = nullptr;
+void HixlCSClient::ReleaseDeviceSyncHostFlagResource() {
+  if (device_sync_probe_host_flag_mem_handle_ != nullptr) {
+    (void)UnRegMem(device_sync_probe_host_flag_mem_handle_);
+    device_sync_probe_host_flag_mem_handle_ = nullptr;
+    device_sync_probe_host_flag_kernel_addr_ = nullptr;
   }
-  if (roce_probe_host_flag_ != nullptr) {
-    HIXL_CHK_ACL(aclrtFreeHost(roce_probe_host_flag_));
-    roce_probe_host_flag_ = nullptr;
+  if (device_sync_probe_host_flag_ != nullptr) {
+    HIXL_CHK_ACL(aclrtFreeHost(device_sync_probe_host_flag_));
+    device_sync_probe_host_flag_ = nullptr;
   }
 }
 
-Status HixlCSClient::PrepareRoceDeviceSyncHostFlag(DeviceCompleteHandle &handle) {
-  HIXL_CHECK_NOTNULL(roce_probe_host_flag_, "[HixlClient] ROCE device sync probe host flag is null");
-  HIXL_CHECK_NOTNULL(roce_probe_host_flag_kernel_addr_,
-                     "[HixlClient] ROCE device sync probe host flag kernel addr is null");
-  *static_cast<uint64_t *>(roce_probe_host_flag_) = kDeviceFlagInitValue;
-  handle.probe_host_flag = roce_probe_host_flag_;
-  handle.probe_host_flag_kernel_addr = roce_probe_host_flag_kernel_addr_;
+Status HixlCSClient::PrepareDeviceSyncHostFlag(DeviceCompleteHandle &handle) {
+  HIXL_CHECK_NOTNULL(device_sync_probe_host_flag_, "[HixlClient] device sync probe host flag is null");
+  HIXL_CHECK_NOTNULL(device_sync_probe_host_flag_kernel_addr_,
+                     "[HixlClient] device sync probe host flag kernel addr is null");
+  *static_cast<uint64_t *>(device_sync_probe_host_flag_) = kDeviceFlagInitValue;
+  handle.probe_host_flag = device_sync_probe_host_flag_;
+  handle.probe_host_flag_kernel_addr = device_sync_probe_host_flag_kernel_addr_;
   handle.owns_probe_host_flag = false;
   return SUCCESS;
 }
@@ -830,8 +841,8 @@ Status HixlCSClient::RegisterDeviceSyncHostFlag(DeviceCompleteHandle &handle) {
     HIXL_LOGI("[HixlClient] RegisterDeviceSyncHostFlag skip, unsupported protocol=%u", protocol);
     return SUCCESS;
   }
-  if (protocol == COMM_PROTOCOL_ROCE) {
-    return PrepareRoceDeviceSyncHostFlag(handle);
+  if (protocol == COMM_PROTOCOL_ROCE || protocol == COMM_PROTOCOL_UBOE) {
+    return PrepareDeviceSyncHostFlag(handle);
   }
 
   HIXL_CHK_STATUS_RET(AllocateHostFlag(handle.probe_host_flag), "[HixlClient] AllocateHostFlag failed");
@@ -1567,7 +1578,7 @@ void HixlCSClient::AbortAllPendingDeviceHandlesLocked() {
 }
 
 void HixlCSClient::ReleaseDeviceResourcesLocked() {
-  ReleaseRoceDeviceSyncHostFlagResource();
+  ReleaseDeviceSyncHostFlagResource();
   for (size_t i = 0U; i < notify_mem_handles_.size(); ++i) {
     if (notify_mem_handles_[i] != nullptr) {
       if (local_endpoint_ != nullptr) {
