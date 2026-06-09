@@ -102,6 +102,7 @@ run_pair() {
                 echo "Deleted safe temp file: $abs_path"
             fi
         done
+        sleep 2000
         exit 1
     fi
 
@@ -228,6 +229,7 @@ smoke_test_samples() {
         echo "ERROR: At least 2 device IDs are required."
         exit 1
     fi
+    export ASCEND_GLOBAL_LOG_LEVEL=1
     validate_device_ids "$@"
     local device_id_1="$1"
     local device_id_2="$2"
