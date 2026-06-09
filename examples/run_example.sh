@@ -198,9 +198,9 @@ all_samples() {
     "GLOO_SOCKET_IFNAME=${NETWORK_INTERFACE_NAME} HCCL_INTRA_ROCE_ENABLE=1 python3 transfer_cache_async_sample.py \
     --device_id ${device_id_2} --role d --local_host_ip ${IP_ADDRESS} --remote_host_ip ${IP_ADDRESS}"
     run_pair "GLOO_SOCKET_IFNAME=${NETWORK_INTERFACE_NAME} HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_xpyd_sample.py \
-    --device_id ${device_id_1} --role p --local_ip_port ${IP_ADDRESS}:16000" \
+    --device_id ${device_id_1} --role p --local_ip_port ${IP_ADDRESS}:16000 --decoder_num 1" \
     "GLOO_SOCKET_IFNAME=${NETWORK_INTERFACE_NAME} HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_xpyd_sample.py \
-    --device_id ${device_id_2} --role d --local_ip_port ${IP_ADDRESS}:16001 --remote_ip_port '${IP_ADDRESS}:16000'"
+    --device_id ${device_id_2} --role d --local_ip_port ${IP_ADDRESS}:16001 --remote_ip_port '${IP_ADDRESS}:16000' --decoder_num 1"
 
     cd "${BASEPATH}/../build/benchmarks"
     BENCH_BIN="./comm_benchmark/hixl_comm_bench"
@@ -250,7 +250,7 @@ smoke_test_samples() {
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 hixl_transfer_backend_sample.py --device_id ${device_id_1} --role p --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3 hixl_transfer_backend_sample.py --device_id ${device_id_2} --role d --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 push_cache_sample.py --device_id ${device_id_1} --role p --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3 push_cache_sample.py --device_id ${device_id_2} --role d --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 switch_role_sample.py --device_id ${device_id_1} --role p --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3 switch_role_sample.py --device_id ${device_id_2} --role d --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1"
-    run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_xpyd_sample.py --device_id ${device_id_1} --role p --local_ip_port 127.0.0.1:16000" "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_xpyd_sample.py --device_id ${device_id_2} --role d --local_ip_port 127.0.0.1:16001 --remote_ip_port 127.0.0.1:16000"
+    run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_xpyd_sample.py --device_id ${device_id_1} --role p --local_ip_port 127.0.0.1:16000 --decoder_num 1" "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_xpyd_sample.py --device_id ${device_id_2} --role d --local_ip_port 127.0.0.1:16001 --remote_ip_port 127.0.0.1:16000 --decoder_num 1"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 transfer_cache_async_sample.py --device_id ${device_id_1} --role p --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3 transfer_cache_async_sample.py --device_id ${device_id_2} --role d --local_host_ip 127.0.0.1 --remote_host_ip 127.0.0.1"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_cache_sample.py --device_id ${device_id_1} --cluster_id 1 --is_single true --host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_cache_sample.py --device_id ${device_id_2} --cluster_id 2 --is_single true --host_ip 127.0.0.1"
     run_pair "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_sample.py --device_id ${device_id_1} --cluster_id 1 --is_single true --host_ip 127.0.0.1" "HCCL_INTRA_ROCE_ENABLE=1 python3 pull_blocks_sample.py --device_id ${device_id_2} --cluster_id 2 --is_single true --host_ip 127.0.0.1"

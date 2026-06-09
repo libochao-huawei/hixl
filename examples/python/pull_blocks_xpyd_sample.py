@@ -11,28 +11,43 @@
 # ----------------------------------------------------------------------------
 
 import argparse
-import time
+from contextlib import contextmanager
+import errno
 import logging
-from llm_datadist import (
-    LLMDataDist,
-    LLMRole,
-    LLMConfig,
-    CacheDesc,
-    DataType,
-    BlocksCacheKey,
-    Placement,
-    LLMClusterInfo,
-    LLMStatusCode,
-)
-import torch
 import socket
 import struct
+import time
+
+import torch
+from llm_datadist import (
+    BlocksCacheKey,
+    CacheDesc,
+    DataType,
+    LLMClusterInfo,
+    LLMConfig,
+    LLMDataDist,
+    LLMRole,
+    LLMStatusCode,
+    Placement,
+)
 
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 
 NUM_TENSORS = 1
 BLOCKS_NUM = 3
 KV_SHAPE = 10
+CONTROL_BASE_PORT = 37000
+CONTROL_PORT_SEARCH_RANGE = 64
+CONTROL_CONNECT_TIMEOUT = 60
+CONTROL_CONNECT_RETRY_INTERVAL = 0.1
+CONTROL_SOCKET_TIMEOUT = 1
+CONTROL_MESSAGE_MAX_BYTES = 1024
+CONTROL_MESSAGE_SEPARATOR = b"|"
+CONTROL_ACK_MESSAGE = b"ACK"
+CONTROL_IGNORE_MESSAGE = b"IGNORE"
+DECODER_READY_MESSAGE = b"LLM_DATADIST_DECODER_READY"
+PULL_DONE_MESSAGE = b"LLM_DATADIST_PULL_DONE"
+UNLINK_DONE_MESSAGE = b"LLM_DATADIST_UNLINK_DONE"
 
 
 def ip_port_to_int(ip_port):
@@ -49,6 +64,124 @@ def ip_port_to_int(ip_port):
     # 组合IP整数(32位)和端口(16位)为一个48位整数
     result = (ip_int << 16) | port
     return result
+
+
+def parse_ip_port(ip_port):
+    ip, port_str = ip_port.split(":")
+    return ip, int(port_str)
+
+
+def iter_control_ports():
+    return range(CONTROL_BASE_PORT, CONTROL_BASE_PORT + CONTROL_PORT_SEARCH_RANGE)
+
+
+def build_control_message(message, target_ip_port):
+    return message + CONTROL_MESSAGE_SEPARATOR + target_ip_port.encode()
+
+
+def parse_control_message(payload):
+    try:
+        message, target_ip_port = payload.split(CONTROL_MESSAGE_SEPARATOR, 1)
+        return message, target_ip_port.decode()
+    except ValueError:
+        return payload, ""
+
+
+def bind_control_socket(ip):
+    last_error = None
+    for port in iter_control_ports():
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind((ip, port))
+            server.listen(4)
+            return server, port
+        except OSError as err:
+            server.close()
+            last_error = err
+            if err.errno == errno.EADDRINUSE:
+                continue
+            raise
+    raise OSError(f"no available control port from {CONTROL_BASE_PORT}") from last_error
+
+
+@contextmanager
+def control_server(local_ip_port):
+    ip, _ = parse_ip_port(local_ip_port)
+    server, port = bind_control_socket(ip)
+    try:
+        logging.info(f"control server listen on {ip}:{port}")
+        yield server
+    finally:
+        server.close()
+
+
+def recv_control_payload(conn):
+    payload = conn.recv(CONTROL_MESSAGE_MAX_BYTES)
+    if not payload:
+        raise RuntimeError("receive empty control message")
+    return payload
+
+
+def accept_control_message(server, local_ip_port):
+    server.settimeout(CONTROL_CONNECT_TIMEOUT)
+    try:
+        conn, _ = server.accept()
+    except socket.timeout as err:
+        raise TimeoutError("wait control message timeout") from err
+    with conn:
+        payload = recv_control_payload(conn)
+        message, target_ip_port = parse_control_message(payload)
+        if target_ip_port != local_ip_port:
+            conn.sendall(CONTROL_IGNORE_MESSAGE)
+            logging.info(
+                f"ignore control message for {target_ip_port}, local={local_ip_port}"
+            )
+            return None
+        conn.sendall(CONTROL_ACK_MESSAGE)
+        return message
+
+
+def wait_unlink_done_messages(server, local_ip_port, decoder_num):
+    counts = {DECODER_READY_MESSAGE: 0, PULL_DONE_MESSAGE: 0, UNLINK_DONE_MESSAGE: 0}
+    while counts[UNLINK_DONE_MESSAGE] < decoder_num:
+        message = accept_control_message(server, local_ip_port)
+        if message not in counts:
+            logging.info(f"ignore unknown control message {message}")
+            continue
+        counts[message] += 1
+        logging.info(
+            "control message count: "
+            f"ready={counts[DECODER_READY_MESSAGE]}, "
+            f"pull_done={counts[PULL_DONE_MESSAGE]}, "
+            f"unlink_done={counts[UNLINK_DONE_MESSAGE]}/{decoder_num}"
+        )
+
+
+def try_send_control_message(ip, port, payload):
+    with socket.create_connection((ip, port), timeout=CONTROL_SOCKET_TIMEOUT) as conn:
+        conn.sendall(payload)
+        conn.settimeout(CONTROL_SOCKET_TIMEOUT)
+        return conn.recv(CONTROL_MESSAGE_MAX_BYTES) == CONTROL_ACK_MESSAGE
+
+
+def send_control_message(remote_ip_port, message, message_desc):
+    ip, _ = parse_ip_port(remote_ip_port)
+    payload = build_control_message(message, remote_ip_port)
+    deadline = time.monotonic() + CONTROL_CONNECT_TIMEOUT
+    while time.monotonic() < deadline:
+        for port in iter_control_ports():
+            try:
+                if not try_send_control_message(ip, port, payload):
+                    continue
+                logging.info(f"send {message_desc} success")
+                return
+            except OSError:
+                continue
+        time.sleep(CONTROL_CONNECT_RETRY_INTERVAL)
+    raise TimeoutError(
+        f"connect control server timeout for {message_desc}, remote={remote_ip_port}"
+    )
 
 
 def init_llm_datadist(args) -> LLMDataDist:
@@ -86,10 +219,50 @@ def run_prompt_sample(datadist, args):
     logging.info("register_blocks_cache success")
     logging.info(f"before decoder pull, tensor={tensor.cpu()}")
 
-    time.sleep(30)
+    with control_server(args.local_ip_port) as server:
+        wait_unlink_done_messages(server, args.local_ip_port, args.decoder_num)
+
     cache_manager.unregister_cache(cache.cache_id)
     datadist.finalize()
     logging.info("[finalize] success")
+
+
+def build_cluster_list(local_ip_port, remote_list):
+    cluster_list = []
+    local_ip, _ = parse_ip_port(local_ip_port)
+    for remote in remote_list:
+        remote_ip, remote_port = parse_ip_port(remote)
+        cluster = LLMClusterInfo()
+        cluster.remote_cluster_id = ip_port_to_int(remote)
+        cluster.append_local_ip_info(local_ip, 0)
+        cluster.append_remote_ip_info(remote_ip, remote_port)
+        cluster_list.append(cluster)
+    return cluster_list
+
+
+def link_clusters(datadist, cluster_list):
+    ret, _ = datadist.link_clusters(cluster_list, 5000)
+    if ret != LLMStatusCode.LLM_SUCCESS:
+        raise Exception("link failed")
+
+
+def unlink_clusters(datadist, cluster_list):
+    ret, _ = datadist.unlink_clusters(cluster_list, 5000)
+    if ret != LLMStatusCode.LLM_SUCCESS:
+        raise Exception("unlink failed")
+
+
+def pull_blocks_from_prompts(cache_manager, cache, tensor, remote_list):
+    for remote in remote_list:
+        cache_manager.pull_blocks(
+            BlocksCacheKey(ip_port_to_int(remote), 0),
+            cache,
+            src_blocks=[0, 1],
+            dst_blocks=[0, 2],
+        )
+        logging.info(
+            f"after decoder pull from {ip_port_to_int(remote)}, tensor={tensor.cpu()}"
+        )
 
 
 def run_decoder_sample(datadist, args):
@@ -110,36 +283,24 @@ def run_decoder_sample(datadist, args):
     )
     logging.info("register_blocks_cache success")
 
-    time.sleep(5)  # register end
+    for remote in remote_list:
+        send_control_message(remote, DECODER_READY_MESSAGE, "decoder ready")
 
     # 2. 向所有prompt建链
-    cluster_list = []
-    for remote in remote_list:
-        cluster = LLMClusterInfo()
-        cluster.remote_cluster_id = ip_port_to_int(remote)
-        cluster.append_local_ip_info(args.local_ip_port.split(":")[0], 0)
-        cluster.append_remote_ip_info(remote.split(":")[0], int(remote.split(":")[1]))
-        cluster_list.append(cluster)
-    ret, _ = datadist.link_clusters(cluster_list, 5000)
-    if ret != LLMStatusCode.LLM_SUCCESS:
-        raise Exception("link failed")
+    cluster_list = build_cluster_list(args.local_ip_port, remote_list)
+    link_clusters(datadist, cluster_list)
 
     # 3. 向prompt pull blocks
-    for i, remote in enumerate(remote_list):
-        cache_manager.pull_blocks(
-            BlocksCacheKey(ip_port_to_int(remote), 0),
-            cache,
-            src_blocks=[0, 1],
-            dst_blocks=[0, 2],
-        )
-        logging.info(
-            f"after decoder pull from {ip_port_to_int(remote)}, tensor={tensor.cpu()}"
-        )
+    pull_blocks_from_prompts(cache_manager, cache, tensor, remote_list)
+
+    for remote in remote_list:
+        send_control_message(remote, PULL_DONE_MESSAGE, "pull done")
 
     # 4. 断链
-    ret, _ = datadist.unlink_clusters(cluster_list, 5000)
-    if ret != LLMStatusCode.LLM_SUCCESS:
-        raise Exception("unlink failed")
+    unlink_clusters(datadist, cluster_list)
+
+    for remote in remote_list:
+        send_control_message(remote, UNLINK_DONE_MESSAGE, "unlink done")
 
     cache_manager.unregister_cache(cache.cache_id)
     datadist.finalize()
@@ -157,6 +318,9 @@ if __name__ == "__main__":
         type=str,
         help="remote host ip list, eg:10.10.10.2:26000;10.10.10.3:26000",
     )
+    parser.add_argument(
+        "--decoder_num", type=int, default=1, help="decoder count linked to prompt"
+    )
     args = parser.parse_args()
     if args.role not in ["p", "d"]:
         raise RuntimeError("Not supported cluster id")
@@ -164,6 +328,8 @@ if __name__ == "__main__":
         raise RuntimeError("Not supported device id")
     if args.local_ip_port is None:
         raise RuntimeError("local_ip_port is not set")
+    if args.decoder_num <= 0:
+        raise RuntimeError("decoder_num must be greater than 0")
     if args.role == "d":
         if args.remote_ip_port is None:
             raise RuntimeError("remote_ip_port is not set")
