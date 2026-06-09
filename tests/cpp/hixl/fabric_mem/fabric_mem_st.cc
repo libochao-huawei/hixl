@@ -304,6 +304,35 @@ TEST_F(FabricMemSTest, TestHixlFabricMemAutoConnect) {
   env.Finalize();
 }
 
+TEST_F(FabricMemSTest, TestFabricMemAutoClearOnPeerFinalize) {
+  FabricMemEngine::SetKeepaliveCheckIntervalMs(50);
+  const int32_t port = test::AllocateFabricMemTestPort();
+  ASSERT_GT(port, 0);
+  FabricMemTestEnv env(BuildRemoteEngineId(port), true);
+  TransferBuffers buffers;
+  RegisterStandardBuffers(env, buffers);
+
+  const AscendString remote_engine = env.RemoteEngine();
+  EXPECT_EQ(env.engine1.Connect(remote_engine, kTimeoutMs), SUCCESS);
+  TransferWriteReadSync(env, buffers);
+
+  env.engine2.Finalize();
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+  Status disconnect_ret = SUCCESS;
+  while (std::chrono::steady_clock::now() < deadline) {
+    disconnect_ret = env.engine1.Disconnect(remote_engine, kTimeoutMs);
+    if (disconnect_ret == NOT_CONNECTED) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  EXPECT_EQ(disconnect_ret, NOT_CONNECTED);
+  EXPECT_EQ(env.engine1.DeregisterMem(buffers.src.handle), SUCCESS);
+  EXPECT_EQ(env.engine1.DeregisterMem(buffers.dst.handle), SUCCESS);
+  env.engine1.Finalize();
+  FabricMemEngine::SetKeepaliveCheckIntervalMs(10000);
+}
+
 TEST_F(FabricMemSTest, TestHixlFabricMemMultiTargetParallel) {
   const int32_t port2 = test::AllocateFabricMemTestPort();
   ASSERT_GT(port2, 0);
