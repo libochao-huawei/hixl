@@ -10,7 +10,9 @@
 
 #include "fabric_mem/fabric_mem_control.h"
 
-#include <poll.h>
+#include <atomic>
+#include <fcntl.h>
+#include <sys/epoll.h>
 #include <sys/socket.h>
 #include <utility>
 #include <unistd.h>
@@ -20,6 +22,7 @@
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
 #include "common/scope_guard.h"
+#include "fabric_mem/fabric_mem_adxl_control.h"
 #include "nlohmann/json.hpp"
 #include "securec.h"
 
@@ -33,6 +36,12 @@ constexpr size_t kShareHandleDataSize = sizeof(aclrtMemFabricHandle{}.data);
 constexpr int32_t kShareHandleArrayCheckErrCode = 401;
 constexpr uint32_t kFabricMemMagic = 0xA4B3C2D1;
 constexpr size_t kMaxMsgLen = 1ULL << 20;
+constexpr size_t kRecvChunkSize = 4096U;
+constexpr int32_t kMaxEpollEvents = 64;
+constexpr int64_t kDefaultHeartbeatTimeoutMs = 120000;
+constexpr int32_t kHeartBeatMsgType = static_cast<int32_t>(FabricMemAdxlMsgType::kHeartBeat);
+
+std::atomic<int64_t> heartbeat_timeout_ms_{kDefaultHeartbeatTimeoutMs};
 
 void CheckShareHandleArray(const nlohmann::json &share_array) {
   if (!share_array.is_array() || share_array.size() != kShareHandleDataSize) {
@@ -60,9 +69,6 @@ void from_json(const nlohmann::json &j, ShareHandleInfo &info) {
   }
 }
 
-// Wire format compatible with MsgHandlerPlugin (old protocol):
-// | magic (4B) | length (8B) | type (4B) | payload (N B) |
-// where length = sizeof(type) + payload.size().
 Status SendFabricMemMsg(int32_t fd, int32_t msg_type, const std::string &payload) {
   const uint64_t length = static_cast<uint64_t>(sizeof(msg_type)) + payload.size();
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &kFabricMemMagic, sizeof(kFabricMemMagic)),
@@ -99,8 +105,6 @@ Status RecvFabricMemMsg(int32_t fd, int32_t timeout_ms, int32_t &msg_type, std::
   return SUCCESS;
 }
 
-// Common helper: parse remote engine address, initialize plugin, and establish TCP connection.
-// Returns the connected fd via conn_fd; caller is responsible for closing it.
 Status ConnectToEngine(const std::string &remote_engine, int32_t timeout_ms, int32_t &conn_fd) {
   std::string remote_ip;
   int32_t remote_port = -1;
@@ -131,7 +135,70 @@ Status ParseShareHandlesFromResponse(const std::string &payload, std::vector<Sha
   }
   return SUCCESS;
 }
+
+std::string ParseClientIdFromConnectPayload(const std::string &payload) {
+  if (payload.empty()) {
+    return "";
+  }
+  try {
+    const auto json = nlohmann::json::parse(payload);
+    if (json.contains("channel_id") && json["channel_id"].is_string()) {
+      return json["channel_id"].get<std::string>();
+    }
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGW("Parse connect request channel_id failed:%s", e.what());
+  }
+  return "";
+}
+
+Status SetNonBlocking(int32_t fd) {
+  const int flags = fcntl(fd, F_GETFL, 0);
+  if (flags < 0) {
+    HIXL_LOGE(FAILED, "fcntl F_GETFL failed, fd:%d, errno:%d.", fd, errno);
+    return FAILED;
+  }
+  if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+    HIXL_LOGE(FAILED, "fcntl F_SETFL failed, fd:%d, errno:%d.", fd, errno);
+    return FAILED;
+  }
+  return SUCCESS;
+}
+
+void RemoveFdFromEpoll(int32_t epoll_fd, int32_t fd) {
+  if (epoll_fd >= 0 && fd >= 0) {
+    (void)epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
+  }
+}
+
+void ShiftRecvBuffer(FabricMemControlServer::ClientSession &session, size_t consumed, size_t remaining) {
+  if (remaining > 0U) {
+    (void)memmove_s(session.recv_buffer.data(), session.recv_buffer.size(), session.recv_buffer.data() + consumed,
+                    remaining);
+  }
+  session.bytes_received = remaining;
+}
+
+Status ValidateAdxlHeader(const FabricMemAdxlProtocolHeader &header) {
+  HIXL_CHK_BOOL_RET_STATUS(header.magic == kFabricMemAdxlMagic, PARAM_INVALID, "Invalid adxl magic:0x%x.",
+                           header.magic);
+  HIXL_CHK_BOOL_RET_STATUS(header.body_size >= sizeof(int32_t) && header.body_size <= kMaxMsgLen, PARAM_INVALID,
+                           "Invalid adxl body size:%lu.", header.body_size);
+  return SUCCESS;
+}
+
+bool IsSessionHeartbeatTimeout(const FabricMemControlServer::ClientSession &session) {
+  if (!session.with_heartbeat) {
+    return false;
+  }
+  const auto now = std::chrono::steady_clock::now();
+  const auto cost = std::chrono::duration_cast<std::chrono::milliseconds>(now - session.last_heartbeat_time).count();
+  return cost >= heartbeat_timeout_ms_.load(std::memory_order_relaxed);
+}
 }  // namespace
+
+void FabricMemControlServer::SetHeartbeatTimeoutMs(int64_t timeout_ms) {
+  heartbeat_timeout_ms_.store(timeout_ms > 0 ? timeout_ms : kDefaultHeartbeatTimeoutMs, std::memory_order_relaxed);
+}
 
 FabricMemControlServer::~FabricMemControlServer() {
   Stop();
@@ -158,6 +225,9 @@ Status FabricMemControlServer::Start(const std::string &listen_info, FabricMemSh
   CtrlMsgPlugin::Initialize();
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Listen(ip, static_cast<uint32_t>(port), kBacklog, state->listen_fd),
                       "Fabric mem control listen failed, ip:%s, port:%d.", ip.c_str(), port);
+  state->epoll_fd = epoll_create1(0);
+  HIXL_CHK_BOOL_RET_STATUS(state->epoll_fd >= 0, FAILED, "Failed to create epoll fd.");
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::AddFdToEpoll(state->epoll_fd, state->listen_fd), "Failed to add listen fd.");
   state->provider = std::move(provider);
   state->running.store(true, std::memory_order_release);
   worker_ = std::thread(&FabricMemControlServer::Run, state);
@@ -178,77 +248,245 @@ void FabricMemControlServer::Stop() {
       (void)close(state->listen_fd);
       state->listen_fd = -1;
     }
-    for (const int32_t fd : state->keepalive_fds) {
-      (void)close(fd);
+    for (const auto &item : state->sessions) {
+      if (item.first >= 0) {
+        (void)close(item.first);
+      }
     }
-    state->keepalive_fds.clear();
+    state->sessions.clear();
+    state->client_id_to_fd.clear();
+    if (state->epoll_fd >= 0) {
+      (void)close(state->epoll_fd);
+      state->epoll_fd = -1;
+    }
   }
   if (worker_.joinable()) {
     worker_.join();
   }
 }
 
-void FabricMemControlServer::Run(std::shared_ptr<State> state) {
-  while (state->running.load(std::memory_order_acquire)) {
-    int32_t listen_fd = -1;
-    {
-      std::lock_guard<std::mutex> lock(state->mutex);
-      listen_fd = state->listen_fd;
+bool FabricMemControlServer::IsListening() const {
+  std::lock_guard<std::mutex> lock(state_->mutex);
+  return state_->listen_fd >= 0 && state_->running.load(std::memory_order_acquire);
+}
+
+void FabricMemControlServer::CheckClientHeartbeatTimeouts() {
+  auto state = state_;
+  std::lock_guard<std::mutex> lock(state->mutex);
+  if (!state->running.load(std::memory_order_acquire)) {
+    return;
+  }
+  CheckClientHeartbeatTimeoutsLocked(state, state->epoll_fd);
+}
+
+void FabricMemControlServer::CheckClientHeartbeatTimeoutsLocked(const std::shared_ptr<State> &state, int32_t epoll_fd) {
+  std::vector<int32_t> timeout_fds;
+  for (const auto &item : state->sessions) {
+    if (IsSessionHeartbeatTimeout(item.second)) {
+      timeout_fds.push_back(item.first);
     }
-    if (listen_fd < 0) {
-      break;
-    }
-    pollfd pfd{};
-    pfd.fd = listen_fd;
-    pfd.events = POLLIN;
-    const int32_t ret = poll(&pfd, 1, kPollTimeoutMs);
-    if (ret <= 0) {
-      continue;
-    }
-    {
-      std::lock_guard<std::mutex> lock(state->mutex);
-      if (!state->running.load(std::memory_order_acquire) || state->listen_fd != listen_fd) {
-        break;
-      }
-    }
-    int32_t conn_fd = -1;
-    if (CtrlMsgPlugin::Accept(listen_fd, conn_fd) != SUCCESS || conn_fd < 0) {
-      continue;
-    }
-    HIXL_MAKE_GUARD(close_conn, ([conn_fd, state]() {
-                      std::lock_guard<std::mutex> lock(state->mutex);
-                      if (state->keepalive_fds.count(conn_fd) > 0U) {
-                        return;
-                      }
-                      (void)close(conn_fd);
-                    }));
-    (void)CtrlMsgPlugin::SetTcpNoDelay(conn_fd);
-    (void)CtrlMsgPlugin::SetTcpKeepAlive(conn_fd);
-    (void)HandleConnection(state, conn_fd);
+  }
+  for (const int32_t fd : timeout_fds) {
+    HIXL_LOGW("FabricMemControlServer client heartbeat timeout, fd:%d.", fd);
+    CloseClientConnection(state, epoll_fd, fd);
   }
 }
 
-Status FabricMemControlServer::HandleConnection(const std::shared_ptr<State> &state, int32_t fd) {
+void FabricMemControlServer::CloseClientConnection(const std::shared_ptr<State> &state, int32_t epoll_fd, int32_t fd) {
+  RemoveFdFromEpoll(epoll_fd, fd);
+  const auto session_it = state->sessions.find(fd);
+  if (session_it != state->sessions.end()) {
+    if (!session_it->second.client_id.empty()) {
+      const auto client_it = state->client_id_to_fd.find(session_it->second.client_id);
+      if (client_it != state->client_id_to_fd.end() && client_it->second == fd) {
+        state->client_id_to_fd.erase(client_it);
+      }
+    }
+    state->sessions.erase(session_it);
+  }
+  if (fd >= 0) {
+    (void)close(fd);
+  }
+}
+
+void FabricMemControlServer::RegisterClientSession(const std::shared_ptr<State> &state, int32_t epoll_fd, int32_t fd,
+                                                   const std::string &client_id) {
+  if (!client_id.empty()) {
+    const auto existing_it = state->client_id_to_fd.find(client_id);
+    if (existing_it != state->client_id_to_fd.end() && existing_it->second != fd) {
+      HIXL_LOGI("FabricMemControlServer replacing existing client session, client_id:%s, old_fd:%d, new_fd:%d.",
+                client_id.c_str(), existing_it->second, fd);
+      CloseClientConnection(state, epoll_fd, existing_it->second);
+    }
+    state->client_id_to_fd[client_id] = fd;
+  }
+
+  ClientSession session;
+  session.fd = fd;
+  session.client_id = client_id;
+  session.with_heartbeat = true;
+  session.last_heartbeat_time = std::chrono::steady_clock::now();
+  state->sessions[fd] = std::move(session);
+}
+
+void FabricMemControlServer::HandleClientRead(const std::shared_ptr<State> &state, int32_t epoll_fd, int32_t fd) {
+  auto session_it = state->sessions.find(fd);
+  if (session_it == state->sessions.end()) {
+    return;
+  }
+  auto &session = session_it->second;
+  if (session.recv_buffer.size() < session.bytes_received + kRecvChunkSize) {
+    session.recv_buffer.resize(session.bytes_received + kRecvChunkSize);
+  }
+  const ssize_t n = recv(fd, session.recv_buffer.data() + session.bytes_received,
+                         session.recv_buffer.size() - session.bytes_received, 0);
+  if (n == 0) {
+    HIXL_LOGI("FabricMemControlServer connection closed by peer, fd:%d.", fd);
+    CloseClientConnection(state, epoll_fd, fd);
+    return;
+  }
+  if (n < 0) {
+    if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+      return;
+    }
+    HIXL_LOGE(FAILED, "FabricMemControlServer recv failed, fd:%d, errno:%d.", fd, errno);
+    CloseClientConnection(state, epoll_fd, fd);
+    return;
+  }
+  session.bytes_received += static_cast<size_t>(n);
+
+  while (true) {
+    if (session.recv_state == RecvState::kWaitingHeader) {
+      if (session.bytes_received < sizeof(FabricMemAdxlProtocolHeader)) {
+        break;
+      }
+      FabricMemAdxlProtocolHeader header{};
+      (void)memcpy_s(&header, sizeof(header), session.recv_buffer.data(), sizeof(header));
+      if (ValidateAdxlHeader(header) != SUCCESS) {
+        CloseClientConnection(state, epoll_fd, fd);
+        return;
+      }
+      session.expected_body_size = header.body_size;
+      session.recv_state = RecvState::kWaitingBody;
+      if (session.bytes_received > sizeof(FabricMemAdxlProtocolHeader)) {
+        const size_t remaining = session.bytes_received - sizeof(FabricMemAdxlProtocolHeader);
+        ShiftRecvBuffer(session, sizeof(FabricMemAdxlProtocolHeader), remaining);
+      } else {
+        session.bytes_received = 0U;
+      }
+    }
+    if (session.recv_state == RecvState::kWaitingBody) {
+      if (session.bytes_received < session.expected_body_size) {
+        break;
+      }
+      int32_t msg_type = 0;
+      (void)memcpy_s(&msg_type, sizeof(msg_type), session.recv_buffer.data(), sizeof(msg_type));
+      const size_t msg_body_len = session.expected_body_size - sizeof(int32_t);
+      if (msg_type == kHeartBeatMsgType) {
+        session.last_heartbeat_time = std::chrono::steady_clock::now();
+      } else {
+        HIXL_LOGW("FabricMemControlServer unexpected adxl msg type:%d on fd:%d.", msg_type, fd);
+      }
+      (void)msg_body_len;
+      if (session.bytes_received > session.expected_body_size) {
+        const size_t remaining = session.bytes_received - session.expected_body_size;
+        ShiftRecvBuffer(session, session.expected_body_size, remaining);
+        session.recv_state = RecvState::kWaitingHeader;
+      } else {
+        session.bytes_received = 0U;
+        session.recv_state = RecvState::kWaitingHeader;
+        break;
+      }
+    }
+  }
+}
+
+void FabricMemControlServer::Run(std::shared_ptr<State> state) {
+  epoll_event events[kMaxEpollEvents];
+  while (state->running.load(std::memory_order_acquire)) {
+    int32_t epoll_fd = -1;
+    int32_t listen_fd = -1;
+    {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      epoll_fd = state->epoll_fd;
+      listen_fd = state->listen_fd;
+    }
+    if (epoll_fd < 0 || listen_fd < 0) {
+      break;
+    }
+
+    const int event_count = epoll_wait(epoll_fd, events, kMaxEpollEvents, kPollTimeoutMs);
+    if (event_count < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      HIXL_LOGE(FAILED, "FabricMemControlServer epoll_wait failed, errno:%d.", errno);
+      break;
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(state->mutex);
+      CheckClientHeartbeatTimeoutsLocked(state, epoll_fd);
+    }
+
+    for (int i = 0; i < event_count; ++i) {
+      const int32_t fd = events[i].data.fd;
+      if (fd == listen_fd) {
+        int32_t conn_fd = -1;
+        if (CtrlMsgPlugin::Accept(listen_fd, conn_fd) != SUCCESS || conn_fd < 0) {
+          continue;
+        }
+        (void)CtrlMsgPlugin::SetTcpNoDelay(conn_fd);
+        (void)CtrlMsgPlugin::SetTcpKeepAlive(conn_fd);
+        (void)HandleConnection(state, conn_fd, epoll_fd);
+        continue;
+      }
+      std::lock_guard<std::mutex> lock(state->mutex);
+      if (state->sessions.find(fd) != state->sessions.end()) {
+        HandleClientRead(state, epoll_fd, fd);
+      }
+    }
+  }
+}
+
+Status FabricMemControlServer::HandleConnection(const std::shared_ptr<State> &state, int32_t fd, int32_t epoll_fd) {
   int32_t msg_type = 0;
   std::string payload;
   HIXL_CHK_STATUS_RET(RecvFabricMemMsg(fd, kPollTimeoutMs * kRecvTimeoutMultiplier, msg_type, payload),
                       "Recv fabric mem request failed.");
   switch (msg_type) {
-    case FabricMemMsgType::kConnect:
-      return HandleConnectRequest(state, fd);
-    case FabricMemMsgType::kSendNotifyReq:
-      return HandleSendNotify(state, payload);
-    case FabricMemMsgType::kGetNotifiesReq:
-      return HandleGetNotifies(state, fd);
+    case FabricMemMsgType::kConnect: {
+      const Status ret = HandleConnectRequest(state, fd, epoll_fd, payload);
+      if (ret != SUCCESS) {
+        std::lock_guard<std::mutex> lock(state->mutex);
+        if (state->sessions.find(fd) == state->sessions.end()) {
+          (void)close(fd);
+        }
+      }
+      return ret;
+    }
+    case FabricMemMsgType::kSendNotifyReq: {
+      const Status ret = HandleSendNotify(state, payload);
+      (void)close(fd);
+      return ret;
+    }
+    case FabricMemMsgType::kGetNotifiesReq: {
+      const Status ret = HandleGetNotifies(state, fd);
+      (void)close(fd);
+      return ret;
+    }
     case FabricMemMsgType::kDisconnect:
-      return HandleDisconnectRequest(state, fd);
+      return HandleDisconnectRequest(state, fd, epoll_fd);
     default:
       HIXL_LOGE(PARAM_INVALID, "Unexpected fabric mem request type:%d.", msg_type);
+      (void)close(fd);
       return PARAM_INVALID;
   }
 }
 
-Status FabricMemControlServer::HandleConnectRequest(const std::shared_ptr<State> &state, int32_t fd) {
+Status FabricMemControlServer::HandleConnectRequest(const std::shared_ptr<State> &state, int32_t fd, int32_t epoll_fd,
+                                                    const std::string &payload) {
+  const std::string client_id = ParseClientIdFromConnectPayload(payload);
   std::vector<ShareHandleInfo> share_handles;
   FabricMemShareHandleProvider provider;
   {
@@ -258,9 +496,8 @@ Status FabricMemControlServer::HandleConnectRequest(const std::shared_ptr<State>
   HIXL_CHK_BOOL_RET_STATUS(static_cast<bool>(provider), FAILED, "FabricMemControlServer provider is empty.");
   Status result = provider(share_handles);
 
-  // Build response with share_handles in ChannelConnectInfo format
   nlohmann::json response;
-  response["channel_id"] = "";
+  response["channel_id"] = client_id;
   response["comm_res"] = "";
   response["timeout"] = 0;
   response["addrs"] = nlohmann::json::array();
@@ -275,18 +512,23 @@ Status FabricMemControlServer::HandleConnectRequest(const std::shared_ptr<State>
   HIXL_CHK_STATUS_RET(SendFabricMemMsg(fd, FabricMemMsgType::kConnect, response.dump()),
                       "Send connect response failed.");
 
-  // Send kStatus
   nlohmann::json status;
   status["error_code"] = static_cast<uint32_t>(result);
   status["error_message"] = "";
   HIXL_CHK_STATUS_RET(SendFabricMemMsg(fd, FabricMemMsgType::kStatus, status.dump()), "Send status response failed.");
 
-  // Register fd for keepalive
+  HIXL_CHK_STATUS_RET(SetNonBlocking(fd), "Failed to set non-blocking mode.");
   {
     std::lock_guard<std::mutex> lock(state->mutex);
-    state->keepalive_fds.insert(fd);
+    RegisterClientSession(state, epoll_fd, fd, client_id);
+    const Status epoll_ret = CtrlMsgPlugin::AddFdToEpoll(epoll_fd, fd);
+    if (epoll_ret != SUCCESS) {
+      CloseClientConnection(state, epoll_fd, fd);
+      return epoll_ret;
+    }
   }
-  HIXL_EVENT("FabricMemControlServer handled connect request, shared %zu handles.", share_handles.size());
+  HIXL_EVENT("FabricMemControlServer handled connect request, client_id:%s, shared %zu handles.", client_id.c_str(),
+             share_handles.size());
   return result;
 }
 
@@ -332,8 +574,8 @@ Status FabricMemControlServer::DequeueNotifies(std::vector<NotifyDesc> &notifies
   return SUCCESS;
 }
 
-Status FabricMemControlServer::HandleDisconnectRequest(const std::shared_ptr<State> &state, int32_t fd) {
-  (void)state;
+Status FabricMemControlServer::HandleDisconnectRequest(const std::shared_ptr<State> &state, int32_t fd,
+                                                       int32_t epoll_fd) {
   HIXL_LOGI("FabricMemControlServer received disconnect request on fd:%d.", fd);
 
   nlohmann::json status;
@@ -343,14 +585,14 @@ Status FabricMemControlServer::HandleDisconnectRequest(const std::shared_ptr<Sta
 
   {
     std::lock_guard<std::mutex> lock(state->mutex);
-    state->keepalive_fds.erase(fd);
+    CloseClientConnection(state, epoll_fd, fd);
   }
-  (void)close(fd);
   return SUCCESS;
 }
 
-Status FabricMemControlClient::Fetch(const std::string &remote_engine, int32_t timeout_ms,
-                                     std::vector<ShareHandleInfo> &share_handles, int32_t &conn_fd) {
+Status FabricMemControlClient::Fetch(const std::string &remote_engine, const std::string &channel_id,
+                                     int32_t timeout_ms, std::vector<ShareHandleInfo> &share_handles,
+                                     int32_t &conn_fd) {
   conn_fd = -1;
   HIXL_CHK_STATUS_RET(ConnectToEngine(remote_engine, timeout_ms, conn_fd),
                       "Connect remote fabric mem engine failed:%s.", remote_engine.c_str());
@@ -362,7 +604,7 @@ Status FabricMemControlClient::Fetch(const std::string &remote_engine, int32_t t
                          }));
 
   nlohmann::json req;
-  req["channel_id"] = "";
+  req["channel_id"] = channel_id;
   req["comm_res"] = "";
   req["timeout"] = timeout_ms;
   req["addrs"] = nlohmann::json::array();
@@ -393,6 +635,7 @@ Status FabricMemControlClient::Fetch(const std::string &remote_engine, int32_t t
   }
 
   HIXL_DISMISS_GUARD(close_fd);
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::SetTcpKeepAlive(conn_fd), "Failed to set tcp keep alive, fd:%d.", conn_fd);
   HIXL_LOGI("Fetch received %zu share handles from remote:%s, conn_fd:%d.", share_handles.size(), remote_engine.c_str(),
             conn_fd);
   return SUCCESS;
