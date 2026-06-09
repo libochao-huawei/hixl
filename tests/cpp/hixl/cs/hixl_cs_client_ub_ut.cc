@@ -479,10 +479,12 @@ TEST_F(HixlCSClientSlotReuseFixture, HostFlagInDeviceCompleteHandle) {
   handle.probe_host_flag = nullptr;
   handle.probe_host_flag_mem_handle = nullptr;
   handle.probe_host_flag_kernel_addr = nullptr;
+  handle.owns_probe_host_flag = false;
   EXPECT_EQ(handle.host_flag, nullptr);
   EXPECT_EQ(handle.probe_host_flag, nullptr);
   EXPECT_EQ(handle.probe_host_flag_mem_handle, nullptr);
   EXPECT_EQ(handle.probe_host_flag_kernel_addr, nullptr);
+  EXPECT_FALSE(handle.owns_probe_host_flag);
 
   // Verify structure has the field
   void *test_flag = reinterpret_cast<void *>(0x1234);
