@@ -961,6 +961,70 @@ TEST(FabricMemEngineUTest, DisconnectNoConnection) {
   llm::SlogStub::SetInstance(nullptr);
 }
 
+TEST(FabricMemEngineUTest, CheckKeepaliveFdsAutoDisconnectsDeadRemote) {
+  FabricMemEngine engine(AscendString("127.0.0.1"));
+  AttachTestContext(engine);
+  engine.auto_connect_ = true;
+  engine.is_initialized_ = true;
+
+  const std::string remote = "127.0.0.1:28099";
+  int fds[2] = {-1, -1};
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+
+  auto conn = std::make_shared<RemoteConnection>();
+  engine.fabric_mem_remote_mems_[remote] = conn;
+  engine.keepalive_fds_[remote] = fds[0];
+  (void)close(fds[1]);
+
+  engine.CheckKeepaliveFds();
+
+  EXPECT_EQ(engine.fabric_mem_remote_mems_.find(remote), engine.fabric_mem_remote_mems_.end());
+  EXPECT_EQ(engine.keepalive_fds_.find(remote), engine.keepalive_fds_.end());
+}
+
+TEST(FabricMemEngineUTest, RemoveConnectionEntryLockedFinalizesImportedMemory) {
+  VirtualMemoryManager::GetInstance().Finalize();
+  ASSERT_EQ(VirtualMemoryManager::GetInstance().Initialize(), SUCCESS);
+  FabricMemEngine engine(AscendString("127.0.0.1"));
+  AttachTestContext(engine);
+
+  const std::string remote = "127.0.0.1:28100";
+  auto conn = std::make_shared<RemoteConnection>();
+  conn->remote_memory = MakeUnique<FabricMemRemoteMemory>();
+  ShareHandleInfo handle_info{};
+  handle_info.va_addr = 0x5000UL;
+  handle_info.len = 512U;
+  ASSERT_EQ(conn->remote_memory->Import({handle_info}, 0), SUCCESS);
+  engine.fabric_mem_remote_mems_[remote] = conn;
+
+  {
+    TemporaryRtContext with_context(engine.aclrt_context_);
+    std::lock_guard<std::mutex> lock(engine.mutex_);
+    engine.RemoveConnectionEntryLocked(remote);
+  }
+
+  EXPECT_EQ(engine.fabric_mem_remote_mems_.find(remote), engine.fabric_mem_remote_mems_.end());
+  EXPECT_TRUE(conn->remote_memory->GetNewVaToOldVa().empty());
+  VirtualMemoryManager::GetInstance().Finalize();
+}
+
+TEST_F(FabricMemEngineInitUTest, KeepaliveMonitorStartsWithAutoConnect) {
+  auto options = BuildFabricMemOptions();
+  options[OPTION_AUTO_CONNECT] = AscendString("1");
+  FabricMemEngine engine(AscendString("127.0.0.1:26000"));
+  ASSERT_EQ(InitEngineWithOptions(engine, options), SUCCESS);
+  EXPECT_TRUE(engine.keepalive_monitor_.joinable());
+  engine.Finalize();
+  FabricMemEngine::SetKeepaliveCheckIntervalMs(10000);
+}
+
+TEST_F(FabricMemEngineInitUTest, KeepaliveMonitorNotStartedWithoutAutoConnect) {
+  FabricMemEngine engine(AscendString("127.0.0.1:26001"));
+  ASSERT_EQ(InitEngineWithOptions(engine, BuildFabricMemOptions()), SUCCESS);
+  EXPECT_FALSE(engine.keepalive_monitor_.joinable());
+  engine.Finalize();
+}
+
 TEST(FabricMemEngineUTest, DisconnectClearsChannelReqMap) {
   FabricMemEngine engine(AscendString("test_engine"));
   AttachTestContext(engine);
