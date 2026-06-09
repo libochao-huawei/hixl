@@ -11,172 +11,35 @@
 # ----------------------------------------------------------------------------
 
 import argparse
-import json
 import logging
-import time
-import re
-import os
-import subprocess
-from llm_datadist import (
-    LLMDataDist,
-    LLMRole,
-    LLMConfig,
-    CacheDesc,
-    CacheKey,
-    DataType,
-    RegisterMemStatus,
-    Placement,
-)
-import torch
-import torchair
 
-PROMPT_HOST_IP = "10.10.10.0"
-PROMPT_IP_LIST = [
-    "192.168.1.1",
-    "192.168.1.2",
-    "192.168.1.3",
-    "192.168.1.4",
-    "192.168.1.5",
-    "192.168.1.6",
-    "192.168.1.7",
-    "192.168.1.8",
-]
-DECODER_HOST_IP = "10.10.10.1"
-DECODER_IP_LIST = [
-    "192.168.2.1",
-    "192.168.2.2",
-    "192.168.2.3",
-    "192.168.2.4",
-    "192.168.2.5",
-    "192.168.2.6",
-    "192.168.2.7",
-    "192.168.2.8",
-]
+import torch
+import torch.distributed as dist
+from pull_sample_common import (
+    CACHE_NUM_TENSORS,
+    CACHE_SHAPE,
+    init_llm_datadist,
+    init_process_group,
+    link,
+)
+
+from llm_datadist import CacheDesc, CacheKey, DataType, LLMRole, Placement
 
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
-
-
-def init_llm_datadist(role: LLMRole, cluster_id, device_id: int) -> LLMDataDist:
-    datadist = LLMDataDist(role, cluster_id)
-    llm_config = LLMConfig()
-    llm_config.device_id = device_id
-    llm_config.enable_cache_manager = True
-    llm_config.mem_pool_cfg = '{"memory_size": 1073741824}'
-    llm_options = llm_config.generate_options()
-    datadist.init(llm_options)
-    return datadist
-
-
-def get_device_ip_from_hccn_tool(device_id: int) -> str:
-    result = subprocess.run(
-        ["hccn_tool", "-i", str(device_id), "-ip", "-g"],
-        stdout=subprocess.PIPE,
-        text=True,
-    )
-    ip = ""
-    for line in result.stdout.splitlines():
-        if line.startswith("ipaddr:"):
-            ip = line.split(":")[1]
-            break
-    return ip
-
-
-def get_physical_device_id() -> list[str]:
-    numbers = []
-    for name in os.listdir("/dev"):
-        if re.match(r"^davinci\d+$", name):
-            num = name.replace("davinci", "")
-            numbers.append(num)
-    numbers.sort(key=int)
-    return numbers
-
-
-def link(datadist, device_id, is_single: bool, host_ip: str):
-    numbers = get_physical_device_id()
-    rank_table_dict = {}
-    if not is_single:
-        rank_table_dict = {
-            "server_count": "2",
-            "status": "completed",
-            "version": "1.2",
-            "server_list": [
-                {
-                    "device": [
-                        {
-                            "device_id": str(device_id),
-                            "device_ip": PROMPT_IP_LIST[device_id],
-                            "rank_id": "0",
-                        }
-                    ],
-                    "host_ip": PROMPT_HOST_IP,
-                    "server_id": "1",
-                },
-                {
-                    "device": [
-                        {
-                            "device_id": str(device_id),
-                            "device_ip": DECODER_IP_LIST[device_id],
-                            "rank_id": "1",
-                        }
-                    ],
-                    "host_ip": DECODER_HOST_IP,
-                    "server_id": "2",
-                },
-            ],
-        }
-    else:
-        rank_table_dict = {
-            "server_count": "1",
-            "status": "completed",
-            "version": "1.2",
-            "server_list": [
-                {
-                    "device": [
-                        {
-                            "device_id": numbers[0],
-                            "device_ip": get_device_ip_from_hccn_tool(int(numbers[0])),
-                            "rank_id": "0",
-                        },
-                        {
-                            "device_id": numbers[1],
-                            "device_ip": get_device_ip_from_hccn_tool(int(numbers[1])),
-                            "rank_id": "1",
-                        },
-                    ],
-                    "host_ip": host_ip,
-                    "server_id": "1",
-                }
-            ],
-        }
-    # 当前展示两个节点cluster id分别为1和2, rank id分别为0和1
-    cluster_rank_info = {1: 0, 2: 1}
-    rank_table = json.dumps(rank_table_dict)
-    comm_id = datadist.link("link", cluster_rank_info, rank_table)
-    while True:
-        ret = datadist.query_register_mem_status(comm_id)
-        if ret == RegisterMemStatus.OK:
-            logging.info("query_register_mem_status ok")
-            break
-        elif ret == RegisterMemStatus.FAILED:
-            logging.info("query_register_mem_status failed")
-            raise RuntimeError("link failed")
-        logging.info("need check again")
-        time.sleep(1)
-    return comm_id
 
 
 def run_decoder_sample(datadist, device_id: int, is_single: bool, host_ip: str):
     cache_manager = datadist.cache_manager
     cache_desc = CacheDesc(
-        num_tensors=4,
-        shape=[2, 1024 * 1024],
+        num_tensors=CACHE_NUM_TENSORS,
+        shape=CACHE_SHAPE,
         data_type=DataType.DT_FLOAT16,
         placement=Placement.DEVICE,
     )
     tensors = []
     addrs = []
-    for i in range(4):
-        tensor = torch.ones(2, 1024 * 1024, dtype=torch.float16).npu()
+    for _ in range(CACHE_NUM_TENSORS):
+        tensor = torch.ones(*CACHE_SHAPE, dtype=torch.float16).npu()
         addrs.append(tensor.data_ptr())
         tensors.append(tensor)
     cache = cache_manager.register_blocks_cache(cache_desc, addrs)
@@ -184,13 +47,14 @@ def run_decoder_sample(datadist, device_id: int, is_single: bool, host_ip: str):
 
     comm_id = link(datadist, device_id, is_single, host_ip)
 
-    # wait prompt prepared
-    time.sleep(5)
+    dist.barrier()  # cache ready
     cache_key = CacheKey(prompt_cluster_id=1, req_id=0, model_id=0)
     cache_manager.pull_blocks(cache_key, cache, src_blocks=[], dst_blocks=[0])
-    logging.info(f"after pull, tensor={tensors[0].cpu()}")
+    logging.info("[pull_blocks] success")
 
+    dist.barrier()  # pull_blocks end
     datadist.unlink(comm_id)
+    dist.barrier()  # wait peer unlink end
     datadist.finalize()
 
 
@@ -199,33 +63,26 @@ def run_prompt_sample(datadist, device_id: int, is_single: bool, host_ip: str):
     # 通过cache_manager分配kv cache
     cache_manager = datadist.cache_manager
     cache_desc = CacheDesc(
-        num_tensors=4,
-        shape=[2, 1024 * 1024],
+        num_tensors=CACHE_NUM_TENSORS,
+        shape=CACHE_SHAPE,
         data_type=DataType.DT_FLOAT16,
         placement=Placement.DEVICE,
     )
     cache_key = CacheKey(prompt_cluster_id=1, req_id=0, model_id=0)
     cache = cache_manager.allocate_cache(cache_desc, [cache_key])
     logging.info("[allocate_cache] success")
-    tensor_addrs = cache.tensor_addrs
-    # 构造对应前端框架(如torch)的Tensor
-    tensors = torchair.llm_datadist.create_npu_tensors(
-        cache.cache_desc.shape, torch.float16, tensor_addrs
-    )
-    # 对cache进行赋值
-    tensors[0].fill_(2)
-    logging.info(f"prompt tensor={tensors[0].cpu()}")
 
-    logging.info("wait for 30 seconds")
-    time.sleep(30)
-    logging.info("wait ended")
+    dist.barrier()  # cache ready
+    dist.barrier()  # decoder pull_blocks end
+    datadist.unlink(comm_id)
+    dist.barrier()  # wait peer unlink end
+
     # 如果pull_cache失败，或者decoder没有调用pull_cache，此处需要调用remove_cache_key，确保cache能够得到释放
     # 如果pull_cache成功，这里只是个空操作
     cache_manager.remove_cache_key(cache_key)
     logging.info("[remove_cache_key] success")
     cache_manager.deallocate_cache(cache)
     logging.info("[deallocate_cache] success")
-    datadist.unlink(comm_id)
     datadist.finalize()
     logging.info("[finalize] success")
 
@@ -249,6 +106,7 @@ if __name__ == "__main__":
     )
     torch.npu.set_device(args.device_id)
     role = LLMRole.PROMPT if args.cluster_id == 1 else LLMRole.DECODER
+    init_process_group(args.cluster_id, is_single, args.host_ip)
     datadist = init_llm_datadist(role, args.cluster_id, args.device_id)
     if role == LLMRole.PROMPT:
         run_prompt_sample(datadist, args.device_id, is_single, args.host_ip)
