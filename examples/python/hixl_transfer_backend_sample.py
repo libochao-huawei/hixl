@@ -109,6 +109,16 @@ def run_prompt_sample(datadist, local_host_ip, remote_host_ip):
     # 等对端推送完成
     dist.barrier()
 
+    # 断链
+    cluster = LLMClusterInfo()
+    cluster.remote_cluster_id = DECODER_CLUSTER_ID
+    ret, _ = datadist.unlink_clusters([cluster], 5000)
+    if ret != LLMStatusCode.LLM_SUCCESS:
+        raise Exception("unlink failed")
+
+    # wait peer unlink end
+    dist.barrier()
+
     logging.info(f"after push and pull, tensor={tensor.cpu()}")
     logging.info(f"after push and pull, tensor2={tensor2.cpu()}")
 
@@ -122,16 +132,6 @@ def run_prompt_sample(datadist, local_host_ip, remote_host_ip):
             f"check tensor val failed, tensor2={tensor2.cpu()}, expect_tensor={expect_tensor.cpu()}"
         )
     logging.info("check tensor val success")
-
-    # 断链
-    cluster = LLMClusterInfo()
-    cluster.remote_cluster_id = DECODER_CLUSTER_ID
-    ret, _ = datadist.unlink_clusters([cluster], 5000)
-    if ret != LLMStatusCode.LLM_SUCCESS:
-        raise Exception("unlink failed")
-
-    # wait peer unlink end
-    dist.barrier()
 
     cache_manager.unregister_cache(cache.cache_id)
     datadist.finalize()

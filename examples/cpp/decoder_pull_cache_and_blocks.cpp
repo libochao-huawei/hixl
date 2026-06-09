@@ -8,16 +8,24 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <numeric>
+#include <arpa/inet.h>
+#include <cerrno>
+#include <cstring>
 #include <cstdio>
-#include <thread>
 #include <iostream>
+#include <netinet/in.h>
+#include <numeric>
+#include <string>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <vector>
 #include "acl/acl.h"
 #include "llm_datadist/llm_datadist.h"
 
 using namespace llm_datadist;
 namespace {
 constexpr uint16_t kPromptListenPort = 26000;
+constexpr uint16_t kPromptControlPort = 26002;
 constexpr uint16_t kDecoderListenPort = 26001;
 constexpr uint16_t kPromptClusterId = 0;
 constexpr uint16_t kDecoderClusterId = 1;
@@ -25,12 +33,15 @@ constexpr uint32_t kNumTensors = 4U;
 constexpr size_t kTensorSize = 8 * 16 * sizeof(int32_t);
 const std::vector<int64_t> kTensorShape = {8, 16};
 constexpr size_t kTensorBlockElementNum = 16;
-constexpr int32_t kWaitPromptTime = 5;
 constexpr int32_t kExpectedArgCnt = 5;
 constexpr uint32_t kArgIndexDeviceId = 1;
 constexpr uint32_t kArgIndexLocalIp = 2;
 constexpr uint32_t kArgIndexRemoteIp = 3;
 constexpr uint32_t kArgIndexLocalCommRes = 4;
+constexpr int32_t kControlConnectTimeoutSec = 60;
+constexpr int32_t kControlConnectRetryIntervalUs = 100000;
+constexpr const char *kPromptReadyMessage = "LLM_DATADIST_PROMPT_READY_CHECK";
+constexpr const char *kUnlinkAckMessage = "LLM_DATADIST_UNLINKED";
 
 #define CHECK_ACL(x)                                                                  \
   do {                                                                                \
@@ -46,6 +57,63 @@ const char *GetRecentErrMsg() {
     return "no error";
   }
   return errmsg;
+}
+
+void CloseFd(int &fd) {
+  if (fd >= 0) {
+    (void)close(fd);
+    fd = -1;
+  }
+}
+
+int SendPromptControlMessage(const char *remote_ip, const char *message, const char *message_desc) {
+  sockaddr_in prompt_addr{};
+  prompt_addr.sin_family = AF_INET;
+  prompt_addr.sin_port = htons(kPromptControlPort);
+  if (inet_pton(AF_INET, remote_ip, &prompt_addr.sin_addr) != 1) {
+    printf("[ERROR] Invalid prompt control ip: %s\n", remote_ip);
+    return -1;
+  }
+
+  int conn_fd = -1;
+  constexpr int32_t kUsecPerSec = 1000000;
+  constexpr int32_t kRetryTimes = kControlConnectTimeoutSec * kUsecPerSec / kControlConnectRetryIntervalUs;
+  for (int32_t i = 0; i < kRetryTimes; ++i) {
+    conn_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (conn_fd < 0) {
+      printf("[ERROR] Create socket for %s failed, errno = %d\n", message_desc, errno);
+      return -1;
+    }
+    if (connect(conn_fd, reinterpret_cast<sockaddr *>(&prompt_addr), sizeof(prompt_addr)) == 0) {
+      break;
+    }
+    CloseFd(conn_fd);
+    usleep(kControlConnectRetryIntervalUs);
+  }
+  if (conn_fd < 0) {
+    printf("[ERROR] Connect prompt control server timeout for %s, remote = %s:%u, timeout = %d seconds\n", message_desc,
+           remote_ip, static_cast<unsigned int>(kPromptControlPort), kControlConnectTimeoutSec);
+    return -1;
+  }
+
+  const size_t message_len = std::strlen(message);
+  size_t sent_len = 0U;
+  while (sent_len < message_len) {
+    const ssize_t ret = send(conn_fd, message + sent_len, message_len - sent_len, 0);
+    if (ret < 0 && errno == EINTR) {
+      continue;
+    }
+    if (ret <= 0) {
+      printf("[ERROR] Send %s failed, errno = %d\n", message_desc, errno);
+      CloseFd(conn_fd);
+      return -1;
+    }
+    sent_len += static_cast<size_t>(ret);
+  }
+
+  CloseFd(conn_fd);
+  printf("[INFO] Send %s success\n", message_desc);
+  return 0;
 }
 }  // namespace
 
@@ -156,22 +224,26 @@ int32_t PullCache(LlmDataDist &llm_datadist, int64_t cache_id) {
 }
 
 void Finalize(LlmDataDist &llm_datadist, int64_t cache_id, bool linked, const char *remote_ip,
-              const std::vector<void *> buffers) {
+              const std::vector<void *> &buffers) {
+  bool can_unregister = true;
   if (linked) {
     auto ret = Unlink(llm_datadist, remote_ip);
     if (ret != 0) {
       printf("[ERROR] Unlink failed, ret = %d\n", ret);
+      can_unregister = false;
     } else {
       printf("[INFO] Unlink success\n");
     }
   }
-  if (cache_id > 0) {
+  if (cache_id > 0 && can_unregister) {
     auto ret = llm_datadist.UnregisterKvCache(cache_id);
     if (ret != 0) {
       printf("[ERROR] UnregisterKvCache failed, ret = %u, errmsg: %s\n", ret, GetRecentErrMsg());
     } else {
       printf("[INFO] UnregisterKvCache success\n");
     }
+  } else if (cache_id > 0) {
+    printf("[WARN] Skip UnregisterKvCache since Unlink failed and cache may still be bound\n");
   }
   for (auto buffer : buffers) {
     aclrtFree(buffer);
@@ -224,8 +296,11 @@ int32_t RunDecoderSample(const char *device_id, const char *local_ip, const char
     return -1;
   }
 
-  // 3. 等待prompt写完cache，实际业务场景可通过合适方式实现通知
-  std::this_thread::sleep_for(std::chrono::seconds(kWaitPromptTime));
+  // 3. 确认prompt cache已注册完成，替代固定sleep等待
+  if (SendPromptControlMessage(remote_ip, kPromptReadyMessage, "prompt ready check") != 0) {
+    Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    return -1;
+  }
 
   // 4. 与prompt建链
   if (Link(llm_datadist, local_ip, remote_ip) != 0) {
@@ -251,9 +326,13 @@ int32_t RunDecoderSample(const char *device_id, const char *local_ip, const char
     return -1;
   }
   linked = false;
+  if (SendPromptControlMessage(remote_ip, kUnlinkAckMessage, "unlink ack") != 0) {
+    Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
+    return -1;
+  }
 
   // 7. 释放cache与llmDataDist
-  llm_datadist.Finalize();
+  Finalize(llm_datadist, cache_id, linked, remote_ip, buffers);
   printf("[INFO] Decoder Sample end\n");
   return 0;
 }
