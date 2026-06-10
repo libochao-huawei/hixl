@@ -25,6 +25,7 @@ struct HixlOneSideOpParam {
   uint64_t op_desc_list_addr;
   uint64_t remote_flag_addr;
   uint64_t local_flag_addr;
+  uint64_t host_local_flag_addr;
   uint32_t notify_id;
   uint32_t use_notify_record;
 };

@@ -46,13 +46,14 @@ TestArgs<kN> CreateTestArgs(
     std::array<std::array<uint8_t, 8>, kN> &dst_buffers,
     std::array<uint64_t, kN> &lens_storage, uint64_t remote_flag_addr,
     uint64_t local_flag_addr, ThreadHandle thread = 0ULL,
-    ChannelHandle channel = 0ULL) {
+    ChannelHandle channel = 0ULL, uint64_t host_local_flag_addr = 0ULL) {
   TestArgs<kN> args{};
   args.param.thread = thread;
   args.param.channel = channel;
   args.param.list_num = static_cast<uint32_t>(kN);
   args.param.remote_flag_addr = remote_flag_addr;
   args.param.local_flag_addr = local_flag_addr;
+  args.param.host_local_flag_addr = host_local_flag_addr;
   args.param.flag_size = sizeof(uint64_t);
   args.param.use_notify_record = 0;
 
@@ -71,12 +72,15 @@ using namespace hixl;
 
 static uint64_t g_remote_flag_buf = 1;
 static uint64_t g_local_flag_buf = 0;
+static uint64_t g_host_flag_buf = 0;
 
 class HixlKernelBasicTest : public ::testing::Test {
  protected:
   void SetUp() override {
     g_mock_batch_transfer_ret = HCCL_E_NOT_SUPPORT;
     g_mock_batch_transfer_call_count = 0;
+    g_local_flag_buf = 0;
+    g_host_flag_buf = 0;
   }
 
   void TearDown() override {
@@ -123,6 +127,23 @@ TEST_F(HixlKernelBasicTest, BatchGetSuccess) {
   auto args = CreateTestArgs<3>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr);
   uint32_t ret = HixlBatchGet(&args.param);
   EXPECT_EQ(ret, SUCCESS);
+}
+
+TEST_F(HixlKernelBasicTest, BatchGetWritesHostFlagBeforeNotifyFlag) {
+  std::array<std::array<uint8_t, 8>, 1> remote_addr{};
+  std::array<std::array<uint8_t, 8>, 1> local_addr{};
+  std::array<uint64_t, 1> lens_storage{8};
+
+  uint64_t remote_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_remote_flag_buf));
+  uint64_t local_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_local_flag_buf));
+  uint64_t host_flag_addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&g_host_flag_buf));
+
+  auto args = CreateTestArgs<1>(remote_addr, local_addr, lens_storage, remote_flag_addr, local_flag_addr, 0ULL, 0ULL,
+                                host_flag_addr);
+  uint32_t ret = HixlBatchGet(&args.param);
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_EQ(g_host_flag_buf, g_remote_flag_buf);
+  EXPECT_EQ(g_local_flag_buf, g_remote_flag_buf);
 }
 
 TEST_F(HixlKernelBasicTest, BatchPutFailByMemSize) {
@@ -183,6 +204,8 @@ class HixlBatchTransferTest : public ::testing::Test {
   void SetUp() override {
     g_mock_batch_transfer_ret = 0;
     g_mock_batch_transfer_call_count = 0;
+    g_local_flag_buf = 0;
+    g_host_flag_buf = 0;
   }
 
   void TearDown() override {
