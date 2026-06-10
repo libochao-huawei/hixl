@@ -86,7 +86,7 @@ Client侧`global_resource_config`当前支持的配置项如下。
 | 配置项 | 类型 | 是否必选 | 描述 |
 |---|---|---|---|
 | comm_resource_config.listen_port | 整数 | 可选 | 配置CS建链时使用的通信资源监听端口，取值范围为[1, 65535]。Client配置该字段后，会在建链匹配Endpoint阶段将该端口发送给Server；Server收到有效端口后优先使用该端口。未配置时不携带有效端口，Server保持原有自动查询监听端口逻辑；取值不在范围内时，Client创建失败并返回参数错误。 |
-| comm_resource_config.qos | 整数 | 可选 | 配置CS建链时使用的通信协议QoS，取值范围为[0, 7]。Client配置该字段后，会在创建Channel阶段将该QoS发送给Server；未配置时默认使用0；取值不在范围内或类型不正确时，Client创建失败并返回参数错误。 |
+| comm_resource_config.qos | 数字 | 可选 | 配置通信协议qos，当前仅支持[0-7]，当未配置的时候，默认为0。 |
 
 配置示例：
 
