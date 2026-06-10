@@ -32,6 +32,7 @@ find_package_if_target_not_exists(slog MODULE REQUIRED)
 set(STUBS
     slog_dev
     ccl_kernel
+    c_sec
 )
 set(STUB_OUTPUT_NAME_slog_dev slog)
 
