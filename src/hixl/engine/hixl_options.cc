@@ -271,7 +271,7 @@ Status HixlOptions::ParseGlobalResourceConfig(const std::string &config_str) {
     }
     if (cfg.comm_resource_config.qos.has_value()) {
       uint8_t val = cfg.comm_resource_config.qos.value();
-      HIXL_CHK_BOOL_RET_STATUS(val >= kQosMin && val <= kQosMax, PARAM_INVALID,
+      HIXL_CHK_BOOL_RET_STATUS(val <= kQosMax, PARAM_INVALID,
                                "comm_resource_config.qos must be in [%u, %u], got %u",
                                kQosMin, kQosMax, val);
     }
