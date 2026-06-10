@@ -81,7 +81,11 @@ void from_json(const nlohmann::json &j, CommResourceConfigDesc &cfg) {
     cfg.listen_port = JsonToNumber<uint32_t>(j.at("comm_resource_config.listen_port"));
   }
   if (j.contains(kQosName)) {
-    cfg.qos = JsonToNumber<int32_t>(j.at(kQosName));
+    const auto val = JsonToNumber<int64_t>(j.at(kQosName));
+    if (val < static_cast<int64_t>(kQosMin) || val > static_cast<int64_t>(kQosMax)) {
+      throw nlohmann::json::out_of_range::create(0, "comm_resource_config.qos out of range", nullptr);
+    }
+    cfg.qos = static_cast<uint8_t>(val);
   }
 }
 
@@ -266,9 +270,9 @@ Status HixlOptions::ParseGlobalResourceConfig(const std::string &config_str) {
                                kMinListenPort, kMaxListenPort, val);
     }
     if (cfg.comm_resource_config.qos.has_value()) {
-      int32_t val = cfg.comm_resource_config.qos.value();
+      uint8_t val = cfg.comm_resource_config.qos.value();
       HIXL_CHK_BOOL_RET_STATUS(val >= kQosMin && val <= kQosMax, PARAM_INVALID,
-                               "comm_resource_config.qos must be in [%d, %d], got %d",
+                               "comm_resource_config.qos must be in [%u, %u], got %u",
                                kQosMin, kQosMax, val);
     }
     global_resource_config_ = std::move(cfg);
