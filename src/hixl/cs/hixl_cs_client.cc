@@ -844,36 +844,6 @@ Status HixlCSClient::RegisterDeviceSyncHostFlag(DeviceCompleteHandle &handle) {
   if (protocol == COMM_PROTOCOL_ROCE || protocol == COMM_PROTOCOL_UBOE) {
     return PrepareDeviceSyncHostFlag(handle);
   }
-
-  HIXL_CHK_STATUS_RET(AllocateHostFlag(handle.probe_host_flag), "[HixlClient] AllocateHostFlag failed");
-  handle.owns_probe_host_flag = true;
-  HIXL_LOGI("[HixlClient] probe host flag allocated, protocol=%u, host_addr=%p", protocol, handle.probe_host_flag);
-  CommMem mem{};
-  mem.type = COMM_MEM_TYPE_HOST;
-  mem.addr = handle.probe_host_flag;
-  mem.size = sizeof(uint64_t);
-  HIXL_LOGI("[HixlClient] probe host flag RegMem begin, protocol=%u, addr=%p, size=%lu",
-            protocol, mem.addr, mem.size);
-  HIXL_CHK_STATUS_RET(RegMem(nullptr, &mem, &handle.probe_host_flag_mem_handle),
-                      "[HixlClient] register device sync probe host flag failed");
-  HIXL_LOGI("[HixlClient] probe host flag RegMem success, protocol=%u, mem_handle=%p",
-            protocol, handle.probe_host_flag_mem_handle);
-
-  HixlMemDesc desc{};
-  HIXL_CHK_STATUS_RET(local_endpoint_->GetMemDesc(handle.probe_host_flag_mem_handle, desc),
-                      "[HixlClient] query device sync probe host flag desc failed");
-  HIXL_LOGI("[HixlClient] probe host flag GetMemDesc success, protocol=%u, desc_addr=%p, desc_size=%lu, "
-            "registered_dev_mem=%p",
-            protocol, desc.mem.addr, desc.mem.size, desc.registered_dev_mem);
-  if (protocol == COMM_PROTOCOL_UBOE && desc.registered_dev_mem != nullptr) {
-    handle.probe_host_flag_kernel_addr = desc.registered_dev_mem;
-  } else {
-    handle.probe_host_flag_kernel_addr = desc.mem.addr;
-  }
-  HIXL_LOGI("[HixlClient] device sync probe host flag registered, protocol=%u, host_addr=%p, "
-            "kernel_addr=%p, registered_dev_mem=%p, mem_handle=%p",
-            protocol, handle.probe_host_flag, handle.probe_host_flag_kernel_addr, desc.registered_dev_mem,
-            handle.probe_host_flag_mem_handle);
   return SUCCESS;
 }
 
