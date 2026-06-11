@@ -277,7 +277,7 @@ void FabricMemChannelManager::DisconnectAll() {
 }
 
 Status FabricMemChannelManager::BuildTransferContext(const std::string &remote_engine, FabricMemStatistic *statistic,
-                                                     FabricMemTransferContext &context) {
+                                                     FabricMemTransferContext &context) const {
   // Lock: channels_mutex_.
   std::lock_guard<std::mutex> lock(channels_mutex_);
   HIXL_CHK_BOOL_RET_STATUS(initialized_, FAILED, "[FabricMemChannelManager] Not initialized.");

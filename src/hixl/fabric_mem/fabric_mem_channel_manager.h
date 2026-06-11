@@ -79,7 +79,7 @@ class FabricMemChannelManager {
   Status EnsureConnected(const AscendString &remote_engine, int32_t timeout_in_millis);
   Status GetChannel(const std::string &remote_engine, std::shared_ptr<FabricMemChannel> &channel) const;
   Status BuildTransferContext(const std::string &remote_engine, FabricMemStatistic *statistic,
-                              FabricMemTransferContext &context);
+                              FabricMemTransferContext &context) const;
   bool HasChannels() const;
   bool IsConnected(const std::string &remote_engine) const;
   Status StartKeepaliveMonitor();

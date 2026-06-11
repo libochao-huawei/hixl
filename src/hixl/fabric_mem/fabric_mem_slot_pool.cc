@@ -121,7 +121,7 @@ Status FabricMemSlotPool::PopulateSlotHostFlags(AsyncSlot &entry) const {
   return SUCCESS;
 }
 
-Status FabricMemSlotPool::CreateSlotEntryLocked(AsyncSlot &entry) {
+Status FabricMemSlotPool::CreateSlotEntryLocked(AsyncSlot &entry) const {
   HIXL_CHK_ACL_RET(aclrtCreateContext(&entry.ctx, device_id_), "Create fabric mem transfer context failed.");
   HIXL_DISMISSABLE_GUARD(ctx_guard, ([&entry]() { DestroyCreatedSlotEntry(entry); }));
   TemporaryRtContext with_context(entry.ctx);
@@ -132,7 +132,7 @@ Status FabricMemSlotPool::CreateSlotEntryLocked(AsyncSlot &entry) {
   return SUCCESS;
 }
 
-void FabricMemSlotPool::DestroySlotEntryLocked(AsyncSlot &entry, bool abort_streams) {
+void FabricMemSlotPool::DestroySlotEntryLocked(AsyncSlot &entry, bool abort_streams) const {
   if (entry.ctx == nullptr) {
     return;
   }
