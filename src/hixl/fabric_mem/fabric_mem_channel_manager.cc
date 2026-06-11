@@ -30,7 +30,13 @@ void FabricMemChannelManager::SetKeepaliveCheckIntervalMs(int64_t interval_ms) {
 }
 
 FabricMemChannelManager::~FabricMemChannelManager() {
-  Finalize();
+  // Destructors must not propagate exceptions (a throw here would call std::terminate). The cleanup path
+  // (vector reserve/emplace in AbortAndClearChannelRecords) may throw bad_alloc/length_error, so swallow.
+  try {
+    Finalize();
+  } catch (...) {
+    HIXL_LOGW("[FabricMemChannelManager] Exception caught during finalize in destructor, ignored.");
+  }
 }
 
 Status FabricMemChannelManager::Initialize(const FabricMemChannelManagerInitParam &param) {
@@ -59,7 +65,7 @@ void FabricMemChannelManager::Finalize() {
 }
 
 Status FabricMemChannelManager::CreateAndRegisterRemoteMemory(const std::vector<ShareHandleInfo> &share_handles,
-                                                                const std::string &remote) {
+                                                              const std::string &remote) {
   auto remote_memory = MakeUnique<FabricMemRemoteMemory>();
   HIXL_CHK_STATUS_RET(remote_memory->Import(share_handles, device_id_),
                       "[FabricMemChannelManager] Failed to import remote memory, remote:%s.", remote.c_str());
@@ -277,7 +283,7 @@ void FabricMemChannelManager::DisconnectAll() {
 }
 
 Status FabricMemChannelManager::BuildTransferContext(const std::string &remote_engine, FabricMemStatistic *statistic,
-                                                     FabricMemTransferContext &context) {
+                                                     FabricMemTransferContext &context) const {
   // Lock: channels_mutex_.
   std::lock_guard<std::mutex> lock(channels_mutex_);
   HIXL_CHK_BOOL_RET_STATUS(initialized_, FAILED, "[FabricMemChannelManager] Not initialized.");
