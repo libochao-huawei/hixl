@@ -258,12 +258,12 @@ Status RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle)
 - 当HDK版本低于25.5.0时，最大注册20GB的Host内存。当HDK版本大于等于25.5.0时，最大注册1TB的host内存。注册内存越大，占用的OS内存越多。该约束支持的型号如下：
 <br>- Atlas A2 训练系列产品/Atlas A2 推理系列产品
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
-- 注册Host内存需使用"aclrtMallocHost"进行申请，该接口申请的内存地址自动对齐。该约束支持的型号如下：
+- 注册Host内存需使用“aclrtMallocHost”进行申请，该接口申请的内存地址自动对齐。该约束支持的型号如下：
 <br>- Atlas A2 训练系列产品/Atlas A2 推理系列产品
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
-- 注册Device内存使用"aclrtMalloc"进行申请，如通过HCCS传输，则内存分配规则需配置为ACL\_MEM\_MALLOC\_HUGE\_ONLY。
-- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
-- Ascend 950PR/Ascend 950DT场景下，使用host RoCE网卡当前不支持注册"aclrtMallocHost"申请出来的内存，可使用malloc等方式。
+- 注册Device内存使用“aclrtMalloc”进行申请，如通过HCCS传输，则内存分配规则需配置为ACL\_MEM\_MALLOC\_HUGE\_ONLY。
+- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
+- Ascend 950PR/Ascend 950DT场景下，使用host RoCE网卡当前不支持注册“aclrtMallocHost”申请出来的内存，可使用malloc等方式。
 ## DeregisterMem
 
 **函数功能**
@@ -295,7 +295,7 @@ Status DeregisterMem(MemHandle mem_handle)
 **约束说明**
 
 - 调用该接口前需要先调用Disconnect将所有链路进行断链，确保所有内存不再使用。
-- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
+- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 ## Connect
 
 **函数功能**
@@ -336,7 +336,7 @@ Status Connect(const AscendString &remote_engine, int32_t timeout_in_millis = 10
 - 当OPTION_LOCAL_COMM_RES配置version为"1.3"时（推荐使用，需要HDK版本大于等于25.5.0且toolkit包版本大于等于9.1.0），使用HixlCS能力进行建链，没有链路上限限制。
 - 建议超时时间配置200ms以上。
 - 调用该接口前需提前注册所有本地以及远端内存，否则建链后注册不支持远端访问。
-- 容器场景需在容器内映射"/etc/hccn.conf"文件或者确保默认路径"/usr/local/Ascend/driver/tools"下存在hccn_tool，如果两者都不能满足，则需要用户将hccn_tool所在路径配置到PATH中。配置实例如下，hccn_tool_install_path表示hccn_tool所在路径。该约束支持的型号如下：
+- 容器场景需在容器内映射“/etc/hccn.conf”文件或者确保默认路径“/usr/local/Ascend/driver/tools”下存在hccn_tool，如果两者都不能满足，则需要用户将hccn_tool所在路径配置到PATH中。配置实例如下，hccn_tool_install_path表示hccn_tool所在路径。该约束支持的型号如下：
 <br>- Atlas A2 训练系列产品/Atlas A2 推理系列产品
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
 
@@ -344,7 +344,7 @@ Status Connect(const AscendString &remote_engine, int32_t timeout_in_millis = 10
     export PATH=$PATH:{hccn_tool_install_path}
     ```
   
-- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
+- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 ## Disconnect
 
 **函数功能**
@@ -375,7 +375,7 @@ Status Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis =
 **约束说明**
 
 - 调用该接口之前，需要先调用Initialize接口完成初始化。
-- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
+- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 ## ConnectAsync
 
 **函数功能**
@@ -539,7 +539,7 @@ Status TransferSync(const AscendString &remote_engine,
 - 调用该接口之前，需要先调用Connect接口完成与对端的建链或者在HIXL初始化时开启了链路池机制（通过配置options中的OPTION_GLOBAL_RESOURCE_CONFIG参数进行开启）。该约束支持的型号如下：
 <br>- Atlas A2 训练系列产品/Atlas A2 推理系列产品
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
-- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
+- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 - 系统默认开启中转内存池，在开启中转内存池情况下，op\_desc中本地内存和远端内存有一个未注册就会判断为需要走中转传输模式，且没有注册过的内存判断为Host内存，用户需保证地址合法。该约束支持的型号如下：
 <br>- Atlas A2 训练系列产品/Atlas A2 推理系列产品
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
@@ -592,7 +592,7 @@ Status TransferSync(const AscendString &remote_engine,
 - 调用该接口之前，存在如下约束：<br>需要先调用Connect接口完成与对端的建链。<br>或者在HIXL初始化时开启了链路池机制（通过配置options中的OPTION_GLOBAL_RESOURCE_CONFIG参数进行开启）。该约束支持的型号如下：
   <br>- Atlas A2 训练系列产品/Atlas A2 推理系列产品
   <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
-- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
+- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 - 当前异步传输仅支持直传，暂不支持中转传输，默认直传。
 - 在Fabric Mem传输模式下, 所有op\_descs的传输类型需要相同，系统会根据第一个op\_desc的内存类型判定传输方向。该约束支持的型号如下：
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
@@ -635,7 +635,7 @@ Status TransferSync(const AscendString &remote_engine,
 **约束说明**
 
 - 调用该接口之前，需要先调用Connect接口完成与对端的建链。
-- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
+- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 - 在调用TransferAsync接口进行异步传输后，需要使用该接口查询对应请求状态，如果查询状态是COMPLETED，将释放相关资源。该场景下不支持再次查询。
 - 异步传输时，用户自行判断是否超时，如果用户判断任务超时，需要调用Disconnect接口销毁链路，清理相关资源。
 ## GetTransferStatus
@@ -677,7 +677,7 @@ Status TransferSync(const AscendString &remote_engine,
 **约束说明**
 
 - 调用该接口之前，需要先调用Connect接口完成与对端的建链。
-- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
+- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 - 在调用TransferAsync接口进行异步传输后，需要使用该接口查询所有请求状态，如果某请求状态是COMPLETED或FAILED，将释放相关资源。该场景下再次查询将不再返回该请求状态。
 - 异步传输时，用户自行判断是否超时，如果用户判断任务超时，建议调用Disconnect接口销毁链路，清理相关资源。
 ## SendNotify
@@ -711,7 +711,7 @@ Status TransferSync(const AscendString &remote_engine,
 **约束说明**
 
 - 调用该接口之前，需要先调用Connect接口完成与对端的建链。
-- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
+- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 - 每条链路中最多存在4096条Notify，需要确保远端Hixl及时调用GetNotifies接口消费Notify防止触发上限导致发送失败。
 ## GetNotifies
 
