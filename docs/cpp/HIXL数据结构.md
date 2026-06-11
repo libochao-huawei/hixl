@@ -111,3 +111,25 @@ struct NotifyDesc {
   AscendString notify_msg;
 };
 ```
+
+## EndpointConfig
+
+本地通信资源中 `endpoint_list` 的元素描述一个可用于建链的通信 endpoint。
+
+| 字段名 | 数据类型 | 必选/可选 | 说明 |
+| ---- | ---- | ---- | ---- |
+| protocol | 字符串 | 必选 | 通信协议，支持 `"roce"`、`"ub_ctp"`、`"ub_tp"`、`"uboe"`、`"ubg"` |
+| comm_id | 字符串 | 必选 | 通信标识。`"roce"` 使用 IPv4/IPv6 地址；`"uboe"` 使用 device UBoE 网卡 IP；`"ub_ctp"`/`"ub_tp"`/`"ubg"` 使用 EID，其中 UBG 要求 32 位无冒号十六进制 EID |
+| placement | 字符串 | 必选 | endpoint 位置，支持 `"host"` 或 `"device"`；UBG 当前使用 `"device"` |
+| plane | 字符串 | 可选 | UB 平面信息，主要用于 `ub_ctp`/`ub_tp` |
+| dst_eid | 字符串 | 可选 | 对端 EID，主要用于 `ub_ctp` full-mesh 直连匹配 |
+
+示例：
+
+```json
+{
+  "protocol": "ubg",
+  "comm_id": "0000000000ff0ac0000000000a140200",
+  "placement": "device"
+}
+```

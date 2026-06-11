@@ -29,6 +29,7 @@ struct ClientConfig {
   std::string remote_engine;
   uint8_t rdma_tc;
   uint8_t rdma_sl;
+  ProtocolLock protocol_lock{ProtocolLock::kNone};
 };
 
 class HixlClient {
@@ -39,7 +40,11 @@ class HixlClient {
    * @param [in] server_port  服务端监听端口号
    */
   HixlClient(const std::string &server_ip, uint32_t server_port, const ClientConfig &config)
-      : server_ip_(server_ip), server_port_(server_port), rdma_tc_(config.rdma_tc), rdma_sl_(config.rdma_sl) {}
+      : server_ip_(server_ip),
+        server_port_(server_port),
+        rdma_tc_(config.rdma_tc),
+        rdma_sl_(config.rdma_sl),
+        protocol_lock_(config.protocol_lock) {}
   ~HixlClient() = default;
 
   /**
@@ -104,6 +109,7 @@ class HixlClient {
   uint32_t server_port_;
   uint8_t rdma_tc_{kRdmaTrafficClass};
   uint8_t rdma_sl_{kRdmaServiceLevel};
+  ProtocolLock protocol_lock_{ProtocolLock::kNone};
   bool is_connected_{false};  // true为已建链；false未建链
   bool is_finalized_{false};
   bool finalize_pending_{

@@ -761,4 +761,31 @@ TEST_F(HixlEngineTest, TestInitializeAutoGenerateForV3FillsDeviceInfo) {
 
   engine.Finalize();
 }
+
+TEST_F(HixlEngineTest, TestInitializeSetsProtocolLockOnlyForProtocolDescGeneratedEndpoints) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+  SetHccnConfContent("address_23=10.10.10.23\n");
+
+  HixlEngine explicit_engine("127.0.0.1");
+  auto explicit_options = BuildOptions(BuildLocalCommRes("sp_v3", "1.3", {BuildDeviceRoceEndpoint("127.0.0.1")}));
+  explicit_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["uboe:device"]
+    }
+  )";
+  EXPECT_EQ(explicit_engine.Initialize(explicit_options), SUCCESS);
+  EXPECT_EQ(explicit_engine.protocol_lock_, ProtocolLock::kNone);
+  explicit_engine.Finalize();
+
+  HixlEngine protocol_desc_engine("127.0.0.1");
+  auto protocol_desc_options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  protocol_desc_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["uboe:device"]
+    }
+  )";
+  EXPECT_EQ(protocol_desc_engine.Initialize(protocol_desc_options), SUCCESS);
+  EXPECT_EQ(protocol_desc_engine.protocol_lock_, ProtocolLock::kUboe);
+  protocol_desc_engine.Finalize();
+}
 }  // namespace hixl

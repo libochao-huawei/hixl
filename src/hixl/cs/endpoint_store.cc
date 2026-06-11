@@ -47,7 +47,8 @@ inline bool operator==(const EndpointDesc &lhs, const EndpointDesc &rhs) {
   }
   if (lhs.protocol == COMM_PROTOCOL_HCCS) {
     return lhs.commAddr.id == rhs.commAddr.id;
-  } else if (lhs.protocol == COMM_PROTOCOL_UBC_TP || lhs.protocol == COMM_PROTOCOL_UBC_CTP) {
+  } else if (lhs.protocol == COMM_PROTOCOL_UBC_TP || lhs.protocol == COMM_PROTOCOL_UBC_CTP ||
+             lhs.protocol == COMM_PROTOCOL_UBG) {
     return std::memcmp(lhs.commAddr.eid, rhs.commAddr.eid, COMM_ADDR_EID_LEN) == 0;
   } else if (lhs.protocol == COMM_PROTOCOL_ROCE) {
     if (lhs.commAddr.type != rhs.commAddr.type) {

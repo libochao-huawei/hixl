@@ -46,7 +46,8 @@ class EndpointMatcher {
       const std::vector<EndpointConfig> &local,
       const std::vector<EndpointConfig> &remote,
       std::vector<HandlerCreateArgs::EndpointPair> &matched_pairs,
-      HandlerCreateArgs::HandlerType &handler_type);
+      HandlerCreateArgs::HandlerType &handler_type,
+      ProtocolLock protocol_lock = ProtocolLock::kNone);
 
   // ---------- Type utility functions ----------
   static CommType ParseCommType(const std::string &local, const std::string &remote);
@@ -63,23 +64,37 @@ class EndpointMatcher {
  private:
   EndpointMatcher() = delete;
 
-  static bool MustUseRoce(const std::vector<EndpointConfig> &local,
-                          const std::vector<EndpointConfig> &remote);
+  struct MatchEntry {
+    const char *protocol;
+    CommType comm_type;
+  };
+
+  // 选链场景，每个场景对应一张固定的协议优先级表
+  enum class MatchScenario {
+    kForceRoce,       // HCCL_INTRA_ROCE_ENABLE=1，强制只匹配 RoCE
+    kCrossSuperNode,  // 跨超节点
+    kSameSuperNode    // 超节点内
+  };
+
+  static bool IsForceRoceOnly();
+  static bool IsCrossSuperNode(const std::vector<EndpointConfig> &local,
+                               const std::vector<EndpointConfig> &remote);
 
   static std::map<MatchKey, EndpointConfig>::const_iterator FindMatchingKey(
       const std::map<MatchKey, EndpointConfig> &map, const MatchKey &query);
 
-  static Status TryMatchUboe(const std::vector<EndpointConfig> &local,
-                             const std::vector<EndpointConfig> &remote,
-                             std::vector<HandlerCreateArgs::EndpointPair> &pairs);
+  static MatchScenario DetermineScenario(bool cross_supernode);
+  static const std::vector<MatchEntry> &GetPriorityTable(MatchScenario scenario);
+  static std::vector<MatchEntry> BuildPriority(ProtocolLock protocol_lock, bool cross_supernode);
 
-  static Status TryMatchRoce(const std::vector<EndpointConfig> &local,
-                             const std::vector<EndpointConfig> &remote,
-                             std::vector<HandlerCreateArgs::EndpointPair> &pairs);
+  static Status MatchDirect(const std::vector<EndpointConfig> &local,
+                            const std::vector<EndpointConfig> &remote,
+                            const MatchEntry &entry,
+                            std::vector<HandlerCreateArgs::EndpointPair> &pairs);
 
-  static Status TryMatchHccs(const std::vector<EndpointConfig> &local,
-                             const std::vector<EndpointConfig> &remote,
-                             std::vector<HandlerCreateArgs::EndpointPair> &pairs);
+  static Status TryMatchUbAll(const std::vector<EndpointConfig> &local,
+                              const std::vector<EndpointConfig> &remote,
+                              std::vector<HandlerCreateArgs::EndpointPair> &pairs);
 
   static Status TryMatchUb(const EndpointConfig &local,
                            const std::map<MatchKey, EndpointConfig> &peers,

@@ -36,6 +36,7 @@ static int g_device_info_ret = 0;
 
 // dcmiv2_get_eid_list_by_urma_dev_index 控制：返回 EID 数量（0=不返回, 1=仅非PG, 2=全部）
 static int g_eid_count = 2;
+static bool g_enable_ubg_eid = false;
 
 // dlopen 失败模拟控制：true=下次 dlopen 返回 nullptr
 static bool g_dlopen_fail = false;
@@ -96,7 +97,7 @@ static void BuildDefaultEid(unsigned char *eid, unsigned char byte5) {
     eid[i] = 0x00;
   }
   eid[5] = byte5;
-  eid[7] = 0x80;
+  eid[7] = 0xc0;  // high two bits 11 means UBoE; tests enable UBG explicitly when needed.
   eid[9] = 0x10;
   eid[12] = 0xdf;
   eid[13] = 0xdf;
@@ -132,6 +133,9 @@ int dcmiv2_get_eid_list_by_urma_dev_index(int npu_id, int urma_dev_index, void *
     // 非 PG EID，die_id 匹配 mesh_die_id
     unsigned char byte5 = (mesh_die_id == 0) ? 0x02 : 0x52;
     BuildDefaultEid(infos[0].eid.raw, byte5);
+    if (g_enable_ubg_eid) {
+      infos[0].eid.raw[7] = 0x80;  // high two bits 10 means UBG for issue302 UBG EID filtering.
+    }
     infos[0].eid_index = 0;
     count++;
   }
@@ -196,6 +200,10 @@ void DcmiStubSetSuperPodId(unsigned int id, int ret) {
 
 void DcmiStubSetEidCount(int count) {
   g_eid_count = count;
+}
+
+void DcmiStubSetEnableUbgEid(bool enable) {
+  g_enable_ubg_eid = enable;
 }
 
 // dlopen 包装：模拟 dlopen 失败

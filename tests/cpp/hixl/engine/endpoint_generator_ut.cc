@@ -76,7 +76,7 @@ void ExpectSingleUboeEndpoint(const std::vector<EndpointConfig> &endpoint_list, 
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolUboe);
   EXPECT_EQ(endpoint_list[0].comm_id, uboe_comm_id);
   EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
-  EXPECT_EQ(endpoint_list[0].net_instance_id, "default_superpod1_1");
+  EXPECT_EQ(endpoint_list[0].net_instance_id, "8");
 }
 
 void ExpectRoceHccsUboeEndpoints(const std::vector<EndpointConfig> &endpoint_list, const std::string &uboe_comm_id) {
@@ -498,7 +498,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesForA2And
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolUboe);
   EXPECT_EQ(endpoint_list[0].comm_id, "192.168.100.200");
   EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
-  EXPECT_EQ(endpoint_list[0].net_instance_id, "default_superpod1_1");
+  EXPECT_EQ(endpoint_list[0].net_instance_id, "8");
 
   (void)remove(script_path.c_str());
 }
@@ -561,7 +561,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAutoGeneratesBaseEndp
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolUboe);
   EXPECT_EQ(endpoint_list[0].comm_id, "192.168.100.200");
   EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
-  EXPECT_EQ(endpoint_list[0].net_instance_id, "default_superpod1_1");
+  EXPECT_EQ(endpoint_list[0].net_instance_id, "88");
 
   (void)remove(file_path.c_str());
   (void)remove(script_path.c_str());
@@ -636,7 +636,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsGeneratesUboeWhenLoca
   ASSERT_EQ(endpoint_list.size(), 1U);
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolUboe);
   EXPECT_EQ(endpoint_list[0].comm_id, "192.168.100.204");
-  EXPECT_EQ(endpoint_list[0].net_instance_id, "default_superpod1_1");
+  EXPECT_EQ(endpoint_list[0].net_instance_id, "8");
 
   (void)remove(file_path.c_str());
   (void)remove(script_path.c_str());
@@ -851,6 +851,35 @@ TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceUbParsesEidTest) {
   EXPECT_EQ(endpoint.loc.device.superDevId, 0U);
   EXPECT_EQ(endpoint.loc.device.superPodIdx, 0U);
   EXPECT_EQ(endpoint.loc.device.serverIdx, 0U);
+}
+
+TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceUbgParsesEidTest) {
+  EndpointConfig ep{};
+  ep.protocol = kProtocolUbg;
+  ep.comm_id = "0000000000ff0ac0000000000a140200";
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = 13;
+  ep.device_info.super_device_id = 14;
+  ep.device_info.super_pod_id = 15;
+
+  EndpointDesc endpoint{};
+  Status st = EndpointGenerator::ConvertToEndpointDesc(ep, endpoint, 6U);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(endpoint.protocol, COMM_PROTOCOL_UBG);
+  EXPECT_EQ(endpoint.commAddr.type, COMM_ADDR_TYPE_EID);
+  EXPECT_EQ(endpoint.loc.device.devPhyId, 13U);
+  EXPECT_EQ(endpoint.loc.device.superDevId, 14U);
+  EXPECT_EQ(endpoint.loc.device.superPodIdx, 15U);
+}
+
+TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceUbgRejectsInvalidEidTest) {
+  EndpointConfig ep{};
+  ep.protocol = kProtocolUbg;
+  ep.comm_id = "not-an-eid";
+  ep.placement = kPlacementDevice;
+
+  EndpointDesc endpoint{};
+  EXPECT_EQ(EndpointGenerator::ConvertToEndpointDesc(ep, endpoint, 6U), PARAM_INVALID);
 }
 
 TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceUbParsesMixedCaseEidTest) {

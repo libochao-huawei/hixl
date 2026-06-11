@@ -38,7 +38,8 @@ bool EndpointMatcher::IsUbProtocol(const std::string &protocol) {
 }
 
 bool EndpointMatcher::IsDirectProtocol(const std::string &protocol) {
-  return protocol == kProtocolRoce || protocol == kProtocolHccs || protocol == kProtocolUboe;
+  return protocol == kProtocolRoce || protocol == kProtocolHccs || protocol == kProtocolUboe ||
+         protocol == kProtocolUbg;
 }
 
 const char *EndpointMatcher::HandlerTypeToString(HandlerCreateArgs::HandlerType type) {
@@ -68,12 +69,13 @@ void EndpointMatcher::BuildMatchMap(const std::vector<EndpointConfig> &endpoints
   }
 }
 
-bool EndpointMatcher::MustUseRoce(const std::vector<EndpointConfig> &local,
-                                  const std::vector<EndpointConfig> &remote) {
+bool EndpointMatcher::IsForceRoceOnly() {
   const char *env = std::getenv("HCCL_INTRA_ROCE_ENABLE");
-  if (env != nullptr && std::string(env) == "1") {
-    return true;
-  }
+  return env != nullptr && std::string(env) == "1";
+}
+
+bool EndpointMatcher::IsCrossSuperNode(const std::vector<EndpointConfig> &local,
+                                       const std::vector<EndpointConfig> &remote) {
   return local[0].net_instance_id != remote[0].net_instance_id;
 }
 
@@ -87,42 +89,17 @@ std::map<MatchKey, EndpointConfig>::const_iterator EndpointMatcher::FindMatching
   return map.end();
 }
 
-Status EndpointMatcher::TryMatchUboe(const std::vector<EndpointConfig> &local,
-                                     const std::vector<EndpointConfig> &remote,
-                                     std::vector<HandlerCreateArgs::EndpointPair> &pairs) {
-  auto *li = FindByProtocol(local, kProtocolUboe);
-  auto *ri = FindByProtocol(remote, kProtocolUboe);
+Status EndpointMatcher::MatchDirect(const std::vector<EndpointConfig> &local,
+                                    const std::vector<EndpointConfig> &remote,
+                                    const MatchEntry &entry,
+                                    std::vector<HandlerCreateArgs::EndpointPair> &pairs) {
+  auto *li = FindByProtocol(local, entry.protocol);
+  auto *ri = FindByProtocol(remote, entry.protocol);
   if (li != nullptr && ri != nullptr) {
-    pairs.push_back({*li, *ri, CommType::COMM_TYPE_UBOE});
+    pairs.push_back({*li, *ri, entry.comm_type});
     return SUCCESS;
   }
   return FAILED;
-}
-
-Status EndpointMatcher::TryMatchRoce(const std::vector<EndpointConfig> &local,
-                                     const std::vector<EndpointConfig> &remote,
-                                     std::vector<HandlerCreateArgs::EndpointPair> &pairs) {
-  auto *li = FindByProtocol(local, kProtocolRoce);
-  auto *ri = FindByProtocol(remote, kProtocolRoce);
-  if (li != nullptr && ri != nullptr) {
-    pairs.push_back({*li, *ri, CommType::COMM_TYPE_ROCE});
-    return SUCCESS;
-  }
-  HIXL_LOGE(PARAM_INVALID, "Failed to find matched ROCE endpoints");
-  return PARAM_INVALID;
-}
-
-Status EndpointMatcher::TryMatchHccs(const std::vector<EndpointConfig> &local,
-                                     const std::vector<EndpointConfig> &remote,
-                                     std::vector<HandlerCreateArgs::EndpointPair> &pairs) {
-  auto *li = FindByProtocol(local, kProtocolHccs);
-  auto *ri = FindByProtocol(remote, kProtocolHccs);
-  if (li != nullptr && ri != nullptr) {
-    pairs.push_back({*li, *ri, CommType::COMM_TYPE_HCCS});
-    return SUCCESS;
-  }
-  HIXL_LOGE(PARAM_INVALID, "Failed to find matched HCCS endpoints");
-  return PARAM_INVALID;
 }
 
 Status EndpointMatcher::TryMatchUb(const EndpointConfig &local,
@@ -147,42 +124,87 @@ Status EndpointMatcher::TryMatchUb(const EndpointConfig &local,
   return SUCCESS;
 }
 
-Status EndpointMatcher::MatchEndpoints(const std::vector<EndpointConfig> &local,
-                                       const std::vector<EndpointConfig> &remote,
-                                       std::vector<HandlerCreateArgs::EndpointPair> &matched_pairs,
-                                       HandlerCreateArgs::HandlerType &handler_type) {
-  if (TryMatchUboe(local, remote, matched_pairs) == SUCCESS) {
-    handler_type = HandlerCreateArgs::HandlerType::DIRECT;
-    return SUCCESS;
-  }
-  if (MustUseRoce(local, remote)) {
-    HIXL_CHK_STATUS_RET(TryMatchRoce(local, remote, matched_pairs));
-    handler_type = HandlerCreateArgs::HandlerType::DIRECT;
-    return SUCCESS;
-  }
+Status EndpointMatcher::TryMatchUbAll(const std::vector<EndpointConfig> &local,
+                                      const std::vector<EndpointConfig> &remote,
+                                      std::vector<HandlerCreateArgs::EndpointPair> &pairs) {
   std::map<CommType, bool> expected = {{CommType::COMM_TYPE_UB_D2D, false}, {CommType::COMM_TYPE_UB_H2D, false},
                                        {CommType::COMM_TYPE_UB_D2H, false}, {CommType::COMM_TYPE_UB_H2H, false}};
   uint32_t count = 0;
   std::map<MatchKey, EndpointConfig> peers;
   BuildMatchMap(remote, peers);
-  // 对local排序，dst_eid不为空的元素排在dst_eid为空的元素前面
   auto sorted_local = local;
   std::sort(sorted_local.begin(), sorted_local.end(),
             [](const EndpointConfig &a, const EndpointConfig &b) { return !a.dst_eid.empty() && b.dst_eid.empty(); });
   for (const auto &ep : sorted_local) {
-    HIXL_CHK_STATUS_RET(TryMatchUb(ep, peers, expected, count, matched_pairs));
+    HIXL_CHK_STATUS_RET(TryMatchUb(ep, peers, expected, count, pairs));
     if (count == kMaxUbCsClientNum) {
-      handler_type = HandlerCreateArgs::HandlerType::UB;
-      return SUCCESS;
+      break;
     }
   }
-  if (count > 0) {
-    handler_type = HandlerCreateArgs::HandlerType::UB;
-    return SUCCESS;
+  return count > 0 ? SUCCESS : FAILED;
+}
+
+EndpointMatcher::MatchScenario EndpointMatcher::DetermineScenario(bool cross_supernode) {
+  // 强制 RoCE 优先级最高；其余按跨/同超节点区分
+  if (IsForceRoceOnly()) {
+    return MatchScenario::kForceRoce;
   }
-  if (TryMatchHccs(local, remote, matched_pairs) == SUCCESS) {
-    handler_type = HandlerCreateArgs::HandlerType::DIRECT;
-    return SUCCESS;
+  return cross_supernode ? MatchScenario::kCrossSuperNode : MatchScenario::kSameSuperNode;
+}
+
+const std::vector<EndpointMatcher::MatchEntry> &EndpointMatcher::GetPriorityTable(MatchScenario scenario) {
+  // 归一化的协议优先级表：场景 -> 按优先级排列的协议列表
+  static const std::map<MatchScenario, std::vector<MatchEntry>> kPriorityTable = {
+      {MatchScenario::kForceRoce, {{kProtocolRoce, CommType::COMM_TYPE_ROCE}}},
+      {MatchScenario::kCrossSuperNode,
+       {{kProtocolUboe, CommType::COMM_TYPE_UBOE},
+        {kProtocolUbg, CommType::COMM_TYPE_UBG},
+        {kProtocolRoce, CommType::COMM_TYPE_ROCE}}},
+      {MatchScenario::kSameSuperNode,
+       {{kProtocolUbCtp, CommType::COMM_TYPE_UB_D2D},
+        {kProtocolHccs, CommType::COMM_TYPE_HCCS},
+        {kProtocolUboe, CommType::COMM_TYPE_UBOE},
+        {kProtocolUbg, CommType::COMM_TYPE_UBG},
+        {kProtocolRoce, CommType::COMM_TYPE_ROCE}}}};
+  return kPriorityTable.at(scenario);
+}
+
+std::vector<EndpointMatcher::MatchEntry> EndpointMatcher::BuildPriority(ProtocolLock protocol_lock,
+                                                                        bool cross_supernode) {
+  const MatchScenario scenario = DetermineScenario(cross_supernode);
+  std::vector<MatchEntry> priority = GetPriorityTable(scenario);
+  // 显式锁协议(UBG/UBoE)只是在跨/同超节点优先级表里筛出对应协议，无需单独场景；强制 RoCE 不参与筛选
+  if (scenario != MatchScenario::kForceRoce && protocol_lock != ProtocolLock::kNone) {
+    const char *locked = (protocol_lock == ProtocolLock::kUbg) ? kProtocolUbg : kProtocolUboe;
+    priority.erase(std::remove_if(priority.begin(), priority.end(),
+                                  [locked](const MatchEntry &e) { return std::string(e.protocol) != locked; }),
+                   priority.end());
+  }
+  return priority;
+}
+
+Status EndpointMatcher::MatchEndpoints(const std::vector<EndpointConfig> &local,
+                                       const std::vector<EndpointConfig> &remote,
+                                       std::vector<HandlerCreateArgs::EndpointPair> &matched_pairs,
+                                       HandlerCreateArgs::HandlerType &handler_type,
+                                       ProtocolLock protocol_lock) {
+  matched_pairs.clear();
+  HIXL_CHK_BOOL_RET_STATUS(!local.empty() && !remote.empty(), PARAM_INVALID,
+                           "EndpointMatcher::MatchEndpoints got empty endpoint list");
+
+  const auto priority = BuildPriority(protocol_lock, IsCrossSuperNode(local, remote));
+  for (const auto &entry : priority) {
+    if (IsUbProtocol(entry.protocol)) {
+      if (TryMatchUbAll(local, remote, matched_pairs) == SUCCESS) {
+        handler_type = HandlerCreateArgs::HandlerType::UB;
+        return SUCCESS;
+      }
+      continue;
+    }
+    if (MatchDirect(local, remote, entry, matched_pairs) == SUCCESS) {
+      handler_type = HandlerCreateArgs::HandlerType::DIRECT;
+      return SUCCESS;
+    }
   }
   HIXL_LOGE(PARAM_INVALID, "Failed to find matched endpoints");
   return PARAM_INVALID;

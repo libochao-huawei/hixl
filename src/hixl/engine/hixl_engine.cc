@@ -8,8 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <algorithm>
 #include <string>
 
+#include "nlohmann/json.hpp"
 #include "hixl_engine.h"
 #include "engine/endpoint_generator.h"
 #include "common/hixl_checker.h"
@@ -21,6 +23,40 @@
 #include "acl/acl.h"
 
 namespace hixl {
+namespace {
+bool HasExplicitEndpointList(const std::string &local_comm_res) {
+  if (local_comm_res.empty()) {
+    return false;
+  }
+  try {
+    const nlohmann::json config = nlohmann::json::parse(local_comm_res);
+    return config.contains("net_instance_id") && config["net_instance_id"].is_string() &&
+           config.contains("endpoint_list") && config["endpoint_list"].is_array() && !config["endpoint_list"].empty();
+  } catch (const nlohmann::json::exception &) {
+    return false;
+  }
+}
+
+ProtocolLock ParseProtocolLockFromOptions(const std::map<AscendString, AscendString> &options,
+                                          bool has_explicit_endpoint_list) {
+  if (has_explicit_endpoint_list) {
+    return ProtocolLock::kNone;
+  }
+  std::vector<std::string> protocol_desc;
+  if (ParseConfigProtocolDesc(options, protocol_desc) != SUCCESS) {
+    return ProtocolLock::kNone;
+  }
+  const bool has_ubg = std::find(protocol_desc.begin(), protocol_desc.end(), kUbgProtocolDesc) != protocol_desc.end();
+  const bool has_uboe = std::find(protocol_desc.begin(), protocol_desc.end(), kUboeProtocolDesc) != protocol_desc.end();
+  if (has_ubg && !has_uboe) {
+    return ProtocolLock::kUbg;
+  }
+  if (has_uboe && !has_ubg) {
+    return ProtocolLock::kUboe;
+  }
+  return ProtocolLock::kNone;
+}
+}  // namespace
 
 bool HixlEngine::IsInitialized() const {
   return is_initialized_.load(std::memory_order::memory_order_relaxed);
@@ -50,6 +86,7 @@ Status HixlEngine::Initialize(const std::map<AscendString, AscendString> &option
       options, local_engine_, local_comm_res, endpoint_list_);
 
   HIXL_CHK_STATUS_RET(ret, "[HixlEngine] Failed to build endpoint list from options");
+  protocol_lock_ = ParseProtocolLockFromOptions(options, HasExplicitEndpointList(local_comm_res));
 
   HIXL_CHK_STATUS_RET(ParseTrafficClass(options), "[HixlEngine] Failed to parse traffic class");
   HIXL_CHK_STATUS_RET(ParseServiceLevel(options), "[HixlEngine] Failed to parse service level");
@@ -115,6 +152,7 @@ Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in
   config.remote_engine = remote_engine.GetString();
   config.rdma_tc = rdma_traffic_class_;
   config.rdma_sl = rdma_service_level_;
+  config.protocol_lock = protocol_lock_;
   HIXL_CHK_STATUS_RET(client_manager_.CreateClient(config, client_ptr),
                       "[HixlEngine] Failed to create HixlClient, local_engine: %s, remote_engine: %s",
                       local_engine_.c_str(), remote_engine.GetString());
