@@ -543,6 +543,13 @@ Status HixlCSClient::BatchTransferHostAsync(bool is_get, uint32_t list_num, cons
         client_channel_handle_, flag_addr, tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes, hccl_ret);
     return FAILED;
   }
+  // 读falg结束后执行一次ChannelFenceOnThread，刷新cqe队列
+  hccl_ret = HcommProxy::ChannelFenceOnThread(static_cast<ThreadHandle>(0), client_channel_handle_);
+  if (hccl_ret != SUCCESS) {
+    HIXL_LOGE(FAILED, "[HixlClient] HcommChannelFenceOnThread failed, client_channel_handle_ is %lu, hccl_ret is %d.",
+              client_channel_handle_, hccl_ret);
+    return FAILED;
+  }
   auto *query_mem_handle = new (std::nothrow) CompleteHandleInfo();
   if (query_mem_handle == nullptr) {
     HIXL_LOGE(FAILED, "Memory allocate failed; unable to generate query handle.");
