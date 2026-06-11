@@ -825,7 +825,8 @@ Status HixlCSClient::LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handl
                                         const HixlOneSideOpParam &param,
                                         bool wait_notify) {
   const char *kernel_name = is_get ? kDeviceFuncGet : kDeviceFuncPut;
-  HIXL_LOGI("[HixlClient] LaunchDeviceKernel start. kernel=%s wait_notify=%d", kernel_name, wait_notify);
+  HIXL_LOGI("[HixlClient] LaunchDeviceKernel start. kernel=%s wait_notify=%d, list_num=%u", kernel_name, wait_notify,
+            param.list_num);
   void *func = GetDeviceKernelFunc(is_get);
   HIXL_CHECK_NOTNULL(func, "[HixlClient] func is null for %s", kernel_name);
   constexpr uint32_t block_dim = 1U;
