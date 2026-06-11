@@ -95,10 +95,10 @@ class FabricMemTransferService {
   void FreeDevConstOne();
 
   Status PrepareChannelTransfer(const std::string &remote_engine, std::shared_ptr<FabricMemChannel> &channel,
-                                FabricMemTransferContext &context);
+                                FabricMemTransferContext &context) const;
   Status IssueSyncCopy(const std::shared_ptr<FabricMemChannel> &channel, const AsyncSlot &slot,
                        const FabricMemTransferContext &context, std::vector<TransferOpDesc> &op_descs,
-                       TransferInvocation &invocation);
+                       TransferInvocation &invocation) const;
   Status WaitSyncStreams(const AsyncSlot &slot, const std::chrono::steady_clock::time_point &start,
                          uint64_t timeout_us) const;
   static void UnregisterSyncSlot(const std::shared_ptr<FabricMemChannel> &channel, const AsyncSlot &slot);
@@ -114,7 +114,7 @@ class FabricMemTransferService {
   Status CompleteAsyncTransferAndUpdateStats(uint64_t req_id, AsyncRecord &record, TransferStatus &status);
   static void FillPollInfo(const AsyncRecord &record, AsyncTransferPollInfo *info);
 
-  Status ResolveTransferAddrs(std::vector<TransferOpDesc> &op_descs, const FabricMemTransferContext &context);
+  Status ResolveTransferAddrs(std::vector<TransferOpDesc> &op_descs, const FabricMemTransferContext &context) const;
   static Status TransOpAddr(uintptr_t old_addr, size_t len,
                             const std::unordered_map<uintptr_t, VaInfo> &new_va_to_old_va, uintptr_t &new_addr);
   static Status ProcessCopyWithAsync(const AsyncSlot &slot, TransferOp operation,

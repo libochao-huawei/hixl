@@ -79,7 +79,7 @@ class FabricMemChannelManager {
   Status EnsureConnected(const AscendString &remote_engine, int32_t timeout_in_millis);
   Status GetChannel(const std::string &remote_engine, std::shared_ptr<FabricMemChannel> &channel) const;
   Status BuildTransferContext(const std::string &remote_engine, FabricMemStatistic *statistic,
-                              FabricMemTransferContext &context);
+                              FabricMemTransferContext &context) const;
   bool HasChannels() const;
   bool IsConnected(const std::string &remote_engine) const;
   Status StartKeepaliveMonitor();
@@ -94,8 +94,7 @@ class FabricMemChannelManager {
  private:
   Status FetchAndInstallRemote(const std::string &remote, int32_t timeout_in_millis, Status if_already_connected);
   Status CreateAndRegisterRemoteMemory(const std::vector<ShareHandleInfo> &share_handles, const std::string &remote);
-  Status DisconnectRemote(const AscendString &remote_engine, int32_t timeout_in_millis,
-                          bool from_auto_cleanup = false);
+  Status DisconnectRemote(const AscendString &remote_engine, int32_t timeout_in_millis, bool from_auto_cleanup = false);
   void AbortAndClearChannelRecords(const std::shared_ptr<FabricMemChannel> &channel);
   void RemoveChannelEntryLocked(const std::string &remote);
   void CleanupChannelsLocked();
