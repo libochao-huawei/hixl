@@ -165,9 +165,14 @@ void FabricMemChannelManager::AbortAndClearChannelRecords(const std::shared_ptr<
   // destroyed here; sync slots are only aborted so the owning transfer thread can release them.
   std::vector<AsyncSlot> async_slots;
   std::vector<uint64_t> req_ids;
+  // Mark disconnecting first so new transfers fail fast, then take submit_gate EXCLUSIVE to drain all
+  // in-flight submits: once acquired, no transfer is mid-submission and every transfer that did submit
+  // has already registered its slot/record below, so the abort here covers all outstanding streams
+  // before the caller unmaps the channel memory (abort-before-unmap).
+  channel->disconnecting.store(true, std::memory_order_release);
   {
+    std::unique_lock<std::shared_mutex> drain(channel->submit_gate);
     std::lock_guard<std::mutex> lock(channel->records_mutex);
-    channel->disconnecting = true;
     req_ids.reserve(channel->async_records.size());
     async_slots.reserve(channel->async_records.size());
     for (auto &record : channel->async_records) {

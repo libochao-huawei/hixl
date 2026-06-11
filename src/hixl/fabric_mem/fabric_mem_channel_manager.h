@@ -15,6 +15,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -35,11 +36,16 @@ struct FabricMemChannel {
   std::unique_ptr<FabricMemRemoteMemory> remote_memory;
   int32_t keepalive_fd{-1};
 
-  // records_mutex protects the in-flight transfer bookkeeping below. Copy submission, the authoritative
-  // disconnecting check, and disconnect's abort all run under this mutex so that aborting an in-flight
-  // transfer is mutually exclusive with submitting new work (abort-before-unmap safety). disconnecting
-  // is atomic so the transfer fast path can cheaply reject a disconnecting channel before doing the
-  // (lock-free) address resolution; the authoritative re-check still happens under records_mutex.
+  // submit_gate gates copy submission against disconnect. A transfer holds it SHARED while submitting
+  // copies to its own (private) slot streams, so concurrent transfers on the same channel run in
+  // parallel instead of serializing. Disconnect (AbortAndClearChannelRecords) holds it EXCLUSIVE: it
+  // waits for all in-flight submits to finish (by then their slots/records are already registered),
+  // aborts those streams, and only afterwards is the channel memory unmapped -- preserving
+  // abort-before-unmap safety.
+  std::shared_mutex submit_gate;
+  // records_mutex protects the bookkeeping containers below (brief mutations only). disconnecting is
+  // atomic so the transfer fast path can reject a disconnecting channel before doing any work; it is
+  // re-checked under submit_gate to close the race with a concurrent disconnect.
   std::mutex records_mutex;
   std::atomic<bool> disconnecting{false};
   std::unordered_map<uint64_t, AsyncRecord> async_records;
@@ -105,8 +111,9 @@ class FabricMemChannelManager {
   std::unordered_map<std::string, std::shared_ptr<FabricMemChannel>> channels_;
 
   // req_route_mutex_: protects req_2_channel_. It is a leaf lock: when held together with a channel's
-  // records_mutex the fixed order is records_mutex -> req_route_mutex_ (e.g. IssueAsyncCopyAndRegister
-  // calls AddReqRoute while holding records_mutex); the reverse order is forbidden.
+  // submit_gate the fixed order is submit_gate -> req_route_mutex_ (e.g. IssueAsyncCopyAndRegister calls
+  // AddReqRoute while holding submit_gate shared); the reverse order is forbidden. The per-channel lock
+  // order is always submit_gate -> records_mutex.
   mutable std::mutex req_route_mutex_;
   std::unordered_map<uint64_t, std::shared_ptr<FabricMemChannel>> req_2_channel_;
 
