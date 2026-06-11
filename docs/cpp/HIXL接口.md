@@ -101,31 +101,6 @@ Status Initialize(const AscendString &local_engine, const std::map<AscendString,
 
 如上表格中的环境变量请参考[《环境变量参考》](https://www.hiascend.com/document/redirect/CannCommunityEnvRef)，ranktable请参考[《HCCL集合通信库用户指南》](https://www.hiascend.com/document/redirect/CannCommunityHcclUg)。
 
-OPTION_LOCAL_COMM_RES配置为"1.3"版本的配置示例如下：
-- 最小配置（仅配置version字段，其他字段自动生成）：
-```json
-{
-    "version": "1.3"
-}
-```
-
-- 完整配置示例（手动指定通信资源信息）：
-```json
-{
-    "version": "1.3",
-    "net_instance_id": "superpod1_1",
-    "endpoint_list": [
-        {
-            "protocol": "roce",
-            "comm_id": "10.10.10.1",
-            "placement": "device"
-        }
-    ]
-}
-```
-
-> **说明：** 推荐使用最小配置方式，系统会自动生成本地通信资源信息。如需手动指定，endpoint_list中各字段的含义请参考[通信资源配置字段说明](#通信资源配置字段说明)。
-
 OPTION_GLOBAL_RESOURCE_CONFIG的配置示例和使用约束如下：
 
 对于Fabric Mem模式（仅Atlas A3 训练系列产品/Atlas A3 推理系列产品支持），该参数配置示例如下：
@@ -159,9 +134,9 @@ device侧网卡默认监听端口为16666，如果在多个进程使用同一个
 
 ```
 {
-    "channel_pool.max_channel": "10", //最大链路个数。取值范围：(0, 512]之间的整数，默认值：512
-    "channel_pool.high_waterline": "0.3", //链路回收的高水位阈值，取值范围：(0, 1)之间的小数，需要和channel_pool.low_waterline同时配置
-    "channel_pool.low_waterline": "0.1" //链路回收的低水位阈值，即回收后保留的链路数比例，取值范围：(0, 1)之间的小数，且需要小于高水位、与高水位同时配置
+    "channel_pool.max_channel": "10", //最大的链路个数。取值范围：(0, 512]之间的整数，默认值：512
+    "channel_pool.high_waterline": "0.3", //触发链路销毁的高水位，取值范围：（0，1）之间的小数，需要和channel_pool.low_waterline同时配置
+    "channel_pool.low_waterline": "0.1" //触发链路销毁的低水位，取值范围：（0，1）之间小数，并且小于高水位
 }
 ```
 
@@ -211,6 +186,7 @@ device侧网卡默认监听端口为16666，如果在多个进程使用同一个
 | 字段名                                | 数据类型  | 必选/可选 | 说明             | 支持值/填写规则                                                                                                                                                                                                                                                                         |
 | ---------------------------------- | ----- | ----- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | comm_resource_config.protocol_desc | 字符串数组 | 可选    | 配置通信协议以及通信设备位置 | 支持["uboe:device"]和["ubg:device"]，分别表示使用UBoE或UBG协议，通信设备在device。两者不能同时配置；同时配置时返回参数错误。当没有配置OPTION_LOCAL_COMM_RES或配置的OPTION_LOCAL_COMM_RES中endpoint_list为空时，会自动生成对应endpoint信息，否则显式endpoint_list优先，该配置项不起作用。显式配置uboe:device或ubg:device时，建链只匹配对应协议；若HCCL_INTRA_ROCE_ENABLE=1，则只匹配RoCE。 |
+
 
 **调用示例**
 
@@ -744,7 +720,7 @@ Status TransferSync(const AscendString &remote_engine,
   //初始化客户端和服务端engine，并完成链接
   Status transfer_status = client_engine.TransferAsync(remote_engine, operation, op_descs, optional_args, req);
   //req是TransferAsync()的输出值，使用这个请求句柄进行传输状态查询
-  Status query_status = client_engine.GetTransferStatus(req, status);
+  Status query_status = GetTransferStatus(req, status);
   //对传输状态进行检查，判断传输是否完成
   ...
 ```
@@ -762,51 +738,6 @@ Status TransferSync(const AscendString &remote_engine,
 - 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 - 在调用TransferAsync接口进行异步传输后，需要使用该接口查询对应请求状态，如果查询状态是COMPLETED，将释放相关资源。该场景下不支持再次查询。
 - 异步传输时，用户自行判断是否超时，如果用户判断任务超时，需要调用Disconnect接口销毁链路，清理相关资源。
-
-## GetTransferStatus
-
-**函数功能**
-
-获取所有异步内存传输的状态。
-
-**函数原型**
-
-```
-  Status GetTransferStatus(const GetTransferStatusArgs &args, std::vector<TransferResult> &results)
-```
-
-**参数说明**
-
-| 参数名称 | 输入/输出 | 取值说明 |
-| --- | --- | --- |
-| args | 输入 | 获取所有异步传输请求的状态参数 |
-| results | 输出 | 所有异步传输请求的状态 |
-
-**调用示例**
-
-```
-  //初始化客户端和服务端engine，并完成链接
-  Status transfer_status = client_engine.TransferAsync(remote_engine, operation, op_descs, optional_args, req);
-  //req是TransferAsync()的输出值，使用这个请求句柄进行传输状态查询
-  GetTransferStatusArgs args = { .max_query_count = 4, .skip_waiting = true };
-  std::vector<TransferResult> results;
-  Status query_status = client_engine.GetTransferStatus(args, results);
-  //对传输状态进行检查，判断传输是否完成
-  ...
-```
-
-**返回值**
-
-- SUCCESS：成功
-- UNSUPPORTED: Hixl初始化的options未配置LocalCommRes的version为1.3且未配置GlobalResourceConfig的comm_resource_config.protocol_desc包含uboe:device时，不支持通过该接口查询
-- 其他：失败
-
-**约束说明**
-
-- 调用该接口之前，需要先调用Connect接口完成与对端的建链。
-- 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
-- 在调用TransferAsync接口进行异步传输后，需要使用该接口查询所有请求状态，如果某请求状态是COMPLETED或FAILED，将释放相关资源。该场景下再次查询将不再返回该请求状态。
-- 异步传输时，用户自行判断是否超时，如果用户判断任务超时，建议调用Disconnect接口销毁链路，清理相关资源。
 
 ## SendNotify
 
@@ -845,6 +776,7 @@ Status TransferSync(const AscendString &remote_engine,
 
 - 调用该接口之前，需要先调用Connect接口完成与对端的建链。
 - 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
+- 该接口不支持Ascend 950PR/Ascend 950DT。
 - 每条链路中最多存在4096条Notify，需要确保远端Hixl及时调用GetNotifies接口消费Notify防止触发上限导致发送失败。
 
 ## GetNotifies
@@ -878,3 +810,4 @@ Status TransferSync(const AscendString &remote_engine,
 
 **约束说明**
 
+该接口不支持Ascend 950PR/Ascend 950DT。

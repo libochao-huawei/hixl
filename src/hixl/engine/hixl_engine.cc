@@ -107,8 +107,6 @@ Status HixlEngine::Initialize(const HixlOptions &options) {
   HIXL_CHK_STATUS_RET(ret, "[HixlEngine] Failed to build endpoint list from options");
   protocol_lock_ = ParseProtocolLockFromOptions(options, HasExplicitEndpointList(local_comm_res));
 
-  HIXL_CHK_STATUS_RET(ParseTrafficClass(options), "[HixlEngine] Failed to parse traffic class");
-  HIXL_CHK_STATUS_RET(ParseServiceLevel(options), "[HixlEngine] Failed to parse service level");
   HIXL_CHK_STATUS_RET(InitServer(),
                       "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
                       local_engine_.c_str(), local_comm_res.c_str());
