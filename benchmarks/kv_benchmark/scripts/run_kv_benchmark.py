@@ -109,6 +109,7 @@ def parse_args():
         help='Transport path (default: rdma on A2, fabric_mem on A3/A5; uboe, ub only available on A5)',
     )
     parser.add_argument('--base_port', type=int, default=19000)
+    parser.add_argument('--listen_port', type=int, default=26666, help='UB transport listen port base (each rank uses listen_port+rank)')
     parser.add_argument('--listen_host', default='127.0.0.1')
     parser.add_argument('--connect_host', default='127.0.0.1')
     parser.add_argument('--warmup', type=int, default=1)
@@ -196,6 +197,7 @@ def _kv_process_cmd(spec: KvProcessSpec) -> list[str]:
         f'--output_dir={args.output_dir}',
         f'--run_id={spec.run_id}',
         f'--base_port={args.base_port}',
+        f'--listen_port={args.listen_port}',
         f'--listen_host={args.listen_host}',
         f'--connect_host={args.connect_host}',
         f'--warmup={args.warmup}',
