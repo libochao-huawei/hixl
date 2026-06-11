@@ -73,7 +73,7 @@ Status FabricMemLocalMemory::ImportHostMemoryForRegister(const MemDesc &mem, acl
 }
 
 Status FabricMemLocalMemory::FindExistingHandleForOverlap(const MemDesc &mem, MemType type, MemHandle &mem_handle,
-                                                          bool &is_duplicate) {
+                                                          bool &is_duplicate) const {
   AddrInfo cur_info{};
   HIXL_CHK_STATUS_RET(BuildRegisteredAddrInfo(mem.addr, mem.len, type, cur_info),
                       "Invalid fabric mem registration range.");

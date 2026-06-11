@@ -69,7 +69,7 @@ class FabricMemStatistic {
   void UpdateCosts(const std::string &channel_id, uint64_t transfer_cost, uint64_t real_copy_cost, uint64_t total_bytes,
                    uint64_t op_desc_count);
   void UpdateCostsDirect(FabricMemTransferStatisticInfo &info, uint64_t transfer_cost, uint64_t real_copy_cost,
-                         uint64_t total_bytes, uint64_t op_desc_count);
+                         uint64_t total_bytes, uint64_t op_desc_count) const;
   std::shared_ptr<FabricMemTransferStatisticInfo> GetOrCreateStatisticInfo(const std::string &channel_id);
   FabricMemTransferStatisticSnapshot GetSnapshot(const std::string &channel_id) const;
   void Dump() const;
