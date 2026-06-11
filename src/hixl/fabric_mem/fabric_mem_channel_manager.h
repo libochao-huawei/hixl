@@ -35,11 +35,13 @@ struct FabricMemChannel {
   std::unique_ptr<FabricMemRemoteMemory> remote_memory;
   int32_t keepalive_fd{-1};
 
-  // records_mutex protects disconnecting and the in-flight transfer bookkeeping below. Copy issuing,
-  // the disconnecting check, and disconnect's abort all run under this mutex so that aborting an
-  // in-flight transfer is mutually exclusive with submitting new work (abort-before-unmap safety).
+  // records_mutex protects the in-flight transfer bookkeeping below. Copy submission, the authoritative
+  // disconnecting check, and disconnect's abort all run under this mutex so that aborting an in-flight
+  // transfer is mutually exclusive with submitting new work (abort-before-unmap safety). disconnecting
+  // is atomic so the transfer fast path can cheaply reject a disconnecting channel before doing the
+  // (lock-free) address resolution; the authoritative re-check still happens under records_mutex.
   std::mutex records_mutex;
-  bool disconnecting{false};
+  std::atomic<bool> disconnecting{false};
   std::unordered_map<uint64_t, AsyncRecord> async_records;
   std::vector<AsyncSlot> active_sync_slots;
 };

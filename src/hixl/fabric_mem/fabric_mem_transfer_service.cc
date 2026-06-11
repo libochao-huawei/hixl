@@ -161,10 +161,18 @@ void FabricMemTransferService::StopKeepaliveMonitor() {
 Status FabricMemTransferService::PrepareChannelTransfer(const std::string &remote_engine,
                                                         std::shared_ptr<FabricMemChannel> &channel,
                                                         FabricMemTransferContext &context) {
+  const auto t_begin = std::chrono::steady_clock::now();
   HIXL_CHK_STATUS_RET(channel_manager_.GetChannel(remote_engine, channel),
                       "Fabric mem remote engine:%s is not connected.", remote_engine.c_str());
+  const auto t_got_channel = std::chrono::steady_clock::now();
   HIXL_CHK_STATUS_RET(channel_manager_.BuildTransferContext(remote_engine, statistic_, context),
                       "Build fabric mem transfer context failed, remote:%s.", remote_engine.c_str());
+  // [perf] get_channel and build_ctx both take channels_mutex_; build_ctx also deep-copies the
+  // channel's remote VA map (va_segments entries), which TransOpAddr later scans per op.
+  HIXL_EVENT("[FabricMem][perf] Prepare get_channel:%lu us, build_ctx:%lu us, va_segments:%zu, channel:%s.",
+             GetDurationUs(t_begin, t_got_channel),
+             GetDurationUs(t_got_channel, std::chrono::steady_clock::now()), context.remote_va_to_old_va.size(),
+             remote_engine.c_str());
   return SUCCESS;
 }
 
@@ -182,15 +190,27 @@ void FabricMemTransferService::UnregisterSyncSlot(const std::shared_ptr<FabricMe
 Status FabricMemTransferService::IssueSyncCopy(const std::shared_ptr<FabricMemChannel> &channel, const AsyncSlot &slot,
                                                const FabricMemTransferContext &context,
                                                std::vector<TransferOpDesc> &op_descs, TransferInvocation &invocation) {
-  // Issue copies under records_mutex with the sync slot registered, so that a concurrent disconnect
-  // (which also holds records_mutex) aborts these streams before unmapping the channel's memory.
+  TemporaryRtContext ctx_guard(slot.ctx);
+  // Cheap lock-free reject so a disconnecting channel fails fast with NOT_CONNECTED before any work;
+  // the authoritative re-check under records_mutex below closes the race with a concurrent disconnect.
+  HIXL_CHK_BOOL_RET_STATUS(!channel->disconnecting.load(std::memory_order_acquire), NOT_CONNECTED,
+                           "Fabric mem channel:%s is disconnecting.", context.channel_id.c_str());
+  // Resolve addresses BEFORE taking records_mutex: it only reads the context's private VA snapshot and
+  // the local op addrs (plus an aclrtPointerGetAttributes query), touching no shared channel state, so
+  // concurrent transfers on the same channel must not serialize on it. Only the stream submission below
+  // needs records_mutex, so a concurrent disconnect (which also holds it) aborts these streams before
+  // unmapping the channel's memory.
+  HIXL_CHK_STATUS_RET(ResolveTransferAddrs(op_descs, context, invocation), "Resolve fabric mem addresses failed.");
+  const auto lock_wait_start = std::chrono::steady_clock::now();
   std::lock_guard<std::mutex> lock(channel->records_mutex);
+  // [perf] time spent blocked on records_mutex: concurrent transfers on the same channel serialize here.
+  invocation.lock_wait_us = GetDurationUs(lock_wait_start, std::chrono::steady_clock::now());
   HIXL_CHK_BOOL_RET_STATUS(!channel->disconnecting, NOT_CONNECTED,
                            "Fabric mem channel:%s is disconnecting.", context.channel_id.c_str());
   channel->active_sync_slots.emplace_back(slot);
-  TemporaryRtContext ctx_guard(slot.ctx);
-  HIXL_CHK_STATUS_RET(DoTransfer(slot, context, invocation.operation, op_descs, invocation.real_copy_start),
-                      "Fabric mem copy failed.");
+  invocation.real_copy_start = std::chrono::steady_clock::now();
+  HIXL_CHK_STATUS_RET(ProcessCopyWithAsync(slot, invocation.operation, op_descs), "Fabric mem copy failed.");
+  invocation.submit_us = GetDurationUs(invocation.real_copy_start, std::chrono::steady_clock::now());
   return SUCCESS;
 }
 
@@ -218,8 +238,10 @@ Status FabricMemTransferService::TransferSync(const std::string &remote_engine, 
   std::shared_ptr<FabricMemChannel> channel;
   FabricMemTransferContext context;
   HIXL_CHK_STATUS_RET(PrepareChannelTransfer(remote_engine, channel, context), "Prepare fabric mem transfer failed.");
+  const auto t_prepared = std::chrono::steady_clock::now();
   AsyncSlot slot;
   HIXL_CHK_STATUS_RET(slot_pool_.AcquireWithTimeout(slot, timeout_us), "Failed to acquire fabric mem transfer slot.");
+  const auto t_acquired = std::chrono::steady_clock::now();
   HIXL_DISMISSABLE_GUARD(fail_guard, ([this, &channel, &slot]() {
                            UnregisterSyncSlot(channel, slot);
                            slot_pool_.Release(slot, true);
@@ -230,16 +252,25 @@ Status FabricMemTransferService::TransferSync(const std::string &remote_engine, 
   invocation.real_copy_start = std::chrono::steady_clock::now();
   HIXL_CHK_STATUS_RET(IssueSyncCopy(channel, slot, context, op_descs_copy, invocation),
                       "Fabric mem sync copy failed.");
+  const auto t_issued = std::chrono::steady_clock::now();
   HIXL_CHK_STATUS_RET(WaitSyncStreams(slot, start, timeout_us), "Wait fabric mem sync streams failed.");
-  const auto real_copy_cost = GetDurationUs(invocation.real_copy_start, std::chrono::steady_clock::now());
+  const auto t_waited = std::chrono::steady_clock::now();
+  const auto real_copy_cost = GetDurationUs(invocation.real_copy_start, t_waited);
   HIXL_DISMISS_GUARD(fail_guard);
   UnregisterSyncSlot(channel, slot);
   slot_pool_.Release(slot, false);
   const auto transfer_cost = GetDurationUs(start, std::chrono::steady_clock::now());
   UpdateStats(context, transfer_cost, real_copy_cost, GetTransferBytes(op_descs_copy),
               static_cast<uint64_t>(op_descs_copy.size()));
-  HIXL_LOGI("Fabric mem transfer cost:%lu us, real copy:%lu us, channel:%s.", transfer_cost, real_copy_cost,
-            context.channel_id.c_str());
+  // [perf] phase breakdown: prepare=channel lookup+ctx build(VA copy); acquire=slot pool;
+  // issue=records_mutex wait + copy submission (lock_wait/ptr_attr/addr_xlate/submit); wait=stream sync.
+  HIXL_EVENT(
+      "[FabricMem][perf] TransferSync ops:%zu prepare:%lu acquire:%lu issue:%lu "
+      "(lock_wait:%lu ptr_attr:%lu addr_xlate:%lu submit:%lu) wait:%lu total:%lu us, real_copy:%lu us, channel:%s.",
+      op_descs_copy.size(), GetDurationUs(start, t_prepared), GetDurationUs(t_prepared, t_acquired),
+      GetDurationUs(t_acquired, t_issued), invocation.lock_wait_us, invocation.ptr_attr_us, invocation.addr_xlate_us,
+      invocation.submit_us, GetDurationUs(t_issued, t_waited), transfer_cost, real_copy_cost,
+      context.channel_id.c_str());
   return SUCCESS;
 }
 
@@ -247,17 +278,25 @@ Status FabricMemTransferService::IssueAsyncCopyAndRegister(const std::shared_ptr
                                                            AsyncSlot &slot, const FabricMemTransferContext &context,
                                                            std::vector<TransferOpDesc> &op_descs,
                                                            TransferInvocation &invocation) {
-  // Issue copies and register the record (and request route) under records_mutex so the record's slot
-  // is visible to a concurrent disconnect, which aborts it before unmapping the channel's memory.
+  TemporaryRtContext ctx_guard(slot.ctx);
+  // Cheap lock-free reject so a disconnecting channel fails fast with NOT_CONNECTED before any work;
+  // the authoritative re-check under records_mutex below closes the race with a concurrent disconnect.
+  HIXL_CHK_BOOL_RET_STATUS(!channel->disconnecting.load(std::memory_order_acquire), NOT_CONNECTED,
+                           "Fabric mem channel:%s is disconnecting.", context.channel_id.c_str());
+  // Resolve addresses BEFORE taking records_mutex (see IssueSyncCopy); only the stream submission and
+  // the record/route registration need records_mutex so the slot is visible to a concurrent disconnect,
+  // which aborts it before unmapping the channel's memory.
+  HIXL_CHK_STATUS_RET(ResolveTransferAddrs(op_descs, context, invocation), "Resolve fabric mem addresses failed.");
+  const auto lock_wait_start = std::chrono::steady_clock::now();
   std::lock_guard<std::mutex> lock(channel->records_mutex);
+  // [perf] time spent blocked on records_mutex: concurrent transfers on the same channel serialize here.
+  invocation.lock_wait_us = GetDurationUs(lock_wait_start, std::chrono::steady_clock::now());
   HIXL_CHK_BOOL_RET_STATUS(!channel->disconnecting, NOT_CONNECTED,
                            "Fabric mem channel:%s is disconnecting.", context.channel_id.c_str());
-  {
-    TemporaryRtContext ctx_guard(slot.ctx);
-    HIXL_CHK_STATUS_RET(DoTransfer(slot, context, invocation.operation, op_descs, invocation.real_copy_start),
-                        "Fabric mem async copy failed.");
-    HIXL_CHK_STATUS_RET(AppendHostFlagCopies(slot), "Failed to append fabric mem host flag copies.");
-  }
+  invocation.real_copy_start = std::chrono::steady_clock::now();
+  HIXL_CHK_STATUS_RET(ProcessCopyWithAsync(slot, invocation.operation, op_descs), "Fabric mem async copy failed.");
+  HIXL_CHK_STATUS_RET(AppendHostFlagCopies(slot), "Failed to append fabric mem host flag copies.");
+  invocation.submit_us = GetDurationUs(invocation.real_copy_start, std::chrono::steady_clock::now());
   AsyncRecord record;
   record.slot = std::move(slot);
   record.transfer_start = invocation.transfer_start;
@@ -477,12 +516,17 @@ void FabricMemTransferService::CleanupAsyncTransfer(TransferReq req) {
   channel_manager_.RemoveReqRoute(req_id);
 }
 
-Status FabricMemTransferService::DoTransfer(const AsyncSlot &slot, const FabricMemTransferContext &context,
-                                            TransferOp operation, std::vector<TransferOpDesc> &op_descs,
-                                            std::chrono::steady_clock::time_point &start) {
+Status FabricMemTransferService::ResolveTransferAddrs(std::vector<TransferOpDesc> &op_descs,
+                                                      const FabricMemTransferContext &context,
+                                                      TransferInvocation &invocation) {
+  // Pure address resolution, intentionally lock-free: reads only the context's private VA snapshot and
+  // the caller-owned op_descs (and queries the local pointer's location), so it can run outside
+  // records_mutex without racing a concurrent disconnect/unmap.
+  const auto attr_begin = std::chrono::steady_clock::now();
   bool need_trans_local_addr = false;
   HIXL_CHK_STATUS_RET(NeedTransLocalAddr(op_descs, need_trans_local_addr),
                       "Check local fabric mem address type failed.");
+  const auto xlate_begin = std::chrono::steady_clock::now();
   for (auto &op : op_descs) {
     uintptr_t new_remote_addr = 0;
     HIXL_CHK_STATUS_RET(TransOpAddr(op.remote_addr, op.len, context.remote_va_to_old_va, new_remote_addr),
@@ -494,8 +538,10 @@ Status FabricMemTransferService::DoTransfer(const AsyncSlot &slot, const FabricM
     HIXL_CHK_STATUS_RET(local_memory_->TranslateLocalHostOpAddrs(op_descs),
                         "Local host fabric mem address translation failed.");
   }
-  start = std::chrono::steady_clock::now();
-  HIXL_CHK_STATUS_RET(ProcessCopyWithAsync(slot, operation, op_descs), "Fabric mem async copy failed.");
+  // [perf] ptr_attr = aclrtPointerGetAttributes (local-location probe); addr_xlate = remote/local
+  // address lookup (scans context.remote_va_to_old_va per op). Both now run outside records_mutex.
+  invocation.ptr_attr_us = GetDurationUs(attr_begin, xlate_begin);
+  invocation.addr_xlate_us = GetDurationUs(xlate_begin, std::chrono::steady_clock::now());
   return SUCCESS;
 }
 

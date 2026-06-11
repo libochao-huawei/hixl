@@ -89,6 +89,11 @@ class FabricMemTransferService {
     uint64_t prof_start_time{0U};
     std::chrono::steady_clock::time_point transfer_start;
     std::chrono::steady_clock::time_point real_copy_start;
+    // Perf diagnostics (us), captured while issuing so the caller can log them outside records_mutex.
+    uint64_t lock_wait_us{0U};
+    uint64_t ptr_attr_us{0U};
+    uint64_t addr_xlate_us{0U};
+    uint64_t submit_us{0U};
   };
 
   Status InitDevConstOne();
@@ -116,8 +121,8 @@ class FabricMemTransferService {
   Status CompleteAsyncTransferAndUpdateStats(uint64_t req_id, AsyncRecord &record, TransferStatus &status);
   static void FillPollInfo(const AsyncRecord &record, AsyncTransferPollInfo *info);
 
-  Status DoTransfer(const AsyncSlot &slot, const FabricMemTransferContext &context, TransferOp operation,
-                    std::vector<TransferOpDesc> &op_descs, std::chrono::steady_clock::time_point &start);
+  Status ResolveTransferAddrs(std::vector<TransferOpDesc> &op_descs, const FabricMemTransferContext &context,
+                              TransferInvocation &invocation);
   static Status TransOpAddr(uintptr_t old_addr, size_t len,
                             const std::unordered_map<uintptr_t, VaInfo> &new_va_to_old_va, uintptr_t &new_addr);
   static Status ProcessCopyWithAsync(const AsyncSlot &slot, TransferOp operation,
