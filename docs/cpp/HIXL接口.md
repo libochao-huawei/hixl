@@ -31,7 +31,7 @@ Hixl()
 **约束说明**
 
 无
-## ~Hixl()
+## \~Hixl\(\)
 
 **函数功能**
 
@@ -73,7 +73,7 @@ Status Initialize(const AscendString &local_engine, const std::map<AscendString,
 | 参数名 | 可选/必选 | 描述 |
 | --- | --- | --- |
 | OPTION_ENABLE_USE_FABRIC_MEM | 可选 | 字符串取值"EnableUseFabricMem"。<br>- 0：不开启Fabric Mem模式 <br>- 1：开启Fabric Mem模式 <br><br>此option适用于需要使用HCCS进行D2RH、RH2D传输的场景。<br><br>说明：集群场景下，该参数在所有节点需要配置为相同的值。不支持该参数与"OPTION_BUFFER_POOL"同时配置。仅支持Atlas A3 训练系列产品/Atlas A3 推理系列产品。 |
-| OPTION_BUFFER_POOL | 可选 | 字符串取值"BufferPool"。<br>在需要使用中转buffer进行传输的场景下:<br>- RDMA注册Host内存大小受限时。<br>- 多个小块内存传输(例如128K)需要使用中转传输提升性能时。<br>可使用此option配置中转内存池的大小，取值格式为"$BUFFER_NUM:$BUFFER_SIZE"，系统默认会配置为"4:8(单位MB)"，可以通过配置为"0:0"来关闭中转内存池，在有并发的场景下建议增大$BUFFER_NUM个数, 另外，所有使用的地方需要配置相同的值。不支持该参数与"OPTION_ENABLE_USE_FABRIC_MEM"同时配置。<br>说明：不配置该参数时，存在如下约束。<br><br>Atlas A2 训练系列产品/Atlas A2 推理系列产品：仅支持Atlas 800I A2 推理服务器、A200I A2 Box 异构组件。该场景下Server采用HCCS传输协议时，仅支持D2D。 |
+| OPTION_BUFFER_POOL | 可选 | 字符串取值"BufferPool"。<br>在需要使用中转buffer进行传输的场景下:<br>- RDMA注册Host内存大小受限时。<br>- 多个小块内存传输(例如128K)需要使用中转传输提升性能时。<br>可使用此option配置中转内存池的大小，取值格式为"\$BUFFER_NUM:\$BUFFER_SIZE"，系统默认会配置为"4:8(单位MB)"，可以通过配置为"0:0"来关闭中转内存池，在有并发的场景下建议增大\$BUFFER_NUM个数, 另外，所有使用的地方需要配置相同的值。不支持该参数与"OPTION_ENABLE_USE_FABRIC_MEM"同时配置。<br>说明：不配置该参数时，存在如下约束。<br><br>Atlas A2 训练系列产品/Atlas A2 推理系列产品：仅支持Atlas 800I A2 推理服务器、A200I A2 Box 异构组件。该场景下Server采用HCCS传输协议时，仅支持D2D。 |
 | OPTION_RDMA_TRAFFIC_CLASS | 可选 | 字符串取值"RdmaTrafficClass"。<br>用于配置RDMA网卡的traffic class。和环境变量HCCL_RDMA_TC功能，如同时配置，当前option优先级更高；未同时配置，以配置的一方为准。<br>取值范围为[0,255]，且需要配置为4的整数倍，默认值为132。 |
 | OPTION_RDMA_SERVICE_LEVEL | 可选 | 字符串取值"RdmaServiceLevel"。<br>用于配置RDMA网卡的service level。和环境变量HCCL_RDMA_SL功能相同，如同时配置，当前option优先级更高；未同时配置，以配置的一方为准。<br>取值范围为[0, 7]，默认值为4。 |
 | OPTION_GLOBAL_RESOURCE_CONFIG | 可选 | 字符串取值"GlobalResourceConfig"。用于开启并配置全局资源配置。该参数配置示例和使用约束请参考表格下方 |
@@ -182,7 +182,7 @@ device侧网卡默认监听端口为16666，如果在多个进程使用同一个
 **返回值**
 
 - SUCCESS：成功
-- PARAM_INVALID：参数错误
+- PARAM\_INVALID：参数错误
 - 其他：失败
 **异常处理**
 
@@ -246,7 +246,7 @@ Status RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle)
 **返回值**
 
 - SUCCESS：成功
-- PARAM_INVALID：参数错误
+- PARAM\_INVALID：参数错误
 - 其他：失败
 **异常处理**
 
@@ -261,7 +261,7 @@ Status RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle)
 - 注册Host内存需使用"aclrtMallocHost"进行申请，该接口申请的内存地址自动对齐。该约束支持的型号如下：
 <br>- Atlas A2 训练系列产品/Atlas A2 推理系列产品
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
-- 注册Device内存使用"aclrtMalloc"进行申请，如通过HCCS传输，则内存分配规则需配置为ACL_MEM_MALLOC_HUGE_ONLY。
+- 注册Device内存使用"aclrtMalloc"进行申请，如通过HCCS传输，则内存分配规则需配置为ACL\_MEM\_MALLOC\_HUGE\_ONLY。
 - 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
 - Ascend 950PR/Ascend 950DT场景下，使用host RoCE网卡当前不支持注册"aclrtMallocHost"申请出来的内存，可使用malloc等方式。
 ## DeregisterMem
@@ -287,7 +287,7 @@ Status DeregisterMem(MemHandle mem_handle)
 **返回值**
 
 - SUCCESS：成功
-- PARAM_INVALID：参数错误
+- PARAM\_INVALID：参数错误
 - 其他：失败。
 **异常处理**
 
@@ -320,9 +320,9 @@ Status Connect(const AscendString &remote_engine, int32_t timeout_in_millis = 10
 **返回值**
 
 - SUCCESS：成功
-- PARAM_INVALID：参数错误
+- PARAM\_INVALID：参数错误
 - TIMEOUT：建链超时
-- ALREADY_CONNECTED：重复建链
+- ALREADY\_CONNECTED：重复建链
 - 其他：失败
 **异常处理**
 
@@ -369,8 +369,8 @@ Status Disconnect(const AscendString &remote_engine, int32_t timeout_in_millis =
 **返回值**
 
 - SUCCESS：成功
-- PARAM_INVALID：参数错误
-- NOT_CONNECTED：没有与对端创建链接
+- PARAM\_INVALID：参数错误
+- NOT\_CONNECTED：没有与对端创建链接
 - 其他：失败
 **约束说明**
 
@@ -400,7 +400,7 @@ Status ConnectAsync(const AscendString &remote_engine, int32_t timeout_in_millis
 **返回值**
 
 - SUCCESS：成功
-- RESOURCE_EXHAUSTED：任务队列已满
+- RESOURCE\_EXHAUSTED：任务队列已满
 - 其他：失败
 **异常处理**
 
@@ -435,7 +435,7 @@ Status DisconnectAsync(const AscendString &remote_engine, int32_t timeout_in_mil
 **返回值**
 
 - SUCCESS：成功
-- RESOURCE_EXHAUSTED：任务队列已满
+- RESOURCE\_EXHAUSTED：任务队列已满
 - 其他：失败
 **约束说明**
 
@@ -529,10 +529,10 @@ Status TransferSync(const AscendString &remote_engine,
 **返回值**
 
 - SUCCESS：成功
-- PARAM_INVALID：参数错误
-- NOT_CONNECTED：没有与对端创建链接
+- PARAM\_INVALID：参数错误
+- NOT\_CONNECTED：没有与对端创建链接
 - TIMEOUT：传输超时
-- RESOURCE_EXHAUSTED：资源耗尽
+- RESOURCE\_EXHAUSTED：资源耗尽
 - 其他：失败
 **约束说明**
 
@@ -540,13 +540,13 @@ Status TransferSync(const AscendString &remote_engine,
 <br>- Atlas A2 训练系列产品/Atlas A2 推理系列产品
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
 - 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
-- 系统默认开启中转内存池，在开启中转内存池情况下，op_desc中本地内存和远端内存有一个未注册就会判断为需要走中转传输模式，且没有注册过的内存判断为Host内存，用户需保证地址合法。该约束支持的型号如下：
+- 系统默认开启中转内存池，在开启中转内存池情况下，op\_desc中本地内存和远端内存有一个未注册就会判断为需要走中转传输模式，且没有注册过的内存判断为Host内存，用户需保证地址合法。该约束支持的型号如下：
 <br>- Atlas A2 训练系列产品/Atlas A2 推理系列产品
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
-- 在中转传输模式下，所有op_desc的传输类型需要相同，举例：所有的op_desc都是本地Host内存往远端Host内存写。该约束支持的型号如下：
+- 在中转传输模式下，所有op\_desc的传输类型需要相同，举例：所有的op\_desc都是本地Host内存往远端Host内存写。该约束支持的型号如下：
 <br>- Atlas A2 训练系列产品/Atlas A2 推理系列产品
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
-- 在Fabric Mem传输模式下, 所有op_descs的传输类型需要相同，系统会根据第一个op_desc的内存类型判定传输方向。该约束支持的型号如下：
+- 在Fabric Mem传输模式下, 所有op\_descs的传输类型需要相同，系统会根据第一个op\_desc的内存类型判定传输方向。该约束支持的型号如下：
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
 
 ## TransferAsync
@@ -584,8 +584,8 @@ Status TransferSync(const AscendString &remote_engine,
 **返回值**
 
 - SUCCESS：成功
-- NOT_CONNECTED：没有与对端创建链接
-- RESOURCE_EXHAUSTED：资源耗尽
+- NOT\_CONNECTED：没有与对端创建链接
+- RESOURCE\_EXHAUSTED：资源耗尽
 - 其他：失败
 **约束说明**
 
@@ -594,7 +594,7 @@ Status TransferSync(const AscendString &remote_engine,
   <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
 - 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用"aclrtGetCurrentContext"获取context，并在新线程调用"aclrtSetCurrentContext"设置context。
 - 当前异步传输仅支持直传，暂不支持中转传输，默认直传。
-- 在Fabric Mem传输模式下, 所有op_descs的传输类型需要相同，系统会根据第一个op_desc的内存类型判定传输方向。该约束支持的型号如下：
+- 在Fabric Mem传输模式下, 所有op\_descs的传输类型需要相同，系统会根据第一个op\_desc的内存类型判定传输方向。该约束支持的型号如下：
 <br>- Atlas A3 训练系列产品/Atlas A3 推理系列产品
 
 ## GetTransferStatus
@@ -629,8 +629,8 @@ Status TransferSync(const AscendString &remote_engine,
 **返回值**
 
 - SUCCESS：成功
-- PARAM_INVALID：参数错误
-- NOT_CONNECTED：没有与对端创建链接
+- PARAM\_INVALID：参数错误
+- NOT\_CONNECTED：没有与对端创建链接
 - 其他：失败
 **约束说明**
 
