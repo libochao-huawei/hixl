@@ -417,7 +417,7 @@ std::string BuildProtocolDescKey(const std::string &protocol, const std::string 
 
 bool IsSupportedProtocolDesc(const std::string &protocol, const std::string &placement) {
   static const std::set<std::string> kSupportedProtocols = {kProtocolRoce, kProtocolHccs, kProtocolUbCtp,
-                                                            kProtocolUbTp, kProtocolUboe};
+                                                            kProtocolUbTp, kProtocolUboe, kProtocolUbg};
   static const std::set<std::string> kSupportedPlacements = {kPlacementHost, kPlacementDevice};
   return kSupportedProtocols.find(protocol) != kSupportedProtocols.end() &&
          kSupportedPlacements.find(placement) != kSupportedPlacements.end();
@@ -626,7 +626,6 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options,
                             "[AutoGenEndpointList] GenerateLocalCommRes failed");
         endpoint_list = std::move(local_comm_res.endpoint_list);
       }
-    }
     }
     std::vector<EndpointConfig> protocol_desc_endpoints;
     HIXL_CHK_STATUS_RET(GenEndpointFromProtocolDesc(options, protocol_desc_endpoints),
