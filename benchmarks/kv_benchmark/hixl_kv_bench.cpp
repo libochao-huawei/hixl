@@ -116,6 +116,7 @@ struct KvBenchConfig {
   std::string listen_host = "127.0.0.1";
   std::string connect_host = "127.0.0.1";
   std::uint32_t base_port = kDefaultBasePort;
+  std::uint32_t listen_port = 26666U;
   std::uint32_t warmup = kDefaultWarmup;
   std::uint32_t repeat = kDefaultRepeat;
   std::uint32_t sync_timeout_sec = kDefaultSyncTimeoutSec;
@@ -308,6 +309,7 @@ KvBenchConfig ParseConfig(const std::vector<std::string> &argv) {
   cfg.num_processes = ParseU32(args, "--num_processes", cfg.num_processes);
   cfg.device_id = static_cast<std::int32_t>(ParseU32(args, "--device_id", static_cast<std::uint32_t>(cfg.device_id)));
   cfg.base_port = ParseU32(args, "--base_port", cfg.base_port);
+  cfg.listen_port = ParseU32(args, "--listen_port", cfg.listen_port);
   cfg.warmup = ParseU32(args, "--warmup", cfg.warmup);
   cfg.repeat = ParseU32(args, "--repeat", cfg.repeat);
   cfg.sync_timeout_sec = ParseU32(args, "--sync_timeout_sec", cfg.sync_timeout_sec);
@@ -359,6 +361,8 @@ std::map<AscendString, AscendString> BuildInitializeOptions(const KvBenchConfig 
   }
   if (cfg.transport == kTransportUb) {
     options[AscendString(hixl::OPTION_LOCAL_COMM_RES)] = AscendString("{\"version\":\"1.3\"}");
+    options[AscendString(hixl::OPTION_GLOBAL_RESOURCE_CONFIG)] =
+        AscendString("{\"comm_resource_config.listen_port\":" + std::to_string(cfg.listen_port + cfg.rank) + "}");
   }
   return options;
 }
