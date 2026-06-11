@@ -49,6 +49,11 @@ inline bool IsHostRegisterMappedProtocol(CommProtocol protocol) {
   return protocol == COMM_PROTOCOL_UBOE || protocol == COMM_PROTOCOL_UBG;
 }
 
+constexpr const char *kQosName = "comm_resource_config.qos";
+constexpr uint8_t kQosDefault = 0U;
+constexpr uint8_t kQosMin = 0U;
+constexpr uint8_t kQosMax = 7U;
+
 struct AddrInfo {
   uintptr_t start_addr{0};
   uintptr_t end_addr{0};

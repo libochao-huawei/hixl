@@ -12,8 +12,8 @@
 #include "common/hixl_checker.h"
 
 namespace hixl {
-Status CommEngine::Initialize(const std::map<AscendString, AscendString> &options) {
-  return adxl_inner_engine_.Initialize(options);
+Status CommEngine::Initialize(const HixlOptions &options) {
+  return adxl_inner_engine_.Initialize(options.RawOptions());
 }
 
 void CommEngine::Finalize() {
@@ -76,6 +76,12 @@ Status CommEngine::GetTransferStatus(const TransferReq &req, TransferStatus &sta
   auto ret = adxl_inner_engine_.GetTransferStatus(req, adxl_status);
   status = static_cast<hixl::TransferStatus>(adxl_status);
   return ret;
+}
+
+Status CommEngine::GetTransferStatus(const GetTransferStatusArgs &args, std::vector<TransferResult> &results) {
+  (void)args;
+  (void)results;
+  return UNSUPPORTED;
 }
 
 Status CommEngine::SendNotify(const AscendString &remote_engine, const NotifyDesc &notify, int32_t timeout_in_millis) {

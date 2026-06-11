@@ -13,10 +13,11 @@
 
 #include <atomic>
 #include <cstdint>
+#include <map>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
-#include <map>
 #include "cs/hixl_cs.h"
 #include "common/hixl_inner_types.h"
 #include "common/ctrl_msg.h"
@@ -30,6 +31,9 @@ struct ClientConfig {
   uint8_t rdma_tc;
   uint8_t rdma_sl;
   ProtocolLock protocol_lock{ProtocolLock::kNone};
+  uint32_t timeout_ms;
+  std::optional<uint32_t> local_listen_port;
+  std::optional<uint8_t> qos;
 };
 
 class HixlClient {
@@ -42,8 +46,11 @@ class HixlClient {
   HixlClient(const std::string &server_ip, uint32_t server_port, const ClientConfig &config)
       : server_ip_(server_ip),
         server_port_(server_port),
+        remote_engine_(config.remote_engine),
         rdma_tc_(config.rdma_tc),
         rdma_sl_(config.rdma_sl),
+        local_listen_port_(config.local_listen_port),
+        qos_(config.qos),
         protocol_lock_(config.protocol_lock) {}
   ~HixlClient() = default;
 
@@ -57,9 +64,10 @@ class HixlClient {
   /**
    * @brief client初始化
    * @param [in] local_endpoint_list 客户端本地 endpoint_list
+   * @param [in] timeout_ms          超时时间（ms）
    * @return 操作结果状态码
    */
-  Status Initialize(const std::vector<EndpointConfig> &local_endpoint_list);
+  Status Initialize(const std::vector<EndpointConfig> &local_endpoint_list, uint32_t timeout_ms);
 
   /**
    * @brief 建链
@@ -90,7 +98,8 @@ class HixlClient {
    * @param [out] req             请求的handle，用于查询请求状态
    * @return 操作结果状态码
    */
-  Status TransferAsync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation, TransferReq &req);
+  Status TransferAsync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
+                       const TransferArgs &optional_args, TransferReq &req);
 
   /**
    * @brief 查询异步传输状态
@@ -100,24 +109,45 @@ class HixlClient {
    */
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status);
 
+  bool HasTransferReq(const TransferReq &req);
+
+  void ClearTransferReqs();
+
+  void RemoveTransferReq(const TransferReq &req);
+
+  Status SendNotify(const NotifyDesc &notify, int32_t timeout_ms);
+
+  Status CheckAlive();
+
+  const std::string &GetRemoteEngine() const;
+
  private:
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
-  Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list) const;
+  Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list, uint32_t timeout_ms) const;
   void WaitBatchCsSyncInflightDrain();
+  Status RecvNotifyAck(int32_t fd, int32_t timeout_ms) const;
+  void CloseCtrlSocketLocked();
 
   std::string server_ip_;
   uint32_t server_port_;
+  std::string remote_engine_;
   uint8_t rdma_tc_{kRdmaTrafficClass};
   uint8_t rdma_sl_{kRdmaServiceLevel};
   ProtocolLock protocol_lock_{ProtocolLock::kNone};
+  std::optional<uint32_t> local_listen_port_;
   bool is_connected_{false};  // true为已建链；false未建链
   bool is_finalized_{false};
   bool finalize_pending_{
       false};  // Finalize 置位后拒绝新 TransferSync；在析构 CS client 前等待为 0（与 TransferSync 内 fetch_add 配对）
   std::atomic<int> batch_cs_sync_inflight_{0};
+  int32_t ctrl_socket_{-1};
   std::unique_ptr<IClientHandler> client_handler_;
+  std::mutex ctrl_socket_mutex_;
   std::mutex status_mutex_;  // 保护 is_connected_、is_finalized_、finalize_pending_；TransferSync 与 Finalize 在此与
                              // inflight 配对
+  std::mutex req_map_mutex_;
+  std::map<TransferReq, TransferInfo> req_map_;
+  std::optional<uint8_t> qos_;
 };
 
 }  // namespace hixl

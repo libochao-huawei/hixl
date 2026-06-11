@@ -26,13 +26,15 @@ set(HIXL_TEST_FILES
         engine/hixl_server_unittest.cpp
         engine/hixl_client_unittest.cc
         engine/hixl_utils_unittest.cc
+        engine/hixl_options_unittest.cc
         engine/hixl_engine_unittest.cc
+        engine/hixl_api_unittest.cc
+        engine/test_hixl_api.cc
         engine/endpoint_generator_ut.cc
         engine/hixl_profiling_unittest.cc
         engine/hixl_engine_uboe_unittest.cc
         engine/hixl_engine_ubg_unittest.cc
         engine/local_comm_res_ut.cc
-        fabric_mem/fabric_mem_unittest.cc
         ../ops/hixl_kernel/hixl_kernel_basic_unittest.cc
 )
 
@@ -63,6 +65,7 @@ file(GLOB ADXL_SRC_LIST
 
 set(HIXL_STUB_SRC_FILES
         "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/ascend_string_stub.cc"
+        "${HIXL_CODE_DIR}/tests/depends/llm_datadist/src/data_cache_engine_test_helper.cc"
 )
 
 add_executable(hixl_test
@@ -80,6 +83,7 @@ target_compile_options(hixl_test PRIVATE
 
 target_compile_definitions(hixl_test PRIVATE
         HIXL_TEST_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+        HIXL_SKIP_DATA_CACHE_ENGINE_TEST_CONTEXT
         )
 
 target_include_directories(hixl_test PRIVATE
@@ -130,6 +134,8 @@ target_link_libraries(hixl_test
 set_target_properties(hixl_test PROPERTIES
         BUILD_RPATH "${CMAKE_BINARY_DIR}/tests/depends/dcmi"
 )
+
+add_subdirectory(fabric_mem)
 
 include(CTest)
 enable_testing()

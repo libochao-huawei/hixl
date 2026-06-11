@@ -16,6 +16,9 @@
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
 #include "depends/ascendcl/src/ascendcl_stub.h"
+#define private public
+#include "utils/cache_access_table.h"
+#undef private
 #include "utils/task_batcher.h"
 #include "acl/acl.h"
 #include "llm_datadist/llm_engine_types.h"
@@ -23,7 +26,7 @@
 namespace llm {
 class DataCacheEngineTest : public ::testing::Test {
  public:
-  DataCacheEngineTest() : transfer_engine_(0) {};
+  DataCacheEngineTest() : transfer_engine_(0){};
 
  protected:
   void SetUp() override {
@@ -164,6 +167,74 @@ TEST_F(DataCacheEngineTest, CacheOps) {
   EXPECT_EQ(cache_engine_.CheckCapacity(262144), ge::SUCCESS);
   EXPECT_EQ(cache_engine_.Allocate(cache_desc, {}, cache_2), ge::SUCCESS);
   EXPECT_EQ(cache_engine_.Deallocate(cache_2.cache_id), ge::SUCCESS);
+  cache_engine_.Finalize();
+}
+
+TEST_F(DataCacheEngineTest, RemoveCacheIndices_PrefixKey) {
+  std::map<ge::AscendString, ge::AscendString> options;
+  options[llm::LLM_OPTION_MEM_POOL_CONFIG] = "{\"memory_size\": 262144}";
+  EXPECT_EQ(cache_engine_.Initialize(options), ge::SUCCESS);
+
+  CacheDesc cache_desc{};
+  cache_desc.num_tensors = 4;
+  cache_desc.placement = 0;
+  cache_desc.shape = {4, 4096};
+  cache_desc.data_type = ge::DT_INT32;
+  // cache_mem_type defaults to CACHE, so num_blocks == 0
+
+  // Prepare host buffers and fill per_device_tensor_addrs (required by Register)
+  size_t num_elements = 1;
+  for (auto dim : cache_desc.shape) {
+    num_elements *= dim;
+  }
+  std::vector<std::vector<int32_t>> host_buffers(cache_desc.num_tensors, std::vector<int32_t>(num_elements));
+  Cache cache{};
+  cache.per_device_tensor_addrs.resize(1);
+  for (auto &host_buffer : host_buffers) {
+    cache.per_device_tensor_addrs[0].emplace_back(reinterpret_cast<uintptr_t>(&host_buffer[0]));
+  }
+
+  std::vector<CacheKey> cache_keys;
+  // Create a prefix cache key: prefix_id != UINT64_MAX
+  CacheKey prefix_key{};
+  prefix_key.prefix_id = 100;
+  prefix_key.model_id = 1;
+  prefix_key.req_id = UINT64_MAX;  // not used for prefix keys
+  cache_keys.emplace_back(prefix_key);
+
+  // Register cache entry with prefix key
+  // This should populate:
+  // 1. prefix_key_to_id_ (because is_prefix = true)
+  // 2. cache_id_and_batch_id_to_cache_key_ (because data_cache_key.first = 100 != UINT64_MAX)
+  // 3. cache_id_to_tensor_indices_
+  EXPECT_EQ(cache_engine_.Register(cache_desc, cache_keys, cache), ge::SUCCESS);
+
+  // Verify prefix key lookup works
+  CacheEntry cache_entry;
+  DataCacheKey data_cache_key = std::make_pair(prefix_key.prefix_id, prefix_key.model_id);
+  EXPECT_TRUE(cache_manager_.GetCacheEntry(data_cache_key, true, cache_entry));
+  EXPECT_EQ(cache_entry.cache_addrs.size(), cache_desc.num_tensors);
+
+  // Verify batch index lookup works
+  DataCacheKey retrieved_key;
+  EXPECT_TRUE(cache_manager_.GetCacheKey(std::make_pair(cache.cache_id, 0UL), retrieved_key));
+  EXPECT_EQ(retrieved_key.first, prefix_key.prefix_id);
+  EXPECT_EQ(retrieved_key.second, prefix_key.model_id);
+
+  // Unregister cache entry - this calls RemoveCacheIndices
+  // which should clean up prefix_key_to_id_, cache_id_and_batch_id_to_cache_key_,
+  // and cache_id_to_tensor_indices_
+  EXPECT_EQ(cache_engine_.Unregister(cache.cache_id), ge::SUCCESS);
+
+  // Verify prefix key lookup no longer works (stale mapping cleaned up)
+  EXPECT_FALSE(cache_manager_.GetCacheEntry(data_cache_key, true, cache_entry));
+
+  // Verify batch index lookup no longer works (stale mapping cleaned up)
+  EXPECT_FALSE(cache_manager_.GetCacheKey(std::make_pair(cache.cache_id, 0UL), retrieved_key));
+
+  // Verify cache entry no longer exists
+  EXPECT_FALSE(cache_manager_.GetCacheEntry(cache.cache_id, cache_entry));
+
   cache_engine_.Finalize();
 }
 
@@ -329,6 +400,11 @@ TEST_F(DataCacheEngineTest, InitializeMemoryPool_Failed) {
     EXPECT_EQ(llm_mem_pool.Initialize((void *)0x1000000000, config.page_mem_size_total_threshold),
               ge::LLM_PARAM_INVALID);
   }
+  // SIZE_MAX (2^64 - 1): memory_size >> page_shift 截断为 uint32_t 后为 UINT32_MAX，
+  // ScalableAllocator 内部 1 + UINT32_MAX 回绕为 0，导致 span_layer_capacity_ = 0。
+  // 修复后在 ParseMemoryPoolConfig 阶段校验 pool_size >> page_shift < UINT32_MAX，直接拒绝。
+  options[llm::LLM_OPTION_MEM_POOL_CONFIG] = ("{\"memory_size\": " + std::to_string(SIZE_MAX) + "}").c_str();
+  EXPECT_EQ(cache_engine.Initialize(options), ge::LLM_PARAM_INVALID);
 }
 
 TEST_F(DataCacheEngineTest, PullCache_D2H_C2C) {
@@ -1735,5 +1811,49 @@ TEST_F(DataCacheEngineTest, ConvertHcclErrorCode) {
   ASSERT_EQ(HcclUtils::ConvertHcclErrorCode(HCCL_E_PARA), ge::LLM_PARAM_INVALID);
   ASSERT_EQ(HcclUtils::ConvertHcclErrorCode(HCCL_E_TIMEOUT), ge::LLM_TIMEOUT);
   ASSERT_EQ(HcclUtils::ConvertHcclErrorCode(HCCL_E_INTERNAL, ge::LLM_PARAM_INVALID), ge::LLM_PARAM_INVALID);
+}
+
+namespace {
+struct TestCacheTableHeader {
+  uint64_t version_num;
+  uint64_t num_caches;
+  uint64_t num_cache_indices;
+};
+
+struct TestCacheSummary {
+  int64_t cache_id;
+  uint64_t num_blocks;
+  uint64_t batch_size;
+  uint64_t tensor_size;
+  uint64_t stride;
+  uint64_t placement;
+  uint64_t num_tensors;
+  bool remote_accessible;
+  uint32_t cache_mem_type;
+  uint64_t tensor_addresses[0];
+};
+}  // namespace
+
+TEST_F(DataCacheEngineTest, LoadFromBufferOverflowNumTensors) {
+  llm::CacheAccessTable cache_table;
+  std::vector<uint8_t> buffer(1024, 0);
+  auto *header = reinterpret_cast<TestCacheTableHeader *>(buffer.data());
+  header->version_num = 1;
+  header->num_caches = 1;
+  header->num_cache_indices = 0;
+  auto *summary = reinterpret_cast<TestCacheSummary *>(buffer.data() + sizeof(TestCacheTableHeader));
+  summary->cache_id = 1;
+  summary->num_tensors = UINT64_MAX / sizeof(uint64_t) + 1;
+  EXPECT_EQ(cache_table.LoadFromBuffer(buffer.data(), buffer.size()), ge::LLM_PARAM_INVALID);
+}
+
+TEST_F(DataCacheEngineTest, LoadFromBufferOverflowNumCacheIndices) {
+  llm::CacheAccessTable cache_table;
+  std::vector<uint8_t> buffer(1024, 0);
+  auto *header = reinterpret_cast<TestCacheTableHeader *>(buffer.data());
+  header->version_num = 1;
+  header->num_caches = 0;
+  header->num_cache_indices = UINT64_MAX;
+  EXPECT_EQ(cache_table.LoadFromBuffer(buffer.data(), buffer.size()), ge::LLM_PARAM_INVALID);
 }
 }  // namespace llm

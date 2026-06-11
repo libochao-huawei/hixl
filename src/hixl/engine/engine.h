@@ -12,6 +12,7 @@
 #define HIXL_SRC_HIXL_ENGINE_ENGINE_H_
 
 #include "hixl/hixl_types.h"
+#include "hixl_options.h"
 
 namespace hixl {
 using CallbackProcessor = std::function<Status(int32_t fd, const char *msg, uint64_t msg_len, bool &keep_fd)>;
@@ -22,7 +23,7 @@ class Engine {
 
   virtual ~Engine() = default;
 
-  virtual Status Initialize(const std::map<AscendString, AscendString> &options) = 0;
+  virtual Status Initialize(const HixlOptions &options) = 0;
 
   virtual void Finalize() = 0;
 
@@ -46,6 +47,8 @@ class Engine {
                                TransferReq &req) = 0;
 
   virtual Status GetTransferStatus(const TransferReq &req, TransferStatus &status) = 0;
+
+  virtual Status GetTransferStatus(const GetTransferStatusArgs &args, std::vector<TransferResult> &results) = 0;
 
   virtual Status SendNotify(const AscendString &remote_engine, const NotifyDesc &notify,
                             int32_t timeout_in_millis = 1000) = 0;

@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <limits>
 #include "engine/hixl_server.h"
 #include "hixl/hixl_types.h"
 #include "common/hixl_inner_types.h"
@@ -18,7 +19,7 @@ static constexpr uint32_t kMemAddr1 = 0x1000;
 static constexpr uint32_t kMemAddr2 = 0x1080;  // Overlaps
 static constexpr uint32_t kMemAddr3 = 0x1100;  // No overlap
 static constexpr uint32_t kMemLen = 0x100;
-static constexpr uint32_t kPort = 16000;
+static constexpr uint32_t kPort = 26390;
 
 class HixlServerTest : public ::testing::Test {
  protected:
@@ -165,6 +166,16 @@ TEST_F(HixlServerTest, NormalInitRegisterDeregisterFinalize) {
   EXPECT_EQ(server_.RegisterMem(mem_, MemType::MEM_DEVICE, handle), SUCCESS);
   EXPECT_NE(handle, nullptr);
   EXPECT_EQ(server_.DeregisterMem(handle), SUCCESS);
+  EXPECT_EQ(server_.Finalize(), SUCCESS);
+}
+
+TEST_F(HixlServerTest, RegisterMemAddrLenOverflow) {
+  EXPECT_EQ(server_.Initialize(ip_, port_, default_eps), SUCCESS);
+  MemDesc mem_overflow{};
+  mem_overflow.addr = std::numeric_limits<uintptr_t>::max() - 0x100;
+  mem_overflow.len = 0x200;
+  MemHandle handle = nullptr;
+  EXPECT_EQ(server_.RegisterMem(mem_overflow, MemType::MEM_DEVICE, handle), PARAM_INVALID);
   EXPECT_EQ(server_.Finalize(), SUCCESS);
 }
 }  // namespace hixl

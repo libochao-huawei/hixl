@@ -35,8 +35,9 @@ bash build.sh --build-type=Debug --asan    # Debug 构建并开启 AddressSaniti
 bash build.sh --examples                   # 同时编译示例和 benchmark
 
 # 测试
-bash tests/run_test.sh                     # 执行全部 C++ 和 Python 测试
-bash tests/run_test.sh -t cpp              # 仅执行 C++ 测试
+bash tests/run_test.sh                     # 并行执行全部 C++ suite，成功后再跑 Python
+bash tests/run_test.sh -t cpp              # 仅并行执行 C++（llm_datadist + adxl + hixl + fabric_mem）
+bash tests/run_test.sh -s hixl             # 仅执行指定 C++ suite（llm_datadist / adxl / hixl / fabric_mem）
 bash tests/run_test.sh -t py               # 仅执行 Python 测试
 bash tests/run_test.sh --cov               # 按覆盖率模式构建并运行测试
 
@@ -54,10 +55,11 @@ pre-commit run --files <changed-files>     # 只检查受影响文件
 ## 代码风格与测试要求
 
 - **C++**：遵循 `.clang-format`（基于 Google 风格），2 空格缩进、120 列限制、附着式大括号、`SortIncludes: false`。类型用 `PascalCase`，函数用 `camelCase`。
+- **C++ 复杂度**：单函数不超过 50 行；嵌套深度（if/for/while/switch/try 及宏展开块）不超过 4，超出时提取 helper 或 early return。
 - **Python**：使用 `ruff-check` 和 `ruff-format`，模块和测试文件用 `snake_case`。
 - 测试文件命名：C++ 以 `_unittest.cc` 或 `_ut.cc` 结尾，Python 以 `test_*.py` 命名。
 - 行为变更必须补齐或更新测试。
-- C++ 用例按模块放置，例如 `tests/cpp/hixl/engine/`、`tests/cpp/llm_datadist/`。
+- C++ 用例按 suite 放置：`tests/cpp/llm_datadist/`、`tests/cpp/adxl/`、`tests/cpp/hixl/`（含 `fabric_mem/`）；端口规划见 `tests/cpp/TEST_PORTS.md`。
 - Python 用例放在 `tests/python/test_*.py`。
 
 ## 提交前检查与提交规范

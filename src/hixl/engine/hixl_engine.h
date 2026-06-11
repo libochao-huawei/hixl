@@ -13,7 +13,10 @@
 
 #include <mutex>
 #include <map>
+#include <optional>
+#include <unordered_set>
 #include "engine.h"
+#include "hixl_options.h"
 #include "client_manager.h"
 #include "hixl_server.h"
 #include "hixl/hixl_types.h"
@@ -47,7 +50,7 @@ class HixlEngine : public hixl::Engine {
    * @param [in] options 初始化所需的选项
    * @return 成功:SUCCESS, 失败:其它.
    */
-  Status Initialize(const std::map<AscendString, AscendString> &options) override;
+  Status Initialize(const HixlOptions &options) override;
 
   /**
    * @brief 注册内存
@@ -119,6 +122,13 @@ class HixlEngine : public hixl::Engine {
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status) override;
 
   /**
+   * @brief 获取全部请求状态
+   * @param [out] statuses 传输状态
+   * @return 成功:SUCCESS, 失败:其它.
+   */
+  Status GetTransferStatus(const GetTransferStatusArgs &args, std::vector<TransferResult> &results) override;
+
+  /**
    * @brief Client向Server发送Notify信息
    * @param [in] remote_engine 远端Hixl的唯一标识
    * @param [in] notify 要发送的Notify内容
@@ -143,9 +153,12 @@ class HixlEngine : public hixl::Engine {
   void Finalize() override;
 
  private:
+  static const std::unordered_set<std::string> kSupportedOptions;
   Status InitServer();
-  Status ParseTrafficClass(const std::map<AscendString, AscendString> &options);
-  Status ParseServiceLevel(const std::map<AscendString, AscendString> &options);
+  Status AutoConnect(const AscendString &remote_engine, int32_t timeout_in_millis);
+  Status AutoDisconnect(const AscendString &remote_engine, int32_t timeout_in_millis);
+  void BuildClientConfig(const AscendString &remote_engine, ClientConfig &config, std::vector<MemInfo> &mem_info_list,
+                         int32_t timeout_in_millis);
   std::mutex mutex_;
 
   std::atomic<bool> is_initialized_;
@@ -157,7 +170,10 @@ class HixlEngine : public hixl::Engine {
 
   uint8_t rdma_traffic_class_{kRdmaTrafficClass};
   uint8_t rdma_service_level_{kRdmaServiceLevel};
-  std::map<uint64_t, TransferInfo> req_map_;
+  std::optional<uint32_t> local_listen_port_;
+
+  std::atomic<bool> auto_connect_{false};
+  std::optional<uint8_t> qos_;
 };
 }  // namespace hixl
 

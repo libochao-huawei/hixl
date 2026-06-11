@@ -26,15 +26,25 @@ struct MatchKey {
   std::string placement;
 
   bool operator<(const MatchKey &other) const {
-    if (dst_eid != other.dst_eid) return dst_eid < other.dst_eid;
-    if (plane != other.plane) return plane < other.plane;
+    if (dst_eid != other.dst_eid) {
+      return dst_eid < other.dst_eid;
+    }
+    if (plane != other.plane) {
+      return plane < other.plane;
+    }
     return placement < other.placement;
   }
 
   bool Matches(const MatchKey &query) const {
-    if (!dst_eid.empty() && !query.dst_eid.empty() && (dst_eid != query.dst_eid)) return false;
-    if (plane != query.plane) return false;
-    if (placement != query.placement) return false;
+    if (!dst_eid.empty() && !query.dst_eid.empty() && (dst_eid != query.dst_eid)) {
+      return false;
+    }
+    if (plane != query.plane) {
+      return false;
+    }
+    if (placement != query.placement) {
+      return false;
+    }
     return true;
   }
 };
@@ -69,11 +79,10 @@ class EndpointMatcher {
     CommType comm_type;
   };
 
-  // 选链场景，每个场景对应一张固定的协议优先级表
   enum class MatchScenario {
-    kForceRoce,       // HCCL_INTRA_ROCE_ENABLE=1，强制只匹配 RoCE
-    kCrossSuperNode,  // 跨超节点
-    kSameSuperNode    // 超节点内
+    kForceRoce,
+    kCrossSuperNode,
+    kSameSuperNode
   };
 
   static bool IsForceRoceOnly();

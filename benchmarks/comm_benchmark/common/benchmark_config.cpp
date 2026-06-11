@@ -29,6 +29,7 @@ using hixl::AscendString;
 using hixl::OPTION_BUFFER_POOL;
 using hixl::OPTION_ENABLE_USE_FABRIC_MEM;
 using hixl::OPTION_GLOBAL_RESOURCE_CONFIG;
+using hixl::OPTION_LOCAL_COMM_RES;
 
 namespace hixl_benchmark {
 
@@ -623,9 +624,9 @@ void BenchmarkConfigParser::PrintUsage(FILE *out) {
           "  --role|-r            target|initiator|client|server\n"
           "  --benchmark_group    result grouping name (default default)\n"
           "  --soc_variant        auto|a2|a3|a5 — HCCS rules & SOC class (default auto: ACL SOC probe; a5 forbids HCCS)\n"
-          "  --transport          hccs|rdma|fabric_mem|uboe|ubg "
-          "(hccs: D2D everywhere; extra H2rD|rD2H on A3-class SOC only; fabric_mem adds EnableUseFabricMem=1; "
-          "uboe/ubg add GlobalResourceConfig with uboe:device/ubg:device, only on A5)\n"
+           "  --transport          hccs|rdma|fabric_mem|uboe|ubg "
+           "(hccs: D2D everywhere; extra H2rD|rD2H on A3-class SOC only; fabric_mem adds EnableUseFabricMem=1; "
+           "uboe/ubg add GlobalResourceConfig with uboe:device/ubg:device, only on A5)\n"
           "  --initiator_memory   host|device (default device) — initiator-side buffer\n"
           "  --target_memory      host|device (default device) — target-side buffer\n"
           "  --op_type            read|write|mix (alias of --transfer_op)\n"
