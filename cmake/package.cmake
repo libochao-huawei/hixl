@@ -144,5 +144,5 @@ install(FILES
 
 # ============= CPack =============
 if (NOT ENABLE_COV AND NOT ENABLE_UT)
-    set_cann_cpack_config(hixl ENABLE_DEVICE ${ENABLE_DEVICE} SHARE_INFO_NAME hixl)
+    set_cann_cpack_config(hixl ENABLE_DEVICE ${ENABLE_DEVICE} SHARE_INFO_NAME hixl PACKAGE_TYPE ${PACKAGE_TYPE})
 endif()
