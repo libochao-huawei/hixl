@@ -39,4 +39,3 @@ log/
 compile_commands.json
 .clangd
 
-docs/design/
