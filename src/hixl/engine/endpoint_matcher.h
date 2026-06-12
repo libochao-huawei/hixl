@@ -109,6 +109,9 @@ class EndpointMatcher {
                            const std::map<MatchKey, EndpointConfig> &peers,
                            std::map<CommType, bool> &expected, uint32_t &count,
                            std::vector<HandlerCreateArgs::EndpointPair> &pairs);
+
+  static void LogMatchedEndpoints(const std::vector<HandlerCreateArgs::EndpointPair> &pairs,
+                                  HandlerCreateArgs::HandlerType handler_type);
 };
 }  // namespace hixl
 
