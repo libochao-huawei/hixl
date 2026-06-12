@@ -627,11 +627,13 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options,
         endpoint_list = std::move(local_comm_res.endpoint_list);
       }
     }
-    std::vector<EndpointConfig> protocol_desc_endpoints;
-    HIXL_CHK_STATUS_RET(GenEndpointFromProtocolDesc(options, protocol_desc_endpoints),
-                        "GenEndpointFromProtocolDesc failed");
-    endpoint_list.insert(endpoint_list.end(), protocol_desc_endpoints.begin(), protocol_desc_endpoints.end());
-    HIXL_LOGI("[AutoGenEndpointList] kA5 generated %zu endpoints", endpoint_list.size());
+    if (endpoint_list.empty()) {
+      std::vector<EndpointConfig> protocol_desc_endpoints;
+      HIXL_CHK_STATUS_RET(GenEndpointFromProtocolDesc(options, protocol_desc_endpoints),
+                          "GenEndpointFromProtocolDesc failed");
+      endpoint_list = std::move(protocol_desc_endpoints);
+    }
+    HIXL_LOGI("[AutoGenEndpointList] kV5 generated %zu endpoints", endpoint_list.size());
   } else if (soc_type == SocType::kV2 || soc_type == SocType::kV3) {
     int32_t device_id = 0;
     HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
