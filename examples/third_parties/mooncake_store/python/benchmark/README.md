@@ -2,7 +2,7 @@
 
 ## 功能概述
 
-`benchmark_bandwidth.py` 是一个用于测试不同 block 大小下的数据传输带宽的 benchmark 工具。它支持多种传输模式，可以帮助分析 Hixl 与 Mooncake Store 集成的性能表现。
+`benchmark/benchmark_bandwidth.py` 是一个用于测试不同 block 大小下的数据传输带宽的 benchmark 工具。它支持多种传输模式，可以帮助分析 Hixl 与 Mooncake Store 集成的性能表现。
 
 ## 传输模式
 
@@ -37,7 +37,7 @@ mooncake_master \
 使用 `run.sh` 脚本运行 benchmark：
 
 ```bash
-bash run.sh benchmark_bandwidth.py [参数]
+bash run.sh benchmark/benchmark_bandwidth.py [参数]
 ```
 
 ## 参数说明
@@ -60,16 +60,16 @@ bash run.sh benchmark_bandwidth.py [参数]
 ### 分布式参数
 
 - `--config`: （可选）YAML 配置文件路径
-- `--rank`: （可选）当前进程的 rank，默认为 device_id // 2
-- `--world_size`: （可选）分布式集群的设备数
-- `--distributed`: （可选）启用分布式模式
+- `--rank`: 当前进程的 rank，默认为 device_id // 2
+- `--world_size`: 分布式集群的设备数
+- `--distributed`: 启用分布式模式
 
 ## 使用示例
 
 ### 示例 1：单卡测试 one_to_many 模式
 
 ```bash
-bash run.sh benchmark_bandwidth.py \
+bash run.sh benchmark/benchmark_bandwidth.py \
   --device_id=0 \
   --schema="d2d" \
   --transfer_mode="one_to_many"
@@ -78,7 +78,7 @@ bash run.sh benchmark_bandwidth.py \
 ### 示例 2：测试特定 block 大小
 
 ```bash
-bash run.sh benchmark_bandwidth.py \
+bash run.sh benchmark/benchmark_bandwidth.py \
   --device_id=0 \
   --schema="d2d" \
   --transfer_mode="one_to_many" \
@@ -93,7 +93,7 @@ bash run.sh benchmark_bandwidth.py \
 
 ```bash
 # 在 device 0 上
-bash run.sh benchmark_bandwidth.py \
+bash run.sh benchmark/benchmark_bandwidth.py \
   --device_id=0 \
   --schema="d2d" \
   --transfer_mode="full_mesh" \
@@ -102,7 +102,7 @@ bash run.sh benchmark_bandwidth.py \
   --distributed
 
 # 在 device 1 上
-bash run.sh benchmark_bandwidth.py \
+bash run.sh benchmark/benchmark_bandwidth.py \
   --device_id=1 \
   --schema="d2d" \
   --transfer_mode="full_mesh" \
@@ -111,7 +111,7 @@ bash run.sh benchmark_bandwidth.py \
   --distributed
 
 # 在 device 2 上
-bash run.sh benchmark_bandwidth.py \
+bash run.sh benchmark/benchmark_bandwidth.py \
   --device_id=2 \
   --schema="d2d" \
   --transfer_mode="full_mesh" \
@@ -120,7 +120,7 @@ bash run.sh benchmark_bandwidth.py \
   --distributed
 
 # 在 device 3 上
-bash run.sh benchmark_bandwidth.py \
+bash run.sh benchmark/benchmark_bandwidth.py \
   --device_id=3 \
   --schema="d2d" \
   --transfer_mode="full_mesh" \
@@ -150,7 +150,7 @@ mooncake:
 然后使用配置文件运行：
 
 ```bash
-bash run.sh benchmark_bandwidth.py \
+bash run.sh benchmark/benchmark_bandwidth.py \
   --device_id=0 \
   --config=benchmark_config.yaml \
   --transfer_mode="full_mesh"
@@ -161,7 +161,7 @@ bash run.sh benchmark_bandwidth.py \
 使用 `--register_size_gb` 参数进行压力测试：
 
 ```bash
-bash run.sh benchmark_bandwidth.py \
+bash run.sh benchmark/benchmark_bandwidth.py \
   --device_id=0 \
   --schema="d2d" \
   --transfer_mode="full_mesh" \
