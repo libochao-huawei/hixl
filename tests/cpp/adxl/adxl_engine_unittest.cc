@@ -825,4 +825,22 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineAutoConnectEnabled) {
   engine2.Finalize();
 }
 
+TEST_F(AdxlEngineUTest, TestGetCapabilityWithoutInitialize) {
+  int32_t value = 0;
+  EXPECT_EQ(AdxlEngine::GetCapability(FEATURE_AUTO_CONNECT, value), SUCCESS);
+  EXPECT_EQ(value, FEATURE_SUPPORTED);
+  EXPECT_EQ(AdxlEngine::GetCapability(FEATURE_CLIENT_SERVER_COMM, value), SUCCESS);
+  EXPECT_EQ(value, FEATURE_SUPPORTED);
+}
+
+TEST_F(AdxlEngineUTest, TestGetCapabilityUnknownFeature) {
+  int32_t value = 0;
+  EXPECT_EQ(AdxlEngine::GetCapability(static_cast<FeatureType>(999), value), UNSUPPORTED);
+}
+
+TEST_F(AdxlEngineUTest, TestGetCapabilityInvalidFeature) {
+  int32_t value = 0;
+  EXPECT_EQ(AdxlEngine::GetCapability(static_cast<FeatureType>(-1), value), PARAM_INVALID);
+}
+
 }  // namespace adxl
