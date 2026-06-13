@@ -26,6 +26,7 @@ set(targets_list
     "server_server_d2d"
     "fabric_mem_d2d"
     "hixl_example_d2rh"
+    "hixl_example_d2rd"
 )
 
 foreach(target_name IN LISTS targets_list)
@@ -47,7 +48,7 @@ foreach(target_name IN LISTS targets_list)
             -Werror
             -Wextra
         )
-        if(${target_name} MATCHES "client_server_h2d|server_server_d2d|fabric_mem_d2d|hixl_example_d2rh")
+        if(${target_name} MATCHES "client_server_h2d|server_server_d2d|fabric_mem_d2d|hixl_example_d2rh|hixl_example_d2rd")
             target_link_libraries(${target_name} PRIVATE
                 cann_hixl
                 acl_rt_headers

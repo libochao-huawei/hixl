@@ -23,6 +23,7 @@
 |   ├── client_server_h2d.cpp                          // HIXL的client-server模式, h2d场景样例
 |   ├── server_server_d2d.cpp                          // HIXL的server-server模式, d2d场景样例
 |   ├── fabric_mem_d2d.cpp                             // HIXL的fabric-mem模式下的d2d场景样例
+|   ├── hixl_example_d2rd.cpp                          // HIXL的d2rd（device-to-remote-device）场景样例
 |   ├── CMakeLists.txt                                 // 编译脚本
 ```
 
@@ -219,4 +220,30 @@ ifconfig
       - 执行server2 fabric_mem_d2d, 参数为device_id、local engine和remote engine, 其中device_id为当前engine要使用的device_id, 如:
           ```
           ./fabric_mem_d2d 1 127.0.0.1:16001 127.0.0.1:16000
+          ```
+
+    (4) 执行hixl_example_d2rd, device-to-remote-device (D2RD) 场景
+
+      - 说明：
+        - 单进程内启动两个engine，分别绑定不同device，由engine A发起WRITE传输到engine B的device buffer。
+        - 支持协议：`roce:device`、`roce:host`、`uboe:device`、`ubg:device`、`ub_ctp:device`、`ub_tp:device`、`hccs:device`。
+        - 参数：`--protocol=<type>[,...]` 必选，支持逗号分隔多协议；`--device=id1,id2` 可选，默认0,2；`--version=0|1` 可选，默认1。
+
+      - 运行示例：
+          ```
+          # 使用hccs:device协议
+          ./hixl_example_d2rd --protocol=hccs:device
+
+          # 使用roce:device协议
+          ./hixl_example_d2rd --protocol=roce:device
+
+          # 使用多协议（roce:device + hccs:device）
+          ./hixl_example_d2rd --protocol=roce:device,hccs:device
+
+          # 指定device
+          ./hixl_example_d2rd --protocol=roce:device --device=0,2
+
+          # 使用legacy模式（支持roce:device和hccs:device）
+          ./hixl_example_d2rd --protocol=roce:device --version=0
+          ./hixl_example_d2rd --protocol=hccs:device --version=0
           ```
