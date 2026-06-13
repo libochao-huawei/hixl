@@ -49,7 +49,11 @@ std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engi
     }
     try {
       auto json = nlohmann::json::parse(*lcr);
-      use_hixl = json["version"] == "1.3";
+      if (json.contains("version") && json["version"] == "1.3") {
+        use_hixl = true;
+      } else {
+        HIXL_LOGI("[EngineFactory] local_comm_res version is not 1.3, using CommEngine");
+      }
     } catch (const nlohmann::json::exception &e) {
       HIXL_LOGE(PARAM_INVALID, "Invalid json, exception:%s", e.what());
       return nullptr;
