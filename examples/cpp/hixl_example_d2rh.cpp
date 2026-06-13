@@ -122,7 +122,7 @@ int ParseArgs(int32_t argc, char **argv, int32_t &deviceA, int32_t &deviceB,
   return 0;
 }
 
-int InitEngine(EngineCtx &ctx, const std::string &protocol, int32_t version) {
+int InitEngine(EngineCtx &ctx, const std::string &protocol, int32_t version, uint8_t fillValue) {
   CHECK_ACL(aclrtSetDevice(ctx.deviceId));
   std::map<AscendString, AscendString> options;
   if (version == kVersionLegacy) {
@@ -145,10 +145,6 @@ int InitEngine(EngineCtx &ctx, const std::string &protocol, int32_t version) {
     return -1;
   }
   printf("[INFO] InitEngine %s success\n", ctx.name);
-  return 0;
-}
-
-int AllocAndRegisterMem(EngineCtx &ctx, uint8_t fillValue) {
   uint8_t *devPtr = nullptr;
   CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&devPtr), kBufSize, ACL_MEM_MALLOC_HUGE_ONLY));
   ctx.devBuf = devPtr;
@@ -157,7 +153,7 @@ int AllocAndRegisterMem(EngineCtx &ctx, uint8_t fillValue) {
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(ctx.devBuf);
   desc.len = kBufSize;
-  auto ret = ctx.engine.RegisterMem(desc, MEM_DEVICE, ctx.devHandle);
+  ret = ctx.engine.RegisterMem(desc, MEM_DEVICE, ctx.devHandle);
   if (ret != SUCCESS) {
     printf("[ERROR] %s RegisterMem device failed, ret=%u, errmsg:%s\n", ctx.name, ret, GetRecentErrMsg());
     return -1;
@@ -170,7 +166,7 @@ int AllocAndRegisterMem(EngineCtx &ctx, uint8_t fillValue) {
   }
   std::memset(ctx.hostBuf, fillValue, kBufSize);
   CHECK_ACL(aclrtMemcpy(ctx.devBuf, kBufSize, ctx.hostBuf, kBufSize, ACL_MEMCPY_HOST_TO_DEVICE));
-  printf("[INFO] %s AllocAndRegisterMem success, dev:%p, host:%p\n", ctx.name, ctx.devBuf, ctx.hostBuf);
+  printf("[INFO] %s InitEngine success, dev:%p, host:%p\n", ctx.name, ctx.devBuf, ctx.hostBuf);
   return 0;
 }
 
@@ -308,16 +304,10 @@ int32_t Run(int32_t deviceA, int32_t deviceB, const std::string &protocol, int32
   ctxA.name = kEngineA;
   ctxB.deviceId = deviceB;
   ctxB.name = kEngineB;
-  if (InitEngine(ctxA, protocol, version) != 0) {
+  if (InitEngine(ctxA, protocol, version, kFillA) != 0) {
     return -1;
   }
-  if (InitEngine(ctxB, protocol, version) != 0) {
-    return -1;
-  }
-  if (AllocAndRegisterMem(ctxA, kFillA) != 0) {
-    return -1;
-  }
-  if (AllocAndRegisterMem(ctxB, kFillB) != 0) {
+  if (InitEngine(ctxB, protocol, version, kFillB) != 0) {
     return -1;
   }
   if (Connect(ctxA, ctxB) != 0) {
