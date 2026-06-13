@@ -19,16 +19,6 @@
 #include "common/hixl_log.h"
 
 namespace hixl {
-namespace {
-bool UseProtocolDesc(const HixlOptions &options) {
-  auto grc = options.GlobalResourceCfg();
-  if (!grc.has_value()) {
-    return false;
-  }
-  auto desc = grc->comm_resource_config.protocol_desc;
-  return desc.has_value() && !desc->empty();
-}
-}  // namespace
 std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engine,
                                                     const std::map<AscendString, AscendString> &options,
                                                     HixlOptions &parsed_options) {
@@ -41,19 +31,21 @@ std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engi
   if (parsed_options.EnableFabricMem().value_or(false)) {
     return std::make_unique<FabricMemEngine>(AscendString(local_engine.c_str()));
   }
-  bool use_hixl = UseProtocolDesc(parsed_options);
-  if (!use_hixl) {
-    auto lcr = parsed_options.LocalCommRes();
-    if (!lcr.has_value() || lcr->empty()) {
-      return std::make_unique<CommEngine>(AscendString(local_engine.c_str()));
+  auto lcr = parsed_options.LocalCommRes();
+  if (!lcr.has_value() || lcr->empty()) {
+    return std::make_unique<CommEngine>(AscendString(local_engine.c_str()));
+  }
+  bool use_hixl = false;
+  try {
+    auto json = nlohmann::json::parse(*lcr);
+    if (json.contains("version") && json["version"] == "1.3") {
+      use_hixl = true;
+    } else {
+      HIXL_LOGI("[EngineFactory] local_comm_res version is not 1.3, using CommEngine");
     }
-    try {
-      auto json = nlohmann::json::parse(*lcr);
-      use_hixl = json["version"] == "1.3";
-    } catch (const nlohmann::json::exception &e) {
-      HIXL_LOGE(PARAM_INVALID, "Invalid json, exception:%s", e.what());
-      return nullptr;
-    }
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "Invalid json, exception:%s", e.what());
+    return nullptr;
   }
   if (use_hixl) {
     return std::make_unique<HixlEngine>(AscendString(local_engine.c_str()));
