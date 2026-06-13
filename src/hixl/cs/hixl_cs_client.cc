@@ -282,6 +282,8 @@ Status HixlCSClient::InitBaseClient(const HixlClientDesc *client_desc) {
   server_ip_ = client_desc->server_ip;
   server_port_ = client_desc->server_port;
   EndpointDesc local_endpoint = *(client_desc->local_endpoint);
+  auto ctx_guard = GetContextGuard();
+  (void)ctx_guard;
   local_endpoint_ = MakeShared<Endpoint>(local_endpoint);
   tc_ = client_desc->tc;
   sl_ = client_desc->sl;
@@ -363,11 +365,11 @@ Status HixlCSClient::Create(const HixlClientDesc *client_desc, const HixlClientC
       client_desc->remote_endpoint->protocol, client_desc->remote_endpoint->commAddr.type,
       client_desc->remote_endpoint->commAddr.id);
   std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHK_STATUS_RET(InitDeviceResource(), "[HixlClient] InitDeviceResource failed");
   HIXL_CHK_STATUS_RET(InitBaseClient(client_desc), "[HixlClient] InitBaseClient failed");
   EndpointHandle endpoint_handle = local_endpoint_->GetHandle();
   HIXL_EVENT("[HixlClient] Create success. server=%s:%u, src_ep_handle=%p", server_ip_.c_str(), server_port_,
              endpoint_handle);
-  HIXL_CHK_STATUS_RET(InitDeviceResource(), "[HixlClient] InitDeviceResource failed");
   return SUCCESS;
 }
 
