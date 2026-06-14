@@ -1059,6 +1059,17 @@ TEST_F(HixlEngineTest, TestInitializeSetsProtocolLockOnlyForProtocolDescGenerate
   EXPECT_EQ(protocol_desc_engine.Initialize(protocol_desc_options), SUCCESS);
   EXPECT_EQ(protocol_desc_engine.protocol_lock_, ProtocolLock::kUboe);
   protocol_desc_engine.Finalize();
+
+  HixlEngine ubg_protocol_desc_engine("127.0.0.1");
+  auto ubg_options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  ubg_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["ubg:device"]
+    }
+  )";
+  EXPECT_EQ(ubg_protocol_desc_engine.Initialize(ubg_options), SUCCESS);
+  EXPECT_EQ(ubg_protocol_desc_engine.protocol_lock_, ProtocolLock::kUbg);
+  ubg_protocol_desc_engine.Finalize();
 }
 
 class MockClientHandler : public IClientHandler {

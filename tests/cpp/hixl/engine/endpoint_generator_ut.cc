@@ -27,6 +27,14 @@
 #include "test_mmpa_utils.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 
+extern void DcmiStubSetInitRet(int ret);
+extern void DcmiStubSetMainboardId(unsigned int id, int ret);
+extern void DcmiStubSetLogicId(unsigned int id, int ret);
+extern void DcmiStubSetUrmaDeviceCnt(unsigned int cnt, int ret);
+extern void DcmiStubSetSuperPodId(unsigned int id, int ret);
+extern void DcmiStubSetEidCount(int count);
+extern void DcmiStubSetEnableUbgEid(bool enable);
+
 #define private public
 #include "engine/endpoint_generator.h"
 #undef private
@@ -68,6 +76,14 @@ void SetUboeProtocolDescOption(std::map<AscendString, AscendString> &options) {
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
     {
       "comm_resource_config.protocol_desc": ["uboe:device"]
+    }
+  )";
+}
+
+void SetUbgProtocolDescOption(std::map<AscendString, AscendString> &options) {
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["ubg:device"]
     }
   )";
 }
@@ -658,6 +674,36 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsGeneratesUboeWhenConf
   ExpectSingleUboeEndpoint(endpoint_list, "192.168.100.205");
 
   (void)remove(script_path.c_str());
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListGeneratesUbgWhenConfiguredOnA5) {
+  acl_stub_->soc_name_ = "Ascend950A";
+  acl_stub_->device_id_ = 0;
+  acl_stub_->phy_device_id_ = 3;
+
+  DcmiStubSetInitRet(0);
+  DcmiStubSetMainboardId(0x3, 0);
+  DcmiStubSetLogicId(0, 0);
+  DcmiStubSetUrmaDeviceCnt(1, 0);
+  DcmiStubSetSuperPodId(0, 0);
+  DcmiStubSetEidCount(1);
+  DcmiStubSetEnableUbgEid(true);
+
+  std::map<AscendString, AscendString> options;
+  SetUbgProtocolDescOption(options);
+
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
+  EXPECT_TRUE(local_comm_res.empty());
+  ASSERT_EQ(endpoint_list.size(), 1U);
+  EXPECT_EQ(endpoint_list[0].protocol, kProtocolUbg);
+  EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
+  EXPECT_EQ(endpoint_list[0].comm_id.size(), 32U);
+  EXPECT_EQ(endpoint_list[0].comm_id.substr(14, 2), "80");
+  EXPECT_FALSE(endpoint_list[0].net_instance_id.empty());
+
+  DcmiStubSetEnableUbgEid(false);
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsManualLocalCommResWhenUboeOnly) {
