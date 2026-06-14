@@ -125,7 +125,7 @@ std::string ConvertEidToString(const unsigned char *raw, size_t len) {
 }
 
 bool IsUbgEid(const DcmiUrmaEidInfo &eid_info) {
-  // Example: ...0ac0... has marker byte 0xc0. High two bits 10 means UBG, 11 means UBoE.
+  // Example: ...0a80... has marker byte 0x80. High two bits 10 means UBG, 11 means UBoE.
   return (eid_info.eid.raw[kUbgEidMarkerByteIndex] & kUbgEidMarkerMask) == kUbgEidMarkerValue;
 }
 

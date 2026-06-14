@@ -1390,6 +1390,53 @@ TEST_F(HixlClientUTest, EndpointMatcherDirectMatchRequiresSamePlacement) {
   Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
   EXPECT_EQ(st, PARAM_INVALID);
 }
+
+TEST_F(HixlClientUTest, CheckAliveWritesControlSocket) {
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16001";
+  HixlClient client("127.0.0.1", kServerPort, config);
+  int32_t fds[2] = {-1, -1};
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+  client.ctrl_socket_ = fds[0];
+
+  Status ret = client.CheckAlive();
+  EXPECT_EQ(ret, SUCCESS);
+
+  CtrlMsgHeader header{};
+  ASSERT_EQ(read(fds[1], &header, sizeof(header)), static_cast<ssize_t>(sizeof(header)));
+  EXPECT_EQ(header.magic, kMagicNumber);
+  EXPECT_EQ(header.body_size, sizeof(CtrlMsgType));
+  CtrlMsgType msg_type{};
+  ASSERT_EQ(read(fds[1], &msg_type, sizeof(msg_type)), static_cast<ssize_t>(sizeof(msg_type)));
+  EXPECT_EQ(msg_type, CtrlMsgType::kHeartBeat);
+
+  EXPECT_EQ(client.Finalize(), SUCCESS);
+  close(fds[1]);
+}
+
+TEST_F(HixlClientUTest, CheckAliveBrokenPipeReturnsFailed) {
+  CtrlMsgPlugin::Initialize();
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16001";
+  HixlClient client("127.0.0.1", kServerPort, config);
+  int32_t fds[2] = {-1, -1};
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+  client.ctrl_socket_ = fds[0];
+  close(fds[1]);
+
+  Status ret = client.CheckAlive();
+  EXPECT_EQ(ret, FAILED);
+  EXPECT_EQ(client.ctrl_socket_, -1);
+}
+
+TEST_F(HixlClientUTest, CheckAliveInvalidControlSocketFails) {
+  ClientConfig config{};
+  config.remote_engine = "127.0.0.1:16001";
+  HixlClient client("127.0.0.1", kServerPort, config);
+
+  Status ret = client.CheckAlive();
+  EXPECT_EQ(ret, FAILED);
+}
 }
 
 }  // namespace hixl
