@@ -76,6 +76,7 @@ class EndpointMatcher {
 
   struct MatchEntry {
     const char *protocol;
+    const char *placement;
     CommType comm_type;
   };
 

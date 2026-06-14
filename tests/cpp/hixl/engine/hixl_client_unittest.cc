@@ -1373,6 +1373,23 @@ TEST_F(HixlClientUTest, EndpointMatcherProtocolLockOnlyMatchesLockedProtocol) {
   std::vector<EndpointConfig> remote = local;
   MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_UBG, ProtocolLock::kUbg);
 }
+
+TEST_F(HixlClientUTest, EndpointMatcherDirectMatchRequiresSamePlacement) {
+  auto makeEp = [](const std::string &protocol, const std::string &placement) {
+    EndpointConfig ep{};
+    ep.protocol = protocol;
+    ep.comm_id = "127.0.0.1";
+    ep.placement = placement;
+    ep.net_instance_id = "superpod1-1";
+    return ep;
+  };
+  std::vector<EndpointConfig> local = {makeEp(kProtocolRoce, kPlacementDevice)};
+  std::vector<EndpointConfig> remote = {makeEp(kProtocolRoce, kPlacementHost)};
+  std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
+  HandlerCreateArgs::HandlerType handler_type;
+  Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
+  EXPECT_EQ(st, PARAM_INVALID);
+}
 }
 
 }  // namespace hixl

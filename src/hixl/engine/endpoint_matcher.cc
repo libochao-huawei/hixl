@@ -92,10 +92,14 @@ Status EndpointMatcher::MatchDirect(const std::vector<EndpointConfig> &local,
                                     const std::vector<EndpointConfig> &remote,
                                     const MatchEntry &entry,
                                     std::vector<HandlerCreateArgs::EndpointPair> &pairs) {
-  auto *li = FindByProtocol(local, entry.protocol);
-  auto *ri = FindByProtocol(remote, entry.protocol);
-  if (li != nullptr && ri != nullptr) {
-    pairs.push_back({*li, *ri, entry.comm_type});
+  auto is_matched = [&entry](const EndpointConfig &endpoint) {
+    return endpoint.protocol == entry.protocol &&
+           (entry.placement == nullptr || endpoint.placement == entry.placement);
+  };
+  auto local_it = std::find_if(local.begin(), local.end(), is_matched);
+  auto remote_it = std::find_if(remote.begin(), remote.end(), is_matched);
+  if (local_it != local.end() && remote_it != remote.end()) {
+    pairs.push_back({*local_it, *remote_it, entry.comm_type});
     return SUCCESS;
   }
   return FAILED;
@@ -152,17 +156,21 @@ EndpointMatcher::MatchScenario EndpointMatcher::DetermineScenario(bool cross_sup
 
 const std::vector<EndpointMatcher::MatchEntry> &EndpointMatcher::GetPriorityTable(MatchScenario scenario) {
   static const std::map<MatchScenario, std::vector<MatchEntry>> kPriorityTable = {
-      {MatchScenario::kForceRoce, {{kProtocolRoce, CommType::COMM_TYPE_ROCE}}},
+      {MatchScenario::kForceRoce,
+       {{kProtocolRoce, kPlacementDevice, CommType::COMM_TYPE_ROCE},
+        {kProtocolRoce, kPlacementHost, CommType::COMM_TYPE_ROCE}}},
       {MatchScenario::kCrossSuperNode,
-       {{kProtocolUboe, CommType::COMM_TYPE_UBOE},
-        {kProtocolUbg, CommType::COMM_TYPE_UBG},
-        {kProtocolRoce, CommType::COMM_TYPE_ROCE}}},
+       {{kProtocolUboe, kPlacementDevice, CommType::COMM_TYPE_UBOE},
+        {kProtocolUbg, kPlacementDevice, CommType::COMM_TYPE_UBG},
+        {kProtocolRoce, kPlacementDevice, CommType::COMM_TYPE_ROCE},
+        {kProtocolRoce, kPlacementHost, CommType::COMM_TYPE_ROCE}}},
       {MatchScenario::kSameSuperNode,
-       {{kProtocolUbCtp, CommType::COMM_TYPE_UB_D2D},
-        {kProtocolHccs, CommType::COMM_TYPE_HCCS},
-        {kProtocolUboe, CommType::COMM_TYPE_UBOE},
-        {kProtocolUbg, CommType::COMM_TYPE_UBG},
-        {kProtocolRoce, CommType::COMM_TYPE_ROCE}}}};
+       {{kProtocolUbCtp, nullptr, CommType::COMM_TYPE_UB_D2D},
+        {kProtocolHccs, kPlacementDevice, CommType::COMM_TYPE_HCCS},
+        {kProtocolUboe, kPlacementDevice, CommType::COMM_TYPE_UBOE},
+        {kProtocolUbg, kPlacementDevice, CommType::COMM_TYPE_UBG},
+        {kProtocolRoce, kPlacementDevice, CommType::COMM_TYPE_ROCE},
+        {kProtocolRoce, kPlacementHost, CommType::COMM_TYPE_ROCE}}}};
   return kPriorityTable.at(scenario);
 }
 

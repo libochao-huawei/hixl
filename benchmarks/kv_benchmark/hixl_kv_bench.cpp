@@ -364,7 +364,7 @@ std::map<AscendString, AscendString> BuildInitializeOptions(const KvBenchConfig 
         AscendString("{\"comm_resource_config.protocol_desc\":[\"ubg:device\"]}");
   }
   if (cfg.transport == kTransportUb) {
-    options[AscendString(OPTION_LOCAL_COMM_RES)] = AscendString("{\"version\":\"1.3\"}");
+    options[AscendString(hixl::OPTION_LOCAL_COMM_RES)] = AscendString("{\"version\":\"1.3\"}");
   }
   return options;
 }
