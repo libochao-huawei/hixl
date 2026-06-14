@@ -850,7 +850,7 @@ TEST_F(HixlClientUTest, InitializeNoRoceTest) {
 TEST_F(HixlClientUTest, InitializeNoPairTest) {
   StartServer(MockHixlServerMode::k2UbNormal);
   std::vector<EndpointConfig> local_endpoint_list;
-  local_endpoint_list.push_back(MakeDirectEp(kProtocolRoce, kPlacementDevice));
+  local_endpoint_list.push_back(MakeDirectEp(kProtocolRoce, "superpod1-1"));
   local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
   Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);

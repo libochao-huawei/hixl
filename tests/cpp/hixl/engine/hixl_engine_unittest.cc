@@ -1045,7 +1045,9 @@ TEST_F(HixlEngineTest, TestInitializeSetsProtocolLockOnlyForProtocolDescGenerate
       "comm_resource_config.protocol_desc": ["uboe:device"]
     }
   )";
-  EXPECT_EQ(explicit_engine.Initialize(explicit_options), SUCCESS);
+  HixlOptions explicit_parsed;
+  EXPECT_EQ(HixlOptions::Parse(explicit_options, explicit_parsed), SUCCESS);
+  EXPECT_EQ(explicit_engine.Initialize(explicit_parsed), SUCCESS);
   EXPECT_EQ(explicit_engine.protocol_lock_, ProtocolLock::kNone);
   explicit_engine.Finalize();
 
@@ -1056,7 +1058,9 @@ TEST_F(HixlEngineTest, TestInitializeSetsProtocolLockOnlyForProtocolDescGenerate
       "comm_resource_config.protocol_desc": ["uboe:device"]
     }
   )";
-  EXPECT_EQ(protocol_desc_engine.Initialize(protocol_desc_options), SUCCESS);
+  HixlOptions protocol_desc_parsed;
+  EXPECT_EQ(HixlOptions::Parse(protocol_desc_options, protocol_desc_parsed), SUCCESS);
+  EXPECT_EQ(protocol_desc_engine.Initialize(protocol_desc_parsed), SUCCESS);
   EXPECT_EQ(protocol_desc_engine.protocol_lock_, ProtocolLock::kUboe);
   protocol_desc_engine.Finalize();
 
@@ -1067,7 +1071,9 @@ TEST_F(HixlEngineTest, TestInitializeSetsProtocolLockOnlyForProtocolDescGenerate
       "comm_resource_config.protocol_desc": ["ubg:device"]
     }
   )";
-  EXPECT_EQ(ubg_protocol_desc_engine.Initialize(ubg_options), SUCCESS);
+  HixlOptions ubg_parsed;
+  EXPECT_EQ(HixlOptions::Parse(ubg_options, ubg_parsed), SUCCESS);
+  EXPECT_EQ(ubg_protocol_desc_engine.Initialize(ubg_parsed), SUCCESS);
   EXPECT_EQ(ubg_protocol_desc_engine.protocol_lock_, ProtocolLock::kUbg);
   ubg_protocol_desc_engine.Finalize();
 }
