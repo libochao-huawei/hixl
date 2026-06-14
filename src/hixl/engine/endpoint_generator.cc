@@ -93,12 +93,6 @@ bool IsUbgInterconType(uint32_t intercon_type) {
   return intercon_type == kInterconTypeUbgOverNpu;
 }
 
-Status GetCurrentDeviceIds(int32_t &logic_dev_id, int32_t &phy_dev_id) {
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&logic_dev_id));
-  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(logic_dev_id, &phy_dev_id));
-  return SUCCESS;
-}
-
 Status GetScaleOutNetInstanceId(std::string &net_instance_id) {
   int32_t dev_id = 0;
   HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_id));
@@ -519,16 +513,14 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options
       return SUCCESS;
     }
     case ProtocolDescMode::kUbg: {
-      // DSMI InterconType 就绪时校验设备确为 UBG；接口未提供时跳过校验，直接按显式配置生成 UBG
       int32_t logic_dev_id = 0;
+      HIXL_CHK_ACL_RET(aclrtGetDevice(&logic_dev_id));
       if (DsmiProxy::IsInterconTypeSupported()) {
-        HIXL_CHK_ACL_RET(aclrtGetDevice(&logic_dev_id));
         uint32_t intercon_type = 0U;
         HIXL_CHK_STATUS_RET(DsmiProxy::GetInterconType(logic_dev_id, intercon_type), "GetInterconType failed");
         HIXL_CHK_BOOL_RET_STATUS(IsUbgInterconType(intercon_type), FAILED,
                                  "protocol_desc=%s conflicts with InterconType=%u", kUbgProtocolDesc, intercon_type);
       } else {
-        HIXL_CHK_ACL_RET(aclrtGetDevice(&logic_dev_id));
         HIXL_LOGW("[EndpointGenerator] DSMI InterconType not supported yet, skip validation for protocol_desc=%s",
                   kUbgProtocolDesc);
       }
