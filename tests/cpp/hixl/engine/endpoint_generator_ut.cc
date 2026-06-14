@@ -27,6 +27,14 @@
 #include "test_mmpa_utils.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 
+extern void DcmiStubSetInitRet(int ret);
+extern void DcmiStubSetMainboardId(unsigned int id, int ret);
+extern void DcmiStubSetLogicId(unsigned int id, int ret);
+extern void DcmiStubSetUrmaDeviceCnt(unsigned int cnt, int ret);
+extern void DcmiStubSetSuperPodId(unsigned int id, int ret);
+extern void DcmiStubSetEidCount(int count);
+extern void DcmiStubSetEnableUbgEid(bool enable);
+
 #define private public
 #include "engine/endpoint_generator.h"
 #undef private
@@ -72,12 +80,20 @@ void SetUboeProtocolDescOption(std::map<AscendString, AscendString> &options) {
   )";
 }
 
+void SetUbgProtocolDescOption(std::map<AscendString, AscendString> &options) {
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["ubg:device"]
+    }
+  )";
+}
+
 void ExpectSingleUboeEndpoint(const std::vector<EndpointConfig> &endpoint_list, const std::string &uboe_comm_id) {
   ASSERT_EQ(endpoint_list.size(), 1U);
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolUboe);
   EXPECT_EQ(endpoint_list[0].comm_id, uboe_comm_id);
   EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
-  EXPECT_EQ(endpoint_list[0].net_instance_id, "default_superpod1_1");
+  EXPECT_EQ(endpoint_list[0].net_instance_id, "8");
 }
 
 std::string SetA2AutoGenEnv(const std::shared_ptr<MockLocCommResAclRuntimeStub> &acl_stub,
@@ -565,11 +581,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsUboeProtocolDe
   const std::string file_path = SetA2AutoGenEnv(acl_stub_, mmpa_stub_);
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(R"({"version":"1.3"})");
-  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
-    {
-      "comm_resource_config.protocol_desc": ["uboe:device"]
-    }
-  )";
+  SetUboeProtocolDescOption(options);
 
   std::string local_comm_res;
   std::vector<EndpointConfig> endpoint_list;
@@ -664,6 +676,36 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsGeneratesUboeWhenConf
   (void)remove(script_path.c_str());
 }
 
+TEST_F(EndpointGeneratorUTest, BuildEndpointListGeneratesUbgWhenConfiguredOnA5) {
+  acl_stub_->soc_name_ = "Ascend950A";
+  acl_stub_->device_id_ = 0;
+  acl_stub_->phy_device_id_ = 3;
+
+  DcmiStubSetInitRet(0);
+  DcmiStubSetMainboardId(0x3, 0);
+  DcmiStubSetLogicId(0, 0);
+  DcmiStubSetUrmaDeviceCnt(1, 0);
+  DcmiStubSetSuperPodId(0, 0);
+  DcmiStubSetEidCount(1);
+  DcmiStubSetEnableUbgEid(true);
+
+  std::map<AscendString, AscendString> options;
+  SetUbgProtocolDescOption(options);
+
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
+  EXPECT_TRUE(local_comm_res.empty());
+  ASSERT_EQ(endpoint_list.size(), 1U);
+  EXPECT_EQ(endpoint_list[0].protocol, kProtocolUbg);
+  EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
+  EXPECT_EQ(endpoint_list[0].comm_id.size(), 32U);
+  EXPECT_EQ(endpoint_list[0].comm_id.substr(14, 2), "80");
+  EXPECT_FALSE(endpoint_list[0].net_instance_id.empty());
+
+  DcmiStubSetEnableUbgEid(false);
+}
+
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsManualLocalCommResWhenUboeOnly) {
   llm::MmpaStub::GetInstance().SetImpl(std::make_shared<UboeMmpaStub>());
   const std::string script_path = CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:192.168.100.203\"\n");
@@ -688,8 +730,6 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsUboeOnA2WhenLo
   acl_stub_->soc_name_ = "Ascend910B4-1";
   acl_stub_->device_id_ = 0;
   acl_stub_->phy_device_id_ = 3;
-  const std::string script_path = CreateExecutableScript("hccn_tool", "#!/bin/sh\necho \"ipaddr:192.168.100.204\"\n");
-  setenv("PATH", "/tmp", 1);
   const std::string file_path =
       test::CreateTempFileWithContent("/tmp/loc_comm_res_ut_XXXXXX", "address_3=10.10.10.3\n");
   mmpa_stub_->real_path_ok_ = true;
@@ -714,7 +754,6 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsUboeOnA2WhenLo
             PARAM_INVALID);
 
   (void)remove(file_path.c_str());
-  (void)remove(script_path.c_str());
 }
 
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsAcceptsMixedProtocolDesc) {
@@ -927,6 +966,35 @@ TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceUbParsesEidTest) {
   EXPECT_EQ(endpoint.loc.device.superDevId, 0U);
   EXPECT_EQ(endpoint.loc.device.superPodIdx, 0U);
   EXPECT_EQ(endpoint.loc.device.serverIdx, 0U);
+}
+
+TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceUbgParsesEidTest) {
+  EndpointConfig ep{};
+  ep.protocol = kProtocolUbg;
+  ep.comm_id = "0000000000ff0ac0000000000a140200";
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = 13;
+  ep.device_info.super_device_id = 14;
+  ep.device_info.super_pod_id = 15;
+
+  EndpointDesc endpoint{};
+  Status st = EndpointGenerator::ConvertToEndpointDesc(ep, endpoint, 6U);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(endpoint.protocol, COMM_PROTOCOL_UBG);
+  EXPECT_EQ(endpoint.commAddr.type, COMM_ADDR_TYPE_EID);
+  EXPECT_EQ(endpoint.loc.device.devPhyId, 13U);
+  EXPECT_EQ(endpoint.loc.device.superDevId, 14U);
+  EXPECT_EQ(endpoint.loc.device.superPodIdx, 15U);
+}
+
+TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceUbgRejectsInvalidEidTest) {
+  EndpointConfig ep{};
+  ep.protocol = kProtocolUbg;
+  ep.comm_id = "not-an-eid";
+  ep.placement = kPlacementDevice;
+
+  EndpointDesc endpoint{};
+  EXPECT_EQ(EndpointGenerator::ConvertToEndpointDesc(ep, endpoint, 6U), PARAM_INVALID);
 }
 
 TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceUbParsesMixedCaseEidTest) {
