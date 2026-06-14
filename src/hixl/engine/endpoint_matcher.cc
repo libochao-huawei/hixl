@@ -226,11 +226,4 @@ void EndpointMatcher::LogMatchedEndpoints(const std::vector<HandlerCreateArgs::E
   }
 }
 
-Status EndpointMatcher::MatchEndpoints(const std::vector<EndpointConfig> &local,
-                                       const std::vector<EndpointConfig> &remote,
-                                       std::vector<HandlerCreateArgs::EndpointPair> &matched_pairs,
-                                       HandlerCreateArgs::HandlerType &handler_type) {
-  return MatchEndpoints(local, remote, matched_pairs, handler_type, ProtocolLock::kNone);
-}
-
 }  // namespace hixl

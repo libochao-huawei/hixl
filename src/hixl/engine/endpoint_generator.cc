@@ -498,8 +498,7 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options
                                                       std::vector<EndpointConfig> &endpoint_list) {
   endpoint_list.clear();
 
-  std::vector<std::string> protocol_desc;
-  HIXL_CHK_STATUS_RET(ParseConfigProtocolDesc(options, protocol_desc), "ParseConfigProtocolDesc failed");
+  std::vector<std::string> protocol_desc = options.GetProtocolDesc();
   switch (ParseProtocolDescMode(protocol_desc)) {
     case ProtocolDescMode::kNone:
       return SUCCESS;
@@ -535,8 +534,7 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options
 
 Status EndpointGenerator::FilterEndpointListByProtocolDesc(const HixlOptions &options,
                                                            std::vector<EndpointConfig> &endpoint_list) {
-  std::vector<std::string> protocol_desc;
-  HIXL_CHK_STATUS_RET(ParseConfigProtocolDesc(options, protocol_desc), "ParseConfigProtocolDesc failed");
+  std::vector<std::string> protocol_desc = options.GetProtocolDesc();
   if (protocol_desc.empty()) {
     return SUCCESS;
   }
@@ -592,8 +590,7 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options,
     int32_t phy_id = 0;
     HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(device_id, &phy_id));
 
-    std::vector<std::string> protocol_desc;
-    HIXL_CHK_STATUS_RET(ParseConfigProtocolDesc(options, protocol_desc), "ParseConfigProtocolDesc failed");
+    std::vector<std::string> protocol_desc = options.GetProtocolDesc();
     const bool has_explicit_protocol_desc = !protocol_desc.empty();
 
     if (!has_explicit_protocol_desc) {

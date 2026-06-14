@@ -24,9 +24,8 @@ namespace hixl {
 namespace {
 enum class ScaleOutDescResult { kAbsent, kPresent, kConflict, kUnsupportedOnly };
 
-ScaleOutDescResult CheckScaleOutProtocolDesc(const std::map<AscendString, AscendString> &options) {
-  std::vector<std::string> protocol_desc;
-  (void)ParseConfigProtocolDesc(options, protocol_desc);
+ScaleOutDescResult CheckScaleOutProtocolDesc(const HixlOptions &options) {
+  std::vector<std::string> protocol_desc = options.GetProtocolDesc();
   if (protocol_desc.empty()) {
     return ScaleOutDescResult::kAbsent;
   }
@@ -61,7 +60,7 @@ std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engi
   if (parsed_options.EnableFabricMem().value_or(false)) {
     return std::make_unique<FabricMemEngine>(AscendString(local_engine.c_str()));
   }
-  const auto scaleout_result = CheckScaleOutProtocolDesc(options);
+  const auto scaleout_result = CheckScaleOutProtocolDesc(parsed_options);
   if (scaleout_result == ScaleOutDescResult::kConflict) {
     HIXL_LOGE(PARAM_INVALID, "[EngineFactory] protocol_desc cannot contain both %s and %s",
               kUbgProtocolDesc, kUboeProtocolDesc);

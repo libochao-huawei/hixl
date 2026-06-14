@@ -38,15 +38,12 @@ bool HasExplicitEndpointList(const std::string &local_comm_res) {
   }
 }
 
-ProtocolLock ParseProtocolLockFromOptions(const std::map<AscendString, AscendString> &options,
+ProtocolLock ParseProtocolLockFromOptions(const HixlOptions &options,
                                           bool has_explicit_endpoint_list) {
   if (has_explicit_endpoint_list) {
     return ProtocolLock::kNone;
   }
-  std::vector<std::string> protocol_desc;
-  if (ParseConfigProtocolDesc(options, protocol_desc) != SUCCESS) {
-    return ProtocolLock::kNone;
-  }
+  std::vector<std::string> protocol_desc = options.GetProtocolDesc();
   const bool has_ubg = std::find(protocol_desc.begin(), protocol_desc.end(), kUbgProtocolDesc) != protocol_desc.end();
   const bool has_uboe = std::find(protocol_desc.begin(), protocol_desc.end(), kUboeProtocolDesc) != protocol_desc.end();
   if (has_ubg && !has_uboe) {

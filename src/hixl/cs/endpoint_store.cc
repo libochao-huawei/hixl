@@ -62,7 +62,7 @@ inline bool operator==(const EndpointDesc &lhs, const EndpointDesc &rhs) {
       return false;
     }
   }
-  return true;
+  return false;
 }
 
 EndpointPtr EndpointStore::MatchEndpoint(const EndpointDesc &endpoint, EndpointHandle &endpoint_handle) {

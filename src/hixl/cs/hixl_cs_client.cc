@@ -1050,7 +1050,6 @@ Status HixlCSClient::BatchTransferAsync(bool is_get, uint32_t list_num, const Hi
     HIXL_LOGE(PARAM_INVALID, "[HixlClient] Invalid endpoint location: %d", ep.loc.locType);
     return PARAM_INVALID;
   }
-  return PARAM_INVALID;
 }
 
 Status HixlCSClient::CheckStatusHost(CompleteHandleInfo &query_handle, HixlCompleteStatus &status) {
