@@ -33,6 +33,7 @@ set(HIXL_TEST_FILES
         engine/endpoint_generator_ut.cc
         engine/hixl_profiling_unittest.cc
         engine/hixl_engine_uboe_unittest.cc
+        engine/hixl_engine_ubg_unittest.cc
         engine/local_comm_res_ut.cc
         ../ops/hixl_kernel/hixl_kernel_basic_unittest.cc
 )

@@ -1034,6 +1034,44 @@ TEST_F(HixlEngineTest, TestInitializeAutoGenerateForV3FillsDeviceInfo) {
   engine.Finalize();
 }
 
+TEST_F(HixlEngineTest, TestInitializeSetsProtocolLockOnlyForProtocolDescGeneratedEndpoints) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+  SetHccnConfContent("address_23=10.10.10.23\n");
+
+  HixlEngine explicit_engine("127.0.0.1");
+  auto explicit_options = BuildOptions(BuildLocalCommRes("sp_v3", "1.3", {BuildDeviceRoceEndpoint("127.0.0.1")}));
+  explicit_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["uboe:device"]
+    }
+  )";
+  EXPECT_EQ(explicit_engine.Initialize(explicit_options), SUCCESS);
+  EXPECT_EQ(explicit_engine.protocol_lock_, ProtocolLock::kNone);
+  explicit_engine.Finalize();
+
+  HixlEngine protocol_desc_engine("127.0.0.1");
+  auto protocol_desc_options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  protocol_desc_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["uboe:device"]
+    }
+  )";
+  EXPECT_EQ(protocol_desc_engine.Initialize(protocol_desc_options), SUCCESS);
+  EXPECT_EQ(protocol_desc_engine.protocol_lock_, ProtocolLock::kUboe);
+  protocol_desc_engine.Finalize();
+
+  HixlEngine ubg_protocol_desc_engine("127.0.0.1");
+  auto ubg_options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  ubg_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["ubg:device"]
+    }
+  )";
+  EXPECT_EQ(ubg_protocol_desc_engine.Initialize(ubg_options), SUCCESS);
+  EXPECT_EQ(ubg_protocol_desc_engine.protocol_lock_, ProtocolLock::kUbg);
+  ubg_protocol_desc_engine.Finalize();
+}
+
 class MockClientHandler : public IClientHandler {
  public:
   Status Connect(uint32_t) override { return SUCCESS; }
@@ -1075,7 +1113,7 @@ static ClientPtr CreateMockClient(std::unique_ptr<MockClientHandler> handler) {
   return client;
 }
 
-static void RegisterMockTransferReq(HixlEngine &engine, const ClientPtr &client, TransferReq req, void *user_data) {
+static void RegisterMockTransferReq(HixlEngine &engine, const ClientPtr &client, TransferReq req, const void *user_data) {
   client->req_map_[req] = TransferInfo{0U, READ, AscendString()};
   engine.client_manager_.RegisterTransferReq(req, client, user_data);
 }
@@ -1148,8 +1186,8 @@ TEST(ClientManagerTest, TransferReqIndexKeepsSubmitOrderAndFindsClient) {
 
   TransferReq req1 = reinterpret_cast<TransferReq>(0x1000);
   TransferReq req2 = reinterpret_cast<TransferReq>(0x2000);
-  void *user_data1 = reinterpret_cast<void *>(0x3000);
-  void *user_data2 = reinterpret_cast<void *>(0x4000);
+  const void *user_data1 = reinterpret_cast<const void *>(0x3000);
+  const void *user_data2 = reinterpret_cast<const void *>(0x4000);
   manager.RegisterTransferReq(req1, client, user_data1);
   manager.RegisterTransferReq(req2, client, user_data2);
 
@@ -1180,9 +1218,9 @@ TEST(ClientManagerTest, RegisterDuplicateTransferReqRemovesOldOrderNode) {
 
   TransferReq req1 = reinterpret_cast<TransferReq>(0x1000);
   TransferReq req2 = reinterpret_cast<TransferReq>(0x2000);
-  void *user_data1 = reinterpret_cast<void *>(0x3000);
-  void *user_data2 = reinterpret_cast<void *>(0x4000);
-  void *updated_user_data1 = reinterpret_cast<void *>(0x5000);
+  const void *user_data1 = reinterpret_cast<const void *>(0x3000);
+  const void *user_data2 = reinterpret_cast<const void *>(0x4000);
+  const void *updated_user_data1 = reinterpret_cast<const void *>(0x5000);
   manager.RegisterTransferReq(req1, client, user_data1);
   manager.RegisterTransferReq(req2, client, user_data2);
   manager.RegisterTransferReq(req1, client, updated_user_data1);
@@ -1220,8 +1258,8 @@ TEST(HixlEngineBatchStatusTest, ReturnsResultsInSubmitOrderWithUserData) {
   handler->status_by_req[req2] = TransferStatus::COMPLETED;
   auto client = CreateMockClient(std::move(handler));
 
-  void *user_data1 = reinterpret_cast<void *>(0x3000);
-  void *user_data2 = reinterpret_cast<void *>(0x4000);
+  const void *user_data1 = reinterpret_cast<const void *>(0x3000);
+  const void *user_data2 = reinterpret_cast<const void *>(0x4000);
   RegisterMockTransferReq(engine, client, req1, user_data1);
   RegisterMockTransferReq(engine, client, req2, user_data2);
 
@@ -1253,9 +1291,9 @@ TEST(HixlEngineBatchStatusTest, SkipWaitingAndMaxQueryCountFilterResults) {
   handler->status_by_req[completed_req2] = TransferStatus::COMPLETED;
   auto client = CreateMockClient(std::move(handler));
 
-  void *waiting_user_data = reinterpret_cast<void *>(0x4000);
-  void *completed_user_data1 = reinterpret_cast<void *>(0x5000);
-  void *completed_user_data2 = reinterpret_cast<void *>(0x6000);
+  const void *waiting_user_data = reinterpret_cast<const void *>(0x4000);
+  const void *completed_user_data1 = reinterpret_cast<const void *>(0x5000);
+  const void *completed_user_data2 = reinterpret_cast<const void *>(0x6000);
   RegisterMockTransferReq(engine, client, waiting_req, waiting_user_data);
   RegisterMockTransferReq(engine, client, completed_req1, completed_user_data1);
   RegisterMockTransferReq(engine, client, completed_req2, completed_user_data2);
