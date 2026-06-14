@@ -51,7 +51,7 @@ const std::set<std::string> kSocV2 = {"Ascend910B1", "Ascend910B2",  "Ascend910B
 const std::set<std::string> kSocV3 = {"Ascend910_9391", "Ascend910_9381", "Ascend910_9392",
                                       "Ascend910_9382", "Ascend910_9372", "Ascend910_9362"};
 
-enum class ProtocolDescMode { kNone, kUboe, kUbg, kConflict, kUnsupportedOnly };
+enum class ProtocolDescMode { kNone, kUboe, kUbg, kConflict };
 
 bool IsIntraRoceEnabled() {
   const char *env_ret = std::getenv("HCCL_INTRA_ROCE_ENABLE");
@@ -84,7 +84,7 @@ ProtocolDescMode ParseProtocolDescMode(const std::vector<std::string> &protocol_
   if (has_ubg) {
     return ProtocolDescMode::kUbg;
   }
-  return ProtocolDescMode::kUnsupportedOnly;
+  return ProtocolDescMode::kNone;
 }
 
 bool IsRoceInterconType(uint32_t intercon_type) {
@@ -524,10 +524,6 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options
     case ProtocolDescMode::kConflict:
       HIXL_LOGE(PARAM_INVALID, "protocol_desc cannot contain both %s and %s", kUbgProtocolDesc, kUboeProtocolDesc);
       return PARAM_INVALID;
-    case ProtocolDescMode::kUnsupportedOnly:
-      HIXL_LOGE(PARAM_INVALID, "Unsupported protocol_desc, currently support %s and %s", kUbgProtocolDesc,
-                kUboeProtocolDesc);
-      return PARAM_INVALID;
     case ProtocolDescMode::kUboe: {
       EndpointConfig uboe_endpoint{};
       HIXL_CHK_STATUS_RET(GenDefaultUboeEndpointConfig(uboe_endpoint), "GenDefaultUboeEndpointConfig failed");
@@ -614,24 +610,33 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options,
     HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
     int32_t phy_id = 0;
     HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(device_id, &phy_id));
-    HIXL_CHK_STATUS_RET(GenerateKv5EndpointByInterconType(device_id, phy_id, endpoint_list),
-                        "[AutoGenEndpointList] GenerateKv5EndpointByInterconType failed");
-    if (endpoint_list.empty()) {
-      bool ub_auto_gen_needed = false;
-      HIXL_CHK_STATUS_RET(IsA5UbAutoGenNeeded(options, ub_auto_gen_needed), "IsA5UbAutoGenNeeded failed");
-      if (ub_auto_gen_needed) {
-        HIXL_LOGI("[AutoGenEndpointList] A5 UB auto-generate: logic_id=%d, phy_id=%d", device_id, phy_id);
-        hixl::LocalCommRes local_comm_res;
-        HIXL_CHK_STATUS_RET(hixl::GenerateLocalCommRes(phy_id, local_comm_res),
-                            "[AutoGenEndpointList] GenerateLocalCommRes failed");
-        endpoint_list = std::move(local_comm_res.endpoint_list);
+
+    std::vector<std::string> protocol_desc;
+    HIXL_CHK_STATUS_RET(ParseConfigProtocolDesc(options, protocol_desc), "ParseConfigProtocolDesc failed");
+    const bool has_explicit_protocol_desc = !protocol_desc.empty();
+
+    if (!has_explicit_protocol_desc) {
+      HIXL_CHK_STATUS_RET(GenerateKv5EndpointByInterconType(device_id, phy_id, endpoint_list),
+                          "[AutoGenEndpointList] GenerateKv5EndpointByInterconType failed");
+    } else {
+      std::vector<EndpointConfig> scaleout_endpoints;
+      HIXL_CHK_STATUS_RET(GenEndpointFromProtocolDesc(options, scaleout_endpoints),
+                          "GenEndpointFromProtocolDesc failed");
+      for (auto &ep : scaleout_endpoints) {
+        endpoint_list.emplace_back(std::move(ep));
       }
     }
-    if (endpoint_list.empty()) {
-      std::vector<EndpointConfig> protocol_desc_endpoints;
-      HIXL_CHK_STATUS_RET(GenEndpointFromProtocolDesc(options, protocol_desc_endpoints),
-                          "GenEndpointFromProtocolDesc failed");
-      endpoint_list = std::move(protocol_desc_endpoints);
+
+    bool ub_auto_gen_needed = false;
+    HIXL_CHK_STATUS_RET(IsA5UbAutoGenNeeded(options, ub_auto_gen_needed), "IsA5UbAutoGenNeeded failed");
+    if (ub_auto_gen_needed) {
+      HIXL_LOGI("[AutoGenEndpointList] A5 UB auto-generate: logic_id=%d, phy_id=%d", device_id, phy_id);
+      hixl::LocalCommRes local_comm_res;
+      HIXL_CHK_STATUS_RET(hixl::GenerateLocalCommRes(phy_id, local_comm_res),
+                          "[AutoGenEndpointList] GenerateLocalCommRes failed");
+      for (auto &ep : local_comm_res.endpoint_list) {
+        endpoint_list.emplace_back(std::move(ep));
+      }
     }
     HIXL_LOGI("[AutoGenEndpointList] kV5 generated %zu endpoints", endpoint_list.size());
   } else if (soc_type == SocType::kV2 || soc_type == SocType::kV3) {

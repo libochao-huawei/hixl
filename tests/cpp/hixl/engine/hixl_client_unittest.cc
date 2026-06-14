@@ -1374,6 +1374,34 @@ TEST_F(HixlClientUTest, EndpointMatcherProtocolLockOnlyMatchesLockedProtocol) {
   MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_UBG, ProtocolLock::kUbg);
 }
 
+TEST_F(HixlClientUTest, EndpointMatcherProtocolLockUboeForcesUboe) {
+  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolUboe, "superpod1-1"),
+                                       MakeDirectEp(kProtocolUbg, "superpod1-1")};
+  std::vector<EndpointConfig> remote = local;
+  MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_UBOE, ProtocolLock::kUboe);
+}
+
+TEST_F(HixlClientUTest, EndpointMatcherForceRoceWhenEnvSet) {
+  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolUboe, "superpod1-1"),
+                                       MakeDirectEp(kProtocolUbg, "superpod1-1"),
+                                       MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  std::vector<EndpointConfig> remote = local;
+  EnvGuard env_guard("HCCL_INTRA_ROCE_ENABLE", "1");
+  MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_ROCE);
+}
+
+TEST_F(HixlClientUTest, EndpointMatcherSameSuperNodePrefersUbBeforeScaleOut) {
+  std::vector<EndpointConfig> local = {MakeUbEp("local_1", "remote_1", "device"),
+                                       MakeUbEp("local_2", "remote_2", "host"),
+                                       MakeDirectEp(kProtocolUbg, "superpod1-1"),
+                                       MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  std::vector<EndpointConfig> remote = {MakeUbEp("remote_1", "local_1", "device"),
+                                        MakeUbEp("remote_2", "local_2", "host"),
+                                        MakeDirectEp(kProtocolUbg, "superpod1-1"),
+                                        MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  MatchAndVerify(local, remote, 2U, HandlerCreateArgs::HandlerType::UB);
+}
+
 TEST_F(HixlClientUTest, EndpointMatcherDirectMatchRequiresSamePlacement) {
   auto makeEp = [](const std::string &protocol, const std::string &placement) {
     EndpointConfig ep{};
@@ -1436,7 +1464,6 @@ TEST_F(HixlClientUTest, CheckAliveInvalidControlSocketFails) {
 
   Status ret = client.CheckAlive();
   EXPECT_EQ(ret, FAILED);
-}
 }
 
 }  // namespace hixl
