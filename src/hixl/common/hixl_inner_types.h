@@ -13,6 +13,7 @@
 
 #include <string>
 #include <sstream>
+#include <cstdlib>
 #include "hixl/hixl_types.h"
 #include "adxl/adxl_types.h"
 #include "hcomm/hcomm_res_defs.h"
@@ -47,6 +48,11 @@ enum class ProtocolLock { kNone, kUbg, kUboe };
 
 inline bool IsHostRegisterMappedProtocol(CommProtocol protocol) {
   return protocol == COMM_PROTOCOL_UBOE || protocol == COMM_PROTOCOL_UBG;
+}
+
+inline bool IsIntraRoceEnabled() {
+  const char *env = std::getenv("HCCL_INTRA_ROCE_ENABLE");
+  return env != nullptr && std::string(env) == "1";
 }
 
 constexpr const char *kQosName = "comm_resource_config.qos";

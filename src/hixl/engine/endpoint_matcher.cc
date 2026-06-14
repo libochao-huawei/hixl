@@ -69,8 +69,7 @@ void EndpointMatcher::BuildMatchMap(const std::vector<EndpointConfig> &endpoints
 }
 
 bool EndpointMatcher::IsForceRoceOnly() {
-  const char *env = std::getenv("HCCL_INTRA_ROCE_ENABLE");
-  return env != nullptr && std::string(env) == "1";
+  return IsIntraRoceEnabled();
 }
 
 bool EndpointMatcher::IsCrossSuperNode(const std::vector<EndpointConfig> &local,

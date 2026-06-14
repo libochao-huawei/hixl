@@ -53,12 +53,6 @@ const std::set<std::string> kSocV3 = {"Ascend910_9391", "Ascend910_9381", "Ascen
 
 enum class ProtocolDescMode { kNone, kUboe, kUbg, kConflict };
 
-bool IsIntraRoceEnabled() {
-  const char *env_ret = std::getenv("HCCL_INTRA_ROCE_ENABLE");
-  HIXL_CHK_BOOL_RET_SPECIAL_STATUS(env_ret == nullptr, false, "HCCL_INTRA_ROCE_ENABLE is not set");
-  return std::string(env_ret) == "1";
-}
-
 bool IsUboeProtocolDescEnabled(const std::vector<std::string> &protocol_desc) {
   return !protocol_desc.empty() &&
          std::find(protocol_desc.begin(), protocol_desc.end(), kUboeProtocolDesc) != protocol_desc.end();
@@ -129,10 +123,7 @@ bool IsUbgEid(const DcmiUrmaEidInfo &eid_info) {
   return (eid_info.eid.raw[kUbgEidMarkerByteIndex] & kUbgEidMarkerMask) == kUbgEidMarkerValue;
 }
 
-Status GetUbgEidFromDcmi(int32_t phy_dev_id, std::string &eid) {
-  unsigned int logic_id = 0;
-  HIXL_CHK_BOOL_RET_STATUS(DcmiProxy::GetLogicIdFromPhyId(static_cast<unsigned int>(phy_dev_id), &logic_id) == 0,
-                           FAILED, "GetLogicIdFromPhyId failed, phy_dev_id=%d", phy_dev_id);
+Status GetUbgEidFromDcmi(unsigned int logic_id, std::string &eid) {
   unsigned int dev_cnt = 0;
   HIXL_CHK_BOOL_RET_STATUS(DcmiProxy::GetUrmaDeviceCnt(logic_id, &dev_cnt) == 0, FAILED,
                            "GetUrmaDeviceCnt failed, logic_id=%u", logic_id);
@@ -156,7 +147,7 @@ Status GetUbgEidFromDcmi(int32_t phy_dev_id, std::string &eid) {
       }
     }
   }
-  HIXL_LOGE(FAILED, "Failed to find UBG EID from DCMI, phy_dev_id=%d", phy_dev_id);
+  HIXL_LOGE(FAILED, "Failed to find UBG EID from DCMI, logic_id=%u", logic_id);
   return FAILED;
 }
 
@@ -166,7 +157,7 @@ Status GetUboeIp(std::string &ip) {
 
   int32_t dev_logic_id = dev_id;
   HIXL_CHK_ACL_RET(aclrtGetLogicDevIdByUserDevId(dev_id, &dev_logic_id));
-  HIXL_LOGI("current dev_id=%d, dev_logic_id=%d", dev_logic_id, dev_logic_id);
+  HIXL_LOGI("current dev_id=%d, dev_logic_id=%d", dev_id, dev_logic_id);
 
   uint32_t slot_id = 0;
   auto get_ret = DsmiProxy::GetDevSlotId(dev_logic_id, slot_id);
@@ -187,13 +178,10 @@ Status GenDefaultUboeEndpointConfig(EndpointConfig &endpoint_config) {
   return SUCCESS;
 }
 
-Status GenDefaultUbgEndpointConfig(EndpointConfig &endpoint_config) {
-  int32_t logic_dev_id = 0;
-  int32_t phy_dev_id = 0;
-  HIXL_CHK_STATUS_RET(GetCurrentDeviceIds(logic_dev_id, phy_dev_id), "GetCurrentDeviceIds failed");
-  (void)logic_dev_id;
+Status GenDefaultUbgEndpointConfig(int32_t logic_dev_id, EndpointConfig &endpoint_config) {
+  unsigned int logic_id = static_cast<unsigned int>(logic_dev_id);
   std::string eid;
-  HIXL_CHK_STATUS_RET(GetUbgEidFromDcmi(phy_dev_id, eid), "get ubg eid failed");
+  HIXL_CHK_STATUS_RET(GetUbgEidFromDcmi(logic_id, eid), "get ubg eid failed");
   endpoint_config.protocol = kProtocolUbg;
   endpoint_config.comm_id = eid;
   endpoint_config.placement = kPlacementDevice;
@@ -215,7 +203,7 @@ Status GenerateKv5EndpointByInterconType(int32_t logic_dev_id, int32_t phy_dev_i
              logic_dev_id, phy_dev_id);
   if (IsUbgInterconType(intercon_type)) {
     EndpointConfig ubg_endpoint{};
-    HIXL_CHK_STATUS_RET(GenDefaultUbgEndpointConfig(ubg_endpoint), "GenDefaultUbgEndpointConfig failed");
+    HIXL_CHK_STATUS_RET(GenDefaultUbgEndpointConfig(logic_dev_id, ubg_endpoint), "GenDefaultUbgEndpointConfig failed");
     endpoint_list.emplace_back(std::move(ubg_endpoint));
     return SUCCESS;
   }
@@ -532,19 +520,20 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options
     }
     case ProtocolDescMode::kUbg: {
       // DSMI InterconType 就绪时校验设备确为 UBG；接口未提供时跳过校验，直接按显式配置生成 UBG
+      int32_t logic_dev_id = 0;
       if (DsmiProxy::IsInterconTypeSupported()) {
-        int32_t logic_dev_id = 0;
         HIXL_CHK_ACL_RET(aclrtGetDevice(&logic_dev_id));
         uint32_t intercon_type = 0U;
         HIXL_CHK_STATUS_RET(DsmiProxy::GetInterconType(logic_dev_id, intercon_type), "GetInterconType failed");
         HIXL_CHK_BOOL_RET_STATUS(IsUbgInterconType(intercon_type), FAILED,
                                  "protocol_desc=%s conflicts with InterconType=%u", kUbgProtocolDesc, intercon_type);
       } else {
+        HIXL_CHK_ACL_RET(aclrtGetDevice(&logic_dev_id));
         HIXL_LOGW("[EndpointGenerator] DSMI InterconType not supported yet, skip validation for protocol_desc=%s",
                   kUbgProtocolDesc);
       }
       EndpointConfig ubg_endpoint{};
-      HIXL_CHK_STATUS_RET(GenDefaultUbgEndpointConfig(ubg_endpoint), "GenDefaultUbgEndpointConfig failed");
+      HIXL_CHK_STATUS_RET(GenDefaultUbgEndpointConfig(logic_dev_id, ubg_endpoint), "GenDefaultUbgEndpointConfig failed");
       endpoint_list.emplace_back(ubg_endpoint);
       return SUCCESS;
     }
