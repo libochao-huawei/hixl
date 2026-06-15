@@ -34,8 +34,7 @@ class GE_FUNC_VISIBILITY StringUtils {
 #endif
     return s;
   }
-  // lint -esym(551,*)
-  static std::string &Rtrim(std::string &s) { /*lint !e618*/
+  static std::string &Rtrim(std::string &s) {
 #if __cplusplus >= 201103L
     (void)s.erase(std::find_if(s.rbegin(), s.rend(), [](const int32_t c) { return std::isspace(c) == 0; }).base(),
                   s.end());
@@ -45,7 +44,6 @@ class GE_FUNC_VISIBILITY StringUtils {
 #endif
     return s;
   }
-  // lint -esym(551,*)
   /**
    *  @ingroup domi_common
    *  @brief delete spaces at the beginning and end of a string
