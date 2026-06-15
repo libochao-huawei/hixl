@@ -93,14 +93,14 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
   for (int32_t i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg.find("--device=") == 0) {
-      std::string val = arg.substr(9);
-      auto comma_pos = val.find(',');
+      std::string device_str = arg.substr(9);
+      auto comma_pos = device_str.find(',');
       if (comma_pos == std::string::npos) {
         printf("[ERROR] Invalid --device format, expected id1,id2\n");
         return -1;
       }
-      device_a = std::stoi(val.substr(0, comma_pos));
-      device_b = std::stoi(val.substr(comma_pos + 1));
+      device_a = std::stoi(device_str.substr(0, comma_pos));
+      device_b = std::stoi(device_str.substr(comma_pos + 1));
     } else if (arg.find("--protocol=") == 0) {
       ParseProtocolList(arg.substr(11), protocols);
     } else if (arg.find("--version=") == 0) {
@@ -157,11 +157,13 @@ int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &proto
 int32_t SetupV2Options(const std::vector<std::string> &protocols,
                        std::map<AscendString, AscendString> &options) {
   std::string proto_list;
-  for (size_t idx = 0; idx < protocols.size(); ++idx) {
-    if (idx > 0) {
+  bool first = true;
+  for (const auto &proto : protocols) {
+    if (!first) {
       proto_list += ",";
     }
-    proto_list += "\"" + protocols[idx] + "\"";
+    proto_list += "\"" + proto + "\"";
+    first = false;
   }
   std::string res_config = "{\"comm_resource_config.protocol_desc\": [" + proto_list + "]}";
   options[OPTION_GLOBAL_RESOURCE_CONFIG] = res_config.c_str();
@@ -367,18 +369,26 @@ void DeregisterAndFree(EngineCtx &ctx) {
   }
 }
 
-void Finalize(EngineCtx &ctx_a, EngineCtx &ctx_b) {
-  DisconnectBoth(ctx_a, ctx_b);
-  DeregisterAndFree(ctx_a);
-  DeregisterAndFree(ctx_b);
+void FinalizeEngines(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   if (ctx_a.initialized) {
     ctx_a.engine.Finalize();
   }
   if (ctx_b.initialized) {
     ctx_b.engine.Finalize();
   }
+}
+
+void ResetDevices(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   CHECK_ACL(aclrtResetDevice(ctx_a.device_id));
   CHECK_ACL(aclrtResetDevice(ctx_b.device_id));
+}
+
+void Finalize(EngineCtx &ctx_a, EngineCtx &ctx_b) {
+  DisconnectBoth(ctx_a, ctx_b);
+  DeregisterAndFree(ctx_a);
+  DeregisterAndFree(ctx_b);
+  FinalizeEngines(ctx_a, ctx_b);
+  ResetDevices(ctx_a, ctx_b);
 }
 
 int32_t Run(EngineCtx &ctx_a, EngineCtx &ctx_b, const std::vector<std::string> &protocols,
@@ -400,19 +410,23 @@ int32_t Run(EngineCtx &ctx_a, EngineCtx &ctx_b, const std::vector<std::string> &
 }  // namespace
 
 int main(int32_t argc, char **argv) {
-  int32_t device_a = kDefaultDevA;
-  int32_t device_b = kDefaultDevB;
   std::vector<std::string> protocols;
   int32_t version = 1;
+  int32_t device_a = kDefaultDevA;
+  int32_t device_b = kDefaultDevB;
+
   if (ParseArgs(argc, argv, device_a, device_b, protocols, version) != 0) {
     return -1;
   }
+
   EngineCtx ctx_a;
   EngineCtx ctx_b;
-  ctx_a.device_id = device_a;
+
   ctx_a.name = kEngineA;
-  ctx_b.device_id = device_b;
+  ctx_a.device_id = device_a;
   ctx_b.name = kEngineB;
+  ctx_b.device_id = device_b;
+
   int32_t ret = Run(ctx_a, ctx_b, protocols, version);
   Finalize(ctx_a, ctx_b);
   return ret;

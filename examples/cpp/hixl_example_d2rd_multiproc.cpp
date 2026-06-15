@@ -184,8 +184,9 @@ int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::st
   }
 
   // Display final configuration
-  printf("[INFO] ParseArgs: role=%s, device=%d, local=%s, remote=%s, version=%d\n",
-         role.c_str(), ctx.device_id, ctx.local_engine.c_str(), ctx.remote_engine.c_str(), version);
+  printf("[INFO] ParseArgs: role=%s, device=%d\n", role.c_str(), ctx.device_id);
+  printf("[INFO]   local=%s, remote=%s\n", ctx.local_engine.c_str(), ctx.remote_engine.c_str());
+  printf("[INFO]   version=%d\n", version);
   for (const auto &p : protocols) {
     printf("[INFO]   protocol: %s\n", p.c_str());
   }
