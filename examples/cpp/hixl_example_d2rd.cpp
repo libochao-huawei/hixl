@@ -137,13 +137,13 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
 int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &protocols,
                            std::map<AscendString, AscendString> &options) {
   printf("[INFO] %s using legacy flow (version=0)\n", ctx.name);
-  std::string name_str(ctx.name);
-  uint32_t listen_port = std::stoi(name_str.substr(name_str.find(':') + 1));
-  std::string local_comm_res = "{\"version\": \"1.2\"}";
-  options[OPTION_LOCAL_COMM_RES] = local_comm_res.c_str();
-  std::string resource_config =
-      "{\"comm_resource_config.listen_port\": " + std::to_string(listen_port) + "}";
-  options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
+  std::string engine_name(ctx.name);
+  size_t colon_pos = engine_name.find(':');
+  uint32_t port = std::stoi(engine_name.substr(colon_pos + 1));
+  std::string comm_res = "{\"version\": \"1.2\"}";
+  options[OPTION_LOCAL_COMM_RES] = comm_res.c_str();
+  std::string config = "{\"comm_resource_config.listen_port\": " + std::to_string(port) + "}";
+  options[OPTION_GLOBAL_RESOURCE_CONFIG] = config.c_str();
   options[OPTION_BUFFER_POOL] = "0:0";
   if (protocols[0] == "roce:device") {
     setenv("HCCL_INTRA_ROCE_ENABLE", "1", 1);
@@ -160,9 +160,8 @@ int32_t SetupV2Options(const std::vector<std::string> &protocols,
     }
     desc_array += "\"" + protocols[i] + "\"";
   }
-  std::string resource_config =
-      "{\"comm_resource_config.protocol_desc\": [" + desc_array + "]}";
-  options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
+  std::string config = "{\"comm_resource_config.protocol_desc\": [" + desc_array + "]}";
+  options[OPTION_GLOBAL_RESOURCE_CONFIG] = config.c_str();
   return 0;
 }
 

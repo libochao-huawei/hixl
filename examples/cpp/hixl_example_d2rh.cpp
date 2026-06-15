@@ -140,13 +140,13 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
 int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &protocols,
                            std::map<AscendString, AscendString> &options) {
   printf("[INFO] %s using legacy flow (version=0)\n", ctx.name);
-  std::string name_str(ctx.name);
-  uint32_t listen_port = std::stoi(name_str.substr(name_str.find(':') + 1));
-  std::string local_comm_res = "{\"version\": \"1.2\"}";
-  options[OPTION_LOCAL_COMM_RES] = local_comm_res.c_str();
-  std::string resource_config =
-      "{\"comm_resource_config.listen_port\": " + std::to_string(listen_port) + "}";
-  options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
+  std::string eng_name(ctx.name);
+  auto sep = eng_name.find(':');
+  uint32_t listen_port = std::stoi(eng_name.substr(sep + 1));
+  std::string lcomm = "{\"version\": \"1.2\"}";
+  options[OPTION_LOCAL_COMM_RES] = lcomm.c_str();
+  std::string res_cfg = "{\"comm_resource_config.listen_port\": " + std::to_string(listen_port) + "}";
+  options[OPTION_GLOBAL_RESOURCE_CONFIG] = res_cfg.c_str();
   if (protocols[0] == "roce:device") {
     options[OPTION_BUFFER_POOL] = "0:0";
     setenv("HCCL_INTRA_ROCE_ENABLE", "1", 1);
@@ -156,16 +156,15 @@ int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &proto
 
 int32_t SetupV2Options(const std::vector<std::string> &protocols,
                        std::map<AscendString, AscendString> &options) {
-  std::string desc_array;
-  for (size_t i = 0; i < protocols.size(); ++i) {
-    if (i > 0) {
-      desc_array += ",";
+  std::string proto_list;
+  for (size_t idx = 0; idx < protocols.size(); ++idx) {
+    if (idx > 0) {
+      proto_list += ",";
     }
-    desc_array += "\"" + protocols[i] + "\"";
+    proto_list += "\"" + protocols[idx] + "\"";
   }
-  std::string resource_config =
-      "{\"comm_resource_config.protocol_desc\": [" + desc_array + "]}";
-  options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
+  std::string res_config = "{\"comm_resource_config.protocol_desc\": [" + proto_list + "]}";
+  options[OPTION_GLOBAL_RESOURCE_CONFIG] = res_config.c_str();
   return 0;
 }
 
