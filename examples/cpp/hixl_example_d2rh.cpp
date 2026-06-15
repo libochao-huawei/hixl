@@ -39,9 +39,9 @@ static const std::vector<std::string> kSupportedProtocols = {
 
 #define CHECK_ACL(x)                                                                  \
   do {                                                                                \
-    aclError __ret = x;                                                               \
-    if (__ret != ACL_ERROR_NONE) {                                                    \
-      std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __ret << std::endl; \
+    aclError __err_code = x;                                                          \
+    if (__err_code != ACL_ERROR_NONE) {                                               \
+      std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __err_code << std::endl; \
     }                                                                                 \
   } while (0)
 

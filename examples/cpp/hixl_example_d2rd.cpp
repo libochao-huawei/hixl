@@ -37,9 +37,9 @@ static const std::vector<std::string> kValidProtos = {
 
 #define CHECK_ACL(x)                                                                  \
   do {                                                                                \
-    aclError __ret = x;                                                               \
-    if (__ret != ACL_ERROR_NONE) {                                                    \
-      std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __ret << std::endl; \
+    aclError __acl_ret = x;                                                           \
+    if (__acl_ret != ACL_ERROR_NONE) {                                                \
+      std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __acl_ret << std::endl; \
     }                                                                                 \
   } while (0)
 

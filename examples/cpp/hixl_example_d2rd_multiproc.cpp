@@ -44,9 +44,9 @@ static const std::vector<std::string> protocolList = {
 
 #define CHECK_ACL(x)                                                                  \
   do {                                                                                \
-    aclError __ret = x;                                                               \
-    if (__ret != ACL_ERROR_NONE) {                                                    \
-      std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __ret << std::endl; \
+    aclError __status = x;                                                            \
+    if (__status != ACL_ERROR_NONE) {                                                 \
+      std::cerr << __FILE__ << ":" << __LINE__ << " aclError:" << __status << std::endl; \
     }                                                                                 \
   } while (0)
 
