@@ -235,8 +235,7 @@ int32_t Connect(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   return 0;
 }
 
-int32_t Transfer(EngineCtx &ctx_a, EngineCtx &ctx_b) {
-  std::vector<TransferOpDesc> descs;
+void BuildTransferDescs(std::vector<TransferOpDesc> &descs, EngineCtx &ctx_a, EngineCtx &ctx_b) {
   descs.reserve(kBlockCount);
   for (size_t i = 0; i < kBlockCount; ++i) {
     TransferOpDesc desc{};
@@ -245,25 +244,29 @@ int32_t Transfer(EngineCtx &ctx_a, EngineCtx &ctx_b) {
     desc.len = kBlockSize;
     descs.push_back(desc);
   }
+}
+
+int32_t StartTransfers(EngineCtx &ctx_a, EngineCtx &ctx_b, const std::vector<TransferOpDesc> &descs,
+                       TransferReq &req_a, TransferReq &req_b) {
   TransferArgs args{};
-  TransferReq req_a = nullptr;
+  req_a = nullptr;
   auto ret = ctx_a.engine.TransferAsync(ctx_b.name, WRITE, descs, args, req_a);
   if (ret != SUCCESS) {
     printf("[ERROR] TransferAsync %s->%s failed, ret=%u, errmsg:%s\n",
            ctx_a.name, ctx_b.name, ret, GetRecentErrMsg());
     return -1;
   }
-  for (size_t i = 0; i < kBlockCount; ++i) {
-    descs[i].local_addr = reinterpret_cast<uintptr_t>(ctx_b.dev_buf) + i * kBlockSize;
-    descs[i].remote_addr = reinterpret_cast<uintptr_t>(ctx_a.host_buf) + i * kBlockSize;
-  }
-  TransferReq req_b = nullptr;
+  req_b = nullptr;
   ret = ctx_b.engine.TransferAsync(ctx_a.name, WRITE, descs, args, req_b);
   if (ret != SUCCESS) {
     printf("[ERROR] TransferAsync %s->%s failed, ret=%u, errmsg:%s\n",
            ctx_b.name, ctx_a.name, ret, GetRecentErrMsg());
     return -1;
   }
+  return 0;
+}
+
+int32_t WaitTransfers(EngineCtx &ctx_a, EngineCtx &ctx_b, TransferReq req_a, TransferReq req_b) {
   TransferStatus st_a = TransferStatus::WAITING;
   TransferStatus st_b = TransferStatus::WAITING;
   int32_t poll_count = 0;
@@ -292,6 +295,17 @@ int32_t Transfer(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   return 0;
 }
 
+int32_t Transfer(EngineCtx &ctx_a, EngineCtx &ctx_b) {
+  std::vector<TransferOpDesc> descs;
+  BuildTransferDescs(descs, ctx_a, ctx_b);
+  TransferReq req_a = nullptr;
+  TransferReq req_b = nullptr;
+  if (StartTransfers(ctx_a, ctx_b, descs, req_a, req_b) != 0) {
+    return -1;
+  }
+  return WaitTransfers(ctx_a, ctx_b, req_a, req_b);
+}
+
 int32_t Verify(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   std::vector<uint8_t> expected_a(kBufSize, kFillA);
   std::vector<uint8_t> expected_b(kBufSize, kFillB);
@@ -307,7 +321,7 @@ int32_t Verify(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   return 0;
 }
 
-void Finalize(EngineCtx &ctx_a, EngineCtx &ctx_b) {
+void DisconnectBoth(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   if (ctx_a.connected) {
     auto ret = ctx_a.engine.DisconnectAsync(ctx_b.name, kConnectTimeout);
     if (ret != SUCCESS) {
@@ -332,30 +346,27 @@ void Finalize(EngineCtx &ctx_a, EngineCtx &ctx_b) {
     }
     printf("[INFO] Disconnect success\n");
   }
-  if (ctx_a.dev_handle != nullptr) {
-    ctx_a.engine.DeregisterMem(ctx_a.dev_handle);
+}
+
+void DeregisterAndFree(EngineCtx &ctx) {
+  if (ctx.dev_handle != nullptr) {
+    ctx.engine.DeregisterMem(ctx.dev_handle);
   }
-  if (ctx_a.host_handle != nullptr) {
-    ctx_a.engine.DeregisterMem(ctx_a.host_handle);
+  if (ctx.host_handle != nullptr) {
+    ctx.engine.DeregisterMem(ctx.host_handle);
   }
-  if (ctx_b.dev_handle != nullptr) {
-    ctx_b.engine.DeregisterMem(ctx_b.dev_handle);
+  if (ctx.dev_buf != nullptr) {
+    CHECK_ACL(aclrtFree(ctx.dev_buf));
   }
-  if (ctx_b.host_handle != nullptr) {
-    ctx_b.engine.DeregisterMem(ctx_b.host_handle);
+  if (ctx.host_buf != nullptr) {
+    CHECK_ACL(aclrtFreeHost(ctx.host_buf));
   }
-  if (ctx_a.dev_buf != nullptr) {
-    CHECK_ACL(aclrtFree(ctx_a.dev_buf));
-  }
-  if (ctx_a.host_buf != nullptr) {
-    CHECK_ACL(aclrtFreeHost(ctx_a.host_buf));
-  }
-  if (ctx_b.dev_buf != nullptr) {
-    CHECK_ACL(aclrtFree(ctx_b.dev_buf));
-  }
-  if (ctx_b.host_buf != nullptr) {
-    CHECK_ACL(aclrtFreeHost(ctx_b.host_buf));
-  }
+}
+
+void Finalize(EngineCtx &ctx_a, EngineCtx &ctx_b) {
+  DisconnectBoth(ctx_a, ctx_b);
+  DeregisterAndFree(ctx_a);
+  DeregisterAndFree(ctx_b);
   if (ctx_a.initialized) {
     ctx_a.engine.Finalize();
   }

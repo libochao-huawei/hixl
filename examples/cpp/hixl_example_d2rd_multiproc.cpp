@@ -104,34 +104,33 @@ int32_t ValidateProtocol(const std::string &proto) {
   return -1;
 }
 
-int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::string> &protocols,
-                  int32_t &version) {
-  std::string role;
-  int32_t device_id = -1;
-  std::string local_engine;
-  std::string remote_engine;
-  for (int32_t i = 1; i < argc; ++i) {
-    std::string arg = argv[i];
-    if (arg.find("--role=") == 0) {
-      role = arg.substr(7);
-    } else if (arg.find("--device=") == 0) {
-      device_id = std::stoi(arg.substr(9));
-    } else if (arg.find("--local-engine=") == 0) {
-      local_engine = arg.substr(15);
-    } else if (arg.find("--remote-engine=") == 0) {
-      remote_engine = arg.substr(16);
-    } else if (arg.find("--protocol=") == 0) {
-      ParseProtocolList(arg.substr(11), protocols);
-    } else if (arg.find("--version=") == 0) {
-      version = std::stoi(arg.substr(10));
-    } else {
-      printf("[ERROR] Unknown argument: %s\n", arg.c_str());
-      printf("Usage: %s --role=client|server --protocol=<type>[,...] "
-             "[--device=<id>] [--local-engine=<ip:port>] [--remote-engine=<ip:port>] "
-             "[--version=0|1]\n", argv[0]);
-      return -1;
-    }
+int32_t ParseSingleArg(const std::string &arg, std::string &role, int32_t &device_id,
+                       std::string &local_engine, std::string &remote_engine,
+                       std::vector<std::string> &protocols, int32_t &version, const char *prog_name) {
+  if (arg.find("--role=") == 0) {
+    role = arg.substr(7);
+  } else if (arg.find("--device=") == 0) {
+    device_id = std::stoi(arg.substr(9));
+  } else if (arg.find("--local-engine=") == 0) {
+    local_engine = arg.substr(15);
+  } else if (arg.find("--remote-engine=") == 0) {
+    remote_engine = arg.substr(16);
+  } else if (arg.find("--protocol=") == 0) {
+    ParseProtocolList(arg.substr(11), protocols);
+  } else if (arg.find("--version=") == 0) {
+    version = std::stoi(arg.substr(10));
+  } else {
+    printf("[ERROR] Unknown argument: %s\n", arg.c_str());
+    printf("Usage: %s --role=client|server --protocol=<type>[,...] "
+           "[--device=<id>] [--local-engine=<ip:port>] [--remote-engine=<ip:port>] "
+           "[--version=0|1]\n", prog_name);
+    return -1;
   }
+  return 0;
+}
+
+int32_t ValidateArgs(const std::string &role, const std::vector<std::string> &protocols,
+                     int32_t version, EngineCtx &ctx) {
   if (role != "client" && role != "server") {
     printf("[ERROR] --role is required and must be 'client' or 'server'\n");
     return -1;
@@ -141,9 +140,6 @@ int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::st
     return -1;
   }
   ctx.is_client = (role == "client");
-  ctx.device_id = (device_id >= 0) ? device_id : (ctx.is_client ? kDefaultDeviceClient : kDefaultDeviceServer);
-  ctx.local_engine = local_engine.empty() ? (ctx.is_client ? kDefaultClientEngine : kDefaultServerEngine) : local_engine;
-  ctx.remote_engine = remote_engine.empty() ? (ctx.is_client ? kDefaultServerEngine : kDefaultClientEngine) : remote_engine;
   for (const auto &p : protocols) {
     if (ValidateProtocol(p) != 0) {
       return -1;
@@ -156,6 +152,28 @@ int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::st
   }
   if (ParsePort(ctx.local_engine) < 0 || ParsePort(ctx.remote_engine) < 0) {
     printf("[ERROR] Invalid engine address format, expected ip:port\n");
+    return -1;
+  }
+  return 0;
+}
+
+int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::string> &protocols,
+                  int32_t &version) {
+  std::string role;
+  int32_t device_id = -1;
+  std::string local_engine;
+  std::string remote_engine;
+  for (int32_t i = 1; i < argc; ++i) {
+    if (ParseSingleArg(argv[i], role, device_id, local_engine, remote_engine,
+                       protocols, version, argv[0]) != 0) {
+      return -1;
+    }
+  }
+  ctx.is_client = (role == "client");
+  ctx.device_id = (device_id >= 0) ? device_id : (ctx.is_client ? kDefaultDeviceClient : kDefaultDeviceServer);
+  ctx.local_engine = local_engine.empty() ? (ctx.is_client ? kDefaultClientEngine : kDefaultServerEngine) : local_engine;
+  ctx.remote_engine = remote_engine.empty() ? (ctx.is_client ? kDefaultServerEngine : kDefaultClientEngine) : remote_engine;
+  if (ValidateArgs(role, protocols, version, ctx) != 0) {
     return -1;
   }
   printf("[INFO] ParseArgs: role=%s, device=%d, local=%s, remote=%s, version=%d\n",
@@ -315,8 +333,7 @@ int32_t Verify(EngineCtx &ctx) {
   return 0;
 }
 
-int32_t ServerSendAddr(EngineCtx &ctx) {
-  int port = ParsePort(ctx.local_engine) + kSocketPortOffset;
+int32_t SetupListenSocket(EngineCtx &ctx, int port) {
   ctx.listen_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (ctx.listen_fd < 0) {
     printf("[ERROR] socket() failed\n");
@@ -340,7 +357,10 @@ int32_t ServerSendAddr(EngineCtx &ctx) {
     ctx.listen_fd = -1;
     return -1;
   }
-  printf("[INFO] Waiting for client on port %d...\n", port);
+  return 0;
+}
+
+int32_t AcceptAndSendAddr(EngineCtx &ctx) {
   ctx.conn_fd = accept(ctx.listen_fd, nullptr, nullptr);
   if (ctx.conn_fd < 0) {
     printf("[ERROR] accept failed\n");
@@ -361,12 +381,28 @@ int32_t ServerSendAddr(EngineCtx &ctx) {
   }
   printf("[INFO] Sent buffer addr %p to client, waiting for client to finish...\n",
          reinterpret_cast<void *>(buf_addr));
+  return 0;
+}
+
+void WaitForClientDisconnect(EngineCtx &ctx) {
   char dummy;
   ssize_t recv_ret = 1;
   while (recv_ret > 0) {
     recv_ret = recv(ctx.conn_fd, &dummy, 1, 0);
   }
   printf("[INFO] Client disconnected, server exiting\n");
+}
+
+int32_t ServerSendAddr(EngineCtx &ctx) {
+  int port = ParsePort(ctx.local_engine) + kSocketPortOffset;
+  if (SetupListenSocket(ctx, port) != 0) {
+    return -1;
+  }
+  printf("[INFO] Waiting for client on port %d...\n", port);
+  if (AcceptAndSendAddr(ctx) != 0) {
+    return -1;
+  }
+  WaitForClientDisconnect(ctx);
   return 0;
 }
 
