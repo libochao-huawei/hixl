@@ -8,8 +8,10 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <algorithm>
 #include <string>
 
+#include "nlohmann/json.hpp"
 #include "hixl_engine.h"
 #include "hixl_options.h"
 #include "engine/endpoint_generator.h"
@@ -23,8 +25,37 @@
 
 namespace hixl {
 namespace {
-constexpr int32_t kAutoConnectTimeout = 3000;
+bool HasExplicitEndpointList(const std::string &local_comm_res) {
+  if (local_comm_res.empty()) {
+    return false;
+  }
+  try {
+    const nlohmann::json config = nlohmann::json::parse(local_comm_res);
+    return config.contains("net_instance_id") && config["net_instance_id"].is_string() &&
+           config.contains("endpoint_list") && config["endpoint_list"].is_array() && !config["endpoint_list"].empty();
+  } catch (const nlohmann::json::exception &) {
+    return false;
+  }
 }
+
+ProtocolLock ParseProtocolLockFromOptions(const HixlOptions &options, bool has_explicit_endpoint_list) {
+  if (has_explicit_endpoint_list) {
+    return ProtocolLock::kNone;
+  }
+  std::vector<std::string> protocol_desc = options.GetProtocolDesc();
+  const bool has_ubg = std::find(protocol_desc.begin(), protocol_desc.end(), kUbgProtocolDesc) != protocol_desc.end();
+  const bool has_uboe = std::find(protocol_desc.begin(), protocol_desc.end(), kUboeProtocolDesc) != protocol_desc.end();
+  if (has_ubg && !has_uboe && protocol_desc.size() == 1U) {
+    return ProtocolLock::kUbg;
+  }
+  if (has_uboe && !has_ubg && protocol_desc.size() == 1U) {
+    return ProtocolLock::kUboe;
+  }
+  return ProtocolLock::kNone;
+}
+}  // namespace
+
+constexpr int32_t kAutoConnectTimeout = 3000;
 
 const std::unordered_set<std::string> HixlEngine::kSupportedOptions = {
     OPTION_RDMA_TRAFFIC_CLASS,    adxl::OPTION_RDMA_TRAFFIC_CLASS,
@@ -67,6 +98,9 @@ Status HixlEngine::Initialize(const HixlOptions &options) {
   std::string local_comm_res;
   Status ret = EndpointGenerator::BuildEndpointList(options, local_engine_, local_comm_res, endpoint_list_);
   HIXL_CHK_STATUS_RET(ret, "[HixlEngine] Failed to build endpoint list from options");
+  protocol_lock_ = ParseProtocolLockFromOptions(options, HasExplicitEndpointList(local_comm_res));
+  HIXL_EVENT("[HixlEngine] ProtocolLock=%d", static_cast<int32_t>(protocol_lock_));
+
   HIXL_CHK_STATUS_RET(InitServer(), "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
                       local_engine_.c_str(), local_comm_res.c_str());
   rdma_traffic_class_ = options.RdmaTrafficClass().value_or(kRdmaTrafficClass);
@@ -357,6 +391,7 @@ void HixlEngine::BuildClientConfig(const AscendString &remote_engine, ClientConf
   config.timeout_ms = static_cast<uint32_t>(timeout_in_millis);
   config.local_listen_port = local_listen_port_;
   config.qos = qos_;
+  config.protocol_lock = protocol_lock_;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto &pair : mem_map_) {
