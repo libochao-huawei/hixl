@@ -264,6 +264,10 @@ TemporaryRtContext::TemporaryRtContext(aclrtContext context) {
   }
 }
 
+bool IsHostRegisterMappedProtocol(CommProtocol protocol) {
+  return protocol == COMM_PROTOCOL_UBOE || protocol == COMM_PROTOCOL_UBG;
+}
+
 TemporaryRtContext::~TemporaryRtContext() {
   if (prev_context_ != nullptr) {
     HIXL_LOGI("Restore previous aclrt ctx:%p", prev_context_);
