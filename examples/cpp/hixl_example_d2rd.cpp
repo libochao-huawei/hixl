@@ -18,19 +18,19 @@
 
 using namespace hixl;
 namespace {
-constexpr size_t bufSize = 8 * 1024 * 1024;
-constexpr size_t blockSize = 16 * 1024;
-constexpr size_t blockCount = bufSize / blockSize;
-constexpr int32_t defaultDevA = 0;
-constexpr int32_t defaultDevB = 2;
-constexpr int32_t versionLegacy = 0;
-constexpr const char *engineA = "127.0.0.1:16000";
-constexpr const char *engineB = "127.0.0.1:16001";
-constexpr uint8_t fillA = 0xAA;
-constexpr uint8_t fillB = 0xBB;
-constexpr int32_t connTimeout = 5000;
-constexpr int32_t xferTimeout = 30000;
-static const std::vector<std::string> validProtos = {
+constexpr size_t kXferBufSize = 8 * 1024 * 1024;
+constexpr size_t kXferBlockSize = 16 * 1024;
+constexpr size_t kXferBlockCount = kXferBufSize / kXferBlockSize;
+constexpr int32_t kDefaultDevA = 0;
+constexpr int32_t kDefaultDevB = 2;
+constexpr int32_t kVersionLegacy = 0;
+constexpr const char *kEngineA = "127.0.0.1:16000";
+constexpr const char *kEngineB = "127.0.0.1:16001";
+constexpr uint8_t kFillA = 0xAA;
+constexpr uint8_t kFillB = 0xBB;
+constexpr int32_t kConnTimeout = 5000;
+constexpr int32_t kXferTimeout = 30000;
+static const std::vector<std::string> kValidProtos = {
     "roce:device", "roce:host",
     "uboe:device", "ubg:device",
     "ub_ctp:device", "ub_tp:device"};
@@ -70,14 +70,14 @@ void ParseProtocolList(const std::string &input, std::vector<std::string> &out) 
 }
 
 int32_t ValidateProtocol(const std::string &proto) {
-  for (const auto &p : validProtos) {
+  for (const auto &p : kValidProtos) {
     if (p == proto) {
       return 0;
     }
   }
   printf("[ERROR] Invalid protocol: %s\n", proto.c_str());
   printf("Supported:");
-  for (const auto &p : validProtos) {
+  for (const auto &p : kValidProtos) {
     printf(" %s", p.c_str());
   }
   printf("\n");
@@ -117,7 +117,7 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
       return -1;
     }
   }
-  if (version == versionLegacy && (protocols.size() != 1 || protocols[0] != "roce:device")) {
+  if (version == kVersionLegacy && (protocols.size() != 1 || protocols[0] != "roce:device")) {
     printf("[ERROR] version 0 only supports roce:device\n");
     return -1;
   }
@@ -163,7 +163,7 @@ int32_t SetupV2Options(const std::vector<std::string> &protocols,
 int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, int32_t version, uint8_t fill_value) {
   CHECK_ACL(aclrtSetDevice(ctx.device_id));
   std::map<AscendString, AscendString> options;
-  if (version == versionLegacy) {
+  if (version == kVersionLegacy) {
     SetupLegacyOptions(ctx, protocols, options);
   } else {
     SetupV2Options(protocols, options);
@@ -176,24 +176,24 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
   ctx.initialized = true;
   printf("[INFO] InitEngine %s success\n", ctx.name);
   uint8_t *dev_ptr = nullptr;
-  CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&dev_ptr), bufSize, ACL_MEM_MALLOC_HUGE_ONLY));
+  CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&dev_ptr), kXferBufSize, ACL_MEM_MALLOC_HUGE_ONLY));
   ctx.dev_buf = dev_ptr;
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(ctx.dev_buf);
-  desc.len = bufSize;
+  desc.len = kXferBufSize;
   ret = ctx.engine.RegisterMem(desc, MEM_DEVICE, ctx.dev_handle);
   if (ret != SUCCESS) {
     printf("[ERROR] %s RegisterMem device failed, ret=%u, errmsg:%s\n", ctx.name, ret, GetRecentErrMsg());
     return -1;
   }
-  std::vector<uint8_t> host_tmp(bufSize, fill_value);
-  CHECK_ACL(aclrtMemcpy(ctx.dev_buf, bufSize, host_tmp.data(), bufSize, ACL_MEMCPY_HOST_TO_DEVICE));
+  std::vector<uint8_t> host_tmp(kXferBufSize, fill_value);
+  CHECK_ACL(aclrtMemcpy(ctx.dev_buf, kXferBufSize, host_tmp.data(), kXferBufSize, ACL_MEMCPY_HOST_TO_DEVICE));
   printf("[INFO] %s InitEngine success, dev:%p\n", ctx.name, ctx.dev_buf);
   return 0;
 }
 
 int32_t Connect(EngineCtx &ctx_a, EngineCtx &ctx_b) {
-  auto ret = ctx_a.engine.Connect(ctx_b.name, connTimeout);
+  auto ret = ctx_a.engine.Connect(ctx_b.name, kConnTimeout);
   if (ret != SUCCESS) {
     printf("[ERROR] Connect %s->%s failed, ret=%u, errmsg:%s\n",
            ctx_a.name, ctx_b.name, ret, GetRecentErrMsg());
@@ -206,15 +206,15 @@ int32_t Connect(EngineCtx &ctx_a, EngineCtx &ctx_b) {
 
 int32_t Transfer(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   std::vector<TransferOpDesc> descs;
-  descs.reserve(blockCount);
-  for (size_t i = 0; i < blockCount; ++i) {
+  descs.reserve(kXferBlockCount);
+  for (size_t i = 0; i < kXferBlockCount; ++i) {
     TransferOpDesc desc{};
-    desc.local_addr = reinterpret_cast<uintptr_t>(ctx_a.dev_buf) + i * blockSize;
-    desc.remote_addr = reinterpret_cast<uintptr_t>(ctx_b.dev_buf) + i * blockSize;
-    desc.len = blockSize;
+    desc.local_addr = reinterpret_cast<uintptr_t>(ctx_a.dev_buf) + i * kXferBlockSize;
+    desc.remote_addr = reinterpret_cast<uintptr_t>(ctx_b.dev_buf) + i * kXferBlockSize;
+    desc.len = kXferBlockSize;
     descs.push_back(desc);
   }
-  auto ret = ctx_a.engine.TransferSync(ctx_b.name, WRITE, descs, xferTimeout);
+  auto ret = ctx_a.engine.TransferSync(ctx_b.name, WRITE, descs, kXferTimeout);
   if (ret != SUCCESS) {
     printf("[ERROR] TransferSync %s->%s failed, ret=%u, errmsg:%s\n",
            ctx_a.name, ctx_b.name, ret, GetRecentErrMsg());
@@ -226,10 +226,10 @@ int32_t Transfer(EngineCtx &ctx_a, EngineCtx &ctx_b) {
 
 int32_t Verify(EngineCtx &ctx_b) {
   void *host_tmp = nullptr;
-  CHECK_ACL(aclrtMallocHost(&host_tmp, bufSize));
-  CHECK_ACL(aclrtMemcpy(host_tmp, bufSize, ctx_b.dev_buf, bufSize, ACL_MEMCPY_DEVICE_TO_HOST));
-  std::vector<uint8_t> expected(bufSize, fillA);
-  if (std::memcmp(host_tmp, expected.data(), bufSize) != 0) {
+  CHECK_ACL(aclrtMallocHost(&host_tmp, kXferBufSize));
+  CHECK_ACL(aclrtMemcpy(host_tmp, kXferBufSize, ctx_b.dev_buf, kXferBufSize, ACL_MEMCPY_DEVICE_TO_HOST));
+  std::vector<uint8_t> expected(kXferBufSize, kFillA);
+  if (std::memcmp(host_tmp, expected.data(), kXferBufSize) != 0) {
     printf("[ERROR] Verify %s dev_buf failed, expected 0xAA\n", ctx_b.name);
     CHECK_ACL(aclrtFreeHost(host_tmp));
     return -1;
@@ -241,7 +241,7 @@ int32_t Verify(EngineCtx &ctx_b) {
 
 void Finalize(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   if (ctx_a.connected) {
-    auto ret = ctx_a.engine.Disconnect(ctx_b.name, connTimeout);
+    auto ret = ctx_a.engine.Disconnect(ctx_b.name, kConnTimeout);
     if (ret != SUCCESS) {
       printf("[ERROR] Disconnect %s->%s failed, ret=%u, errmsg:%s\n",
              ctx_a.name, ctx_b.name, ret, GetRecentErrMsg());
@@ -273,10 +273,10 @@ void Finalize(EngineCtx &ctx_a, EngineCtx &ctx_b) {
 
 int32_t Run(EngineCtx &ctx_a, EngineCtx &ctx_b, const std::vector<std::string> &protocols,
             int32_t version) {
-  if (InitEngine(ctx_a, protocols, version, fillA) != 0) {
+  if (InitEngine(ctx_a, protocols, version, kFillA) != 0) {
     return -1;
   }
-  if (InitEngine(ctx_b, protocols, version, fillB) != 0) {
+  if (InitEngine(ctx_b, protocols, version, kFillB) != 0) {
     return -1;
   }
   if (Connect(ctx_a, ctx_b) != 0) {
@@ -290,8 +290,8 @@ int32_t Run(EngineCtx &ctx_a, EngineCtx &ctx_b, const std::vector<std::string> &
 }  // namespace
 
 int main(int32_t argc, char **argv) {
-  int32_t device_a = defaultDevA;
-  int32_t device_b = defaultDevB;
+  int32_t device_a = kDefaultDevA;
+  int32_t device_b = kDefaultDevB;
   std::vector<std::string> protocols;
   int32_t version = 1;
   if (ParseArgs(argc, argv, device_a, device_b, protocols, version) != 0) {
@@ -300,9 +300,9 @@ int main(int32_t argc, char **argv) {
   EngineCtx ctx_a;
   EngineCtx ctx_b;
   ctx_a.device_id = device_a;
-  ctx_a.name = engineA;
+  ctx_a.name = kEngineA;
   ctx_b.device_id = device_b;
-  ctx_b.name = engineB;
+  ctx_b.name = kEngineB;
   int32_t ret = Run(ctx_a, ctx_b, protocols, version);
   Finalize(ctx_a, ctx_b);
   return ret;
