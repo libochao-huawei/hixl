@@ -49,6 +49,8 @@ struct EngineCtx {
   Hixl engine;
   int32_t device_id = 0;
   const char *name = nullptr;
+  bool initialized = false;
+  bool connected = false;
   void *dev_buf = nullptr;
   void *host_buf = nullptr;
   MemHandle dev_handle = nullptr;
@@ -162,6 +164,7 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
     printf("[ERROR] Initialize %s failed, ret=%u, errmsg:%s\n", ctx.name, ret, GetRecentErrMsg());
     return -1;
   }
+  ctx.initialized = true;
   printf("[INFO] InitEngine %s success\n", ctx.name);
   uint8_t *dev_ptr = nullptr;
   CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&dev_ptr), kBufSize, ACL_MEM_MALLOC_HUGE_ONLY));
@@ -213,6 +216,8 @@ int32_t Connect(EngineCtx &ctx_a, EngineCtx &ctx_b) {
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
+  ctx_a.connected = true;
+  ctx_b.connected = true;
   printf("[INFO] Connect success\n");
   return 0;
 }
@@ -289,50 +294,67 @@ int32_t Verify(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   return 0;
 }
 
-int32_t Finalize(EngineCtx &ctx_a, EngineCtx &ctx_b) {
-  auto ret = ctx_a.engine.DisconnectAsync(ctx_b.name, kConnectTimeout);
-  if (ret != SUCCESS) {
-    printf("[ERROR] DisconnectAsync %s->%s failed, ret=%u, errmsg:%s\n",
-           ctx_a.name, ctx_b.name, ret, GetRecentErrMsg());
+void Finalize(EngineCtx &ctx_a, EngineCtx &ctx_b) {
+  if (ctx_a.connected) {
+    auto ret = ctx_a.engine.DisconnectAsync(ctx_b.name, kConnectTimeout);
+    if (ret != SUCCESS) {
+      printf("[ERROR] DisconnectAsync %s->%s failed, ret=%u, errmsg:%s\n",
+             ctx_a.name, ctx_b.name, ret, GetRecentErrMsg());
+    }
   }
-  ret = ctx_b.engine.DisconnectAsync(ctx_a.name, kConnectTimeout);
-  if (ret != SUCCESS) {
-    printf("[ERROR] DisconnectAsync %s->%s failed, ret=%u, errmsg:%s\n",
-           ctx_b.name, ctx_a.name, ret, GetRecentErrMsg());
+  if (ctx_b.connected) {
+    auto ret = ctx_b.engine.DisconnectAsync(ctx_a.name, kConnectTimeout);
+    if (ret != SUCCESS) {
+      printf("[ERROR] DisconnectAsync %s->%s failed, ret=%u, errmsg:%s\n",
+             ctx_b.name, ctx_a.name, ret, GetRecentErrMsg());
+    }
   }
-  AsyncConnectStatus st_a = AsyncConnectStatus::DISCONNECT_PENDING;
-  AsyncConnectStatus st_b = AsyncConnectStatus::DISCONNECT_PENDING;
-  while (st_a != AsyncConnectStatus::NOT_CONNECT || st_b != AsyncConnectStatus::NOT_CONNECT) {
-    ctx_a.engine.GetAsyncConnectStatus(ctx_b.name, st_a);
-    ctx_b.engine.GetAsyncConnectStatus(ctx_a.name, st_b);
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  if (ctx_a.connected || ctx_b.connected) {
+    AsyncConnectStatus st_a = AsyncConnectStatus::DISCONNECT_PENDING;
+    AsyncConnectStatus st_b = AsyncConnectStatus::DISCONNECT_PENDING;
+    while (st_a != AsyncConnectStatus::NOT_CONNECT || st_b != AsyncConnectStatus::NOT_CONNECT) {
+      ctx_a.engine.GetAsyncConnectStatus(ctx_b.name, st_a);
+      ctx_b.engine.GetAsyncConnectStatus(ctx_a.name, st_b);
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    printf("[INFO] Disconnect success\n");
   }
-  printf("[INFO] Disconnect success\n");
-  ctx_a.engine.DeregisterMem(ctx_a.dev_handle);
-  ctx_a.engine.DeregisterMem(ctx_a.host_handle);
-  ctx_b.engine.DeregisterMem(ctx_b.dev_handle);
-  ctx_b.engine.DeregisterMem(ctx_b.host_handle);
-  printf("[INFO] DeregisterMem success\n");
-  CHECK_ACL(aclrtFree(ctx_a.dev_buf));
-  CHECK_ACL(aclrtFreeHost(ctx_a.host_buf));
-  CHECK_ACL(aclrtFree(ctx_b.dev_buf));
-  CHECK_ACL(aclrtFreeHost(ctx_b.host_buf));
-  printf("[INFO] Free memory success\n");
-  ctx_a.engine.Finalize();
-  ctx_b.engine.Finalize();
-  printf("[INFO] Finalize success\n");
+  if (ctx_a.dev_handle != nullptr) {
+    ctx_a.engine.DeregisterMem(ctx_a.dev_handle);
+  }
+  if (ctx_a.host_handle != nullptr) {
+    ctx_a.engine.DeregisterMem(ctx_a.host_handle);
+  }
+  if (ctx_b.dev_handle != nullptr) {
+    ctx_b.engine.DeregisterMem(ctx_b.dev_handle);
+  }
+  if (ctx_b.host_handle != nullptr) {
+    ctx_b.engine.DeregisterMem(ctx_b.host_handle);
+  }
+  if (ctx_a.dev_buf != nullptr) {
+    CHECK_ACL(aclrtFree(ctx_a.dev_buf));
+  }
+  if (ctx_a.host_buf != nullptr) {
+    CHECK_ACL(aclrtFreeHost(ctx_a.host_buf));
+  }
+  if (ctx_b.dev_buf != nullptr) {
+    CHECK_ACL(aclrtFree(ctx_b.dev_buf));
+  }
+  if (ctx_b.host_buf != nullptr) {
+    CHECK_ACL(aclrtFreeHost(ctx_b.host_buf));
+  }
+  if (ctx_a.initialized) {
+    ctx_a.engine.Finalize();
+  }
+  if (ctx_b.initialized) {
+    ctx_b.engine.Finalize();
+  }
   CHECK_ACL(aclrtResetDevice(ctx_a.device_id));
   CHECK_ACL(aclrtResetDevice(ctx_b.device_id));
-  return 0;
 }
 
-int32_t Run(int32_t device_a, int32_t device_b, const std::vector<std::string> &protocols, int32_t version) {
-  EngineCtx ctx_a;
-  EngineCtx ctx_b;
-  ctx_a.device_id = device_a;
-  ctx_a.name = kEngineA;
-  ctx_b.device_id = device_b;
-  ctx_b.name = kEngineB;
+int32_t Run(EngineCtx &ctx_a, EngineCtx &ctx_b, const std::vector<std::string> &protocols,
+            int32_t version) {
   if (InitEngine(ctx_a, protocols, version, kFillA) != 0) {
     return -1;
   }
@@ -342,12 +364,10 @@ int32_t Run(int32_t device_a, int32_t device_b, const std::vector<std::string> &
   if (Connect(ctx_a, ctx_b) != 0) {
     return -1;
   }
-  int32_t result = Transfer(ctx_a, ctx_b);
-  if (result == 0) {
-    result = Verify(ctx_a, ctx_b);
+  if (Transfer(ctx_a, ctx_b) != 0) {
+    return -1;
   }
-  Finalize(ctx_a, ctx_b);
-  return result;
+  return Verify(ctx_a, ctx_b);
 }
 }  // namespace
 
@@ -359,5 +379,13 @@ int main(int32_t argc, char **argv) {
   if (ParseArgs(argc, argv, device_a, device_b, protocols, version) != 0) {
     return -1;
   }
-  return Run(device_a, device_b, protocols, version);
+  EngineCtx ctx_a;
+  EngineCtx ctx_b;
+  ctx_a.device_id = device_a;
+  ctx_a.name = kEngineA;
+  ctx_b.device_id = device_b;
+  ctx_b.name = kEngineB;
+  int32_t ret = Run(ctx_a, ctx_b, protocols, version);
+  Finalize(ctx_a, ctx_b);
+  return ret;
 }
