@@ -33,6 +33,8 @@
 #include "slog_stub.h"
 #include "test_mmpa_utils.h"
 #include "depends/mmpa/src/mmpa_stub.h"
+#include "depends/dsmi/src/dsmi_stub.h"
+#include "proxy/dsmi_proxy.h"
 #include "hixl_test_helpers.h"
 
 namespace hixl {
@@ -1032,6 +1034,49 @@ TEST_F(HixlEngineTest, TestInitializeAutoGenerateForV3FillsDeviceInfo) {
   EXPECT_EQ(hccs_ep.device_info.super_pod_id, 67);
 
   engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestInitializeSetsProtocolLockOnlyForProtocolDescGeneratedEndpoints) {
+  SetSocStub("Ascend950A", 1, 23, 45, 67);
+  SetHccnConfContent("address_23=10.10.10.23\n");
+  DsmiProxy::Reset();
+  DsmiStubSetInterconType(2U);  // UBoE validation needs InterconType=UBoE
+
+  HixlEngine explicit_engine("127.0.0.1");
+  auto explicit_options = BuildOptions(BuildLocalCommRes("sp_v3", "1.3", {BuildDeviceRoceEndpoint("127.0.0.1")}));
+  HixlOptions explicit_parsed;
+  EXPECT_EQ(HixlOptions::Parse(explicit_options, explicit_parsed), SUCCESS);
+  EXPECT_EQ(explicit_engine.Initialize(explicit_parsed), SUCCESS);
+  EXPECT_EQ(explicit_engine.protocol_lock_, ProtocolLock::kNone);
+  explicit_engine.Finalize();
+
+  HixlEngine protocol_desc_engine("127.0.0.1");
+  auto protocol_desc_options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  protocol_desc_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["uboe:device"]
+    }
+  )";
+  HixlOptions protocol_desc_parsed;
+  EXPECT_EQ(HixlOptions::Parse(protocol_desc_options, protocol_desc_parsed), SUCCESS);
+  EXPECT_EQ(protocol_desc_engine.Initialize(protocol_desc_parsed), SUCCESS);
+  EXPECT_EQ(protocol_desc_engine.protocol_lock_, ProtocolLock::kUboe);
+  protocol_desc_engine.Finalize();
+
+  DsmiProxy::Reset();
+  DsmiStubSetInterconType(4U);  // UBG validation needs InterconType=UBG
+  HixlEngine ubg_protocol_desc_engine("127.0.0.1");
+  auto ubg_options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  ubg_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["ubg:device"]
+    }
+  )";
+  HixlOptions ubg_parsed;
+  EXPECT_EQ(HixlOptions::Parse(ubg_options, ubg_parsed), SUCCESS);
+  EXPECT_EQ(ubg_protocol_desc_engine.Initialize(ubg_parsed), SUCCESS);
+  EXPECT_EQ(ubg_protocol_desc_engine.protocol_lock_, ProtocolLock::kUbg);
+  ubg_protocol_desc_engine.Finalize();
 }
 
 class MockClientHandler : public IClientHandler {

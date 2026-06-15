@@ -30,6 +30,24 @@ class DsmiProxy {
    * @return SUCCESS or FAILED.
    */
   static Status GetDevSlotId(int32_t device_id, uint32_t &slot_id);
+
+  /**
+   * @brief Get ScaleOut interconnection type.
+   * @param device_id Logical device ID.
+   * @param intercon_type Output interconnection type.
+   * @return SUCCESS or FAILED.
+   * @note The DSMI query interface is confirmed; the UBG interconnection enum value is pending driver confirmation.
+   */
+  static Status GetInterconType(int32_t device_id, uint32_t &intercon_type);
+
+  /**
+   * @brief Whether the DSMI InterconType query interface is available in the loaded driver.
+   * @return true if the underlying DSMI symbol is present; false when the driver does not provide it yet.
+   * @note Used to decide whether ScaleOut auto-generation can rely on InterconType or must fall back.
+   */
+  static bool IsInterconTypeSupported();
+
+  static void Reset();
 };
 
 }  // namespace hixl
