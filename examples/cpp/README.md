@@ -159,7 +159,7 @@ ifconfig
 
   - 在运行环境执行可执行文件。
 
-    (1) 执行hixl_example_d2rd, device-to-remote-device (D2RD) 单进程场景
+    (1) 执行hixl_example_d2rd, D2RD单进程场景
 
       - 说明：
         - 单进程内启动两个engine，分别绑定不同device，由engine A发起WRITE传输到engine B的device buffer。
@@ -178,7 +178,7 @@ ifconfig
           ./hixl_example_d2rd --protocol=roce:device --version=0
           ```
 
-    (2) 执行hixl_example_d2rh, device-to-remote-host (D2RH) 单进程场景
+    (2) 执行hixl_example_d2rh, D2RH单进程场景
 
       - 说明：
         - 单进程内启动两个engine，分别绑定不同device，双方各自发起WRITE传输到对方的host buffer。
