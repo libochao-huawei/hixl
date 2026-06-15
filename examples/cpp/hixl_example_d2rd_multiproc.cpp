@@ -250,7 +250,7 @@ int32_t GetRemoteAddr(EngineCtx &ctx) {
     }
     received += n;
   }
-  close(fd);
+  ctx.conn_fd = fd;
   printf("[INFO] GetRemoteAddr success, remote_addr:%p\n", reinterpret_cast<void *>(ctx.remote_addr));
   return 0;
 }
@@ -349,8 +349,6 @@ int32_t ServerSendAddr(EngineCtx &ctx) {
   char dummy;
   while (recv(ctx.conn_fd, &dummy, 1, 0) > 0) {
   }
-  close(ctx.conn_fd);
-  ctx.conn_fd = -1;
   printf("[INFO] Client disconnected, server exiting\n");
   return 0;
 }
