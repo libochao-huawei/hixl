@@ -30,6 +30,7 @@ struct ClientConfig {
   std::string remote_engine;
   uint8_t rdma_tc;
   uint8_t rdma_sl;
+  ProtocolLock protocol_lock{ProtocolLock::kNone};
   uint32_t timeout_ms;
   std::optional<uint32_t> local_listen_port;
   std::optional<uint8_t> qos;
@@ -48,6 +49,7 @@ class HixlClient {
         remote_engine_(config.remote_engine),
         rdma_tc_(config.rdma_tc),
         rdma_sl_(config.rdma_sl),
+        protocol_lock_(config.protocol_lock),
         local_listen_port_(config.local_listen_port),
         qos_(config.qos) {}
   ~HixlClient() = default;
@@ -131,6 +133,7 @@ class HixlClient {
   std::string remote_engine_;
   uint8_t rdma_tc_{kRdmaTrafficClass};
   uint8_t rdma_sl_{kRdmaServiceLevel};
+  ProtocolLock protocol_lock_{ProtocolLock::kNone};
   std::optional<uint32_t> local_listen_port_;
   bool is_connected_{false};  // true为已建链；false未建链
   bool is_finalized_{false};

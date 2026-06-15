@@ -33,6 +33,9 @@
 #include "slog_stub.h"
 #include "test_mmpa_utils.h"
 #include "depends/mmpa/src/mmpa_stub.h"
+#include "depends/dsmi/src/dsmi_stub.h"
+#include "proxy/dsmi_proxy.h"
+#include "depends/dcmi/src/dcmi_stub.h"
 #include "hixl_test_helpers.h"
 
 namespace hixl {
@@ -1032,6 +1035,73 @@ TEST_F(HixlEngineTest, TestInitializeAutoGenerateForV3FillsDeviceInfo) {
   EXPECT_EQ(hccs_ep.device_info.super_pod_id, 67);
 
   engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestInitializeSetsProtocolLockOnlyForProtocolDescGeneratedEndpoints) {
+  SetSocStub("Ascend950A", 0, 3, 45, 67);
+
+  HixlEngine explicit_engine("127.0.0.1");
+  auto explicit_options = BuildOptions(BuildLocalCommRes("sp_v3", "1.3", {BuildDeviceRoceEndpoint("127.0.0.1")}));
+  HixlOptions explicit_parsed;
+  EXPECT_EQ(HixlOptions::Parse(explicit_options, explicit_parsed), SUCCESS);
+  EXPECT_EQ(explicit_engine.Initialize(explicit_parsed), SUCCESS);
+  EXPECT_EQ(explicit_engine.protocol_lock_, ProtocolLock::kNone);
+  explicit_engine.Finalize();
+
+  const std::string uboe_script = test::CreateTempFileWithContent("/tmp/hccn_tool_XXXXXX",
+                                                                    "#!/bin/sh\necho \"ipaddr:192.168.100.205\"\n");
+  chmod(uboe_script.c_str(), 0755);
+  std::string uboe_dir = fs::path(uboe_script).parent_path().string();
+  std::string old_path = getenv("PATH") == nullptr ? "" : getenv("PATH");
+  setenv("PATH", uboe_dir.c_str(), 1);
+  mmpa_stub_->access_ok_ = true;
+  mmpa_stub_->real_path_ok_ = true;
+  mmpa_stub_->fake_real_path_ = uboe_script;
+
+  DsmiProxy::Reset();
+  DsmiStubSetInterconType(2U);
+  HixlEngine protocol_desc_engine("127.0.0.1");
+  auto protocol_desc_options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  protocol_desc_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["uboe:device"]
+    }
+  )";
+  HixlOptions protocol_desc_parsed;
+  EXPECT_EQ(HixlOptions::Parse(protocol_desc_options, protocol_desc_parsed), SUCCESS);
+  EXPECT_EQ(protocol_desc_engine.Initialize(protocol_desc_parsed), SUCCESS);
+  EXPECT_EQ(protocol_desc_engine.protocol_lock_, ProtocolLock::kUboe);
+  protocol_desc_engine.Finalize();
+
+  setenv("PATH", old_path.c_str(), 1);
+  (void)remove(uboe_script.c_str());
+  mmpa_stub_->access_ok_ = false;
+  mmpa_stub_->real_path_ok_ = false;
+
+  DcmiStubSetInitRet(0);
+  DcmiStubSetMainboardId(0x3, 0);
+  DcmiStubSetLogicId(0, 0);
+  DcmiStubSetUrmaDeviceCnt(1, 0);
+  DcmiStubSetSuperPodId(0, 0);
+  DcmiStubSetEidCount(1);
+  DcmiStubSetEnableUbgEid(true);
+
+  DsmiProxy::Reset();
+  DsmiStubSetInterconType(4U);
+  HixlEngine ubg_protocol_desc_engine("127.0.0.1");
+  auto ubg_options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  ubg_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["ubg:device"]
+    }
+  )";
+  HixlOptions ubg_parsed;
+  EXPECT_EQ(HixlOptions::Parse(ubg_options, ubg_parsed), SUCCESS);
+  EXPECT_EQ(ubg_protocol_desc_engine.Initialize(ubg_parsed), SUCCESS);
+  EXPECT_EQ(ubg_protocol_desc_engine.protocol_lock_, ProtocolLock::kUbg);
+  ubg_protocol_desc_engine.Finalize();
+
+  DcmiStubSetEnableUbgEid(false);
 }
 
 class MockClientHandler : public IClientHandler {
