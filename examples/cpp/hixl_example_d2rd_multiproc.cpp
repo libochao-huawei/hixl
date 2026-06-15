@@ -36,7 +36,7 @@ constexpr int32_t kSocketBacklog = 1;
 constexpr int32_t kSocketRetryCount = 10;
 constexpr int32_t kSocketRetryIntervalUs = 500000;
 constexpr uint8_t kFillValue = 0xAA;
-static const std::vector<std::string> kValidProtocols = {
+static const std::vector<std::string> protocolList = {
     "hccs:device",
     "roce:device", "roce:host",
     "uboe:device", "ubg:device",
@@ -66,8 +66,8 @@ struct EngineCtx {
 };
 
 const char *GetRecentErrMsg() {
-  const char *errmsg = aclGetRecentErrMsg();
-  return (errmsg == nullptr) ? "no error" : errmsg;
+  const char *err_msg = aclGetRecentErrMsg();
+  return (err_msg == nullptr) ? "no error" : err_msg;
 }
 
 int32_t ParsePort(const std::string &engine) {
@@ -79,26 +79,26 @@ int32_t ParsePort(const std::string &engine) {
 }
 
 void ParseProtocolList(const std::string &val, std::vector<std::string> &protocols) {
-  size_t start = 0;
-  size_t pos = val.find(',');
-  while (pos != std::string::npos) {
-    protocols.push_back(val.substr(start, pos - start));
-    start = pos + 1;
-    pos = val.find(',', start);
+  size_t offset = 0;
+  size_t delimiter = val.find(',');
+  while (delimiter != std::string::npos) {
+    protocols.push_back(val.substr(offset, delimiter - offset));
+    offset = delimiter + 1;
+    delimiter = val.find(',', offset);
   }
-  protocols.push_back(val.substr(start));
+  protocols.push_back(val.substr(offset));
 }
 
 int32_t ValidateProtocol(const std::string &proto) {
-  for (const auto &valid_proto : kValidProtocols) {
-    if (valid_proto == proto) {
+  for (const auto &proto_item : protocolList) {
+    if (proto_item == proto) {
       return 0;
     }
   }
   printf("[ERROR] Invalid protocol: %s\n", proto.c_str());
   printf("Supported:");
-  for (const auto &valid_proto : kValidProtocols) {
-    printf(" %s", valid_proto.c_str());
+  for (const auto &proto_item : protocolList) {
+    printf(" %s", proto_item.c_str());
   }
   printf("\n");
   return -1;
