@@ -252,7 +252,7 @@ void BuildTransferDescs(std::vector<TransferOpDesc> &descs, EngineCtx &ctx_a, En
   }
 }
 
-int32_t StartTransfers(EngineCtx &ctx_a, EngineCtx &ctx_b, const std::vector<TransferOpDesc> &descs,
+int32_t StartTransfers(EngineCtx &ctx_a, EngineCtx &ctx_b, std::vector<TransferOpDesc> &descs,
                        TransferReq &req_a, TransferReq &req_b) {
   TransferArgs args{};
   req_a = nullptr;
@@ -262,6 +262,13 @@ int32_t StartTransfers(EngineCtx &ctx_a, EngineCtx &ctx_b, const std::vector<Tra
            ctx_a.name, ctx_b.name, ret, GetRecentErrMsg());
     return -1;
   }
+
+  // Update descriptors for B->A transfer
+  for (size_t i = 0; i < kChunkCount; ++i) {
+    descs[i].local_addr = reinterpret_cast<uintptr_t>(ctx_b.dev_buf) + i * kChunkSize;
+    descs[i].remote_addr = reinterpret_cast<uintptr_t>(ctx_a.host_buf) + i * kChunkSize;
+  }
+
   req_b = nullptr;
   ret = ctx_b.engine.TransferAsync(ctx_a.name, WRITE, descs, args, req_b);
   if (ret != SUCCESS) {
