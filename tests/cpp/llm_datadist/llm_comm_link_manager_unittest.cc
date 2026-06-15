@@ -52,23 +52,22 @@ class MockMmpa : public MmpaStubApiGe {
   }
 
   void *DlSym(void *handle, const char *func_name) override {
-    static const std::map<std::string, void*> func_map = {
-        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void*>(&HcclCommInitClusterInfoMemConfig)},
-        {"HcclExchangeMemDesc",              reinterpret_cast<void*>(&HcclExchangeMemDesc1)},
-        {"HcclCommDestroy",                  reinterpret_cast<void*>(&HcclCommDestroy)},
-        {"HcclBatchPut",                     reinterpret_cast<void*>(&HcclBatchPut)},
-        {"HcclBatchGet",                     reinterpret_cast<void*>(&HcclBatchGet1)},
-        {"HcclRemapRegistedMemory",          reinterpret_cast<void*>(&HcclRemapRegistedMemory)},
-        {"HcclRegisterGlobalMem",            reinterpret_cast<void*>(&HcclRegisterGlobalMem)},
-        {"HcclDeregisterGlobalMem",          reinterpret_cast<void*>(&HcclDeregisterGlobalMem)},
-        {"HcclCommBindMem",                  reinterpret_cast<void*>(&HcclCommBindMem)},
-        {"HcclCommUnbindMem",                reinterpret_cast<void*>(&HcclCommUnbindMem)},
-        {"HcclCommPrepare",                  reinterpret_cast<void*>(&HcclCommPrepare)},
+    static const std::map<std::string, void *> func_map = {
+        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void *>(&HcclCommInitClusterInfoMemConfig)},
+        {"HcclExchangeMemDesc", reinterpret_cast<void *>(&HcclExchangeMemDesc1)},
+        {"HcclCommDestroy", reinterpret_cast<void *>(&HcclCommDestroy)},
+        {"HcclBatchPut", reinterpret_cast<void *>(&HcclBatchPut)},
+        {"HcclBatchGet", reinterpret_cast<void *>(&HcclBatchGet1)},
+        {"HcclRemapRegistedMemory", reinterpret_cast<void *>(&HcclRemapRegistedMemory)},
+        {"HcclRegisterGlobalMem", reinterpret_cast<void *>(&HcclRegisterGlobalMem)},
+        {"HcclDeregisterGlobalMem", reinterpret_cast<void *>(&HcclDeregisterGlobalMem)},
+        {"HcclCommBindMem", reinterpret_cast<void *>(&HcclCommBindMem)},
+        {"HcclCommUnbindMem", reinterpret_cast<void *>(&HcclCommUnbindMem)},
+        {"HcclCommPrepare", reinterpret_cast<void *>(&HcclCommPrepare)},
     };
     auto it = func_map.find(func_name);
     if (it != func_map.end()) {
-      LLMLOGI("%s addr: %lu", func_name,
-              static_cast<uint64_t>(reinterpret_cast<uintptr_t>(it->second)));
+      LLMLOGI("%s addr: %lu", func_name, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(it->second)));
       return it->second;
     }
     return nullptr;
@@ -84,23 +83,22 @@ class MockMmpaCommBindMemFail : public MmpaStubApiGe {
     return reinterpret_cast<void *>(mock_handle);
   }
   void *DlSym(void *handle, const char *func_name) override {
-    static const std::map<std::string, void*> func_map = {
-        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void*>(&HcclCommInitClusterInfoMemConfig)},
-        {"HcclExchangeMemDesc",              reinterpret_cast<void*>(&HcclExchangeMemDesc1)},
-        {"HcclCommDestroy",                  reinterpret_cast<void*>(&HcclCommDestroy)},
-        {"HcclBatchPut",                     reinterpret_cast<void*>(&HcclBatchPut)},
-        {"HcclBatchGet",                     reinterpret_cast<void*>(&HcclBatchGet1)},
-        {"HcclRemapRegistedMemory",          reinterpret_cast<void*>(&HcclRemapRegistedMemory)},
-        {"HcclRegisterGlobalMem",            reinterpret_cast<void*>(&HcclRegisterGlobalMem)},
-        {"HcclDeregisterGlobalMem",          reinterpret_cast<void*>(&HcclDeregisterGlobalMem)},
-        {"HcclCommBindMem",                  reinterpret_cast<void*>(&HcclCommBindMemFail)},
-        {"HcclCommUnbindMem",                reinterpret_cast<void*>(&HcclCommUnbindMem)},
-        {"HcclCommPrepare",                  reinterpret_cast<void*>(&HcclCommPrepare)},
+    static const std::map<std::string, void *> func_map = {
+        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void *>(&HcclCommInitClusterInfoMemConfig)},
+        {"HcclExchangeMemDesc", reinterpret_cast<void *>(&HcclExchangeMemDesc1)},
+        {"HcclCommDestroy", reinterpret_cast<void *>(&HcclCommDestroy)},
+        {"HcclBatchPut", reinterpret_cast<void *>(&HcclBatchPut)},
+        {"HcclBatchGet", reinterpret_cast<void *>(&HcclBatchGet1)},
+        {"HcclRemapRegistedMemory", reinterpret_cast<void *>(&HcclRemapRegistedMemory)},
+        {"HcclRegisterGlobalMem", reinterpret_cast<void *>(&HcclRegisterGlobalMem)},
+        {"HcclDeregisterGlobalMem", reinterpret_cast<void *>(&HcclDeregisterGlobalMem)},
+        {"HcclCommBindMem", reinterpret_cast<void *>(&HcclCommBindMemFail)},
+        {"HcclCommUnbindMem", reinterpret_cast<void *>(&HcclCommUnbindMem)},
+        {"HcclCommPrepare", reinterpret_cast<void *>(&HcclCommPrepare)},
     };
     auto it = func_map.find(func_name);
     if (it != func_map.end()) {
-      LLMLOGI("%s addr: %lu", func_name,
-              static_cast<uint64_t>(reinterpret_cast<uintptr_t>(it->second)));
+      LLMLOGI("%s addr: %lu", func_name, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(it->second)));
       return it->second;
     }
     return nullptr;
@@ -110,29 +108,28 @@ class MockMmpaCommBindMemFail : public MmpaStubApiGe {
   }
 };
 
-class MockMmpaCommPrepareFail: public MmpaStubApiGe {
-  public:
-   void *DlOpen(const char *file_name, int32_t mode) override {
+class MockMmpaCommPrepareFail : public MmpaStubApiGe {
+ public:
+  void *DlOpen(const char *file_name, int32_t mode) override {
     return reinterpret_cast<void *>(mock_handle);
-   }
-   void *DlSym(void *handle, const char *func_name) override {
-    static const std::map<std::string, void*> func_map = {
-        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void*>(&HcclCommInitClusterInfoMemConfig)},
-        {"HcclExchangeMemDesc",              reinterpret_cast<void*>(&HcclExchangeMemDesc1)},
-        {"HcclCommDestroy",                  reinterpret_cast<void*>(&HcclCommDestroy)},
-        {"HcclBatchPut",                     reinterpret_cast<void*>(&HcclBatchPut)},
-        {"HcclBatchGet",                     reinterpret_cast<void*>(&HcclBatchGet1)},
-        {"HcclRemapRegistedMemory",          reinterpret_cast<void*>(&HcclRemapRegistedMemory)},
-        {"HcclRegisterGlobalMem",            reinterpret_cast<void*>(&HcclRegisterGlobalMem)},
-        {"HcclDeregisterGlobalMem",          reinterpret_cast<void*>(&HcclDeregisterGlobalMem)},
-        {"HcclCommBindMem",                  reinterpret_cast<void*>(&HcclCommBindMem)},
-        {"HcclCommUnbindMem",                reinterpret_cast<void*>(&HcclCommUnbindMem)},
-        {"HcclCommPrepare",                  reinterpret_cast<void*>(&HcclCommPrepareFail)},
+  }
+  void *DlSym(void *handle, const char *func_name) override {
+    static const std::map<std::string, void *> func_map = {
+        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void *>(&HcclCommInitClusterInfoMemConfig)},
+        {"HcclExchangeMemDesc", reinterpret_cast<void *>(&HcclExchangeMemDesc1)},
+        {"HcclCommDestroy", reinterpret_cast<void *>(&HcclCommDestroy)},
+        {"HcclBatchPut", reinterpret_cast<void *>(&HcclBatchPut)},
+        {"HcclBatchGet", reinterpret_cast<void *>(&HcclBatchGet1)},
+        {"HcclRemapRegistedMemory", reinterpret_cast<void *>(&HcclRemapRegistedMemory)},
+        {"HcclRegisterGlobalMem", reinterpret_cast<void *>(&HcclRegisterGlobalMem)},
+        {"HcclDeregisterGlobalMem", reinterpret_cast<void *>(&HcclDeregisterGlobalMem)},
+        {"HcclCommBindMem", reinterpret_cast<void *>(&HcclCommBindMem)},
+        {"HcclCommUnbindMem", reinterpret_cast<void *>(&HcclCommUnbindMem)},
+        {"HcclCommPrepare", reinterpret_cast<void *>(&HcclCommPrepareFail)},
     };
     auto it = func_map.find(func_name);
     if (it != func_map.end()) {
-      LLMLOGI("%s addr: %lu", func_name,
-              static_cast<uint64_t>(reinterpret_cast<uintptr_t>(it->second)));
+      LLMLOGI("%s addr: %lu", func_name, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(it->second)));
       return it->second;
     }
     return nullptr;
@@ -149,24 +146,23 @@ class MockMmpaLongTimeRegister : public MmpaStubApiGe {
   }
 
   void *DlSym(void *handle, const char *func_name) override {
-    static const std::map<std::string, void*> func_map = {
-        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void*>(&HcclCommInitClusterInfoMemConfig)},
-        {"HcclExchangeMemDesc",              reinterpret_cast<void*>(&HcclExchangeMemDesc1)},
-        {"HcclCommDestroy",                  reinterpret_cast<void*>(&HcclCommDestroy)},
-        {"HcclBatchPut",                     reinterpret_cast<void*>(&HcclBatchPut)},
-        {"HcclBatchGet",                     reinterpret_cast<void*>(&HcclBatchGet1)},
-        {"HcclRemapRegistedMemory",          reinterpret_cast<void*>(&HcclRemapRegistedMemory)},
-        {"HcclRegisterGlobalMem",            reinterpret_cast<void*>(&HcclRegisterGlobalMem)},
-        {"HcclDeregisterGlobalMem",          reinterpret_cast<void*>(&HcclDeregisterGlobalMem)},
-        {"HcclCommBindMem",                  reinterpret_cast<void*>(&HcclCommBindMem)},
-        {"HcclCommUnbindMem",                reinterpret_cast<void*>(&HcclCommUnbindMem)},
-        {"HcclCommPrepare",                  reinterpret_cast<void*>(&HcclCommPrepare)},
+    static const std::map<std::string, void *> func_map = {
+        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void *>(&HcclCommInitClusterInfoMemConfig)},
+        {"HcclExchangeMemDesc", reinterpret_cast<void *>(&HcclExchangeMemDesc1)},
+        {"HcclCommDestroy", reinterpret_cast<void *>(&HcclCommDestroy)},
+        {"HcclBatchPut", reinterpret_cast<void *>(&HcclBatchPut)},
+        {"HcclBatchGet", reinterpret_cast<void *>(&HcclBatchGet1)},
+        {"HcclRemapRegistedMemory", reinterpret_cast<void *>(&HcclRemapRegistedMemory)},
+        {"HcclRegisterGlobalMem", reinterpret_cast<void *>(&HcclRegisterGlobalMem)},
+        {"HcclDeregisterGlobalMem", reinterpret_cast<void *>(&HcclDeregisterGlobalMem)},
+        {"HcclCommBindMem", reinterpret_cast<void *>(&HcclCommBindMem)},
+        {"HcclCommUnbindMem", reinterpret_cast<void *>(&HcclCommUnbindMem)},
+        {"HcclCommPrepare", reinterpret_cast<void *>(&HcclCommPrepare)},
     };
     auto it = func_map.find(func_name);
     if (it != func_map.end()) {
-        LLMLOGI("%s addr: %lu", func_name,
-               static_cast<uint64_t>(reinterpret_cast<uintptr_t>(it->second)));
-        return it->second;
+      LLMLOGI("%s addr: %lu", func_name, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(it->second)));
+      return it->second;
     }
     return nullptr;
   }

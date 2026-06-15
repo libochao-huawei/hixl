@@ -1385,14 +1385,12 @@ TEST_F(HixlClientUTest, EndpointMatcherCrossInstanceFallsBackToHostRoce) {
 }
 
 TEST_F(HixlClientUTest, EndpointMatcherSameInstanceUbPreemptsDirectPriority) {
-  std::vector<EndpointConfig> local = {MakeUbEp("local_1", "", "device", "default"),
-                                       MakeUbEp("local_2", "", "host", "default"),
-                                       MakeDirectEp(kProtocolHccs, kPlacementDevice),
-                                       MakeDirectEp(kProtocolUboe, kPlacementDevice)};
-  std::vector<EndpointConfig> remote = {MakeUbEp("remote_1", "", "device", "default"),
-                                        MakeUbEp("remote_2", "", "host", "default"),
-                                        MakeDirectEp(kProtocolHccs, kPlacementDevice),
-                                        MakeDirectEp(kProtocolUboe, kPlacementDevice)};
+  std::vector<EndpointConfig> local = {
+      MakeUbEp("local_1", "", "device", "default"), MakeUbEp("local_2", "", "host", "default"),
+      MakeDirectEp(kProtocolHccs, kPlacementDevice), MakeDirectEp(kProtocolUboe, kPlacementDevice)};
+  std::vector<EndpointConfig> remote = {
+      MakeUbEp("remote_1", "", "device", "default"), MakeUbEp("remote_2", "", "host", "default"),
+      MakeDirectEp(kProtocolHccs, kPlacementDevice), MakeDirectEp(kProtocolUboe, kPlacementDevice)};
 
   std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
   HandlerCreateArgs::HandlerType handler_type;

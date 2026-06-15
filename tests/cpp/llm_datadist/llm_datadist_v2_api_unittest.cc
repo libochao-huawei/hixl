@@ -265,7 +265,7 @@ TEST_F(LlmDataDistUTest, TestLocalCommResA3) {
 TEST_F(LlmDataDistUTest, TestAutoLocalCommResA2) {
   class AutoCommResV1RuntimeMock : public llm::AutoCommResRuntimeMock {
    public:
-    const char* aclrtGetSocName() override {
+    const char *aclrtGetSocName() override {
       return "Ascend910B1";
     }
   };
@@ -555,9 +555,9 @@ TEST_F(LlmDataDistUTest, LocalCommResSwitchRoleSuccess) {
   EXPECT_EQ(llm_datadist.SetRole(LlmRole::kDecoder, switch_options), ge::SUCCESS);
   EXPECT_EQ(llm_datadist.SetRole(LlmRole::kMix, {}), ge::SUCCESS);
   EXPECT_EQ(llm_datadist.SetRole(LlmRole::kPrompt, switch_options), ge::SUCCESS);
-  EXPECT_EQ(llm_datadist.SetRole(LlmRole::kPrompt), ge::SUCCESS);  // close listen
-  EXPECT_EQ(llm_datadist.SetRole(LlmRole::kDecoder, switch_options), ge::SUCCESS); // decode listen
-  EXPECT_EQ(llm_datadist.SetRole(LlmRole::kDecoder), ge::SUCCESS); // close listen
+  EXPECT_EQ(llm_datadist.SetRole(LlmRole::kPrompt), ge::SUCCESS);                   // close listen
+  EXPECT_EQ(llm_datadist.SetRole(LlmRole::kDecoder, switch_options), ge::SUCCESS);  // decode listen
+  EXPECT_EQ(llm_datadist.SetRole(LlmRole::kDecoder), ge::SUCCESS);                  // close listen
   llm_datadist.Finalize();
 }
 
@@ -718,11 +718,7 @@ TEST_F(LlmDataDistUTest, TestPushWithRangeAndTensorNumV2) {
   KvCacheExtParam ext_param = {};
 
   // test default range and tensor num
-  EXPECT_EQ(llm_datadist_p.PushKvBlocks(src_cache,
-                                      dst_cache_index,
-                                      {0U, 1U},
-                                      {0U, 1U},
-                                      ext_param), ge::SUCCESS);
+  EXPECT_EQ(llm_datadist_p.PushKvBlocks(src_cache, dst_cache_index, {0U, 1U}, {0U, 1U}, ext_param), ge::SUCCESS);
   EXPECT_EQ(llm_datadist_p.PushKvCache(src_cache, dst_cache_index, 0, -1, ext_param), ge::SUCCESS);
 
   // test appointed range and tensor num
@@ -730,76 +726,44 @@ TEST_F(LlmDataDistUTest, TestPushWithRangeAndTensorNumV2) {
   ext_param.dst_layer_range = std::make_pair(0, 1);
 
   ext_param.tensor_num_per_layer = 1;
-  EXPECT_EQ(llm_datadist_p.PushKvBlocks(src_cache,
-                                      dst_cache_index,
-                                      {0U, 1U},
-                                      {0U, 1U},
-                                      ext_param), ge::SUCCESS);
+  EXPECT_EQ(llm_datadist_p.PushKvBlocks(src_cache, dst_cache_index, {0U, 1U}, {0U, 1U}, ext_param), ge::SUCCESS);
   EXPECT_EQ(llm_datadist_p.PushKvCache(src_cache, dst_cache_index, 0, -1, ext_param), ge::SUCCESS);
 
   ext_param.tensor_num_per_layer = 2;
-  EXPECT_EQ(llm_datadist_p.PushKvBlocks(src_cache,
-                                      dst_cache_index,
-                                      {0U, 1U},
-                                      {0U, 1U},
-                                      ext_param), ge::SUCCESS);
+  EXPECT_EQ(llm_datadist_p.PushKvBlocks(src_cache, dst_cache_index, {0U, 1U}, {0U, 1U}, ext_param), ge::SUCCESS);
   EXPECT_EQ(llm_datadist_p.PushKvCache(src_cache, dst_cache_index, 0, -1, ext_param), ge::SUCCESS);
 
   ext_param.tensor_num_per_layer = 7;
-  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache,
-                                      dst_cache_index,
-                                      {0U, 1U},
-                                      {0U, 1U},
-                                      ext_param), ge::SUCCESS);
+  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache, dst_cache_index, {0U, 1U}, {0U, 1U}, ext_param), ge::SUCCESS);
   EXPECT_NE(llm_datadist_p.PushKvCache(src_cache, dst_cache_index, 0, -1, ext_param), ge::SUCCESS);
 
   ext_param.tensor_num_per_layer = 17;
-  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache,
-                                      dst_cache_index,
-                                      {0U, 1U},
-                                      {0U, 1U},
-                                      ext_param), ge::SUCCESS);
+  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache, dst_cache_index, {0U, 1U}, {0U, 1U}, ext_param), ge::SUCCESS);
   EXPECT_NE(llm_datadist_p.PushKvCache(src_cache, dst_cache_index, 0, -1, ext_param), ge::SUCCESS);
 
   // test invalid range and tensor num
   ext_param.tensor_num_per_layer = 2;
   ext_param.dst_layer_range = std::make_pair(0, 1);
   ext_param.src_layer_range = std::make_pair(-2, 0);
-  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache,
-                                      dst_cache_index,
-                                      {0U, 1U},
-                                      {0U, 1U},
-                                      ext_param), ge::SUCCESS);
+  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache, dst_cache_index, {0U, 1U}, {0U, 1U}, ext_param), ge::SUCCESS);
   EXPECT_NE(llm_datadist_p.PushKvCache(src_cache, dst_cache_index, 0, -1, ext_param), ge::SUCCESS);
 
   // the range not same
   ext_param.src_layer_range = std::make_pair(0, 1);
   ext_param.dst_layer_range = std::make_pair(0, 3);
-  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache,
-                                      dst_cache_index,
-                                      {0U, 1U},
-                                      {0U, 1U},
-                                      ext_param), ge::SUCCESS);
+  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache, dst_cache_index, {0U, 1U}, {0U, 1U}, ext_param), ge::SUCCESS);
   EXPECT_NE(llm_datadist_p.PushKvCache(src_cache, dst_cache_index, 0, -1, ext_param), ge::SUCCESS);
 
   // the src range over range
   ext_param.src_layer_range = std::make_pair(4, 5);
   ext_param.dst_layer_range = std::make_pair(0, 1);
-  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache,
-                                      dst_cache_index,
-                                      {0U, 1U},
-                                      {0U, 1U},
-                                      ext_param), ge::SUCCESS);
+  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache, dst_cache_index, {0U, 1U}, {0U, 1U}, ext_param), ge::SUCCESS);
   EXPECT_NE(llm_datadist_p.PushKvCache(src_cache, dst_cache_index, 0, -1, ext_param), ge::SUCCESS);
 
   // the dst range over range
   ext_param.src_layer_range = std::make_pair(0, 1);
   ext_param.dst_layer_range = std::make_pair(4, 5);
-  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache,
-                                      dst_cache_index,
-                                      {0U, 1U},
-                                      {0U, 1U},
-                                      ext_param), ge::SUCCESS);
+  EXPECT_NE(llm_datadist_p.PushKvBlocks(src_cache, dst_cache_index, {0U, 1U}, {0U, 1U}, ext_param), ge::SUCCESS);
   EXPECT_NE(llm_datadist_p.PushKvCache(src_cache, dst_cache_index, 0, -1, ext_param), ge::SUCCESS);
 
   EXPECT_EQ(llm_datadist_d.UnlinkLlmClusters({cluster_info}, rets), ge::SUCCESS);
