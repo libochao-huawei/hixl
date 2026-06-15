@@ -163,19 +163,27 @@ int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::st
   int32_t device_id = -1;
   std::string local_engine;
   std::string remote_engine;
+
+  // Parse all command line arguments
   for (int32_t i = 1; i < argc; ++i) {
     if (ParseSingleArg(argv[i], role, device_id, local_engine, remote_engine,
                        protocols, version, argv[0]) != 0) {
       return -1;
     }
   }
+
+  // Set context based on role
   ctx.is_client = (role == "client");
   ctx.device_id = (device_id >= 0) ? device_id : (ctx.is_client ? kDefaultDeviceClient : kDefaultDeviceServer);
   ctx.local_engine = local_engine.empty() ? (ctx.is_client ? kDefaultClientEngine : kDefaultServerEngine) : local_engine;
   ctx.remote_engine = remote_engine.empty() ? (ctx.is_client ? kDefaultServerEngine : kDefaultClientEngine) : remote_engine;
+
+  // Validate all parameters
   if (ValidateArgs(role, protocols, version, ctx) != 0) {
     return -1;
   }
+
+  // Display final configuration
   printf("[INFO] ParseArgs: role=%s, device=%d, local=%s, remote=%s, version=%d\n",
          role.c_str(), ctx.device_id, ctx.local_engine.c_str(), ctx.remote_engine.c_str(), version);
   for (const auto &p : protocols) {

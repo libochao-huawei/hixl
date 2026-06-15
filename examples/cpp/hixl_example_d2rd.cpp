@@ -86,6 +86,7 @@ int32_t ValidateProtocol(const std::string &proto) {
 
 int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_b,
                   std::vector<std::string> &protocols, int32_t &version) {
+  // Parse command line arguments
   for (int32_t i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg.find("--device=") == 0) {
@@ -107,20 +108,28 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
       return -1;
     }
   }
+
+  // Validate required parameters
   if (protocols.empty()) {
     printf("[ERROR] --protocol is required\n");
     printf("Usage: %s --protocol=<type>[,...] [--device=id1,id2] [--version=0|1]\n", argv[0]);
     return -1;
   }
+
+  // Check each protocol is valid
   for (const auto &p : protocols) {
     if (ValidateProtocol(p) != 0) {
       return -1;
     }
   }
+
+  // Check version compatibility
   if (version == kVersionLegacy && (protocols.size() != 1 || protocols[0] != "roce:device")) {
     printf("[ERROR] version 0 only supports roce:device\n");
     return -1;
   }
+
+  // Print parsed arguments
   printf("[INFO] ParseArgs success: device_a=%d, device_b=%d, version=%d\n", device_a, device_b, version);
   for (const auto &p : protocols) {
     printf("[INFO]   protocol: %s\n", p.c_str());
