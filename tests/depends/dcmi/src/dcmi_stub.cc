@@ -7,7 +7,9 @@
  */
 
 #include <algorithm>
+#include <cstring>
 #include <dlfcn.h>
+#include <string>
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,6 +38,7 @@ static int g_device_info_ret = 0;
 
 // dcmiv2_get_eid_list_by_urma_dev_index 控制：返回 EID 数量（0=不返回, 1=仅非PG, 2=全部）
 static int g_eid_count = 2;
+static bool g_enable_ubg_eid = false;
 
 // dlopen 失败模拟控制：true=下次 dlopen 返回 nullptr
 static bool g_dlopen_fail = false;
@@ -95,7 +98,7 @@ static void BuildDefaultEid(unsigned char *eid, unsigned char byte5) {
     eid[i] = 0x00;
   }
   eid[5] = byte5;
-  eid[7] = 0x80;
+  eid[7] = 0xc0;  // high two bits 11 means UBoE; tests enable UBG explicitly when needed.
   eid[9] = 0x10;
   eid[12] = 0xdf;
   eid[13] = 0xdf;
@@ -131,6 +134,9 @@ int dcmiv2_get_eid_list_by_urma_dev_index(int npu_id, int urma_dev_index, void *
     // 非 PG EID，die_id 匹配 mesh_die_id
     unsigned char byte5 = (mesh_die_id == 0) ? 0x02 : 0x52;
     BuildDefaultEid(infos[0].eid.raw, byte5);
+    if (g_enable_ubg_eid) {
+      infos[0].eid.raw[7] = 0x80;  // high two bits 10 means UBG for issue302 UBG EID filtering.
+    }
     infos[0].eid_index = 0;
     count++;
   }
@@ -197,7 +203,29 @@ void DcmiStubSetEidCount(int count) {
   g_eid_count = count;
 }
 
-// dlopen 包装：模拟 dlopen 失败
+void DcmiStubSetEnableUbgEid(bool enable) {
+  g_enable_ubg_eid = enable;
+}
+
+// 通过 libdcmi.so 的路径推导 libdrvdsmi_host.so 测试桩的绝对路径
+void *TryLoadDsmiStub(int flag) {
+  Dl_info info;
+  if (dladdr(reinterpret_cast<void *>(dcmiv2_init), &info) == 0 || info.dli_fname == nullptr) {
+    return nullptr;
+  }
+  std::string dcmi_path(info.dli_fname);
+  size_t base_pos = dcmi_path.find("depends/dcmi/");
+  if (base_pos == std::string::npos) {
+    return nullptr;
+  }
+  std::string dsmi_path = dcmi_path.substr(0, base_pos) + "depends/dsmi/libdrvdsmi_host.so";
+  using DlopenFunc = void *(*)(const char *, int);
+  static DlopenFunc real_dlopen =
+      reinterpret_cast<DlopenFunc>(dlsym(RTLD_NEXT, "dlopen"));  // NOLINT(performance-no-int-to-ptr)
+  return real_dlopen(dsmi_path.c_str(), flag);
+}
+
+// dlopen 包装：模拟 dlopen 失败 + 拦截系统 DSMI 库加载
 void *dlopen(const char *filename, int flag) {
   using DlopenFunc = void *(*)(const char *, int);
   static DlopenFunc real_dlopen = nullptr;
@@ -206,8 +234,14 @@ void *dlopen(const char *filename, int flag) {
     real_dlopen = (DlopenFunc)dlsym(RTLD_NEXT, "dlopen");
   }
   if (g_dlopen_fail) {
-    g_dlopen_fail = false;  // 重置，下次正常加载
+    g_dlopen_fail = false;
     return nullptr;
+  }
+  if (filename != nullptr && std::string(filename) == "libdrvdsmi_host.so") {
+    void *handle = TryLoadDsmiStub(flag);
+    if (handle != nullptr) {
+      return handle;
+    }
   }
   return real_dlopen(filename, flag);
 }
