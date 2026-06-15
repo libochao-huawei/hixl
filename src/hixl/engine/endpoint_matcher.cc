@@ -34,6 +34,8 @@ struct MatchRule {
 constexpr MatchRule kCrossInstanceRules[] = {
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolUboe, kPlacementDevice,
      CommType::COMM_TYPE_UBOE},
+    {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolUbg, kPlacementDevice,
+     CommType::COMM_TYPE_UBG},
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolRoce, kPlacementDevice,
      CommType::COMM_TYPE_ROCE},
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolRoce, kPlacementHost,
@@ -46,6 +48,8 @@ constexpr MatchRule kSameInstanceRules[] = {
      CommType::COMM_TYPE_HCCS},
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolUboe, kPlacementDevice,
      CommType::COMM_TYPE_UBOE},
+    {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolUbg, kPlacementDevice,
+     CommType::COMM_TYPE_UBG},
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolRoce, kPlacementDevice,
      CommType::COMM_TYPE_ROCE},
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolRoce, kPlacementHost,
@@ -71,7 +75,8 @@ bool EndpointMatcher::IsUbProtocol(const std::string &protocol) {
 }
 
 bool EndpointMatcher::IsDirectProtocol(const std::string &protocol) {
-  return protocol == kProtocolRoce || protocol == kProtocolHccs || protocol == kProtocolUboe;
+  return protocol == kProtocolRoce || protocol == kProtocolHccs || protocol == kProtocolUboe ||
+         protocol == kProtocolUbg;
 }
 
 const char *EndpointMatcher::HandlerTypeToString(HandlerCreateArgs::HandlerType type) {
@@ -219,6 +224,22 @@ Status EndpointMatcher::MatchEndpoints(const std::vector<EndpointConfig> &local,
                                        const std::vector<EndpointConfig> &remote,
                                        std::vector<HandlerCreateArgs::EndpointPair> &matched_pairs,
                                        HandlerCreateArgs::HandlerType &handler_type) {
+  if (IsIntraRoceEnabled()) {
+    if (TryMatchSingle(local, remote, kProtocolRoce, kPlacementDevice, CommType::COMM_TYPE_ROCE, matched_pairs) ==
+        SUCCESS) {
+      handler_type = HandlerCreateArgs::HandlerType::DIRECT;
+      LogMatchedEndpoints(matched_pairs, handler_type);
+      return SUCCESS;
+    }
+    if (TryMatchSingle(local, remote, kProtocolRoce, kPlacementHost, CommType::COMM_TYPE_ROCE, matched_pairs) ==
+        SUCCESS) {
+      handler_type = HandlerCreateArgs::HandlerType::DIRECT;
+      LogMatchedEndpoints(matched_pairs, handler_type);
+      return SUCCESS;
+    }
+    HIXL_LOGE(PARAM_INVALID, "Failed to find matched endpoints (force RoCE)");
+    return PARAM_INVALID;
+  }
   return TryMatchByPriority(local, remote, IsCrossInstance(local, remote), matched_pairs, handler_type);
 }
 
