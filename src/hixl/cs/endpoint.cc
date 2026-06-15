@@ -24,6 +24,10 @@ namespace {
 constexpr uint32_t kRoceQueueNum = 1U;  // ROCE QP数量默认值
 }  // namespace
 
+bool IsHostRegisterMappedProtocol(CommProtocol protocol) {
+  return protocol == COMM_PROTOCOL_UBOE || protocol == COMM_PROTOCOL_UBG;
+}
+
 Status Endpoint::Initialize() {
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_LOGI("HcommEndpointCreate start, protocol:%d, devPhyId:%u", static_cast<int32_t>(endpoint_.protocol),
@@ -84,7 +88,7 @@ Status Endpoint::RegisterMem(const char *mem_tag, const CommMem &mem, MemHandle 
       (void)HostRegisterProxy::UnregisterByDev(endpoint_.loc.device.devPhyId, mem.addr);
     }
   });
-  if (endpoint_.protocol == COMM_PROTOCOL_UBOE && mem.type == COMM_MEM_TYPE_HOST) {
+  if (IsHostRegisterMappedProtocol(endpoint_.protocol) && mem.type == COMM_MEM_TYPE_HOST) {
     HIXL_CHK_STATUS_RET(
         HostRegisterProxy::RegisterByDev(endpoint_.loc.device.devPhyId, mem.addr, mem.size, registered_dev_mem),
         "Register mem failed, as host mem register failed, host addr=%p, size=%lu, devPhyId=%d.", mem.addr, mem.size,
