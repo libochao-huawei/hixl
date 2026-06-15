@@ -258,6 +258,70 @@ class MockRuntime : public llm::AclRuntimeStub {
 
   int32_t count_ = 0;
 };
+// Helper: create a B2B-style CacheDesc (num_tensors=8, BLOCKS type)
+static llm::CacheDesc MakeB2BCacheDesc(uint32_t placement, int64_t shape_dim0 = 128, int64_t shape_dim1 = 128) {
+  llm::CacheDesc desc{};
+  desc.num_tensors = 8;
+  desc.shape = {shape_dim0, shape_dim1};
+  desc.data_type = DT_INT32;
+  desc.placement = placement;
+  desc.cache_mem_type = llm::CacheMemType::BLOCKS;
+  return desc;
+}
+
+// Helper: create a C2C-style CacheDesc (num_tensors=8, non-BLOCKS)
+static llm::CacheDesc MakeC2CCacheDesc(uint32_t placement, int64_t shape_dim0 = 1, int64_t shape_dim1 = 128) {
+  llm::CacheDesc desc{};
+  desc.num_tensors = 8;
+  desc.shape = {shape_dim0, shape_dim1};
+  desc.data_type = DT_INT32;
+  desc.placement = placement;
+  return desc;
+}
+
+// Helper: create standard B2B PullCacheParam with prompt/decoder blocks
+static llm::PullCacheParam MakeB2BPullCacheParam() {
+  llm::PullCacheParam param{};
+  param.size = -1;
+  param.prompt_blocks = {0, 1, 4, 5, 6};
+  param.decoder_blocks = {1, 2, 4, 6, 9};
+  return param;
+}
+
+// Helper: run a complete B2B PullCache test via DataCacheEngineRunner
+static void RunB2BPullTest(const llm::CacheDesc &src_desc, const llm::CacheDesc &dst_desc,
+                           const llm::PullCacheParam &param, bool use_host_mem_pool = false,
+                           bool enable_remote_cache_accessible = false) {
+  std::vector<int32_t> pull_result(128 * 128);
+  DataCacheEngineRunner runner;
+  runner.LlmDatadistInitAndLink(src_desc, dst_desc, param, use_host_mem_pool, enable_remote_cache_accessible);
+  runner.PullDataCache(param, pull_result);
+  runner.ReleaseResource();
+
+  std::vector<int32_t> actual(&pull_result[128], &pull_result[128 + 4]);
+  EXPECT_EQ(actual, (std::vector<int32_t>{1, 2, 3, 4}));
+}
+
+// Helper: create a standard C2C PullCacheParam with batch_index
+static llm::PullCacheParam MakeC2CPullCacheParam(int64_t batch_index = 1, int64_t size = 128 * 4) {
+  llm::PullCacheParam param{};
+  param.size = size;
+  param.batch_index = batch_index;
+  return param;
+}
+
+// Helper: run a complete C2C PullCache test
+static void RunC2CPullTest(const llm::CacheDesc &src_desc, const llm::CacheDesc &dst_desc,
+                           const llm::PullCacheParam &param) {
+  std::vector<int32_t> pull_result(dst_desc.shape[0] * dst_desc.shape[1]);
+  DataCacheEngineRunner runner;
+  runner.LlmDatadistInitAndLink(src_desc, dst_desc, param);
+  runner.PullDataCache(param, pull_result);
+  runner.ReleaseResource();
+
+  std::vector<int32_t> actual(&pull_result[128], &pull_result[128 + 4]);
+  EXPECT_EQ(actual, (std::vector<int32_t>{1, 2, 3, 4}));
+}
 }  // namespace
 
 class DataCacheEngineSTest : public ::testing::Test {

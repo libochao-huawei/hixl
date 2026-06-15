@@ -9,6 +9,7 @@
  */
 
 #include "depends/mmpa/src/mmpa_stub.h"
+#include "depends/common/hccn_conf_utils.h"
 #include <fstream>
 #include <cstdio>  // for std::remove
 #include <iostream>
@@ -37,7 +38,7 @@ HcclResult HcclBatchPut1(HcclComm comm, uint32_t remoteRank, HcclOneSideOpDesc *
     auto src = desc[i].localAddr;
     auto dst = desc[i].remoteAddr;
     auto size = desc[i].count;
-    (void)memcpy(dst, src, size);
+    (void)memcpy_s(dst, size, src, size);
   }
   return HCCL_SUCCESS;
 }
@@ -52,45 +53,9 @@ HcclResult HcclBatchGet1(HcclComm comm, uint32_t remoteRank, HcclOneSideOpDesc *
     auto src = desc[i].localAddr;
     auto dst = desc[i].remoteAddr;
     auto size = desc[i].count;
-    (void)memcpy(src, dst, size);
+    (void)memcpy_s(src, size, dst, size);
   }
   return HCCL_SUCCESS;
-}
-
-void WriteHccnConfFile() {
-  const std::string file_path = "/tmp/hccn.conf";
-  std::ofstream file(file_path);
-  if (!file.is_open()) {
-    std::cout << "Failed to create file:" << file_path << std::endl;
-    return;
-  }
-
-  file << "netmask_0=1.2.3.4\n"
-       << "address_0=1.1.1.0\n"
-       << "netmask_1=1.2.3.4\n"
-       << "address_1=1.1.1.1\n"
-       << "netmask_2=1.2.3.4\n"
-       << "address_2=1.1.1.2\n"
-       << "netmask_3=1.2.3.4\n"
-       << "address_3=1.1.1.3\n"
-       << "netmask_4=1.2.3.4\n"
-       << "address_4=1.1.1.4\n"
-       << "netmask_5=1.2.3.4\n"
-       << "address_5=1.1.1.5\n"
-       << "netmask_6=1.2.3.4\n"
-       << "address_6=1.1.1.6\n"
-       << "netmask_7=1.2.3.4\n"
-       << "address_7=1.1.1.7\n";
-
-  file.close();
-}
-
-void RemoveHccnConfFile() {
-  const std::string file_path = "/tmp/hccn.conf";
-  if (std::remove(file_path.c_str()) != 0) {
-    std::cout << "Failed to delete file:" << file_path.c_str() << std::endl;
-  }
-}
 }  // namespace
 class MockMmpa : public MmpaStubApiGe {
  public:
@@ -158,11 +123,11 @@ class StartMock {
   StartMock() {
     MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpa>());
     llm::AclRuntimeStub::SetInstance(std::make_shared<RuntimeMock>());
-    WriteHccnConfFile();
+    test::WriteHccnConfFile();
   }
 
   ~StartMock() {
-    RemoveHccnConfFile();
+    test::RemoveHccnConfFile();
   }
 };
 static StartMock start_mock;

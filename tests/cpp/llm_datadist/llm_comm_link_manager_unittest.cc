@@ -179,6 +179,40 @@ class LLMCommLinkManagerUTest : public ::testing::Test {
   void TearDown() override {
     HcclAdapter::GetInstance().Finalize();
   }
+
+  // Helper: build default options for link tests
+  static std::map<ge::AscendString, ge::AscendString> MakeLinkTestOptions(uint32_t link_total_time = 10,
+                                                                          uint32_t link_retry_count = 2) {
+    std::map<ge::AscendString, ge::AscendString> options;
+    options["llm.Role"] = "Decoder";
+    options["llm.LinkTotalTime"] = std::to_string(link_total_time);
+    options["llm.LinkRetryCount"] = std::to_string(link_retry_count);
+    return options;
+  }
+
+  // Helper: initialize and register a default cache, then link
+  void SetupDefaultCacheAndLink(LLMDataDistV2 &llm_datadist,
+                                const std::map<ge::AscendString, ge::AscendString> &options, uint64_t &comm_id) {
+    EXPECT_EQ(llm_datadist.LLMDataDistInitialize(options), ge::SUCCESS);
+
+    CacheDesc cache_desc{};
+    cache_desc.num_tensors = 1U;
+    cache_desc.data_type = ge::DT_FLOAT;
+    cache_desc.shape = {2, 3};
+    cache_desc.placement = 1U;
+    Cache cache{};
+    (void)cache.per_device_tensor_addrs.emplace_back(std::vector<uint64_t>{0x8001U});
+    CacheKey cache_key{};
+    cache_key.is_allocate_blocks = true;
+    cache_key.model_id = 0;
+    cache_key.req_id = UINT64_MAX;
+    EXPECT_EQ(llm_datadist.RegisterCache(cache_desc, cache, {cache_key}), ge::SUCCESS);
+
+    std::map<uint64_t, uint32_t> cluster2rank{{1, 0}, {2, 1}};
+    std::string rank_table;
+    std::string cluster_name = "link";
+    EXPECT_EQ(llm_datadist.Link(cluster_name, cluster2rank, rank_table, comm_id), ge::SUCCESS);
+  }
 };
 
 TEST_F(LLMCommLinkManagerUTest, LINK_REGISTER_FAILED_AND_NOUNLINK) {
@@ -256,30 +290,9 @@ TEST_F(LLMCommLinkManagerUTest, LinkCommPrepareFailed) {
 TEST_F(LLMCommLinkManagerUTest, LinkAndUnlinkSuc) {
   MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpa>());
   LLMDataDistV2 llm_datadist(1U);
-  std::map<ge::AscendString, ge::AscendString> options{};
-  options["llm.Role"] = "Decoder";
-  EXPECT_EQ(llm_datadist.LLMDataDistInitialize(options), ge::SUCCESS);
-
-  CacheDesc cache_desc{};
-  cache_desc.num_tensors = 1U;
-  cache_desc.data_type = ge::DT_FLOAT;
-  cache_desc.shape = {2, 3};
-  cache_desc.placement = 1U;
-  Cache cache{};
-  (void)cache.per_device_tensor_addrs.emplace_back(std::vector<uint64_t>{0x8001U});
-  std::vector<CacheKey> cache_keys = {};
-  CacheKey cache_key{};
-  cache_key.is_allocate_blocks = true;
-  cache_key.model_id = 0;
-  cache_key.req_id = UINT64_MAX;
-  cache_keys.emplace_back(cache_key);
-  EXPECT_EQ(llm_datadist.RegisterCache(cache_desc, cache, cache_keys), ge::SUCCESS);
-
-  std::map<uint64_t, uint32_t> cluster2rank{{1, 0}, {2, 1}};
-  std::string rank_table;
   uint64_t comm_id;
-  std::string cluster_name = "link";
-  EXPECT_EQ(llm_datadist.Link(cluster_name, cluster2rank, rank_table, comm_id), ge::SUCCESS);
+  SetupDefaultCacheAndLink(llm_datadist, MakeLinkTestOptions(), comm_id);
+
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   RegisterMemoryStatus status;
   EXPECT_EQ(llm_datadist.QueryRegisterMemStatus(comm_id, status), ge::SUCCESS);
@@ -291,30 +304,8 @@ TEST_F(LLMCommLinkManagerUTest, LinkAndUnlinkSuc) {
 TEST_F(LLMCommLinkManagerUTest, UnlinkWhenLinkNotFinished) {
   MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpaLongTimeRegister>());
   LLMDataDistV2 llm_datadist(1U);
-  std::map<ge::AscendString, ge::AscendString> options{};
-  options["llm.Role"] = "Decoder";
-  EXPECT_EQ(llm_datadist.LLMDataDistInitialize(options), ge::SUCCESS);
-
-  CacheDesc cache_desc{};
-  cache_desc.num_tensors = 1U;
-  cache_desc.data_type = ge::DT_FLOAT;
-  cache_desc.shape = {2, 3};
-  cache_desc.placement = 1U;
-  Cache cache{};
-  (void)cache.per_device_tensor_addrs.emplace_back(std::vector<uint64_t>{0x8001U});
-  std::vector<CacheKey> cache_keys = {};
-  CacheKey cache_key{};
-  cache_key.is_allocate_blocks = true;
-  cache_key.model_id = 0;
-  cache_key.req_id = UINT64_MAX;
-  cache_keys.emplace_back(cache_key);
-  EXPECT_EQ(llm_datadist.RegisterCache(cache_desc, cache, cache_keys), ge::SUCCESS);
-
-  std::map<uint64_t, uint32_t> cluster2rank{{1, 0}, {2, 1}};
-  std::string rank_table;
   uint64_t comm_id;
-  std::string cluster_name = "link";
-  EXPECT_EQ(llm_datadist.Link(cluster_name, cluster2rank, rank_table, comm_id), ge::SUCCESS);
+  SetupDefaultCacheAndLink(llm_datadist, MakeLinkTestOptions(), comm_id);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   EXPECT_EQ(llm_datadist.Unlink(comm_id), ge::SUCCESS);
   llm_datadist.LLMDataDistFinalize();
@@ -323,30 +314,8 @@ TEST_F(LLMCommLinkManagerUTest, UnlinkWhenLinkNotFinished) {
 TEST_F(LLMCommLinkManagerUTest, FinalizeWhenLinkNotFinished) {
   MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpaLongTimeRegister>());
   LLMDataDistV2 llm_datadist(1U);
-  std::map<ge::AscendString, ge::AscendString> options{};
-  options["llm.Role"] = "Decoder";
-  EXPECT_EQ(llm_datadist.LLMDataDistInitialize(options), ge::SUCCESS);
-
-  CacheDesc cache_desc{};
-  cache_desc.num_tensors = 1U;
-  cache_desc.data_type = ge::DT_FLOAT;
-  cache_desc.shape = {2, 3};
-  cache_desc.placement = 1U;
-  Cache cache{};
-  (void)cache.per_device_tensor_addrs.emplace_back(std::vector<uint64_t>{0x8001U});
-  std::vector<CacheKey> cache_keys = {};
-  CacheKey cache_key{};
-  cache_key.is_allocate_blocks = true;
-  cache_key.model_id = 0;
-  cache_key.req_id = UINT64_MAX;
-  cache_keys.emplace_back(cache_key);
-  EXPECT_EQ(llm_datadist.RegisterCache(cache_desc, cache, cache_keys), ge::SUCCESS);
-
-  std::map<uint64_t, uint32_t> cluster2rank{{1, 0}, {2, 1}};
-  std::string rank_table;
   uint64_t comm_id;
-  std::string cluster_name = "link";
-  EXPECT_EQ(llm_datadist.Link(cluster_name, cluster2rank, rank_table, comm_id), ge::SUCCESS);
+  SetupDefaultCacheAndLink(llm_datadist, MakeLinkTestOptions(), comm_id);
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   llm_datadist.LLMDataDistFinalize();
 }
@@ -354,10 +323,10 @@ TEST_F(LLMCommLinkManagerUTest, FinalizeWhenLinkNotFinished) {
 TEST_F(LLMCommLinkManagerUTest, LinkMultipleComm) {
   MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpa>());
   LLMDataDistV2 llm_datadist(1U);
-  std::map<ge::AscendString, ge::AscendString> options{};
-  options["llm.Role"] = "Decoder";
-  EXPECT_EQ(llm_datadist.LLMDataDistInitialize(options), ge::SUCCESS);
+  uint64_t comm_id;
+  SetupDefaultCacheAndLink(llm_datadist, MakeLinkTestOptions(), comm_id);
 
+  // Register additional caches (15 more, total 16)
   CacheDesc cache_desc{};
   cache_desc.num_tensors = 1U;
   cache_desc.data_type = ge::DT_FLOAT;
@@ -365,21 +334,10 @@ TEST_F(LLMCommLinkManagerUTest, LinkMultipleComm) {
   cache_desc.placement = 1U;
   Cache cache{};
   (void)cache.per_device_tensor_addrs.emplace_back(std::vector<uint64_t>{0x8001U});
-  std::vector<CacheKey> cache_keys = {};
-  CacheKey cache_key{};
-  cache_key.is_allocate_blocks = true;
-  cache_key.model_id = 0;
-  cache_key.req_id = UINT64_MAX;
-  cache_keys.emplace_back(cache_key);
-  for (int i = 0; i < 16; ++i) {
+  std::vector<CacheKey> cache_keys = {{true, 0, UINT64_MAX}};
+  for (int i = 0; i < 15; ++i) {
     EXPECT_EQ(llm_datadist.RegisterCache(cache_desc, cache, cache_keys), ge::SUCCESS);
   }
-
-  std::map<uint64_t, uint32_t> cluster2rank{{1, 0}, {2, 1}};
-  std::string rank_table;
-  uint64_t comm_id;
-  std::string cluster_name = "link";
-  EXPECT_EQ(llm_datadist.Link(cluster_name, cluster2rank, rank_table, comm_id), ge::SUCCESS);
 
   std::map<uint64_t, uint32_t> cluster2rank2{{1, 0}, {3, 1}};
   std::string rank_table2;
@@ -403,15 +361,9 @@ TEST_F(LLMCommLinkManagerUTest, LinkMultipleComm) {
 TEST_F(LLMCommLinkManagerUTest, RemapRegisteredMemorySuc) {
   MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpa>());
   LLMDataDistV2 llm_datadist(1U);
-  std::map<ge::AscendString, ge::AscendString> options{};
-  options["llm.Role"] = "Decoder";
-  EXPECT_EQ(llm_datadist.LLMDataDistInitialize(options), ge::SUCCESS);
-
-  std::map<uint64_t, uint32_t> cluster2rank{{1, 0}, {2, 1}};
-  std::string rank_table;
   uint64_t comm_id;
-  std::string cluster_name = "link";
-  EXPECT_EQ(llm_datadist.Link(cluster_name, cluster2rank, rank_table, comm_id), ge::SUCCESS);
+  SetupDefaultCacheAndLink(llm_datadist, MakeLinkTestOptions(), comm_id);
+
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
   RegisterMemoryStatus status;
   EXPECT_EQ(llm_datadist.QueryRegisterMemStatus(comm_id, status), ge::SUCCESS);
@@ -425,15 +377,9 @@ TEST_F(LLMCommLinkManagerUTest, RemapRegisteredMemorySuc) {
 TEST_F(LLMCommLinkManagerUTest, RemapRegisteredMemoryRejectsEmptyInput) {
   MmpaStub::GetInstance().SetImpl(std::make_shared<MockMmpa>());
   LLMDataDistV2 llm_datadist(1U);
-  std::map<ge::AscendString, ge::AscendString> options{};
-  options["llm.Role"] = "Decoder";
-  EXPECT_EQ(llm_datadist.LLMDataDistInitialize(options), ge::SUCCESS);
-
-  std::map<uint64_t, uint32_t> cluster2rank{{1, 0}, {2, 1}};
-  std::string rank_table;
   uint64_t comm_id;
-  std::string cluster_name = "link";
-  EXPECT_EQ(llm_datadist.Link(cluster_name, cluster2rank, rank_table, comm_id), ge::SUCCESS);
+  SetupDefaultCacheAndLink(llm_datadist, MakeLinkTestOptions(), comm_id);
+
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
   std::vector<LLMMemInfo> empty_mem_infos{};
