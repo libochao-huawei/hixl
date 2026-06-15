@@ -147,8 +147,9 @@ int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::st
       return -1;
     }
   }
-  if (version == kVersionLegacy && (protocols.size() != 1 || protocols[0] != "roce:device")) {
-    printf("[ERROR] version 0 only supports roce:device\n");
+  if (version == kVersionLegacy && (protocols.size() != 1 ||
+      (protocols[0] != "roce:device" && protocols[0] != "hccs:device"))) {
+    printf("[ERROR] version 0 only supports roce:device and hccs:device\n");
     return -1;
   }
   if (ParsePort(ctx.local_engine) < 0 || ParsePort(ctx.remote_engine) < 0) {
