@@ -78,7 +78,7 @@ int32_t ParsePort(const std::string &engine) {
   return std::stoi(engine.substr(pos + 1));
 }
 
-void ParseProtocolList(const std::string &val, std::vector<std::string> &protocols) {
+void ParseProtoCSV(const std::string &val, std::vector<std::string> &protocols) {
   size_t offset = 0;
   size_t delimiter = val.find(',');
   while (delimiter != std::string::npos) {
@@ -89,7 +89,7 @@ void ParseProtocolList(const std::string &val, std::vector<std::string> &protoco
   protocols.push_back(val.substr(offset));
 }
 
-int32_t ValidateProtocol(const std::string &proto) {
+int32_t ValidateProtoName(const std::string &proto) {
   for (const auto &proto_item : protocolList) {
     if (proto_item == proto) {
       return 0;
@@ -116,7 +116,7 @@ int32_t ParseSingleArg(const std::string &arg, std::string &role, int32_t &devic
   } else if (arg.find("--remote-engine=") == 0) {
     remote_engine = arg.substr(16);
   } else if (arg.find("--protocol=") == 0) {
-    ParseProtocolList(arg.substr(11), protocols);
+    ParseProtoCSV(arg.substr(11), protocols);
   } else if (arg.find("--version=") == 0) {
     version = std::stoi(arg.substr(10));
   } else {
@@ -141,7 +141,7 @@ int32_t ValidateArgs(const std::string &role, const std::vector<std::string> &pr
   }
   ctx.is_client = (role == "client");
   for (const auto &p : protocols) {
-    if (ValidateProtocol(p) != 0) {
+    if (ValidateProtoName(p) != 0) {
       return -1;
     }
   }
@@ -193,7 +193,7 @@ int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::st
   return 0;
 }
 
-int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &protocols,
+int32_t PrepareLegacyOpts(EngineCtx &ctx, const std::vector<std::string> &protocols,
                            std::map<AscendString, AscendString> &options) {
   printf("[INFO] Using legacy flow (version=0)\n");
   uint32_t listen_port = static_cast<uint32_t>(ParsePort(ctx.local_engine));
@@ -209,7 +209,7 @@ int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &proto
   return 0;
 }
 
-int32_t SetupV2Options(const std::vector<std::string> &protocols,
+int32_t PrepareV2Opts(const std::vector<std::string> &protocols,
                        std::map<AscendString, AscendString> &options) {
   std::string desc_array;
   for (size_t i = 0; i < protocols.size(); ++i) {
@@ -228,9 +228,9 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
   CHECK_ACL(aclrtSetDevice(ctx.device_id));
   std::map<AscendString, AscendString> options;
   if (version == kVersionLegacy) {
-    SetupLegacyOptions(ctx, protocols, options);
+    PrepareLegacyOpts(ctx, protocols, options);
   } else {
-    SetupV2Options(protocols, options);
+    PrepareV2Opts(protocols, options);
   }
   auto ret = ctx.engine.Initialize(ctx.local_engine.c_str(), options);
   if (ret != SUCCESS) {

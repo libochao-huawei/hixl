@@ -58,7 +58,7 @@ const char *GetRecentErrMsg() {
   return (msg == nullptr) ? "no error" : msg;
 }
 
-void ParseProtocolList(const std::string &input, std::vector<std::string> &out) {
+void SplitProtocolString(const std::string &input, std::vector<std::string> &out) {
   size_t begin = 0;
   size_t comma = input.find(',');
   while (comma != std::string::npos) {
@@ -69,7 +69,7 @@ void ParseProtocolList(const std::string &input, std::vector<std::string> &out) 
   out.push_back(input.substr(begin));
 }
 
-int32_t ValidateProtocol(const std::string &proto) {
+int32_t CheckProtocolValidity(const std::string &proto) {
   for (const auto &p : kValidProtos) {
     if (p == proto) {
       return 0;
@@ -98,7 +98,7 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
       device_a = std::stoi(val.substr(0, pos));
       device_b = std::stoi(val.substr(pos + 1));
     } else if (arg.find("--protocol=") == 0) {
-      ParseProtocolList(arg.substr(11), protocols);
+      SplitProtocolString(arg.substr(11), protocols);
     } else if (arg.find("--version=") == 0) {
       version = std::stoi(arg.substr(10));
     } else {
@@ -115,7 +115,7 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
   }
 
   for (const auto &p : protocols) {
-    if (ValidateProtocol(p) != 0) {
+    if (CheckProtocolValidity(p) != 0) {
       return -1;
     }
   }
@@ -134,7 +134,7 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
   return 0;
 }
 
-int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &protocols,
+int32_t ConfigLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &protocols,
                            std::map<AscendString, AscendString> &options) {
   printf("[INFO] %s using legacy flow (version=0)\n", ctx.name);
   std::string engine_name(ctx.name);
@@ -151,7 +151,7 @@ int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &proto
   return 0;
 }
 
-int32_t SetupV2Options(const std::vector<std::string> &protocols,
+int32_t ConfigV2Options(const std::vector<std::string> &protocols,
                        std::map<AscendString, AscendString> &options) {
   std::string desc_array;
   for (size_t i = 0; i < protocols.size(); ++i) {
@@ -169,9 +169,9 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
   CHECK_ACL(aclrtSetDevice(ctx.device_id));
   std::map<AscendString, AscendString> options;
   if (version == kVersionLegacy) {
-    SetupLegacyOptions(ctx, protocols, options);
+    ConfigLegacyOptions(ctx, protocols, options);
   } else {
-    SetupV2Options(protocols, options);
+    ConfigV2Options(protocols, options);
   }
   auto ret = ctx.engine.Initialize(ctx.name, options);
   if (ret != SUCCESS) {

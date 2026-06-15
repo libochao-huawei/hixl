@@ -62,7 +62,7 @@ const char *GetRecentErrMsg() {
   return (errmsg == nullptr) ? "no error" : errmsg;
 }
 
-void ParseProtocolList(const std::string &val, std::vector<std::string> &protocols) {
+void TokenizeProtocols(const std::string &val, std::vector<std::string> &protocols) {
   size_t start = 0;
   size_t pos = val.find(',');
   while (pos != std::string::npos) {
@@ -73,7 +73,7 @@ void ParseProtocolList(const std::string &val, std::vector<std::string> &protoco
   protocols.push_back(val.substr(start));
 }
 
-int32_t ValidateProtocol(const std::string &proto) {
+int32_t VerifyProtocolSupport(const std::string &proto) {
   for (const auto &item : kSupportedProtocols) {
     if (item == proto) {
       return 0;
@@ -102,7 +102,7 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
       device_a = std::stoi(device_str.substr(0, comma_pos));
       device_b = std::stoi(device_str.substr(comma_pos + 1));
     } else if (arg.find("--protocol=") == 0) {
-      ParseProtocolList(arg.substr(11), protocols);
+      TokenizeProtocols(arg.substr(11), protocols);
     } else if (arg.find("--version=") == 0) {
       version = std::stoi(arg.substr(10));
     } else {
@@ -118,7 +118,7 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
   }
 
   for (const auto &proto : protocols) {
-    if (ValidateProtocol(proto) != 0) {
+    if (VerifyProtocolSupport(proto) != 0) {
       return -1;
     }
   }
@@ -137,7 +137,7 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
   return 0;
 }
 
-int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &protocols,
+int32_t BuildLegacyConfig(EngineCtx &ctx, const std::vector<std::string> &protocols,
                            std::map<AscendString, AscendString> &options) {
   printf("[INFO] %s using legacy flow (version=0)\n", ctx.name);
   std::string eng_name(ctx.name);
@@ -154,7 +154,7 @@ int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &proto
   return 0;
 }
 
-int32_t SetupV2Options(const std::vector<std::string> &protocols,
+int32_t BuildV2Config(const std::vector<std::string> &protocols,
                        std::map<AscendString, AscendString> &options) {
   std::string proto_list;
   bool first = true;
@@ -174,9 +174,9 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
   CHECK_ACL(aclrtSetDevice(ctx.device_id));
   std::map<AscendString, AscendString> options;
   if (version == kVersionLegacy) {
-    SetupLegacyOptions(ctx, protocols, options);
+    BuildLegacyConfig(ctx, protocols, options);
   } else {
-    SetupV2Options(protocols, options);
+    BuildV2Config(protocols, options);
   }
   auto ret = ctx.engine.Initialize(ctx.name, options);
   if (ret != SUCCESS) {
@@ -354,7 +354,7 @@ void DisconnectBoth(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   }
 }
 
-void DeregisterAndFree(EngineCtx &ctx) {
+void CleanupResources(EngineCtx &ctx) {
   if (ctx.dev_handle != nullptr) {
     ctx.engine.DeregisterMem(ctx.dev_handle);
   }
@@ -369,7 +369,7 @@ void DeregisterAndFree(EngineCtx &ctx) {
   }
 }
 
-void FinalizeEngines(EngineCtx &ctx_a, EngineCtx &ctx_b) {
+void ShutdownEngines(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   if (ctx_a.initialized) {
     ctx_a.engine.Finalize();
   }
@@ -378,17 +378,17 @@ void FinalizeEngines(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   }
 }
 
-void ResetDevices(EngineCtx &ctx_a, EngineCtx &ctx_b) {
+void RestoreDevices(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   CHECK_ACL(aclrtResetDevice(ctx_a.device_id));
   CHECK_ACL(aclrtResetDevice(ctx_b.device_id));
 }
 
 void Finalize(EngineCtx &ctx_a, EngineCtx &ctx_b) {
   DisconnectBoth(ctx_a, ctx_b);
-  DeregisterAndFree(ctx_a);
-  DeregisterAndFree(ctx_b);
-  FinalizeEngines(ctx_a, ctx_b);
-  ResetDevices(ctx_a, ctx_b);
+  CleanupResources(ctx_a);
+  CleanupResources(ctx_b);
+  ShutdownEngines(ctx_a, ctx_b);
+  RestoreDevices(ctx_a, ctx_b);
 }
 
 int32_t Run(EngineCtx &ctx_a, EngineCtx &ctx_b, const std::vector<std::string> &protocols,
