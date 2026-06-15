@@ -1,9 +1,9 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software; you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -12,6 +12,7 @@
 #include <algorithm>
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
+#include "common/hixl_inner_types.h"
 #include "engine/client_handler_factory.h"
 
 namespace hixl {
@@ -34,6 +35,8 @@ struct MatchRule {
 constexpr MatchRule kCrossInstanceRules[] = {
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolUboe, kPlacementDevice,
      CommType::COMM_TYPE_UBOE},
+    {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolUbg, kPlacementDevice,
+     CommType::COMM_TYPE_UBG},
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolRoce, kPlacementDevice,
      CommType::COMM_TYPE_ROCE},
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolRoce, kPlacementHost,
@@ -46,6 +49,8 @@ constexpr MatchRule kSameInstanceRules[] = {
      CommType::COMM_TYPE_HCCS},
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolUboe, kPlacementDevice,
      CommType::COMM_TYPE_UBOE},
+    {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolUbg, kPlacementDevice,
+     CommType::COMM_TYPE_UBG},
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolRoce, kPlacementDevice,
      CommType::COMM_TYPE_ROCE},
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolRoce, kPlacementHost,
@@ -71,7 +76,8 @@ bool EndpointMatcher::IsUbProtocol(const std::string &protocol) {
 }
 
 bool EndpointMatcher::IsDirectProtocol(const std::string &protocol) {
-  return protocol == kProtocolRoce || protocol == kProtocolHccs || protocol == kProtocolUboe;
+  return protocol == kProtocolRoce || protocol == kProtocolHccs || protocol == kProtocolUboe ||
+         protocol == kProtocolUbg;
 }
 
 const char *EndpointMatcher::HandlerTypeToString(HandlerCreateArgs::HandlerType type) {
@@ -169,7 +175,7 @@ Status EndpointMatcher::TryMatchGroup(const std::vector<EndpointConfig> &local,
   for (const auto &ep : sorted_local) {
     HIXL_CHK_STATUS_RET(TryMatchUb(ep, peers, expected, count, pairs));
     if (count == kMaxUbCsClientNum) {
-      return SUCCESS;
+      break;
     }
   }
   return count > 0 ? SUCCESS : FAILED;
@@ -219,6 +225,22 @@ Status EndpointMatcher::MatchEndpoints(const std::vector<EndpointConfig> &local,
                                        const std::vector<EndpointConfig> &remote,
                                        std::vector<HandlerCreateArgs::EndpointPair> &matched_pairs,
                                        HandlerCreateArgs::HandlerType &handler_type) {
+  if (IsIntraRoceEnabled()) {
+    if (TryMatchSingle(local, remote, kProtocolRoce, kPlacementDevice, CommType::COMM_TYPE_ROCE, matched_pairs) ==
+        SUCCESS) {
+      handler_type = HandlerCreateArgs::HandlerType::DIRECT;
+      LogMatchedEndpoints(matched_pairs, handler_type);
+      return SUCCESS;
+    }
+    if (TryMatchSingle(local, remote, kProtocolRoce, kPlacementHost, CommType::COMM_TYPE_ROCE, matched_pairs) ==
+        SUCCESS) {
+      handler_type = HandlerCreateArgs::HandlerType::DIRECT;
+      LogMatchedEndpoints(matched_pairs, handler_type);
+      return SUCCESS;
+    }
+    HIXL_LOGE(PARAM_INVALID, "Failed to find matched endpoints (force RoCE)");
+    return PARAM_INVALID;
+  }
   return TryMatchByPriority(local, remote, IsCrossInstance(local, remote), matched_pairs, handler_type);
 }
 
