@@ -119,7 +119,7 @@ def gen_ini():
                 return -1
             if "ini_name" in elem.attrib:
                 file_name = os.path.join(
-                    elem.attrib["out"], f'{elem.attrib["ini_name"]}.ini'
+                    elem.attrib["out"], f"{elem.attrib['ini_name']}.ini"
                 )
             else:
                 file_name = os.path.join(
@@ -139,7 +139,9 @@ def _write_hash_with_logging(elem, hash_list_path):
         line_elem = [elem.attrib["tag"], hash_val]
         line = "{};".format(",".join(line_elem))
         f.write(line)
-    logging.info("add %s hash val %s to %s", elem.attrib["tag"], hash_val, hash_list_path)
+    logging.info(
+        "add %s hash val %s to %s", elem.attrib["tag"], hash_val, hash_list_path
+    )
 
 
 def _find_and_update_image_hash(tree, new_image_name, hash_list_path):

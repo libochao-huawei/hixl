@@ -45,15 +45,9 @@ constexpr Status RESOURCE_EXHAUSTED = 203900U;
 
 using MemHandle = void *;
 
-enum MemType {
-  MEM_DEVICE,
-  MEM_HOST
-};
+enum MemType { MEM_DEVICE, MEM_HOST };
 
-enum TransferOp {
-  READ,
-  WRITE
-};
+enum TransferOp { READ, WRITE };
 
 struct MemDesc {
   uintptr_t addr;
@@ -67,14 +61,9 @@ struct TransferOpDesc {
   size_t len;
 };
 
-enum class TransferStatus {
-  WAITING,
-  COMPLETED,
-  TIMEOUT,
-  FAILED
-};
+enum class TransferStatus { WAITING, COMPLETED, TIMEOUT, FAILED };
 
-struct TransferArgs{
+struct TransferArgs {
   uint8_t reserved[128] = {};
 };
 

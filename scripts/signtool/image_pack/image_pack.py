@@ -30,9 +30,7 @@ def _create_parser():
     """创建参数解析器"""
     return argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=textwrap.dedent(
-            "A tool to pack image with new structure"
-        ),
+        description=textwrap.dedent("A tool to pack image with new structure"),
     )
 
 

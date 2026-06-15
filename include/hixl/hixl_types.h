@@ -33,7 +33,7 @@ constexpr const char OPTION_BUFFER_POOL[] = "BufferPool";
 constexpr const char OPTION_GLOBAL_RESOURCE_CONFIG[] = "GlobalResourceConfig";
 constexpr const char OPTION_AUTO_CONNECT[] = "AutoConnect";
 constexpr const char OPTION_LOCAL_COMM_RES[] = "LocalCommRes";
- 
+
 // status codes
 constexpr Status SUCCESS = 0U;
 constexpr Status PARAM_INVALID = 103900U;
@@ -47,15 +47,9 @@ constexpr Status RESOURCE_EXHAUSTED = 203900U;
 
 using MemHandle = void *;
 
-enum MemType {
-  MEM_DEVICE,
-  MEM_HOST
-};
+enum MemType { MEM_DEVICE, MEM_HOST };
 
-enum TransferOp {
-  READ,
-  WRITE
-};
+enum TransferOp { READ, WRITE };
 
 struct MemDesc {
   uintptr_t addr;
@@ -68,12 +62,7 @@ struct TransferOpDesc {
   uintptr_t remote_addr;
   size_t len;
 };
-enum class TransferStatus {
-  WAITING,
-  COMPLETED,
-  TIMEOUT,
-  FAILED
-};
+enum class TransferStatus { WAITING, COMPLETED, TIMEOUT, FAILED };
 
 struct TransferArgs {
   void *user_data = nullptr;
