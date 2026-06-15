@@ -12,6 +12,8 @@
 #define HIXL_TEST_MMPA_UTILS_H
 
 #include <cstdlib>
+#include <cstring>
+#include <dlfcn.h>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -89,6 +91,13 @@ class TestMmpaStub : public llm::MmpaStubApiGe {
  */
 class KernelJsonMmpaStub : public llm::MmpaStubApiGe {
  public:
+  void *DlOpen(const char *file_name, int32_t mode) override {
+    if (file_name != nullptr && std::strcmp(file_name, "libdrvdsmi_host.so") == 0) {
+      return dlopen(nullptr, mode);
+    }
+    return llm::MmpaStubApiGe::DlOpen(file_name, mode);
+  }
+
   INT32 Access(const CHAR *path_name) override {
     std::string path_str(path_name);
     if (path_str.find("libcann_hixl_kernel.json") != std::string::npos) {

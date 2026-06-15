@@ -14,12 +14,29 @@
 #include "fabric_mem_engine.h"
 #include "hixl_engine.h"
 #include "adxl/adxl_inner_engine.h"
+#include "common/hixl_inner_types.h"
 #include "hixl/hixl_types.h"
 #include "adxl/adxl_types.h"
 #include "common/hixl_log.h"
+#include "common/hixl_utils.h"
 
 namespace hixl {
 namespace {
+enum class ScaleOutDescResult { kAbsent, kPresent, kConflict, kUnsupportedOnly };
+
+ScaleOutDescResult CheckScaleOutProtocolDesc(const HixlOptions &options) {
+  std::vector<std::string> protocol_desc = options.GetProtocolDesc();
+  if (protocol_desc.empty()) {
+    return ScaleOutDescResult::kAbsent;
+  }
+  const bool has_uboe = std::find(protocol_desc.begin(), protocol_desc.end(), kUboeProtocolDesc) != protocol_desc.end();
+  const bool has_ubg = std::find(protocol_desc.begin(), protocol_desc.end(), kUbgProtocolDesc) != protocol_desc.end();
+  if (has_uboe && has_ubg) {
+    return ScaleOutDescResult::kConflict;
+  }
+  return (has_uboe || has_ubg) ? ScaleOutDescResult::kPresent : ScaleOutDescResult::kUnsupportedOnly;
+}
+
 bool UseProtocolDesc(const HixlOptions &options) {
   auto grc = options.GlobalResourceCfg();
   if (!grc.has_value()) {
@@ -41,21 +58,29 @@ std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engi
   if (parsed_options.EnableFabricMem().value_or(false)) {
     return std::make_unique<FabricMemEngine>(AscendString(local_engine.c_str()));
   }
-  auto lcr = parsed_options.LocalCommRes();
-  if (lcr.has_value() && !lcr->empty()) {
+  const auto scaleout_result = CheckScaleOutProtocolDesc(parsed_options);
+  if (scaleout_result == ScaleOutDescResult::kConflict) {
+    HIXL_LOGE(PARAM_INVALID, "[EngineFactory] protocol_desc cannot contain both %s and %s", kUbgProtocolDesc,
+              kUboeProtocolDesc);
+    return nullptr;
+  }
+  bool use_hixl =
+      (scaleout_result == ScaleOutDescResult::kPresent || scaleout_result == ScaleOutDescResult::kUnsupportedOnly) ||
+      UseProtocolDesc(parsed_options);
+  if (!use_hixl) {
+    auto lcr = parsed_options.LocalCommRes();
+    if (!lcr.has_value() || lcr->empty()) {
+      return std::make_unique<CommEngine>(AscendString(local_engine.c_str()));
+    }
     try {
       auto json = nlohmann::json::parse(*lcr);
-      if (json.contains("version") && json["version"] == "1.3") {
-        return std::make_unique<HixlEngine>(AscendString(local_engine.c_str()));
-      }
-      HIXL_LOGI("[EngineFactory] local_comm_res version is not 1.3, using CommEngine");
+      use_hixl = json["version"] == "1.3";
     } catch (const nlohmann::json::exception &e) {
       HIXL_LOGE(PARAM_INVALID, "Invalid json, exception:%s", e.what());
       return nullptr;
     }
-    return std::make_unique<CommEngine>(AscendString(local_engine.c_str()));
   }
-  if (UseProtocolDesc(parsed_options)) {
+  if (use_hixl) {
     return std::make_unique<HixlEngine>(AscendString(local_engine.c_str()));
   }
   return std::make_unique<CommEngine>(AscendString(local_engine.c_str()));
