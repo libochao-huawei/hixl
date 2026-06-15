@@ -33,6 +33,7 @@
 #include "slog_stub.h"
 #include "test_mmpa_utils.h"
 #include "depends/mmpa/src/mmpa_stub.h"
+#include "depends/dsmi/src/dsmi_stub.h"
 #include "hixl_test_helpers.h"
 
 namespace hixl {
@@ -215,8 +216,8 @@ class HixlEngineTest : public ::testing::Test {
     EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
   }
 
-  void InitAutoConnectEngines(HixlEngine &engine1, HixlEngine &engine2, int32_t &src, int32_t &dst,
-                              MemHandle &handle1, MemHandle &handle2) {
+  void InitAutoConnectEngines(HixlEngine &engine1, HixlEngine &engine2, int32_t &src, int32_t &dst, MemHandle &handle1,
+                              MemHandle &handle2) {
     std::map<AscendString, AscendString> auto_connect_options = options1;
     auto_connect_options[hixl::OPTION_AUTO_CONNECT] = "1";
     HixlOptions parsed1;
@@ -1034,12 +1035,66 @@ TEST_F(HixlEngineTest, TestInitializeAutoGenerateForV3FillsDeviceInfo) {
   engine.Finalize();
 }
 
+TEST_F(HixlEngineTest, TestInitializeSetsProtocolLockOnlyForProtocolDescGeneratedEndpoints) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+  SetHccnConfContent("address_23=10.10.10.23\n");
+  DsmiStubSetInterconType(2U);  // UBoE validation needs InterconType=UBoE
+
+  HixlEngine explicit_engine("127.0.0.1");
+  auto explicit_options = BuildOptions(BuildLocalCommRes("sp_v3", "1.3", {BuildDeviceRoceEndpoint("127.0.0.1")}));
+  explicit_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["uboe:device"]
+    }
+  )";
+  HixlOptions explicit_parsed;
+  EXPECT_EQ(HixlOptions::Parse(explicit_options, explicit_parsed), SUCCESS);
+  EXPECT_EQ(explicit_engine.Initialize(explicit_parsed), SUCCESS);
+  EXPECT_EQ(explicit_engine.protocol_lock_, ProtocolLock::kNone);
+  explicit_engine.Finalize();
+
+  HixlEngine protocol_desc_engine("127.0.0.1");
+  auto protocol_desc_options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  protocol_desc_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["uboe:device"]
+    }
+  )";
+  HixlOptions protocol_desc_parsed;
+  EXPECT_EQ(HixlOptions::Parse(protocol_desc_options, protocol_desc_parsed), SUCCESS);
+  EXPECT_EQ(protocol_desc_engine.Initialize(protocol_desc_parsed), SUCCESS);
+  EXPECT_EQ(protocol_desc_engine.protocol_lock_, ProtocolLock::kUboe);
+  protocol_desc_engine.Finalize();
+
+  DsmiStubSetInterconType(4U);  // UBG validation needs InterconType=UBG
+  HixlEngine ubg_protocol_desc_engine("127.0.0.1");
+  auto ubg_options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  ubg_options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["ubg:device"]
+    }
+  )";
+  HixlOptions ubg_parsed;
+  EXPECT_EQ(HixlOptions::Parse(ubg_options, ubg_parsed), SUCCESS);
+  EXPECT_EQ(ubg_protocol_desc_engine.Initialize(ubg_parsed), SUCCESS);
+  EXPECT_EQ(ubg_protocol_desc_engine.protocol_lock_, ProtocolLock::kUbg);
+  ubg_protocol_desc_engine.Finalize();
+}
+
 class MockClientHandler : public IClientHandler {
  public:
-  Status Connect(uint32_t) override { return SUCCESS; }
-  Status RegisterMem(const MemInfo &) override { return SUCCESS; }
-  Status TransferAsync(const std::vector<TransferOpDesc> &, TransferOp, TransferReq &) override { return SUCCESS; }
-  Status TransferSync(const std::vector<TransferOpDesc> &, TransferOp, uint32_t) override { return SUCCESS; }
+  Status Connect(uint32_t) override {
+    return SUCCESS;
+  }
+  Status RegisterMem(const MemInfo &) override {
+    return SUCCESS;
+  }
+  Status TransferAsync(const std::vector<TransferOpDesc> &, TransferOp, TransferReq &) override {
+    return SUCCESS;
+  }
+  Status TransferSync(const std::vector<TransferOpDesc> &, TransferOp, uint32_t) override {
+    return SUCCESS;
+  }
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status) override {
     auto it = status_by_req.find(req);
     if (it == status_by_req.end()) {
@@ -1049,7 +1104,9 @@ class MockClientHandler : public IClientHandler {
     status = it->second;
     return SUCCESS;
   }
-  Status Finalize() override { return SUCCESS; }
+  Status Finalize() override {
+    return SUCCESS;
+  }
 
   std::map<TransferReq, TransferStatus> status_by_req;
   TransferStatus default_status = TransferStatus::WAITING;
@@ -1075,7 +1132,8 @@ static ClientPtr CreateMockClient(std::unique_ptr<MockClientHandler> handler) {
   return client;
 }
 
-static void RegisterMockTransferReq(HixlEngine &engine, const ClientPtr &client, TransferReq req, const void *user_data) {
+static void RegisterMockTransferReq(HixlEngine &engine, const ClientPtr &client, TransferReq req,
+                                    const void *user_data) {
   client->req_map_[req] = TransferInfo{0U, READ, AscendString()};
   engine.client_manager_.RegisterTransferReq(req, client, user_data);
 }
