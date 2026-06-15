@@ -166,11 +166,13 @@ class HixlEngine : public hixl::Engine {
   HixlServer server_;
   std::map<void *, MemInfo> mem_map_;
   std::vector<EndpointConfig> endpoint_list_;
+  ProtocolLock protocol_lock_{ProtocolLock::kNone};
 
   uint8_t rdma_traffic_class_{kRdmaTrafficClass};
   uint8_t rdma_service_level_{kRdmaServiceLevel};
   std::atomic<bool> auto_connect_{false};
   std::optional<uint8_t> qos_;
+  std::optional<uint32_t> local_listen_port_;
   aclrtContext aclrt_context_{nullptr};
 };
 }  // namespace hixl
