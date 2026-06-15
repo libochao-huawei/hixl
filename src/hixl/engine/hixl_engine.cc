@@ -46,10 +46,10 @@ ProtocolLock ParseProtocolLockFromOptions(const HixlOptions &options,
   std::vector<std::string> protocol_desc = options.GetProtocolDesc();
   const bool has_ubg = std::find(protocol_desc.begin(), protocol_desc.end(), kUbgProtocolDesc) != protocol_desc.end();
   const bool has_uboe = std::find(protocol_desc.begin(), protocol_desc.end(), kUboeProtocolDesc) != protocol_desc.end();
-  if (has_ubg && !has_uboe) {
+  if (has_ubg && !has_uboe && protocol_desc.size() == 1U) {
     return ProtocolLock::kUbg;
   }
-  if (has_uboe && !has_ubg) {
+  if (has_uboe && !has_ubg && protocol_desc.size() == 1U) {
     return ProtocolLock::kUboe;
   }
   return ProtocolLock::kNone;
