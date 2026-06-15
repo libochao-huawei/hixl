@@ -14,6 +14,7 @@
 #include "fabric_mem_engine.h"
 #include "hixl_engine.h"
 #include "adxl/adxl_inner_engine.h"
+#include "common/hixl_inner_types.h"
 #include "hixl/hixl_types.h"
 #include "adxl/adxl_types.h"
 #include "common/hixl_log.h"
@@ -40,6 +41,11 @@ std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engi
 
   if (parsed_options.EnableFabricMem().value_or(false)) {
     return std::make_unique<FabricMemEngine>(AscendString(local_engine.c_str()));
+  }
+  if (ParseProtocolDescMode(parsed_options.GetProtocolDesc()) == ProtocolDescMode::kConflict) {
+    HIXL_LOGE(PARAM_INVALID, "[EngineFactory] protocol_desc cannot contain both %s and %s", kUbgProtocolDesc,
+              kUboeProtocolDesc);
+    return nullptr;
   }
   auto lcr = parsed_options.LocalCommRes();
   if (lcr.has_value() && !lcr->empty()) {

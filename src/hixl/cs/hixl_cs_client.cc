@@ -404,7 +404,7 @@ Status HixlCSClient::RegMem(const char *mem_tag, const CommMem *mem, MemHandle *
   bool is_host_mem = mem->type == COMM_MEM_TYPE_HOST;
   void *register_dev_addr = nullptr;
   const auto &local_endpoint_desc = local_endpoint_->GetEndpoint();
-  if (is_host_mem && (local_endpoint_desc.protocol == COMM_PROTOCOL_UBOE)) {
+  if (is_host_mem && IsHostRegisterMappedProtocol(local_endpoint_desc.protocol)) {
     HIXL_CHK_STATUS_RET(HostRegisterProxy::GetRegisteredDeviceAddrByDev(local_endpoint_desc.loc.device.devPhyId,
                                                                         mem->addr, register_dev_addr),
                         "Failed to get registered device addr, devPhyId=%d, addr=%p",
@@ -1021,9 +1021,10 @@ Status HixlCSClient::BatchTransferSync(bool is_get, uint32_t list_num, const Hix
   HIXL_CHECK_NOTNULL(local_endpoint_);
   const EndpointDesc endpoint = local_endpoint_->GetEndpoint();
   if (IsDeviceEndpoint(endpoint)) {
-    if (endpoint.protocol == COMM_PROTOCOL_UBOE) {
+    if (IsHostRegisterMappedProtocol(endpoint.protocol)) {
       std::vector<HixlOneSideOpDesc> mutable_descs(desc_list, desc_list + list_num);
-      HIXL_CHK_STATUS_RET(ConvertUboeDescs(list_num, mutable_descs.data()), "[HixlClient] convert uboe descs failed.");
+      HIXL_CHK_STATUS_RET(ConvertHostMappedDescs(list_num, mutable_descs.data()),
+                          "[HixlClient] convert host mapped descs failed.");
       return BatchTransferDeviceSync(is_get, list_num, mutable_descs.data(), timeout_ms);
     }
     return BatchTransferDeviceSync(is_get, list_num, desc_list, timeout_ms);
@@ -1035,7 +1036,7 @@ Status HixlCSClient::BatchTransferSync(bool is_get, uint32_t list_num, const Hix
   return PARAM_INVALID;
 }
 
-Status HixlCSClient::ConvertUboeDescs(uint32_t list_num, HixlOneSideOpDesc *desc_list) {
+Status HixlCSClient::ConvertHostMappedDescs(uint32_t list_num, HixlOneSideOpDesc *desc_list) {
   return mem_store_.BatchConvertHostAddr(list_num, desc_list);
 }
 
@@ -1047,9 +1048,10 @@ Status HixlCSClient::BatchTransferAsync(bool is_get, uint32_t list_num, const Hi
   HIXL_CHECK_NOTNULL(local_endpoint_);
   const EndpointDesc ep = local_endpoint_->GetEndpoint();
   if (IsDeviceEndpoint(ep)) {
-    if (ep.protocol == COMM_PROTOCOL_UBOE) {
+    if (IsHostRegisterMappedProtocol(ep.protocol)) {
       std::vector<HixlOneSideOpDesc> mutable_descs(desc_list, desc_list + list_num);
-      HIXL_CHK_STATUS_RET(ConvertUboeDescs(list_num, mutable_descs.data()), "[HixlClient] convert uboe descs failed.");
+      HIXL_CHK_STATUS_RET(ConvertHostMappedDescs(list_num, mutable_descs.data()),
+                          "[HixlClient] convert host mapped descs failed.");
       return BatchTransferDeviceAsync(is_get, list_num, mutable_descs.data(), query_handle);
     }
     return BatchTransferDeviceAsync(is_get, list_num, desc_list, query_handle);
@@ -1059,7 +1061,6 @@ Status HixlCSClient::BatchTransferAsync(bool is_get, uint32_t list_num, const Hi
     HIXL_LOGE(PARAM_INVALID, "[HixlClient] Invalid endpoint location: %d", ep.loc.locType);
     return PARAM_INVALID;
   }
-  return PARAM_INVALID;
 }
 
 Status HixlCSClient::CheckStatusHost(CompleteHandleInfo &query_handle, HixlCompleteStatus &status) {
