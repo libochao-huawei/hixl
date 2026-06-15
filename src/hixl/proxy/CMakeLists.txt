@@ -30,23 +30,32 @@ else()
                 $<BUILD_INTERFACE:slog_headers>
                 $<BUILD_INTERFACE:runtime_headers>
                 $<BUILD_INTERFACE:mmpa_headers>
+                $<BUILD_INTERFACE:c_sec_headers>
+                $<BUILD_INTERFACE:error_manager_headers>
+                $<BUILD_INTERFACE:metadef_headers>
         )
 
         target_link_libraries(dsmi_proxy_static PRIVATE
                 $<BUILD_INTERFACE:intf_pub>
                 $<BUILD_INTERFACE:slog_headers>
                 $<BUILD_INTERFACE:mmpa_headers>
+                $<BUILD_INTERFACE:acl_rt_headers>
+                $<BUILD_INTERFACE:c_sec_headers>
+                $<BUILD_INTERFACE:error_manager_headers>
+                $<BUILD_INTERFACE:metadef_headers>
         )
 
         target_link_libraries(dcmi_proxy_static PRIVATE
                 $<BUILD_INTERFACE:intf_pub>
                 $<BUILD_INTERFACE:slog_headers>
                 $<BUILD_INTERFACE:mmpa_headers>
+                $<BUILD_INTERFACE:error_manager_headers>
+                $<BUILD_INTERFACE:metadef_headers>
         )
 endif()
 
 foreach(_proxy_target ${_HIXL_PROXY_TARGETS})
-        target_include_directories(${_proxy_target} PRIVATE 
+        target_include_directories(${_proxy_target} PRIVATE
             ${HIXL_INC_DIR}
             ${HIXL_CODE_DIR}/src/hixl/proxy
             )
@@ -64,6 +73,8 @@ target_link_libraries(hcomm_proxy_static PRIVATE
         $<BUILD_INTERFACE:intf_pub>
         $<BUILD_INTERFACE:hccl_headers>
         $<BUILD_INTERFACE:slog_headers>
-        $<BUILD_INTERFACE:metadef_headers>
+        $<BUILD_INTERFACE:acl_rt_headers>
         $<BUILD_INTERFACE:c_sec_headers>
+        $<BUILD_INTERFACE:error_manager_headers>
+        $<BUILD_INTERFACE:metadef_headers>
 )

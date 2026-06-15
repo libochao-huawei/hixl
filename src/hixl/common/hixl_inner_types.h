@@ -37,13 +37,13 @@ constexpr const char *kProtocolHccs = "hccs";
 constexpr const char *kProtocolUboe = "uboe";
 constexpr const char *kPlacementDevice = "device";
 constexpr const char *kPlacementHost = "host";
-constexpr uint8_t kRdmaTrafficClass = 132; // RDMA网卡的traffic class 默认值
-constexpr uint8_t kRdmaServiceLevel = 4; // RDMA网卡的service level 默认值
+constexpr uint8_t kRdmaTrafficClass = 132;  // RDMA网卡的traffic class 默认值
+constexpr uint8_t kRdmaServiceLevel = 4;    // RDMA网卡的service level 默认值
 
 constexpr const char *kQosName = "comm_resource_config.qos";
-constexpr int32_t kQosDefault = 0;
-constexpr int32_t kQosMin = 0;
-constexpr int32_t kQosMax = 7;
+constexpr uint8_t kQosDefault = 0U;
+constexpr uint8_t kQosMin = 0U;
+constexpr uint8_t kQosMax = 7U;
 
 struct AddrInfo {
   uintptr_t start_addr{0};

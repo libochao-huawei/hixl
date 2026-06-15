@@ -21,7 +21,7 @@
 namespace hixl {
 namespace {
 constexpr size_t kBlockSize = 1024UL * 1024UL * 1024UL;
-constexpr size_t kDefaultNumBlocks = 64UL * 1024UL;
+constexpr size_t kDefaultNumBlocks = 32UL * 1024UL;
 constexpr size_t kDefaultGlobalVirtualMemorySize = kBlockSize * kDefaultNumBlocks;
 constexpr size_t kGlobalVirtualMemoryStartAddr = kBlockSize * 1024UL * 40UL;
 constexpr uint64_t kReserveFlagHugePage = 1UL;
@@ -80,7 +80,7 @@ Status VirtualMemoryManager::SetGlobalStartAddress(size_t start_addr_in_tb) {
   return SUCCESS;
 }
 
-Status VirtualMemoryManager::ReserveMemAddress(void *&virtual_address, size_t size) {
+Status VirtualMemoryManager::ReserveMemAddress(void *&virtual_address, size_t size) const {
   const uintptr_t start_va = (global_start_va_ != 0) ? global_start_va_ : kGlobalVirtualMemoryStartAddr;
   void *global_start_va = reinterpret_cast<void *>(start_va);
   if (IsA3Soc() && &aclrtReserveMemAddressNoUCMemory != nullptr) {

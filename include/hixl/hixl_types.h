@@ -45,6 +45,15 @@ constexpr Status UNSUPPORTED = 103905U;
 constexpr Status FAILED = 503900U;
 constexpr Status RESOURCE_EXHAUSTED = 203900U;
 
+// FeatureType values must be explicitly assigned. Append new capabilities at the end only.
+enum FeatureType : int32_t {
+  AUTO_CONNECT = 0,
+  CLIENT_SERVER_COMM = 1,
+};
+
+constexpr int32_t FEATURE_SUPPORTED = 1;
+constexpr int32_t FEATURE_NOT_SUPPORTED = 0;
+
 using MemHandle = void *;
 
 enum MemType {
@@ -76,7 +85,7 @@ enum class TransferStatus {
 };
 
 struct TransferArgs {
-  void *user_data = nullptr;
+  const void *user_data = nullptr;
   uint8_t reserved[120] = {};
 };
 
@@ -88,7 +97,7 @@ struct GetTransferStatusArgs {
 
 struct TransferResult {
   TransferReq req = nullptr;
-  void *user_data = nullptr;
+  const void *user_data = nullptr;
   TransferStatus status = TransferStatus::WAITING;
   uint8_t reserved[108] = {};
 };

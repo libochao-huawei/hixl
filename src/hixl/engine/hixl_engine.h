@@ -31,8 +31,7 @@ class HixlEngine : public hixl::Engine {
    * 如果是ipv6格式为[host_ip]:host_port或[host_ip],
    * 当设置host_port且host_port > 0时代表当前HixlEngine作为server端，需要对配置端口进行监听
    */
-  explicit HixlEngine(const AscendString &local_engine)
-      : Engine(local_engine), is_initialized_(false) {};
+  explicit HixlEngine(const AscendString &local_engine) : Engine(local_engine), is_initialized_(false) {};
 
   /**
    * @brief 判断HixlEngine是否初始化
@@ -172,7 +171,7 @@ class HixlEngine : public hixl::Engine {
   std::optional<uint32_t> local_listen_port_;
 
   std::atomic<bool> auto_connect_{false};
-  std::optional<int32_t> qos_;
+  std::optional<uint8_t> qos_;
 };
 }  // namespace hixl
 

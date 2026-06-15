@@ -125,7 +125,7 @@ OPTION_GLOBAL_RESOURCE_CONFIG的配置示例和使用约束如下：
 对于Fabric Mem模式（仅Atlas A3 训练系列产品/Atlas A3 推理系列产品支持），该参数配置示例如下：
 ```
 {
-    "fabric_memory.max_capacity": "128", //虚拟内存池的大小。取值范围：(0, 1024]之间的整数，默认值：64，单位TB，实际可用范围由底层决定
+    "fabric_memory.max_capacity": "128", //虚拟内存池的大小。取值范围：(0, 1024]之间的整数，默认值：32，单位TB，实际可用范围由底层决定
     "fabric_memory.start_address": "40", //虚拟内存池起始地址。取值范围：[0, 1024]之间的整数，默认值：40，单位TB
     "fabric_memory.task_stream_num": "1", //配置Fabric Mem模式下单个任务使用的流数量。取值范围：[1, 8]之间的整数，默认值：4
 }
@@ -193,7 +193,7 @@ device侧网卡默认监听端口为16666，如果在多个进程使用同一个
 | 字段名 | 数据类型 | 必选/可选 | 说明 | 支持值/填写规则 |
 | ---- | ---- | ---- | ---- | ---- |
 | comm_resource_config.protocol_desc | 字符串或字符串数组 | 可选 | 配置可使用的通信协议以及通信设备位置范围，格式为"${protocol}:${placement}" | 支持"roce:device"/"hccs:device"/"ub_ctp:device"/"ub_tp:device"/"uboe:device"/"roce:host"/"ub_ctp:host"/"ub_tp:host"。配置后会对OPTION_LOCAL_COMM_RES中显式配置的endpoint_list和自动生成的endpoint_list按该范围进行过滤。 |
-| comm_resource_config.qos | 数字 | 可选 | 配置通信协议qos | 当前仅支持[0-7]，当未配置的时候，默认为0。该配置仅在新单边接口A5上UB生效，其他场景配置不生效 |
+| comm_resource_config.qos | 数字 | 可选 | 配置通信协议qos | 当前仅支持[0-7]，当未配置的时候，默认为0。|
 
 **调用示例**
 
@@ -825,4 +825,41 @@ Status TransferSync(const AscendString &remote_engine,
 - 其他：失败
 
 **约束说明**
+
+无
+
+
+## GetCapability
+
+**函数功能**
+
+查询库能力特性。上层可在Initialize之前调用该接口，探测当前Hixl库是否支持特定能力（如Auto Connect、Client/Server通信），避免硬编码默认值或与旧版.so不兼容。
+
+**函数原型**
+
+```
+static Status GetCapability(FeatureType feature_type, int32_t &value)
+```
+
+**参数说明**
+
+| 参数名称 | 输入/输出 | 取值说明 |
+| --- | --- | --- |
+| feature_type | 输入 | 特性类型，取值参见 FeatureType。 |
+| value | 输出 | 特性支持情况。1表示支持（FEATURE_SUPPORTED），0表示不支持（FEATURE_NOT_SUPPORTED）。 |
+
+**调用示例**
+
+无
+
+**返回值**
+
+- SUCCESS：成功
+- UNSUPPORTED：未知或不支持的特性类型
+- PARAM_INVALID：参数非法（feature_type为负数）
+
+**约束说明**
+
+- 无需调用Initialize即可调用。
+- 静态方法，不依赖Hixl实例。
 
