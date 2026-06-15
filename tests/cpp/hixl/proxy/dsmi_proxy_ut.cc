@@ -13,6 +13,7 @@
 #include <memory>
 #include "gtest/gtest.h"
 #include "depends/mmpa/src/mmpa_stub.h"
+#include "proxy/dsmi_internal_types.h"
 #include "proxy/dsmi_proxy.h"
 
 namespace hixl {
@@ -21,16 +22,11 @@ namespace {
 
 constexpr uintptr_t kMockLibDrvdsmiHandle = 0x8001ULL;
 constexpr uint32_t kUtMockSlotId = 3U;
-
-struct dsmi_board_info_stru {
-  unsigned int board_id;
-  unsigned int pcb_id;
-  unsigned int bom_id;
-  unsigned int slot_id;
-};
+constexpr uint32_t kUtMockInterconType = 4U;
 
 bool g_mock_success = true;
-extern "C" int ut_mock_dsmi_get_board_info(int device_id, struct dsmi_board_info_stru *pboard_info) {
+bool g_mock_intercon_success = true;
+extern "C" int ut_mock_dsmi_get_board_info(int device_id, struct DsmiBoardInfoStru *pboard_info) {
   (void)device_id;
   if (!g_mock_success) {
     return -1;
@@ -41,6 +37,20 @@ extern "C" int ut_mock_dsmi_get_board_info(int device_id, struct dsmi_board_info
     pboard_info->bom_id = 0x3000;
     pboard_info->slot_id = kUtMockSlotId;
   }
+  return 0;
+}
+
+extern "C" int ut_mock_dsmi_get_device_info(unsigned int device_id, unsigned int main_cmd, unsigned int sub_cmd,
+                                            void *buf, unsigned int *buf_size) {
+  (void)device_id;
+  (void)main_cmd;
+  (void)sub_cmd;
+  if (!g_mock_intercon_success || buf == nullptr || buf_size == nullptr || *buf_size < sizeof(DsmiSpodInfo)) {
+    return -1;
+  }
+  auto *spod_info = static_cast<DsmiSpodInfo *>(buf);
+  spod_info->super_pod_intercon_type = kUtMockInterconType;
+  *buf_size = static_cast<unsigned int>(sizeof(DsmiSpodInfo));
   return 0;
 }
 
@@ -59,7 +69,9 @@ class ScopedMmpaDsmiMock {
 
 class MockMmpaDsmi : public llm::MmpaStubApiGe {
  public:
-  MockMmpaDsmi(void *mock_dsmi_get_board_info_func) : mock_dsmi_get_board_info_func_(mock_dsmi_get_board_info_func) {}
+  MockMmpaDsmi(void *mock_dsmi_get_board_info_func, void *mock_dsmi_get_intercon_type_func = nullptr)
+      : mock_dsmi_get_board_info_func_(mock_dsmi_get_board_info_func),
+        mock_dsmi_get_intercon_type_func_(mock_dsmi_get_intercon_type_func) {}
 
   void *DlOpen(const char *file_name, int32_t mode) override {
     if (file_name != nullptr && std::strcmp(file_name, "libdrvdsmi_host.so") == 0) {
@@ -78,6 +90,9 @@ class MockMmpaDsmi : public llm::MmpaStubApiGe {
       if (std::strcmp(func_name, "dsmi_get_board_info") == 0) {
         return mock_dsmi_get_board_info_func_;
       }
+      if (std::strcmp(func_name, "dsmi_get_device_info") == 0) {
+        return mock_dsmi_get_intercon_type_func_;
+      }
       return nullptr;
     }
     return llm::MmpaStubApiGe::DlSym(handle, func_name);
@@ -89,6 +104,7 @@ class MockMmpaDsmi : public llm::MmpaStubApiGe {
 
  protected:
   void *mock_dsmi_get_board_info_func_ = nullptr;
+  void *mock_dsmi_get_intercon_type_func_ = nullptr;
 
  private:
   void *handle_stub_ = nullptr;
@@ -153,11 +169,18 @@ TEST(DsmiProxyUt, AllScenariosInOrder) {
 
   // Scenario 3: dlopen success mock func failed and success
   {
-    auto mock_mmpa = std::make_shared<MockMmpaDsmi>(reinterpret_cast<void *>(&ut_mock_dsmi_get_board_info));
+    auto mock_mmpa = std::make_shared<MockMmpaDsmi>(reinterpret_cast<void *>(&ut_mock_dsmi_get_board_info),
+                                                    reinterpret_cast<void *>(&ut_mock_dsmi_get_device_info));
     ScopedMmpaDsmiMock mmpa_guard(mock_mmpa);
     g_mock_success = true;
     EXPECT_EQ(DsmiProxy::GetDevSlotId(device_id, slot_id), SUCCESS);
     EXPECT_EQ(slot_id, kUtMockSlotId);
+    uint32_t intercon_type = 0;
+    EXPECT_EQ(DsmiProxy::GetInterconType(device_id, intercon_type), SUCCESS);
+    EXPECT_EQ(intercon_type, kUtMockInterconType);
+    g_mock_intercon_success = false;
+    EXPECT_NE(DsmiProxy::GetInterconType(device_id, intercon_type), SUCCESS);
+    g_mock_intercon_success = true;
     g_mock_success = false;
     EXPECT_NE(DsmiProxy::GetDevSlotId(device_id, slot_id), SUCCESS);
     // reset to mock success
