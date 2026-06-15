@@ -177,7 +177,7 @@ device侧网卡默认监听端口为16666，如果在多个进程使用同一个
 | OPTION_GLOBAL_RESOURCE_CONFIG | 可选 | 字符串取值"GlobalResourceConfig"。用于开启并配置全局资源，格式为json格式的字符串，字段说明参考[全局资源配置字段说明](#全局资源配置字段说明)。 |
 | OPTION_AUTO_CONNECT | 可选 | 字符串取值"AutoConnect"。 <br>- 0：不开启Auto Connect模式 <br>- 1：开启Auto Connect模式  <br><br>说明：<br>- 开启该选项后，可跳过建链，直接进行传输。<br>- 开启该选项后，传输发生异常或对端销毁后自动清理异常链路（对端销毁需要心跳机制来检测，心跳间隔默认10s）。|
 
-<a name="通信资源配置字段说明"></a>**通信资源配置字段说明**  
+<a name="通信资源配置字段说明"></a>**通信资源配置字段说明**
 | 字段名 | 数据类型 | 必选/可选 | 说明 | 支持值/填写规则 |
 | ---- | ---- | ---- | ---- | ---- |
 | version | 字符串 | 必选 | 版本号 | "1.3"。需要HDK版本大于等于25.5.0且toolkit包版本大于等于9.1.0。 |
@@ -189,7 +189,7 @@ device侧网卡默认监听端口为16666，如果在多个进程使用同一个
 | endpoint_list[].plane | 字符串 | 可选 | 通信设备平面 | protocol为ub_ctp/ub_tp时，设备区分平面则填写，每个平面唯一（如"plane-a"/"plane-b"） |
 | endpoint_list[].dst_eid | 字符串 | 可选 | 与当前通信设备连接的对端通信设备的${eid} | protocol为ub_ctp时，存在full-mesh直连对端则填写对端${eid} |
 
-<a name="全局资源配置字段说明"></a>**全局资源配置字段说明**  
+<a name="全局资源配置字段说明"></a>**全局资源配置字段说明**
 | 字段名 | 数据类型 | 必选/可选 | 说明 | 支持值/填写规则 |
 | ---- | ---- | ---- | ---- | ---- |
 | comm_resource_config.protocol_desc | 字符串或字符串数组 | 可选 | 配置可使用的通信协议以及通信设备位置范围，格式为"${protocol}:${placement}" | 支持"roce:device"/"hccs:device"/"ub_ctp:device"/"ub_tp:device"/"uboe:device"/"roce:host"/"ub_ctp:host"/"ub_tp:host"。配置后会对OPTION_LOCAL_COMM_RES中显式配置的endpoint_list和自动生成的endpoint_list按该范围进行过滤。 |
@@ -386,7 +386,7 @@ Status Connect(const AscendString &remote_engine, int32_t timeout_in_millis = 10
     ```
     export PATH=$PATH:{hccn_tool_install_path}
     ```
-  
+
 - 该接口需要和Initialize运行在同一个线程上，如需切换线程调用该接口，需要在Initialize所在线程调用“aclrtGetCurrentContext”获取context，并在新线程调用“aclrtSetCurrentContext”设置context。
 
 ## Disconnect
@@ -825,4 +825,3 @@ Status TransferSync(const AscendString &remote_engine,
 - 其他：失败
 
 **约束说明**
-

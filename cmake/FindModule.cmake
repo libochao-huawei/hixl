@@ -38,4 +38,3 @@ function(find_module module name)
         IMPORTED_LOCATION ${${module}_LIBRARY_DIR}
         )
 endfunction()
-

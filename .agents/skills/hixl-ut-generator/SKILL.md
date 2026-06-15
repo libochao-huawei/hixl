@@ -101,9 +101,9 @@ source ${ASCEND_INSTALL_PATH}/cann/set_env.sh
 - 配置完成后继续后续步骤。
 
 2. **探测改动**
-   
+
    支持三种输入源，按优先级处理：
-   
+
    a. **用户指定的 commit id**（最高优先级）
       - 若用户提供 commit id（如 `abc123` 或完整 SHA），执行：
         ```bash
@@ -116,18 +116,18 @@ source ${ASCEND_INSTALL_PATH}/cann/set_env.sh
         ```
         获取该 commit 引入的所有文件变更。
       - 若 commit 不存在，提示用户提供有效的 commit id。
-   
+
    b. **用户指定的目标文件**（次优先级）
       - 若用户提供目标文件路径（如 `src/hixl/engine/channel.cpp`），直接以该文件为分析对象。
       - 需验证文件是否存在。
-   
+
    c. **当前工作区改动**（默认）
       - 执行 `git diff --name-only` 获取未提交改动。
       - 若无未提交改动，执行 `git diff --cached --name-only` 获取暂存改动。
       - 若仍无改动，执行 `git diff HEAD~1 --name-only` 获取最近一次提交的改动。
-   
+
    重点关注：`src/hixl/`、`src/llm_datadist/`、`include/hixl/`、`include/llm_datadist/`。
-   
+
    若无任何可定位改动：明确说明"无可定位改动"，请求用户提供目标文件或 commit id。
 
 3. **识别受影响行为**
@@ -334,4 +334,3 @@ pip install diff-cover
 3. 提供保守但可执行的测试计划。
 4. 在假设范围内输出代码草稿。
 5. 清晰区分“已确认”与“推断”。
-

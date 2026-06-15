@@ -149,9 +149,15 @@ def _line_chart(plt, spec: ChartPlotSpec) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Plot single HIXL communication benchmark CSV")
-    parser.add_argument("--csv", type=Path, required=True, help="CSV from hixl_comm_bench")
-    parser.add_argument("--output_dir", type=Path, default=None, help="Output directory for PNGs")
+    parser = argparse.ArgumentParser(
+        description="Plot single HIXL communication benchmark CSV"
+    )
+    parser.add_argument(
+        "--csv", type=Path, required=True, help="CSV from hixl_comm_bench"
+    )
+    parser.add_argument(
+        "--output_dir", type=Path, default=None, help="Output directory for PNGs"
+    )
     args = parser.parse_args()
 
     out_dir = args.output_dir or args.csv.parent

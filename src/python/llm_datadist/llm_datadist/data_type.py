@@ -45,7 +45,7 @@ _dwrapper_dtype_to_python_dtype = {
     metadef_wrapper.DT_UINT64: DataType.DT_UINT64,
     metadef_wrapper.DT_BOOL: DataType.DT_BOOL,
     metadef_wrapper.DT_DOUBLE: DataType.DT_DOUBLE,
-    metadef_wrapper.DT_STRING: DataType.DT_STRING
+    metadef_wrapper.DT_STRING: DataType.DT_STRING,
 }
 
 python_dtype_2_dwrapper_dtype = {
@@ -62,14 +62,16 @@ python_dtype_2_dwrapper_dtype = {
     DataType.DT_UINT64: metadef_wrapper.DT_UINT64,
     DataType.DT_BOOL: metadef_wrapper.DT_BOOL,
     DataType.DT_DOUBLE: metadef_wrapper.DT_DOUBLE,
-    DataType.DT_STRING: metadef_wrapper.DT_STRING
+    DataType.DT_STRING: metadef_wrapper.DT_STRING,
 }
 
 
 def get_python_dtype_from_wrapper_dtype(wrapper_dtype):
     dtype = _dwrapper_dtype_to_python_dtype.get(wrapper_dtype, None)
     if not dtype:
-        raise ValueError(f"The data type {wrapper_dtype} is not supported.")  # pragma: no cover
+        raise ValueError(
+            f"The data type {wrapper_dtype} is not supported."
+        )  # pragma: no cover
     return dtype
 
 
@@ -93,7 +95,7 @@ def __getattr__(name):
             DataType.DT_UINT64: np.uint64,
             DataType.DT_BOOL: np.bool_,
             DataType.DT_DOUBLE: np.double,
-            DataType.DT_STRING: np.bytes_
+            DataType.DT_STRING: np.bytes_,
         }
 
         valid_np_dtypes = list(dtype_to_np_dtype.values())
@@ -111,15 +113,17 @@ def __getattr__(name):
             np.dtype(np.uint64): DataType.DT_UINT64,
             np.dtype(np.bool_): DataType.DT_BOOL,
             np.dtype(np.double): DataType.DT_DOUBLE,
-            np.dtype(np.bytes_): DataType.DT_STRING
+            np.dtype(np.bytes_): DataType.DT_STRING,
         }
 
         # 缓存到模块，下次直接用
-        globals().update({
-            "dtype_to_np_dtype": dtype_to_np_dtype,
-            "valid_np_dtypes": valid_np_dtypes,
-            "np_dtype_to_dtype": np_dtype_to_dtype,
-        })
+        globals().update(
+            {
+                "dtype_to_np_dtype": dtype_to_np_dtype,
+                "valid_np_dtypes": valid_np_dtypes,
+                "np_dtype_to_dtype": np_dtype_to_dtype,
+            }
+        )
         return globals()[name]
 
     raise AttributeError(f"module {__name__} has no attribute {name}")

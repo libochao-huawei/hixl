@@ -52,7 +52,7 @@ HcclResult HcclBatchGet1(HcclComm comm, uint32_t remoteRank, HcclOneSideOpDesc *
     auto src = desc[i].localAddr;
     auto dst = desc[i].remoteAddr;
     auto size = desc[i].count;
-    (void) memcpy(src, dst, size);
+    (void)memcpy(src, dst, size);
   }
   return HCCL_SUCCESS;
 }
@@ -66,21 +66,21 @@ void WriteHccnConfFile() {
   }
 
   file << "netmask_0=1.2.3.4\n"
-        << "address_0=1.1.1.0\n"
-        << "netmask_1=1.2.3.4\n"
-        << "address_1=1.1.1.1\n"
-        << "netmask_2=1.2.3.4\n"
-        << "address_2=1.1.1.2\n"
-        << "netmask_3=1.2.3.4\n"
-        << "address_3=1.1.1.3\n"
-        << "netmask_4=1.2.3.4\n"
-        << "address_4=1.1.1.4\n"
-        << "netmask_5=1.2.3.4\n"
-        << "address_5=1.1.1.5\n"
-        << "netmask_6=1.2.3.4\n"
-        << "address_6=1.1.1.6\n"
-        << "netmask_7=1.2.3.4\n"
-        << "address_7=1.1.1.7\n";
+       << "address_0=1.1.1.0\n"
+       << "netmask_1=1.2.3.4\n"
+       << "address_1=1.1.1.1\n"
+       << "netmask_2=1.2.3.4\n"
+       << "address_2=1.1.1.2\n"
+       << "netmask_3=1.2.3.4\n"
+       << "address_3=1.1.1.3\n"
+       << "netmask_4=1.2.3.4\n"
+       << "address_4=1.1.1.4\n"
+       << "netmask_5=1.2.3.4\n"
+       << "address_5=1.1.1.5\n"
+       << "netmask_6=1.2.3.4\n"
+       << "address_6=1.1.1.6\n"
+       << "netmask_7=1.2.3.4\n"
+       << "address_7=1.1.1.7\n";
 
   file.close();
 }
@@ -91,7 +91,7 @@ void RemoveHccnConfFile() {
     std::cout << "Failed to delete file:" << file_path.c_str() << std::endl;
   }
 }
-}
+}  // namespace
 class MockMmpa : public MmpaStubApiGe {
  public:
   void *DlOpen(const char *file_name, int32_t mode) override {
@@ -99,18 +99,18 @@ class MockMmpa : public MmpaStubApiGe {
   }
 
   void *DlSym(void *handle, const char *func_name) override {
-    static const std::map<std::string, void*> func_map = {
-        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void*>(&HcclCommInitClusterInfoMemConfig)},
-        {"HcclExchangeMemDesc", reinterpret_cast<void*>(&HcclExchangeMemDesc1)},
-        {"HcclCommDestroy", reinterpret_cast<void*>(&HcclCommDestroy)},
-        {"HcclBatchPut", reinterpret_cast<void*>(&HcclBatchPut1)},
-        {"HcclBatchGet", reinterpret_cast<void*>(&HcclBatchGet1)},
-        {"HcclRemapRegistedMemory", reinterpret_cast<void*>(&HcclRemapRegistedMemory)},
-        {"HcclRegisterGlobalMem", reinterpret_cast<void*>(&HcclRegisterGlobalMem)},
-        {"HcclDeregisterGlobalMem", reinterpret_cast<void*>(&HcclDeregisterGlobalMem)},
-        {"HcclCommBindMem", reinterpret_cast<void*>(&HcclCommBindMem)},
-        {"HcclCommUnbindMem", reinterpret_cast<void*>(&HcclCommUnbindMem)},
-        {"HcclCommPrepare", reinterpret_cast<void*>(&HcclCommPrepare)},
+    static const std::map<std::string, void *> func_map = {
+        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void *>(&HcclCommInitClusterInfoMemConfig)},
+        {"HcclExchangeMemDesc", reinterpret_cast<void *>(&HcclExchangeMemDesc1)},
+        {"HcclCommDestroy", reinterpret_cast<void *>(&HcclCommDestroy)},
+        {"HcclBatchPut", reinterpret_cast<void *>(&HcclBatchPut1)},
+        {"HcclBatchGet", reinterpret_cast<void *>(&HcclBatchGet1)},
+        {"HcclRemapRegistedMemory", reinterpret_cast<void *>(&HcclRemapRegistedMemory)},
+        {"HcclRegisterGlobalMem", reinterpret_cast<void *>(&HcclRegisterGlobalMem)},
+        {"HcclDeregisterGlobalMem", reinterpret_cast<void *>(&HcclDeregisterGlobalMem)},
+        {"HcclCommBindMem", reinterpret_cast<void *>(&HcclCommBindMem)},
+        {"HcclCommUnbindMem", reinterpret_cast<void *>(&HcclCommUnbindMem)},
+        {"HcclCommPrepare", reinterpret_cast<void *>(&HcclCommPrepare)},
     };
     auto it = func_map.find(func_name);
     if (it != func_map.end()) {
@@ -136,7 +136,7 @@ class MockMmpa : public MmpaStubApiGe {
 
 class RuntimeMock : public llm::AclRuntimeStub {
  public:
-  aclError aclrtQueryEventStatus(aclrtEvent evt, aclrtEventRecordedStatus *status)  {
+  aclError aclrtQueryEventStatus(aclrtEvent evt, aclrtEventRecordedStatus *status) {
     count++;
     if ((count % RUTIME_MOCK_QUERY_EVENT_INTERVAL) == 0) {
       *status = ACL_EVENT_RECORDED_STATUS_COMPLETE;
@@ -146,9 +146,10 @@ class RuntimeMock : public llm::AclRuntimeStub {
     return ACL_ERROR_NONE;
   }
 
-  const char* aclrtGetSocName() override {
+  const char *aclrtGetSocName() override {
     return "Ascend910_9391";
   }
+
  private:
   int count;
 };

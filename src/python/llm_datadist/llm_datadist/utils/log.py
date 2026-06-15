@@ -24,8 +24,10 @@ _log_level_map = {
     "2": logging.WARNING,
     "3": logging.ERROR,
 }
-LOG_FORMAT = "[%(levelname)s] %(name)s(%(process)d,%(processName)s):%(asctime)s.%(msecs)03d " \
-             "[%(filename)s:%(lineno)d]%(thread)d %(funcName)s: %(message)s"
+LOG_FORMAT = (
+    "[%(levelname)s] %(name)s(%(process)d,%(processName)s):%(asctime)s.%(msecs)03d "
+    "[%(filename)s:%(lineno)d]%(thread)d %(funcName)s: %(message)s"
+)
 
 
 def get_logger():
@@ -59,13 +61,13 @@ def error(msg, *args, **kwargs):
 
 
 def _get_stack_info(frame):
-    return 'Stack (most recent call last):\n' + ''.join(traceback.format_stack(frame))
+    return "Stack (most recent call last):\n" + "".join(traceback.format_stack(frame))
 
 
 def _find_caller(stack_info=False, stack_level=1):
     f = sys._getframe(3)
     log_file = f.f_code.co_filename
-    rv = '(unknown file)', 0, '(unknown function)', None
+    rv = "(unknown file)", 0, "(unknown function)", None
     while f:
         f = f.f_back
         code = f.f_code

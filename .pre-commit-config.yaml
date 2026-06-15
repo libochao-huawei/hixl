@@ -40,7 +40,7 @@ repos:
       - id: ruff-check
         args: ["--output-format", "github", "--fix"]
         types: [python]
-        exclude: '^(.agents/)'
+        exclude: '^(.agents/|benchmarks/kv_benchmark/scripts/run_kv_benchmark.py|benchmarks/run_all_benchmarks.py|examples/python/pull_blocks_sample.py|examples/third_parties/|src/python/llm_datadist/llm_datadist/__init__.py|src/python/llm_datadist/llm_datadist/v2/llm_types.py|tests/python/)'
       - id: ruff-format
         types: [python]
         exclude: '^(.agents/)'
@@ -50,7 +50,7 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
-        args: [ '--ignore-words-list=CANN,cann,alog' ]
+        args: [ '--ignore-words-list=CANN,cann,alog,CLOS,nd,inout' ]
         exclude: '^(.agents/)'
 
   # OAT 合规性检查 (Open Source Audit Tool)

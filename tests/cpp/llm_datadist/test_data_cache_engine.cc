@@ -224,18 +224,18 @@ class MockMmpaLongTimeRegister : public MmpaStubApiGe {
   }
 
   void *DlSym(void *handle, const char *func_name) override {
-    static const std::map<std::string, void*> func_map = {
-        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void*>(&HcclCommInitClusterInfoMemConfig)},
-        {"HcclExchangeMemDesc", reinterpret_cast<void*>(&HcclExchangeMemDesc1)},
-        {"HcclCommDestroy", reinterpret_cast<void*>(&HcclCommDestroy)},
-        {"HcclBatchPut", reinterpret_cast<void*>(&HcclBatchPut)},
-        {"HcclBatchGet", reinterpret_cast<void*>(&HcclBatchGet)},
-        {"HcclRemapRegistedMemory", reinterpret_cast<void*>(&HcclRemapRegistedMemory)},
-        {"HcclRegisterGlobalMem", reinterpret_cast<void*>(&HcclRegisterGlobalMem)},
-        {"HcclDeregisterGlobalMem", reinterpret_cast<void*>(&HcclDeregisterGlobalMem)},
-        {"HcclCommBindMem", reinterpret_cast<void*>(&HcclCommBindMem)},
-        {"HcclCommUnbindMem", reinterpret_cast<void*>(&HcclCommUnbindMem)},
-        {"HcclCommPrepare", reinterpret_cast<void*>(&HcclCommPrepare)},
+    static const std::map<std::string, void *> func_map = {
+        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void *>(&HcclCommInitClusterInfoMemConfig)},
+        {"HcclExchangeMemDesc", reinterpret_cast<void *>(&HcclExchangeMemDesc1)},
+        {"HcclCommDestroy", reinterpret_cast<void *>(&HcclCommDestroy)},
+        {"HcclBatchPut", reinterpret_cast<void *>(&HcclBatchPut)},
+        {"HcclBatchGet", reinterpret_cast<void *>(&HcclBatchGet)},
+        {"HcclRemapRegistedMemory", reinterpret_cast<void *>(&HcclRemapRegistedMemory)},
+        {"HcclRegisterGlobalMem", reinterpret_cast<void *>(&HcclRegisterGlobalMem)},
+        {"HcclDeregisterGlobalMem", reinterpret_cast<void *>(&HcclDeregisterGlobalMem)},
+        {"HcclCommBindMem", reinterpret_cast<void *>(&HcclCommBindMem)},
+        {"HcclCommUnbindMem", reinterpret_cast<void *>(&HcclCommUnbindMem)},
+        {"HcclCommPrepare", reinterpret_cast<void *>(&HcclCommPrepare)},
     };
     auto it = func_map.find(func_name);
     if (it != func_map.end()) {
@@ -263,6 +263,7 @@ class MockRuntime : public llm::AclRuntimeStub {
 class DataCacheEngineSTest : public ::testing::Test {
  public:
   DataCacheEngineSTest() : hccl_transfer_engine_(0) {};
+
  protected:
   // 在测试类中设置一些准备工作，如果需要的话
   void SetUp() override {
@@ -377,7 +378,8 @@ TEST_F(DataCacheEngineSTest, TestMemPool_Timeout) {
   const int32_t timeout_ms = 200;
   auto start = std::chrono::steady_clock::now();
   void *result = mem_pool->Alloc(32 * 1024, timeout_ms);
-  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+  auto elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
 
   EXPECT_EQ(result, nullptr);
   EXPECT_GE(elapsed, timeout_ms - 20);
@@ -395,7 +397,8 @@ TEST_F(DataCacheEngineSTest, TestMemPool_ZeroTimeout) {
   // timeout=0: first Alloc fails, tp_end is already in the past → return nullptr at line 87
   auto start = std::chrono::steady_clock::now();
   void *result = mem_pool->Alloc(32 * 1024, 0);
-  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+  auto elapsed =
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
   EXPECT_EQ(result, nullptr);
   EXPECT_LT(elapsed, 50);  // should return almost immediately, no cv wait
   for (auto addr : addrs) {
@@ -464,8 +467,8 @@ TEST_F(DataCacheEngineSTest, PullDataCache_D2H_B2B) {
 
   llm::PullCacheParam pull_cache_param{};
   pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = {0,1,4,5,6};
-  pull_cache_param.decoder_blocks = {1,2,4,6,9};
+  pull_cache_param.prompt_blocks = {0, 1, 4, 5, 6};
+  pull_cache_param.decoder_blocks = {1, 2, 4, 6, 9};
 
   std::vector<int32_t> pull_result(128 * 128);
   DataCacheEngineRunner data_cache_engine_runner;
@@ -526,7 +529,6 @@ TEST_F(DataCacheEngineSTest, PullDataCache_D2H_C2B) {
   std::vector<int32_t> actual(&pull_result[0], &pull_result[8]);
   EXPECT_EQ(actual, (std::vector<int32_t>{0, 0, 1, 2, 0, 0, 3, 4}));
 }
-
 
 TEST_F(DataCacheEngineSTest, PullDataCache_H2D_C2C) {
   llm::CacheDesc src_cache_desc{};
@@ -662,8 +664,8 @@ TEST_F(DataCacheEngineSTest, PullDataCache_D2D_B2B) {
 
   llm::PullCacheParam pull_cache_param{};
   pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = {0,1,4,5,6};
-  pull_cache_param.decoder_blocks = {1,2,4,6,9};
+  pull_cache_param.prompt_blocks = {0, 1, 4, 5, 6};
+  pull_cache_param.decoder_blocks = {1, 2, 4, 6, 9};
 
   std::vector<int32_t> pull_result(128 * 128);
   DataCacheEngineRunner data_cache_engine_runner;
@@ -688,8 +690,8 @@ TEST_F(DataCacheEngineSTest, PullCache_D2D_B2B_BatchGet) {
 
   llm::PullCacheParam pull_cache_param{};
   pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = {0,1,4,5,6};
-  pull_cache_param.decoder_blocks = {1,2,4,6,9};
+  pull_cache_param.prompt_blocks = {0, 1, 4, 5, 6};
+  pull_cache_param.decoder_blocks = {1, 2, 4, 6, 9};
 
   std::vector<int32_t> pull_result(128 * 128);
   DataCacheEngineRunner data_cache_engine_runner;
@@ -701,8 +703,8 @@ TEST_F(DataCacheEngineSTest, PullCache_D2D_B2B_BatchGet) {
 
   llm::AclRuntimeStub::SetInstance(std::make_shared<MockRuntime>());
   EXPECT_EQ(data_cache_engine_runner.GetLlmDataDist().PullCache(data_cache_engine_runner.GetDstCache().cache_id,
-                                                                cache_key,
-                                                                pull_cache_param), ge::LLM_TIMEOUT);
+                                                                cache_key, pull_cache_param),
+            ge::LLM_TIMEOUT);
   llm::AclRuntimeStub::Reset();
   data_cache_engine_runner.PullDataCache(pull_cache_param, pull_result);
   data_cache_engine_runner.ReleaseResource();
@@ -743,8 +745,8 @@ TEST_F(DataCacheEngineSTest, PullCache_D2D_B2B_BatchGet_RequestTooLarge) {
   cache_key.prompt_cache_id = 1;
 
   EXPECT_EQ(data_cache_engine_runner.GetLlmDataDist().PullCache(data_cache_engine_runner.GetDstCache().cache_id,
-                                                                cache_key,
-                                                                pull_cache_param), ge::LLM_PARAM_INVALID);
+                                                                cache_key, pull_cache_param),
+            ge::LLM_PARAM_INVALID);
   data_cache_engine_runner.ReleaseResource();
 }
 
@@ -870,12 +872,7 @@ TEST_F(DataCacheEngineSTest, CopyCache_B2B) {
   auto dst_tensor_base = reinterpret_cast<int32_t *>(dst_cache.per_device_tensor_addrs[0][0]);
   std::iota(src_tensor_base, src_tensor_base + 4 * 128, 0);
   EXPECT_EQ(cache_engine_.CopyCache(copy_cache_param), ge::SUCCESS);
-  std::vector<int32_t> expected{
-      16, 17, 18, 19,
-      8, 9, 10, 11,
-      12, 13, 14, 15,
-      0, 1, 2, 3
-  };
+  std::vector<int32_t> expected{16, 17, 18, 19, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3};
   std::vector<int32_t> dst_value(dst_tensor_base, dst_tensor_base + 4 * 4);
   EXPECT_EQ(dst_value, expected);
   cache_engine_.Finalize();
@@ -888,8 +885,7 @@ TEST_F(DataCacheEngineSTest, AllocateOutOfMemory) {
       {llm::LLM_OPTION_ROLE, llm::kDecoder},
       {ge::OPTION_EXEC_DEVICE_ID, "0"},
       {llm::LLM_OPTION_SYNC_KV_CACHE_WAIT_TIME, "600000"},
-      {llm::LLM_OPTION_MEM_POOL_CONFIG, "{\"memory_size\": 65536}"}
-  };
+      {llm::LLM_OPTION_MEM_POOL_CONFIG, "{\"memory_size\": 65536}"}};
 
   EXPECT_EQ(llm_data_dist.LLMDataDistInitialize(default_options), ge::SUCCESS);
   llm::Cache cache;
@@ -1097,8 +1093,8 @@ TEST_F(DataCacheEngineSTest, TransferDataCache_D2H_B2B) {
 
   llm::PullCacheParam pull_cache_param{};
   pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = {0,1,4,5,6};
-  pull_cache_param.decoder_blocks = {1,2,4,6,9};
+  pull_cache_param.prompt_blocks = {0, 1, 4, 5, 6};
+  pull_cache_param.decoder_blocks = {1, 2, 4, 6, 9};
 
   std::vector<int32_t> pull_result(128 * 128);
   DataCacheEngineRunner data_cache_engine_runner;
@@ -1199,8 +1195,8 @@ TEST_F(DataCacheEngineSTest, PullDataCache_D2D_B2B_with_layer_range) {
 
   llm::PullCacheParam pull_cache_param{};
   pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = {0,1,4,5,6};
-  pull_cache_param.decoder_blocks = {1,2,4,6,9};
+  pull_cache_param.prompt_blocks = {0, 1, 4, 5, 6};
+  pull_cache_param.decoder_blocks = {1, 2, 4, 6, 9};
   pull_cache_param.src_tensor_indices = {0, 1, 2, 3};
 
   std::vector<int32_t> pull_result(128 * 128);
@@ -1369,8 +1365,8 @@ TEST_F(DataCacheEngineSTest, PullDataCache_D2H_B2B_with_layer_range) {
 
   llm::PullCacheParam pull_cache_param{};
   pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = {0,1,4,5,6};
-  pull_cache_param.decoder_blocks = {1,2,4,6,9};
+  pull_cache_param.prompt_blocks = {0, 1, 4, 5, 6};
+  pull_cache_param.decoder_blocks = {1, 2, 4, 6, 9};
   pull_cache_param.dst_tensor_indices = {0, 1, 2, 3};
 
   std::vector<int32_t> pull_result(128 * 128);
@@ -1410,7 +1406,7 @@ TEST_F(DataCacheEngineSTest, SwapBlocks) {
   EXPECT_EQ(llm_data_dist.AllocateCache(kv_desc, cached_tensors_2), ge::SUCCESS);
   EXPECT_EQ(cached_tensors_2.cache_id, 2);
 
-  std::vector<std::pair<int64_t, int64_t>> block_mapping{{3,4}, {0,0}, {1,1}, {2,2}, {5,6}, {6,7}, {9,9}};
+  std::vector<std::pair<int64_t, int64_t>> block_mapping{{3, 4}, {0, 0}, {1, 1}, {2, 2}, {5, 6}, {6, 7}, {9, 9}};
   // swap in
   EXPECT_EQ(llm_data_dist.SwapBlocks(cached_tensors, cached_tensors_2, 128, 0, block_mapping), ge::SUCCESS);
   // swap out

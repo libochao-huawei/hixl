@@ -10,16 +10,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-import os.path
-import time
 import unittest
-import ctypes
 
 import llm_datadist as ld
 from llm_datadist import v2_list
-from llm_datadist.v2.llm_types import RegisterMemStatus, Cache, Memtype, MemInfo
 
-_INVALID_ID = 2 ** 64 - 1
+_INVALID_ID = 2**64 - 1
 
 for item in v2_list:
     globals()[item] = getattr(ld, item)
@@ -75,5 +71,3 @@ class LlmCacheManagerStEx(unittest.TestCase):
         except LLMException:
             has_err = True
         self.assertEqual(has_err, True)
-
-

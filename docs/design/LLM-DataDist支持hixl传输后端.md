@@ -53,7 +53,7 @@ std::string local_comm_res = R"(
     {
       "protocol": "roce",
       "comm_id": "ipv4/ipv6地址",
-      "placement": "host" 
+      "placement": "host"
     }
   ]
 }
@@ -146,7 +146,7 @@ direction TB
     LLMDataDistV2 --> CommMemManager
     LLMDataDistV2 --> CommEntityManager
     CommEntityManager --> CommEntity
-    
+
     LLMDataDistV2 ..> DataCacheEngine : Reg Mem(1)
     DataCacheEngine ..> CommMemManager : Reg Mem(1)
     LLMDataDistV2 ..> LLMLinkManager : Link(2)
@@ -232,7 +232,7 @@ sequenceDiagram
   TranferEngineFactory -->> LLMDataDistV2: 返回transfer engine实例
   LLMDataDistV2 ->> LLMDataDistV2: 将transfer engine实例设置到<br>comm_mem_manager中用于注册
   LLMDataDistV2 ->> LLMDataDistV2: data_cache_engine等流程初始化
-  LLMDataDistV2 -->> LlmDataDist: 
+  LLMDataDistV2 -->> LlmDataDist:
   LlmDataDist -->> 用户: 返回
 ```
 - 通过传输后端option值是否为hixl确定是否走新流程，否则兼容老版本逻辑
@@ -247,10 +247,10 @@ sequenceDiagram
   LLMDataDistV2 ->> DataCacheEngine: Register
   DataCacheEngine ->> CommMemManager: RegisterCacheMem
   CommMemManager ->> TranferEngine: 不同的传输后端提供内存注册能力，<br>hixl后端由HixlTranferEngine提供。<br>否则HcclTransferEngine提供。
-  TranferEngine -->> CommMemManager: 
-  CommMemManager -->> DataCacheEngine: 
-  DataCacheEngine -->> LLMDataDistV2: 
-  LLMDataDistV2 -->> LlmDataDist: 
+  TranferEngine -->> CommMemManager:
+  CommMemManager -->> DataCacheEngine:
+  DataCacheEngine -->> LLMDataDistV2:
+  LLMDataDistV2 -->> LlmDataDist:
   LlmDataDist -->> 用户: 返回
 ```
 - 注销与注册流程基本相同，不再赘述
@@ -272,8 +272,8 @@ sequenceDiagram
     LLMLinkManager ->> LLMLinkManager: 调用hccl通信域点对点建链，<br>交换对端cache table地址，<br>生成comm_entity
     LLMLinkManager ->> CommEntityManager: AddEntity
   end
-  TranferEngine -->> LLMDataDistV2: 
-  LLMDataDistV2 -->> LlmDataDist: 
+  TranferEngine -->> LLMDataDistV2:
+  LLMDataDistV2 -->> LlmDataDist:
   LlmDataDist -->> 用户: 返回
 ```
 - HixlTransferEngine通过HixlEngine的Connect接口完成建链，需创建socket获取对端cache table地址，用于后续数据面通信
@@ -300,8 +300,8 @@ sequenceDiagram
     CommEntity ->> HcclTransferEngine: BatchTransfer，批量传输
     HcclTransferEngine ->> HcclAdaptor: BatchGet/BatchPut，批量传输
   end
-  DataCacheEngine -->> LLMDataDistV2: 
-  LLMDataDistV2 -->> LlmDataDist: 
+  DataCacheEngine -->> LLMDataDistV2:
+  LLMDataDistV2 -->> LlmDataDist:
   LlmDataDist -->> 用户: 返回
 ```
 - 建链一条链路，双侧均可进行数据收发不支持。

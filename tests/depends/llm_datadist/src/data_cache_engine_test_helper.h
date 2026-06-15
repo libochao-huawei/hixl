@@ -51,12 +51,13 @@ class HcclApiStub {
 
   static void SetStub(std::unique_ptr<HcclApiStub> instance);
   static void ResetStub();
+
  private:
   static std::unique_ptr<HcclApiStub> instance_;
 };
 
 class MockMmpaNoRealDl : public llm::MmpaStubApiGe {
-public:
+ public:
   static void ResetStubImpl() {
     HcclApiStub::ResetStub();
     llm::MmpaStub::GetInstance().Reset();
@@ -81,7 +82,7 @@ public:
 };
 
 class MockHccnTool : public MockMmpaNoRealDl {
-public:
+ public:
   static void Install() {
     llm::MmpaStub::GetInstance().SetImpl(std::make_shared<MockHccnTool>());
   }
@@ -97,7 +98,7 @@ public:
 };
 
 class MockGetHccnResult : public MockMmpaNoRealDl {
-public:
+ public:
   static void Install() {
     llm::MmpaStub::GetInstance().SetImpl(std::make_shared<MockGetHccnResult>());
   }
@@ -172,10 +173,9 @@ class MockMmpaForHcclApi : public llm::MmpaStubApiGe {
                                  aclrtStream stream) {
     return HcclApiStub::GetInstance().HcclBatchGet(comm, remoteRank, desc, descNum, stream);
   }
-  static void HcclCommConfigInit(HcclCommConfig *config) {
-  }
+  static void HcclCommConfigInit(HcclCommConfig *config) {}
   static HcclResult HcclRemapRegistedMemory(HcclComm *comm, HcclMem *memInfoArray, uint64_t commSize,
-      uint64_t arraySize) {
+                                            uint64_t arraySize) {
     return HcclApiStub::GetInstance().HcclRemapRegistedMemory(comm, memInfoArray, commSize, arraySize);
   }
 
@@ -226,7 +226,7 @@ class TransferAsyncRuntimeMock : public llm::AclRuntimeStub {
 
 class TransferAsyncSteamRuntimeMocak : public llm::AclRuntimeStub {
  public:
-  aclError aclrtSynchronizeStream(aclrtStream stream) override{
+  aclError aclrtSynchronizeStream(aclrtStream stream) override {
     (void)stream;
     return -1;
   }
@@ -264,7 +264,7 @@ class AutoCommResRuntimeMock : public llm::AclRuntimeStub {
     }
   }
 
-  const char* aclrtGetSocName() override {
+  const char *aclrtGetSocName() override {
     return "Ascend910_9391";
   }
 
@@ -278,7 +278,8 @@ class AutoCommResRuntimeMock : public llm::AclRuntimeStub {
   }
 
   aclError aclrtMemcpyBatch(void **dsts, size_t *destMax, void **srcs, size_t *sizes, size_t numBatches,
-                            aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs, size_t *failIndex) override {
+                            aclrtMemcpyBatchAttr *attrs, size_t *attrsIndexex, size_t numAttrs,
+                            size_t *failIndex) override {
     return ACL_ERROR_RT_FEATURE_NOT_SUPPORT;
   }
 
@@ -335,11 +336,9 @@ class DataCacheEngineTestContext {
 
   llm::DataCacheEngine &CacheEngine();
 
-  static void LinkEntities(llm::CommEntity &src_comm_entity,
-                           llm::CommEntity &dst_comm_entity,
+  static void LinkEntities(llm::CommEntity &src_comm_entity, llm::CommEntity &dst_comm_entity,
                            llm::CommEntityManager &src_comm_entity_manager,
-                           llm::CommEntityManager &dst_comm_entity_manager,
-                           bool remote_cache_accessible = false);
+                           llm::CommEntityManager &dst_comm_entity_manager, bool remote_cache_accessible = false);
 
  private:
   llm::HcclTransferEngine hccl_transfer_engine_;
@@ -352,25 +351,22 @@ class DataCacheEngineTestContext {
 
 class DataCacheEngineTestRunner {
  public:
-  explicit DataCacheEngineTestRunner(size_t pool_size = 100 * 1024 * 1024, bool use_host_pool = false, bool use_batch_get = false) {
+  explicit DataCacheEngineTestRunner(size_t pool_size = 100 * 1024 * 1024, bool use_host_pool = false,
+                                     bool use_batch_get = false) {
     src_test_context_.Initialize(pool_size, false, use_batch_get);
     dst_test_context_.Initialize(pool_size, use_host_pool, use_batch_get);
     alloc_host_mem_ = use_host_pool;
-    llm::DataCacheEngineTestContext::LinkEntities(src_test_context_.GetCommEntry(),
-                                                  dst_test_context_.GetCommEntry(),
+    llm::DataCacheEngineTestContext::LinkEntities(src_test_context_.GetCommEntry(), dst_test_context_.GetCommEntry(),
                                                   src_test_context_.GetCommEntityManager(),
-                                                  dst_test_context_.GetCommEntityManager(),
-                                                  use_batch_get);
+                                                  dst_test_context_.GetCommEntityManager(), use_batch_get);
   }
 
   ~DataCacheEngineTestRunner() {
     Finalize();
   }
 
-  void Initialize(const llm::CacheDesc &src_cache_desc,
-                  const llm::CacheDesc &dst_cache_desc,
-                  const llm::PullCacheParam &pull_cache_param,
-                  const std::vector<llm::CacheKey> *cache_keys = nullptr) {
+  void Initialize(const llm::CacheDesc &src_cache_desc, const llm::CacheDesc &dst_cache_desc,
+                  const llm::PullCacheParam &pull_cache_param, const std::vector<llm::CacheKey> *cache_keys = nullptr) {
     std::vector<llm::CacheKey> src_cachey_keys;
     std::vector<llm::CacheKey> dst_cachey_keys;
     if (!pull_cache_param.prompt_blocks.empty()) {
@@ -385,10 +381,8 @@ class DataCacheEngineTestRunner {
     AllocateOrRegisterCache(dst_cache_desc, dst_cachey_keys, false);
   }
 
-  void InitializeV2(const llm::CacheDesc &src_cache_desc,
-                    const llm::CacheDesc &dst_cache_desc,
-                    const llm::PullCacheParam &pull_cache_param,
-                    std::vector<llm::CacheKey> &dst_cache_keys) {
+  void InitializeV2(const llm::CacheDesc &src_cache_desc, const llm::CacheDesc &dst_cache_desc,
+                    const llm::PullCacheParam &pull_cache_param, std::vector<llm::CacheKey> &dst_cache_keys) {
     std::vector<llm::CacheKey> src_cachey_keys;
     AllocateOrRegisterCache(src_cache_desc, src_cachey_keys, true);
     AllocateOrRegisterCache(dst_cache_desc, dst_cache_keys, false);
@@ -403,7 +397,7 @@ class DataCacheEngineTestRunner {
     auto &cache_engine = src_or_dst ? src_test_context_.CacheEngine() : dst_test_context_.CacheEngine();
     auto &cache = src_or_dst ? src_cache_ : dst_cache_;
     auto &host_buffers = src_or_dst ? src_host_buffers_ : dst_host_buffers_;
-    if ((cache_desc.placement == 1 && (!register_dev_mem_))|| (cache_desc.placement == 0 && alloc_host_mem_)) {
+    if ((cache_desc.placement == 1 && (!register_dev_mem_)) || (cache_desc.placement == 0 && alloc_host_mem_)) {
       ASSERT_EQ(cache_engine.Allocate(cache_desc, cache_keys, cache), ge::SUCCESS);
     } else {
       cache.per_device_tensor_addrs.resize(1);
@@ -447,8 +441,8 @@ class DataCacheEngineTestRunner {
     return src_test_context_.CacheEngine().TransferCache(0, transfer_cache_config, transfer_block_config);
   }
 
-    void GetCacheData(std::vector<int32_t> &pull_result, size_t tensor_index = 0) {
-      auto pulled_data = reinterpret_cast<int32_t *>(dst_cache_.per_device_tensor_addrs[0][tensor_index]);
+  void GetCacheData(std::vector<int32_t> &pull_result, size_t tensor_index = 0) {
+    auto pulled_data = reinterpret_cast<int32_t *>(dst_cache_.per_device_tensor_addrs[0][tensor_index]);
     memcpy(pull_result.data(), pulled_data, sizeof(int32_t) * pull_result.size());
   }
 
@@ -486,4 +480,4 @@ class DataCacheEngineTestRunner {
 };
 }  // namespace llm
 
-#endif // CANN_GRAPH_ENGINE_TESTS_DEPENDS_LLM_ENGINE_DATA_CACHE_ENGINE_TEST_HELPER_H_
+#endif  // CANN_GRAPH_ENGINE_TESTS_DEPENDS_LLM_ENGINE_DATA_CACHE_ENGINE_TEST_HELPER_H_

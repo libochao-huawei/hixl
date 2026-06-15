@@ -64,4 +64,3 @@ struct NotifyDesc {
   AscendString notify_msg;
 }
 ```
-
