@@ -90,18 +90,17 @@ int32_t ValidateProtocol(const std::string &proto) {
 
 int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_b,
                   std::vector<std::string> &protocols, int32_t &version) {
-  // Process each argument
   for (int32_t i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg.find("--device=") == 0) {
       std::string val = arg.substr(9);
-      auto pos = val.find(',');
-      if (pos == std::string::npos) {
+      auto comma_pos = val.find(',');
+      if (comma_pos == std::string::npos) {
         printf("[ERROR] Invalid --device format, expected id1,id2\n");
         return -1;
       }
-      device_a = std::stoi(val.substr(0, pos));
-      device_b = std::stoi(val.substr(pos + 1));
+      device_a = std::stoi(val.substr(0, comma_pos));
+      device_b = std::stoi(val.substr(comma_pos + 1));
     } else if (arg.find("--protocol=") == 0) {
       ParseProtocolList(arg.substr(11), protocols);
     } else if (arg.find("--version=") == 0) {
@@ -113,30 +112,27 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
     }
   }
 
-  // Ensure protocol list is not empty
   if (protocols.empty()) {
     printf("[ERROR] --protocol is required\n");
-    printf("Usage: %s --protocol=<type>[,...] [--device=id1,id2] [--version=0|1]\n", argv[0]);
     return -1;
   }
 
-  // Validate all protocols
-  for (const auto &p : protocols) {
-    if (ValidateProtocol(p) != 0) {
+  for (const auto &proto : protocols) {
+    if (ValidateProtocol(proto) != 0) {
       return -1;
     }
   }
 
-  // Verify version constraints
-  if (version == kVersionLegacy && (protocols.size() != 1 || protocols[0] != "roce:device")) {
+  bool is_legacy = (version == kVersionLegacy);
+  bool single_roce = (protocols.size() == 1 && protocols[0] == "roce:device");
+  if (is_legacy && !single_roce) {
     printf("[ERROR] version 0 only supports roce:device\n");
     return -1;
   }
 
-  // Output configuration
   printf("[INFO] ParseArgs success: device_a=%d, device_b=%d, version=%d\n", device_a, device_b, version);
-  for (const auto &p : protocols) {
-    printf("[INFO]   protocol: %s\n", p.c_str());
+  for (const auto &proto : protocols) {
+    printf("[INFO]   protocol: %s\n", proto.c_str());
   }
   return 0;
 }
