@@ -345,7 +345,6 @@ Status EndpointGenerator::ParseEndpointListFromLocalCommRes(const HixlOptions &o
     HIXL_CHK_STATUS_RET(ParseLocalCommRes(config, endpoint_list), "ParseLocalCommRes failed");
     HIXL_CHK_STATUS_RET(FilterEndpointListByProtocolDesc(options, endpoint_list),
                         "FilterEndpointListByProtocolDesc failed");
-    HIXL_CHK_STATUS_RET(PopulateLocalDeviceInfo(endpoint_list), "PopulateLocalDeviceInfo failed");
   } catch (const nlohmann::json::exception &e) {
     HIXL_LOGE(PARAM_INVALID, "Parse local_comm_res failed, exception:%s", e.what());
     return PARAM_INVALID;
@@ -404,14 +403,15 @@ Status EndpointGenerator::BuildEndpointList(const HixlOptions &options, const st
   // Step 1: Parse endpoint_list from localCommRes
   HIXL_CHK_STATUS_RET(ParseEndpointListFromLocalCommRes(options, local_comm_res, endpoint_list),
                       "ParseEndpointListFromLocalCommRes failed");
-  if (!endpoint_list.empty()) {
-    return SUCCESS;
+
+  if (endpoint_list.empty()) {
+    // Step 2: Build default endpoint list based on soc type
+    HIXL_CHK_STATUS_RET(AutoGenEndpointList(options, local_engine, endpoint_list), "AutoGenEndpointList failed");
   }
 
-  // Step 2: Build default endpoint list based on soc type
-  HIXL_CHK_STATUS_RET(AutoGenEndpointList(options, local_engine, endpoint_list), "AutoGenEndpointList failed");
   HIXL_CHK_BOOL_RET_STATUS(!endpoint_list.empty(), PARAM_INVALID,
                            "[HixlEngine] endpoint_list is empty after all generation attempts");
+  HIXL_CHK_STATUS_RET(PopulateLocalDeviceInfo(endpoint_list), "PopulateLocalDeviceInfo failed");
   return SUCCESS;
 }
 
@@ -453,7 +453,7 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options, const 
   }
   HIXL_CHK_STATUS_RET(FilterEndpointListByProtocolDesc(options, endpoint_list),
                       "FilterEndpointListByProtocolDesc failed");
-  return PopulateLocalDeviceInfo(endpoint_list);
+  return SUCCESS;
 }
 
 Status EndpointGenerator::ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc &endpoint) {
