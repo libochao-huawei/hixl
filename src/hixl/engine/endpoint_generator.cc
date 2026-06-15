@@ -506,6 +506,17 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options
       HIXL_LOGE(PARAM_INVALID, "protocol_desc cannot contain both %s and %s", kUbgProtocolDesc, kUboeProtocolDesc);
       return PARAM_INVALID;
     case ProtocolDescMode::kUboe: {
+      int32_t logic_dev_id = 0;
+      HIXL_CHK_ACL_RET(aclrtGetDevice(&logic_dev_id));
+      if (DsmiProxy::IsInterconTypeSupported()) {
+        uint32_t intercon_type = 0U;
+        HIXL_CHK_STATUS_RET(DsmiProxy::GetInterconType(logic_dev_id, intercon_type), "GetInterconType failed");
+        HIXL_CHK_BOOL_RET_STATUS(IsUboeInterconType(intercon_type), FAILED,
+                                 "protocol_desc=%s conflicts with InterconType=%u", kUboeProtocolDesc, intercon_type);
+      } else {
+        HIXL_LOGW("[EndpointGenerator] DSMI InterconType not supported yet, skip validation for protocol_desc=%s",
+                  kUboeProtocolDesc);
+      }
       EndpointConfig uboe_endpoint{};
       HIXL_CHK_STATUS_RET(GenDefaultUboeEndpointConfig(uboe_endpoint), "GenDefaultUboeEndpointConfig failed");
       endpoint_list.emplace_back(uboe_endpoint);
