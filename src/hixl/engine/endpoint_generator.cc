@@ -520,6 +520,7 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options
       EndpointConfig uboe_endpoint{};
       HIXL_CHK_STATUS_RET(GenDefaultUboeEndpointConfig(uboe_endpoint), "GenDefaultUboeEndpointConfig failed");
       endpoint_list.emplace_back(uboe_endpoint);
+      HIXL_EVENT("[EndpointGenerator] Generated UBoE endpoint from protocol_desc");
       return SUCCESS;
     }
     case ProtocolDescMode::kUbg: {
@@ -537,6 +538,7 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options
       EndpointConfig ubg_endpoint{};
       HIXL_CHK_STATUS_RET(GenDefaultUbgEndpointConfig(logic_dev_id, ubg_endpoint), "GenDefaultUbgEndpointConfig failed");
       endpoint_list.emplace_back(ubg_endpoint);
+      HIXL_EVENT("[EndpointGenerator] Generated UBG endpoint from protocol_desc");
       return SUCCESS;
     }
   }
@@ -627,7 +629,7 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options,
         endpoint_list.emplace_back(std::move(ep));
       }
     }
-    HIXL_LOGI("[AutoGenEndpointList] kV5 generated %zu endpoints", endpoint_list.size());
+    HIXL_EVENT("[AutoGenEndpointList] kV5 generated %zu endpoints", endpoint_list.size());
   } else if (soc_type == SocType::kV2 || soc_type == SocType::kV3) {
     int32_t device_id = 0;
     HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
