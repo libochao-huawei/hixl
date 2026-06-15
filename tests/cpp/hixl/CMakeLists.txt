@@ -33,6 +33,7 @@ set(HIXL_TEST_FILES
         engine/endpoint_generator_ut.cc
         engine/hixl_profiling_unittest.cc
         engine/hixl_engine_uboe_unittest.cc
+        engine/hixl_engine_ubg_unittest.cc
         engine/local_comm_res_ut.cc
         ../ops/hixl_kernel/hixl_kernel_basic_unittest.cc
 )
@@ -121,6 +122,7 @@ target_link_libraries(hixl_test
         runtime_stub
         msprof_headers
         dcmi_stub
+        drvdsmi_host_stub
         GTest::gtest GTest::gtest_main
         GTest::gmock
         stdc++fs
@@ -129,9 +131,9 @@ target_link_libraries(hixl_test
         error_manager_stub
         -Wl,--as-needed)
 
-# 让 dlopen("libdcmi.so") 能找到测试桩
+# 让 dlopen("libdcmi.so") 和 dlopen("libdrvdsmi_host.so") 能找到测试桩
 set_target_properties(hixl_test PROPERTIES
-        BUILD_RPATH "${CMAKE_BINARY_DIR}/tests/depends/dcmi"
+        BUILD_RPATH "${CMAKE_BINARY_DIR}/tests/depends/dcmi;${CMAKE_BINARY_DIR}/tests/depends/dsmi"
 )
 
 add_subdirectory(fabric_mem)
