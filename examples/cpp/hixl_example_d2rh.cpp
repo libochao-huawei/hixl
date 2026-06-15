@@ -59,10 +59,33 @@ struct EngineCtx {
 
 const char *GetRecentErrMsg() {
   const char *errmsg = aclGetRecentErrMsg();
-  if (errmsg == nullptr) {
-    return "no error";
+  return (errmsg == nullptr) ? "no error" : errmsg;
+}
+
+void ParseProtocolList(const std::string &val, std::vector<std::string> &protocols) {
+  size_t start = 0;
+  size_t pos = val.find(',');
+  while (pos != std::string::npos) {
+    protocols.push_back(val.substr(start, pos - start));
+    start = pos + 1;
+    pos = val.find(',', start);
   }
-  return errmsg;
+  protocols.push_back(val.substr(start));
+}
+
+int32_t ValidateProtocol(const std::string &proto) {
+  for (const auto &valid_proto : kValidProtocols) {
+    if (valid_proto == proto) {
+      return 0;
+    }
+  }
+  printf("[ERROR] Invalid protocol: %s\n", proto.c_str());
+  printf("Supported:");
+  for (const auto &valid_proto : kValidProtocols) {
+    printf(" %s", valid_proto.c_str());
+  }
+  printf("\n");
+  return -1;
 }
 
 int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_b,
@@ -79,15 +102,7 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
       device_a = std::stoi(val.substr(0, pos));
       device_b = std::stoi(val.substr(pos + 1));
     } else if (arg.find("--protocol=") == 0) {
-      std::string val = arg.substr(11);
-      size_t start = 0;
-      size_t pos = val.find(',');
-      while (pos != std::string::npos) {
-        protocols.push_back(val.substr(start, pos - start));
-        start = pos + 1;
-        pos = val.find(',', start);
-      }
-      protocols.push_back(val.substr(start));
+      ParseProtocolList(arg.substr(11), protocols);
     } else if (arg.find("--version=") == 0) {
       version = std::stoi(arg.substr(10));
     } else {
@@ -102,20 +117,7 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
     return -1;
   }
   for (const auto &p : protocols) {
-    bool valid = false;
-    for (const auto &vp : kValidProtocols) {
-      if (vp == p) {
-        valid = true;
-        break;
-      }
-    }
-    if (!valid) {
-      printf("[ERROR] Invalid protocol: %s\n", p.c_str());
-      printf("Supported:");
-      for (const auto &vp : kValidProtocols) {
-        printf(" %s", vp.c_str());
-      }
-      printf("\n");
+    if (ValidateProtocol(p) != 0) {
       return -1;
     }
   }
@@ -130,9 +132,25 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
   return 0;
 }
 
-int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, int32_t version, uint8_t fill_value) {
-  CHECK_ACL(aclrtSetDevice(ctx.device_id));
-  std::map<AscendString, AscendString> options;
+int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &protocols,
+                           std::map<AscendString, AscendString> &options) {
+  printf("[INFO] %s using legacy flow (version=0)\n", ctx.name);
+  std::string name_str(ctx.name);
+  uint32_t listen_port = std::stoi(name_str.substr(name_str.find(':') + 1));
+  std::string local_comm_res = "{\"version\": \"1.2\"}";
+  options[OPTION_LOCAL_COMM_RES] = local_comm_res.c_str();
+  std::string resource_config =
+      "{\"comm_resource_config.listen_port\": " + std::to_string(listen_port) + "}";
+  options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
+  if (protocols[0] == "roce:device") {
+    options[OPTION_BUFFER_POOL] = "0:0";
+    setenv("HCCL_INTRA_ROCE_ENABLE", "1", 1);
+  }
+  return 0;
+}
+
+int32_t SetupV2Options(const std::vector<std::string> &protocols,
+                       std::map<AscendString, AscendString> &options) {
   std::string desc_array;
   for (size_t i = 0; i < protocols.size(); ++i) {
     if (i > 0) {
@@ -140,24 +158,19 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
     }
     desc_array += "\"" + protocols[i] + "\"";
   }
+  std::string resource_config =
+      "{\"comm_resource_config.protocol_desc\": [" + desc_array + "]}";
+  options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
+  return 0;
+}
+
+int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, int32_t version, uint8_t fill_value) {
+  CHECK_ACL(aclrtSetDevice(ctx.device_id));
+  std::map<AscendString, AscendString> options;
   if (version == kVersionLegacy) {
-    // 老版本流程
-    printf("[INFO] %s using legacy flow (version=0)\n", ctx.name);
-    std::string name_str(ctx.name);
-    uint32_t listen_port = std::stoi(name_str.substr(name_str.find(':') + 1));
-    std::string local_comm_res = "{\"version\": \"1.2\"}";
-    options[OPTION_LOCAL_COMM_RES] = local_comm_res.c_str();
-    std::string resource_config =
-        "{\"comm_resource_config.listen_port\": " + std::to_string(listen_port) + "}";
-    options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
-    if (protocols[0] == "roce:device") {
-      options[OPTION_BUFFER_POOL] = "0:0";
-      setenv("HCCL_INTRA_ROCE_ENABLE", "1", 1);
-    }
+    SetupLegacyOptions(ctx, protocols, options);
   } else {
-    std::string resource_config =
-        "{\"comm_resource_config.protocol_desc\": [" + desc_array + "]}";
-    options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
+    SetupV2Options(protocols, options);
   }
   auto ret = ctx.engine.Initialize(ctx.name, options);
   if (ret != SUCCESS) {
@@ -170,7 +183,7 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
   CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&dev_ptr), kBufSize, ACL_MEM_MALLOC_HUGE_ONLY));
   ctx.dev_buf = dev_ptr;
   CHECK_ACL(aclrtMallocHost(&ctx.host_buf, kBufSize));
-  std::memset(ctx.host_buf, 0, kBufSize);
+  std::fill(static_cast<uint8_t *>(ctx.host_buf), static_cast<uint8_t *>(ctx.host_buf) + kBufSize, 0);
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(ctx.dev_buf);
   desc.len = kBufSize;
@@ -185,7 +198,7 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
     printf("[ERROR] %s RegisterMem host failed, ret=%u, errmsg:%s\n", ctx.name, ret, GetRecentErrMsg());
     return -1;
   }
-  std::memset(ctx.host_buf, fill_value, kBufSize);
+  std::fill(static_cast<uint8_t *>(ctx.host_buf), static_cast<uint8_t *>(ctx.host_buf) + kBufSize, fill_value);
   CHECK_ACL(aclrtMemcpy(ctx.dev_buf, kBufSize, ctx.host_buf, kBufSize, ACL_MEMCPY_HOST_TO_DEVICE));
   printf("[INFO] %s InitEngine success, dev:%p, host:%p\n", ctx.name, ctx.dev_buf, ctx.host_buf);
   return 0;

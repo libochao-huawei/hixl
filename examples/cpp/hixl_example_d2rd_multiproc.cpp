@@ -67,10 +67,7 @@ struct EngineCtx {
 
 const char *GetRecentErrMsg() {
   const char *errmsg = aclGetRecentErrMsg();
-  if (errmsg == nullptr) {
-    return "no error";
-  }
-  return errmsg;
+  return (errmsg == nullptr) ? "no error" : errmsg;
 }
 
 int32_t ParsePort(const std::string &engine) {
@@ -79,6 +76,32 @@ int32_t ParsePort(const std::string &engine) {
     return -1;
   }
   return std::stoi(engine.substr(pos + 1));
+}
+
+void ParseProtocolList(const std::string &val, std::vector<std::string> &protocols) {
+  size_t start = 0;
+  size_t pos = val.find(',');
+  while (pos != std::string::npos) {
+    protocols.push_back(val.substr(start, pos - start));
+    start = pos + 1;
+    pos = val.find(',', start);
+  }
+  protocols.push_back(val.substr(start));
+}
+
+int32_t ValidateProtocol(const std::string &proto) {
+  for (const auto &valid_proto : kValidProtocols) {
+    if (valid_proto == proto) {
+      return 0;
+    }
+  }
+  printf("[ERROR] Invalid protocol: %s\n", proto.c_str());
+  printf("Supported:");
+  for (const auto &valid_proto : kValidProtocols) {
+    printf(" %s", valid_proto.c_str());
+  }
+  printf("\n");
+  return -1;
 }
 
 int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::string> &protocols,
@@ -98,15 +121,7 @@ int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::st
     } else if (arg.find("--remote-engine=") == 0) {
       remote_engine = arg.substr(16);
     } else if (arg.find("--protocol=") == 0) {
-      std::string val = arg.substr(11);
-      size_t start = 0;
-      size_t pos = val.find(',');
-      while (pos != std::string::npos) {
-        protocols.push_back(val.substr(start, pos - start));
-        start = pos + 1;
-        pos = val.find(',', start);
-      }
-      protocols.push_back(val.substr(start));
+      ParseProtocolList(arg.substr(11), protocols);
     } else if (arg.find("--version=") == 0) {
       version = std::stoi(arg.substr(10));
     } else {
@@ -130,20 +145,7 @@ int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::st
   ctx.local_engine = local_engine.empty() ? (ctx.is_client ? kDefaultClientEngine : kDefaultServerEngine) : local_engine;
   ctx.remote_engine = remote_engine.empty() ? (ctx.is_client ? kDefaultServerEngine : kDefaultClientEngine) : remote_engine;
   for (const auto &p : protocols) {
-    bool valid = false;
-    for (const auto &vp : kValidProtocols) {
-      if (vp == p) {
-        valid = true;
-        break;
-      }
-    }
-    if (!valid) {
-      printf("[ERROR] Invalid protocol: %s\n", p.c_str());
-      printf("Supported:");
-      for (const auto &vp : kValidProtocols) {
-        printf(" %s", vp.c_str());
-      }
-      printf("\n");
+    if (ValidateProtocol(p) != 0) {
       return -1;
     }
   }
@@ -164,32 +166,44 @@ int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::st
   return 0;
 }
 
+int32_t SetupLegacyOptions(EngineCtx &ctx, const std::vector<std::string> &protocols,
+                           std::map<AscendString, AscendString> &options) {
+  printf("[INFO] Using legacy flow (version=0)\n");
+  uint32_t listen_port = static_cast<uint32_t>(ParsePort(ctx.local_engine));
+  std::string local_comm_res = "{\"version\": \"1.2\"}";
+  options[OPTION_LOCAL_COMM_RES] = local_comm_res.c_str();
+  std::string resource_config =
+      "{\"comm_resource_config.listen_port\": " + std::to_string(listen_port) + "}";
+  options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
+  options[OPTION_BUFFER_POOL] = "0:0";
+  if (protocols[0] == "roce:device") {
+    setenv("HCCL_INTRA_ROCE_ENABLE", "1", 1);
+  }
+  return 0;
+}
+
+int32_t SetupV2Options(const std::vector<std::string> &protocols,
+                       std::map<AscendString, AscendString> &options) {
+  std::string desc_array;
+  for (size_t i = 0; i < protocols.size(); ++i) {
+    if (i > 0) {
+      desc_array += ",";
+    }
+    desc_array += "\"" + protocols[i] + "\"";
+  }
+  std::string resource_config =
+      "{\"comm_resource_config.protocol_desc\": [" + desc_array + "]}";
+  options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
+  return 0;
+}
+
 int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, int32_t version) {
   CHECK_ACL(aclrtSetDevice(ctx.device_id));
   std::map<AscendString, AscendString> options;
   if (version == kVersionLegacy) {
-    printf("[INFO] Using legacy flow (version=0)\n");
-    uint32_t listen_port = static_cast<uint32_t>(ParsePort(ctx.local_engine));
-    std::string local_comm_res = "{\"version\": \"1.2\"}";
-    options[OPTION_LOCAL_COMM_RES] = local_comm_res.c_str();
-    std::string resource_config =
-        "{\"comm_resource_config.listen_port\": " + std::to_string(listen_port) + "}";
-    options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
-    options[OPTION_BUFFER_POOL] = "0:0";
-    if (protocols[0] == "roce:device") {
-      setenv("HCCL_INTRA_ROCE_ENABLE", "1", 1);
-    }
+    SetupLegacyOptions(ctx, protocols, options);
   } else {
-    std::string desc_array;
-    for (size_t i = 0; i < protocols.size(); ++i) {
-      if (i > 0) {
-        desc_array += ",";
-      }
-      desc_array += "\"" + protocols[i] + "\"";
-    }
-    std::string resource_config =
-        "{\"comm_resource_config.protocol_desc\": [" + desc_array + "]}";
-    options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
+    SetupV2Options(protocols, options);
   }
   auto ret = ctx.engine.Initialize(ctx.local_engine.c_str(), options);
   if (ret != SUCCESS) {
@@ -348,7 +362,9 @@ int32_t ServerSendAddr(EngineCtx &ctx) {
   printf("[INFO] Sent buffer addr %p to client, waiting for client to finish...\n",
          reinterpret_cast<void *>(buf_addr));
   char dummy;
-  while (recv(ctx.conn_fd, &dummy, 1, 0) > 0) {
+  ssize_t recv_ret = 1;
+  while (recv_ret > 0) {
+    recv_ret = recv(ctx.conn_fd, &dummy, 1, 0);
   }
   printf("[INFO] Client disconnected, server exiting\n");
   return 0;
