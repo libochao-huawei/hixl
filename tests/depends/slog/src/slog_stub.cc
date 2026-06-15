@@ -76,7 +76,12 @@ void SlogStub::SetInstance(std::shared_ptr<SlogStub> stub) {
 int EraseFolderFromPath(char *buff, int len) {
   int i = 0;
   // 跳过第一组[LogLevel]，下面一组方框就是[/path/to/file]了
-  while (buff[i++] != ' ' && i < len) {
+  while (i < len && buff[i] != ' ') {
+    ++i;
+  }
+  // 跳过空格字符
+  if (i < len) {
+    ++i;
   }
 
   int first_pos = -1;

@@ -93,8 +93,7 @@ target_link_libraries(llm_datadist_test
         hccl_stub
         msprof_stub
         msprof_headers
-        GTest::gtest GTest::gtest_main
-        GTest::gmock
+        GTest::gtest_main GTest::gmock GTest::gtest
         -Wl,--no-as-need
         hccl_stub
         error_manager_stub

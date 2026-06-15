@@ -64,19 +64,6 @@ class RuntimeStub {
   std::vector<rtStream_t> model_unbind_streams_;
   size_t input_mem_copy_batch_count_{0UL};
 };
-
-class EnvGuard {
- public:
-  EnvGuard(const char *key, const char *value) : key_(key) {
-    mmSetEnv(key, value, 1);
-  }
-  ~EnvGuard() {
-    unsetenv(key_.c_str());
-  }
-
- private:
-  const std::string key_;
-};
 }  // namespace llm
 
 #ifdef __cplusplus

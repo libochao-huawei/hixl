@@ -121,8 +121,7 @@ target_link_libraries(hixl_test
         runtime_stub
         msprof_headers
         dcmi_stub
-        GTest::gtest GTest::gtest_main
-        GTest::gmock
+        GTest::gtest_main GTest::gmock GTest::gtest
         stdc++fs
         -Wl,--no-as-needed
         hccl_stub

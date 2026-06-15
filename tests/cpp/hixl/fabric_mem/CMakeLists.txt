@@ -77,8 +77,7 @@ target_link_libraries(fabric_mem_test
         ascendcl_stub
         runtime_stub
         msprof_headers
-        GTest::gtest GTest::gtest_main
-        GTest::gmock
+        GTest::gtest_main GTest::gmock GTest::gtest
         stdc++fs
         -Wl,--no-as-needed
         error_manager_stub

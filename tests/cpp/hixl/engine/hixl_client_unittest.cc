@@ -32,6 +32,7 @@
 #include "engine/endpoint_matcher.h"
 #include "common/hixl_inner_types.h"
 #include "depends/mmpa/src/mmpa_stub.h"
+#include "depends/common/env_guard.h"
 #include "engine/test_mmpa_utils.h"
 #include "common/hixl_utils.h"
 #include "common/ctrl_msg_plugin.h"
@@ -319,18 +320,7 @@ const std::string MockHixlServer::kMissingFieldJson = R"([
     }
   ])";
 
-class EnvGuard {
- public:
-  EnvGuard(const char *key, const char *value) : key_(key) {
-    mmSetEnv(key, value, 1);
-  }
-  ~EnvGuard() {
-    unsetenv(key_.c_str());
-  }
-
- private:
-  const std::string key_;
-};
+using ::test::EnvGuard;
 
 // Use common KernelJsonMmpaStub from test_mmpa_utils.h
 using ClientMmpaStub = hixl::test::KernelJsonMmpaStub;
