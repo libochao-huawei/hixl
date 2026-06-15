@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <algorithm>
 #include <string>
 
 #include "hixl_engine.h"
@@ -22,9 +23,8 @@
 #include "acl/acl.h"
 
 namespace hixl {
-namespace {
+
 constexpr int32_t kAutoConnectTimeout = 3000;
-}
 
 const std::unordered_set<std::string> HixlEngine::kSupportedOptions = {
     OPTION_RDMA_TRAFFIC_CLASS,    adxl::OPTION_RDMA_TRAFFIC_CLASS,
