@@ -192,11 +192,7 @@ Status GenerateKv5EndpointByInterconType(int32_t logic_dev_id, int32_t phy_dev_i
     return SUCCESS;
   }
   uint32_t intercon_type = 0U;
-  if (DsmiProxy::GetInterconType(logic_dev_id, intercon_type) != SUCCESS) {
-    HIXL_LOGW("[EndpointGenerator] DSMI GetInterconType query failed, fallback to UB generation, "
-              "logic_dev_id=%d", logic_dev_id);
-    return SUCCESS;
-  }
+  HIXL_CHK_STATUS_RET(DsmiProxy::GetInterconType(logic_dev_id, intercon_type), "GetInterconType failed");
   HIXL_EVENT("[EndpointGenerator] DSMI InterconType=%u for logic_dev_id=%d, phy_dev_id=%d", intercon_type,
              logic_dev_id, phy_dev_id);
   if (IsUbgInterconType(intercon_type)) {
@@ -512,12 +508,13 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options
     case ProtocolDescMode::kUboe: {
       int32_t logic_dev_id = 0;
       HIXL_CHK_ACL_RET(aclrtGetDevice(&logic_dev_id));
-      uint32_t intercon_type = 0U;
-      if (DsmiProxy::IsInterconTypeSupported() && DsmiProxy::GetInterconType(logic_dev_id, intercon_type) == SUCCESS) {
+      if (DsmiProxy::IsInterconTypeSupported()) {
+        uint32_t intercon_type = 0U;
+        HIXL_CHK_STATUS_RET(DsmiProxy::GetInterconType(logic_dev_id, intercon_type), "GetInterconType failed");
         HIXL_CHK_BOOL_RET_STATUS(IsUboeInterconType(intercon_type), FAILED,
                                  "protocol_desc=%s conflicts with InterconType=%u", kUboeProtocolDesc, intercon_type);
       } else {
-        HIXL_LOGW("[EndpointGenerator] DSMI InterconType not available, skip validation for protocol_desc=%s",
+        HIXL_LOGW("[EndpointGenerator] DSMI InterconType not supported yet, skip validation for protocol_desc=%s",
                   kUboeProtocolDesc);
       }
       EndpointConfig uboe_endpoint{};
@@ -529,12 +526,13 @@ Status EndpointGenerator::GenEndpointFromProtocolDesc(const HixlOptions &options
     case ProtocolDescMode::kUbg: {
       int32_t logic_dev_id = 0;
       HIXL_CHK_ACL_RET(aclrtGetDevice(&logic_dev_id));
-      uint32_t intercon_type = 0U;
-      if (DsmiProxy::IsInterconTypeSupported() && DsmiProxy::GetInterconType(logic_dev_id, intercon_type) == SUCCESS) {
+      if (DsmiProxy::IsInterconTypeSupported()) {
+        uint32_t intercon_type = 0U;
+        HIXL_CHK_STATUS_RET(DsmiProxy::GetInterconType(logic_dev_id, intercon_type), "GetInterconType failed");
         HIXL_CHK_BOOL_RET_STATUS(IsUbgInterconType(intercon_type), FAILED,
                                  "protocol_desc=%s conflicts with InterconType=%u", kUbgProtocolDesc, intercon_type);
       } else {
-        HIXL_LOGW("[EndpointGenerator] DSMI InterconType not available, skip validation for protocol_desc=%s",
+        HIXL_LOGW("[EndpointGenerator] DSMI InterconType not supported yet, skip validation for protocol_desc=%s",
                   kUbgProtocolDesc);
       }
       EndpointConfig ubg_endpoint{};
