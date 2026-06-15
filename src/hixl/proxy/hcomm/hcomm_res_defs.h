@@ -81,6 +81,7 @@ typedef enum {
   COMM_PROTOCOL_UBC_TP = 5,     ///< 华为统一总线UBC_TP
   COMM_PROTOCOL_UB_MEM = 6,     ///< UB_MEM
   COMM_PROTOCOL_UBOE = 7,       ///< UBOE
+  COMM_PROTOCOL_UBG = 9,        ///< UBG
 } CommProtocol;
 
 /**
