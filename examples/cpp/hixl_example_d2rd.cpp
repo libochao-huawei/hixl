@@ -33,8 +33,7 @@ constexpr int32_t kTransferTimeout = 30000;
 static const std::vector<std::string> kValidProtocols = {
     "roce:device", "roce:host",
     "uboe:device", "ubg:device",
-    "ub_ctp:device", "ub_tp:device",
-    "hccs:device"};
+    "ub_ctp:device", "ub_tp:device"};
 
 #define CHECK_ACL(x)                                                                  \
   do {                                                                                \
@@ -114,9 +113,8 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
       return -1;
     }
   }
-  if (version == kVersionLegacy && (protocols.size() != 1 ||
-      (protocols[0] != "roce:device" && protocols[0] != "hccs:device"))) {
-    printf("[ERROR] version 0 only supports roce:device and hccs:device\n");
+  if (version == kVersionLegacy && (protocols.size() != 1 || protocols[0] != "roce:device")) {
+    printf("[ERROR] version 0 only supports roce:device\n");
     return -1;
   }
   printf("[INFO] ParseArgs success: device_a=%d, device_b=%d, version=%d\n", device_a, device_b, version);
@@ -129,10 +127,10 @@ int32_t ParseArgs(int32_t argc, char **argv, int32_t &device_a, int32_t &device_
 int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, int32_t version, uint8_t fill_value) {
   CHECK_ACL(aclrtSetDevice(ctx.device_id));
   std::map<AscendString, AscendString> options;
-  std::string name_str(ctx.name);
-  uint32_t listen_port = std::stoi(name_str.substr(name_str.find(':') + 1));
   if (version == kVersionLegacy) {
     printf("[INFO] %s using legacy flow (version=0)\n", ctx.name);
+    std::string name_str(ctx.name);
+    uint32_t listen_port = std::stoi(name_str.substr(name_str.find(':') + 1));
     std::string local_comm_res = "{\"version\": \"1.2\"}";
     options[OPTION_LOCAL_COMM_RES] = local_comm_res.c_str();
     std::string resource_config =
@@ -150,15 +148,8 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
       }
       desc_array += "\"" + protocols[i] + "\"";
     }
-    std::string resource_config = "{\"comm_resource_config.protocol_desc\": [" + desc_array + "]}";
-    for (const auto &p : protocols) {
-      if (p == "hccs:device") {
-        resource_config =
-            "{\"comm_resource_config.listen_port\": " + std::to_string(listen_port) +
-            ", \"comm_resource_config.protocol_desc\": [" + desc_array + "]}";
-        break;
-      }
-    }
+    std::string resource_config =
+        "{\"comm_resource_config.protocol_desc\": [" + desc_array + "]}";
     options[OPTION_GLOBAL_RESOURCE_CONFIG] = resource_config.c_str();
   }
   auto ret = ctx.engine.Initialize(ctx.name, options);

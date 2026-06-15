@@ -226,24 +226,20 @@ ifconfig
 
       - 说明：
         - 单进程内启动两个engine，分别绑定不同device，由engine A发起WRITE传输到engine B的device buffer。
-        - 支持协议：`roce:device`、`roce:host`、`uboe:device`、`ubg:device`、`ub_ctp:device`、`ub_tp:device`、`hccs:device`。
+        - 支持协议：`roce:device`、`roce:host`、`uboe:device`、`ubg:device`、`ub_ctp:device`、`ub_tp:device`。
         - 参数：`--protocol=<type>[,...]` 必选，支持逗号分隔多协议；`--device=id1,id2` 可选，默认0,2；`--version=0|1` 可选，默认1。
 
       - 运行示例：
           ```
-          # 使用hccs:device协议
-          ./hixl_example_d2rd --protocol=hccs:device
-
           # 使用roce:device协议
           ./hixl_example_d2rd --protocol=roce:device
 
-          # 使用多协议（roce:device + hccs:device）
-          ./hixl_example_d2rd --protocol=roce:device,hccs:device
+          # 使用多协议（roce:device + uboe:device）
+          ./hixl_example_d2rd --protocol=roce:device,uboe:device
 
           # 指定device
           ./hixl_example_d2rd --protocol=roce:device --device=0,2
 
-          # 使用legacy模式（支持roce:device和hccs:device）
+          # 使用legacy模式（仅支持roce:device）
           ./hixl_example_d2rd --protocol=roce:device --version=0
-          ./hixl_example_d2rd --protocol=hccs:device --version=0
           ```
