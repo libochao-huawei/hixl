@@ -30,6 +30,21 @@ class DsmiProxy {
    * @return SUCCESS or FAILED.
    */
   static Status GetDevSlotId(int32_t device_id, uint32_t &slot_id);
+
+  /**
+   * @brief Get ScaleOut interconnection type.
+   * @param device_id Logical device ID.
+   * @param intercon_type Output interconnection type. 0=UBoE over Switch, 1=RoCE over NPU,
+   *                      2=UBoE over NPU, 3=RoCE over CPU, 4=UBG over NPU.
+   * @return SUCCESS or FAILED.
+   */
+  static Status GetInterconType(int32_t device_id, uint32_t &intercon_type);
+
+  /**
+   * @brief Whether the DSMI InterconType query interface is available in the loaded driver.
+   * @return true if the underlying DSMI symbol is present; false when the driver does not provide it yet.
+   */
+  static bool IsInterconTypeSupported();
 };
 
 }  // namespace hixl

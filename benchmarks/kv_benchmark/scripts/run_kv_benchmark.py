@@ -104,7 +104,7 @@ def parse_args():
     )
     parser.add_argument(
         '--transport',
-        choices=['rdma', 'fabric_mem', 'uboe', 'ub'],
+        choices=['rdma', 'fabric_mem', 'uboe', 'ubg', 'ub'],
         default=None,
         help='Transport path (default: rdma on A2, fabric_mem on A3/A5; uboe, ub only available on A5)',
     )
