@@ -46,7 +46,7 @@ class IniParser(object):
         self.custom_flag = False
         self.warn_print = False
         self.warning_ops = defaultdict(list)
-        
+
     @staticmethod
     def _is_io_section(op_sec):
         """Check if op_sec is an input/output section name."""
@@ -56,7 +56,7 @@ class IniParser(object):
             or (op_sec.startswith("dynamic_input") and op_sec[13:].isdigit())
             or (op_sec.startswith("dynamic_output") and op_sec[14:].isdigit())
         )
-        
+
     def load_ini_info(self, ini_files):
         """
         Load config info from ini files, store in class struct: self.aicpu_ops_info
@@ -295,8 +295,8 @@ class IniParser(object):
         if not self.custom_flag:
             for op_name in self.custom_ops_info:
                 del self.aicpu_ops_info[op_name]
-                
-                
+
+
 def main():
     """A Parser function for ini file."""
     parser = argparse.ArgumentParser(

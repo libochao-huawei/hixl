@@ -11,12 +11,17 @@
 # ----------------------------------------------------------------------------
 
 # content of test_sample.py
-import os.path
-import time
 import unittest
 import ctypes
-from llm_datadist.utils.utils import (check_uint64, check_int64,check_int32,
-                                      check_uint32, check_list_int32, check_uint16, check_uint8)
+from llm_datadist.utils.utils import (
+    check_uint64,
+    check_int64,
+    check_int32,
+    check_uint32,
+    check_list_int32,
+    check_uint16,
+    check_uint8,
+)
 
 
 class TensorUt(unittest.TestCase):
@@ -25,7 +30,6 @@ class TensorUt(unittest.TestCase):
 
     def tearDown(self) -> None:
         print("End ", self._testMethodName)
-
 
     def test_check_exception(self):
         with self.assertRaises(ValueError):
@@ -37,7 +41,9 @@ class TensorUt(unittest.TestCase):
         with self.assertRaises(ValueError):
             _ = check_uint32("cluster", -1)
         with self.assertRaises(ValueError):
-            _ = check_list_int32("cluster_ids", [0, 1, ctypes.c_uint64(2**64 - 1).value])
+            _ = check_list_int32(
+                "cluster_ids", [0, 1, ctypes.c_uint64(2**64 - 1).value]
+            )
         with self.assertRaises(ValueError):
             _ = check_uint16("cluster", -1)
         with self.assertRaises(ValueError):

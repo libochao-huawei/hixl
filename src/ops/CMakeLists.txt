@@ -12,4 +12,3 @@ cmake_minimum_required(VERSION 3.16.0)
 project(hixl_kernel)
 
 add_subdirectory(hixl_kernel)
-

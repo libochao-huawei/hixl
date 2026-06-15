@@ -14,11 +14,12 @@ import unittest
 import time
 import llm_datadist as ld
 from llm_datadist import v2_list
+
 for item in v2_list:
     globals()[item] = getattr(ld, item)
 
-class LlmLocalCommResSt(unittest.TestCase):
 
+class LlmLocalCommResSt(unittest.TestCase):
     def setUp(self) -> None:
         print(f"Begin {self.__class__.__name__}.{self._testMethodName}")
         config = LlmConfig()
@@ -26,7 +27,7 @@ class LlmLocalCommResSt(unittest.TestCase):
         config.rdma_service_level = 100
         config.rdma_traffic_class = 100
         config.listen_ip_info = "127.0.0.1:26008"
-        config.local_comm_res = '''
+        config.local_comm_res = """
         {
             "server_count": "1",
             "server_list": [{
@@ -39,11 +40,11 @@ class LlmLocalCommResSt(unittest.TestCase):
             "status": "completed",
             "version": "1.0"
         }
-        '''
+        """
         engine_options = config.generate_options()
         self.llm_datadist = LLMDataDist(LLMRole.PROMPT, 1)
         self.llm_datadist.init(engine_options)
-        time.sleep(1) # wait listen
+        time.sleep(1)  # wait listen
         self.has_exception = False
 
     def tearDown(self) -> None:
@@ -79,6 +80,7 @@ class LlmLocalCommResSt(unittest.TestCase):
         except Exception as e:
             print(f"{type(e).__name__} - {str(e)}")
             import traceback
+
             print(traceback.format_exc())
             self.has_exception = True
         self.assertEqual(self.has_exception, False)
@@ -86,13 +88,14 @@ class LlmLocalCommResSt(unittest.TestCase):
     def test_local_comm_res_switch_role(self):
         try:
             self.llm_datadist.switch_role(LLMRole.DECODER)
-            options = { 'llm.listenIpInfo': '127.0.0.1:26008'}
+            options = {"llm.listenIpInfo": "127.0.0.1:26008"}
             self.llm_datadist.switch_role(LLMRole.PROMPT, options)
-            options = { 'llm.listenIpInfo': '127.0.0.1:26009'}
+            options = {"llm.listenIpInfo": "127.0.0.1:26009"}
             self.llm_datadist.switch_role(LLMRole.PROMPT, options)
         except Exception as e:
             print(f"{type(e).__name__} - {str(e)}")
             import traceback
+
             print(traceback.format_exc())
             self.has_exception = True
         self.assertEqual(self.has_exception, False)
@@ -110,6 +113,7 @@ class LlmLocalCommResSt(unittest.TestCase):
         except Exception as e:
             print(f"{type(e).__name__} - {str(e)}")
             import traceback
+
             print(traceback.format_exc())
             self.has_exception = True
         self.assertEqual(self.has_exception, False)
@@ -125,6 +129,7 @@ class LlmLocalCommResSt(unittest.TestCase):
         except Exception as e:
             print(f"{type(e).__name__} - {str(e)}")
             import traceback
+
             print(traceback.format_exc())
             self.has_exception = True
         self.assertEqual(self.has_exception, True)
