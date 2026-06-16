@@ -37,6 +37,8 @@ class MockAclRuntimeStub : public llm::AclRuntimeStub {
   int32_t get_device_count_calls_ = 0;
   int32_t get_soc_name_calls_ = 0;
   int32_t get_device_calls_ = 0;
+  int32_t create_context_calls_ = 0;
+  int32_t destroy_context_calls_ = 0;
   int32_t get_phy_dev_calls_ = 0;
   int32_t get_current_context_calls_ = 0;
   int32_t set_current_context_calls_ = 0;
@@ -65,6 +67,16 @@ class MockAclRuntimeStub : public llm::AclRuntimeStub {
     }
     *deviceId = device_id_;
     return ACL_SUCCESS;
+  }
+
+  aclError aclrtCreateContext(aclrtContext *context, int32_t deviceId) override {
+    ++create_context_calls_;
+    return llm::AclRuntimeStub::aclrtCreateContext(context, deviceId);
+  }
+
+  aclError aclrtDestroyContext(aclrtContext context) override {
+    ++destroy_context_calls_;
+    return llm::AclRuntimeStub::aclrtDestroyContext(context);
   }
 
   aclError aclrtGetPhyDevIdByLogicDevId(const int32_t logicDevId, int32_t *const phyDevId) override {
