@@ -179,7 +179,7 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
   if (version == kVersionLegacy) {
     BuildLegacyConfig(ctx, protocols, options);
   } else {
-    BuildV2Config(protocols, options);
+    BuildV2Config(ctx, protocols, options);
   }
   auto ret = ctx.engine.Initialize(ctx.name, options);
   if (ret != SUCCESS) {
