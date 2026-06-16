@@ -153,7 +153,8 @@ int32_t BuildLegacyConfig(EngineCtx &ctx, const std::vector<std::string> &protoc
   return 0;
 }
 
-int32_t BuildV2Config(const std::vector<std::string> &protocols, std::map<AscendString, AscendString> &options) {
+int32_t BuildV2Config(EngineCtx &ctx, const std::vector<std::string> &protocols,
+                      std::map<AscendString, AscendString> &options) {
   std::string proto_list;
   bool first = true;
   for (const auto &proto : protocols) {
@@ -163,7 +164,11 @@ int32_t BuildV2Config(const std::vector<std::string> &protocols, std::map<Ascend
     proto_list += "\"" + proto + "\"";
     first = false;
   }
-  std::string res_config = "{\"comm_resource_config.protocol_desc\": [" + proto_list + "]}";
+  std::string eng_name(ctx.name);
+  auto sep = eng_name.find(':');
+  uint32_t listen_port = std::stoi(eng_name.substr(sep + 1));
+  std::string res_config = "{\"comm_resource_config.listen_port\": " + std::to_string(listen_port) +
+                           ", \"comm_resource_config.protocol_desc\": [" + proto_list + "]}";
   options[OPTION_GLOBAL_RESOURCE_CONFIG] = res_config.c_str();
   return 0;
 }
