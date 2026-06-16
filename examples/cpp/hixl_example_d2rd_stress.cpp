@@ -52,6 +52,7 @@ struct EngineCtx {
   bool connected = false;
   void *dev_buf = nullptr;
   MemHandle dev_handle = nullptr;
+  size_t alloc_size = 0;
 };
 
 const char *GetRecentErrMsg() {
@@ -187,6 +188,7 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
   ctx.initialized = true;
 
   size_t alloc_size = GetXferFailMode() ? kXferBufSize / kXferOverflowDiv : kXferBufSize;
+  ctx.alloc_size = alloc_size;
   if (GetXferFailMode()) {
     printf("[INFO] XFER_FAIL mode: alloc %zu, transfer will use %zu (overflow)\n", alloc_size, kXferBufSize);
   }
@@ -255,9 +257,9 @@ int32_t Transfer(EngineCtx &ctx_a, EngineCtx &ctx_b) {
 
 int32_t Verify(EngineCtx &ctx_b, const std::vector<uint8_t> &expected) {
   void *host_tmp = nullptr;
-  CHECK_ACL(aclrtMallocHost(&host_tmp, kXferBufSize));
-  CHECK_ACL(aclrtMemcpy(host_tmp, kXferBufSize, ctx_b.dev_buf, kXferBufSize, ACL_MEMCPY_DEVICE_TO_HOST));
-  int result = std::memcmp(host_tmp, expected.data(), kXferBufSize);
+  CHECK_ACL(aclrtMallocHost(&host_tmp, ctx_b.alloc_size));
+  CHECK_ACL(aclrtMemcpy(host_tmp, ctx_b.alloc_size, ctx_b.dev_buf, ctx_b.alloc_size, ACL_MEMCPY_DEVICE_TO_HOST));
+  int result = std::memcmp(host_tmp, expected.data(), ctx_b.alloc_size);
   CHECK_ACL(aclrtFreeHost(host_tmp));
   if (result != 0) {
     printf("[ERROR] Verify %s failed, data mismatch\n", ctx_b.name.c_str());
