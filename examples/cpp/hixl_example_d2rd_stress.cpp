@@ -203,8 +203,8 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
     return -1;
   }
 
-  std::vector<uint8_t> host_tmp(kXferBufSize, fill);
-  CHECK_ACL(aclrtMemcpy(ctx.dev_buf, kXferBufSize, host_tmp.data(), kXferBufSize, ACL_MEMCPY_HOST_TO_DEVICE));
+  std::vector<uint8_t> host_tmp(alloc_size, fill);
+  CHECK_ACL(aclrtMemcpy(ctx.dev_buf, alloc_size, host_tmp.data(), alloc_size, ACL_MEMCPY_HOST_TO_DEVICE));
   printf("[INFO] InitEngine %s success, dev:%p\n", ctx.name.c_str(), ctx.dev_buf);
   return 0;
 }
