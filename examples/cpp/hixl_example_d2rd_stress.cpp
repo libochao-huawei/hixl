@@ -27,7 +27,6 @@ constexpr int32_t kDefaultDevB = 2;
 constexpr int32_t kVersionLegacy = 0;
 constexpr uint8_t kFillA = 0xAA;
 constexpr uint8_t kFillB = 0xBB;
-constexpr int32_t kXferOverflowDiv = 2;
 constexpr int32_t kConnTimeout = 5000;
 constexpr int32_t kXferTimeout = 30000;
 constexpr const char *kModeBasic = "basic";
@@ -52,17 +51,11 @@ struct EngineCtx {
   bool connected = false;
   void *dev_buf = nullptr;
   MemHandle dev_handle = nullptr;
-  size_t alloc_size = 0;
 };
 
 const char *GetRecentErrMsg() {
   const char *msg = aclGetRecentErrMsg();
   return (msg == nullptr) ? "no error" : msg;
-}
-
-bool GetXferFailMode() {
-  const char *env = std::getenv("HIXL_STRESS_XFER_FAIL");
-  return (env != nullptr && std::string(env) == "1");
 }
 
 void SplitProtocolString(const std::string &input, std::vector<std::string> &out) {
@@ -187,26 +180,20 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
   }
   ctx.initialized = true;
 
-  size_t alloc_size = GetXferFailMode() ? kXferBufSize / kXferOverflowDiv : kXferBufSize;
-  ctx.alloc_size = alloc_size;
-  if (GetXferFailMode()) {
-    printf("[INFO] XFER_FAIL mode: alloc %zu, transfer will use %zu (overflow)\n", alloc_size, kXferBufSize);
-  }
-
   uint8_t *dev_ptr = nullptr;
-  CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&dev_ptr), alloc_size, ACL_MEM_MALLOC_HUGE_ONLY));
+  CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&dev_ptr), kXferBufSize, ACL_MEM_MALLOC_HUGE_ONLY));
   ctx.dev_buf = dev_ptr;
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(ctx.dev_buf);
-  desc.len = alloc_size;
+  desc.len = kXferBufSize;
   ret = ctx.engine.RegisterMem(desc, MEM_DEVICE, ctx.dev_handle);
   if (ret != SUCCESS) {
     printf("[ERROR] %s RegisterMem failed, ret=%u, errmsg:%s\n", ctx.name.c_str(), ret, GetRecentErrMsg());
     return -1;
   }
 
-  std::vector<uint8_t> host_tmp(alloc_size, fill);
-  CHECK_ACL(aclrtMemcpy(ctx.dev_buf, alloc_size, host_tmp.data(), alloc_size, ACL_MEMCPY_HOST_TO_DEVICE));
+  std::vector<uint8_t> host_tmp(kXferBufSize, fill);
+  CHECK_ACL(aclrtMemcpy(ctx.dev_buf, kXferBufSize, host_tmp.data(), kXferBufSize, ACL_MEMCPY_HOST_TO_DEVICE));
   printf("[INFO] InitEngine %s success, dev:%p\n", ctx.name.c_str(), ctx.dev_buf);
   return 0;
 }
@@ -257,9 +244,9 @@ int32_t Transfer(EngineCtx &ctx_a, EngineCtx &ctx_b) {
 
 int32_t Verify(EngineCtx &ctx_b, const std::vector<uint8_t> &expected) {
   void *host_tmp = nullptr;
-  CHECK_ACL(aclrtMallocHost(&host_tmp, ctx_b.alloc_size));
-  CHECK_ACL(aclrtMemcpy(host_tmp, ctx_b.alloc_size, ctx_b.dev_buf, ctx_b.alloc_size, ACL_MEMCPY_DEVICE_TO_HOST));
-  int result = std::memcmp(host_tmp, expected.data(), ctx_b.alloc_size);
+  CHECK_ACL(aclrtMallocHost(&host_tmp, kXferBufSize));
+  CHECK_ACL(aclrtMemcpy(host_tmp, kXferBufSize, ctx_b.dev_buf, kXferBufSize, ACL_MEMCPY_DEVICE_TO_HOST));
+  int result = std::memcmp(host_tmp, expected.data(), kXferBufSize);
   CHECK_ACL(aclrtFreeHost(host_tmp));
   if (result != 0) {
     printf("[ERROR] Verify %s failed, data mismatch\n", ctx_b.name.c_str());
