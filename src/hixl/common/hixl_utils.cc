@@ -98,7 +98,7 @@ std::string ProtocolToString(CommProtocol protocol) {
     case COMM_PROTOCOL_UBOE:
       return kProtocolUboe;
     default:
-      return "UNKNOWN(" + std::to_string(static_cast<int>(protocol)) + ")";
+      return "UNKNOWN(" + std::to_string(static_cast<int32_t>(protocol)) + ")";
   }
 }
 
