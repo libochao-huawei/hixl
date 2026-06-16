@@ -27,6 +27,7 @@ constexpr int32_t kDefaultDevB = 2;
 constexpr int32_t kVersionLegacy = 0;
 constexpr uint8_t kFillA = 0xAA;
 constexpr uint8_t kFillB = 0xBB;
+constexpr int32_t kXferOverflowDiv = 2;
 constexpr int32_t kConnTimeout = 5000;
 constexpr int32_t kXferTimeout = 30000;
 constexpr const char *kModeBasic = "basic";
@@ -56,6 +57,11 @@ struct EngineCtx {
 const char *GetRecentErrMsg() {
   const char *msg = aclGetRecentErrMsg();
   return (msg == nullptr) ? "no error" : msg;
+}
+
+bool GetXferFailMode() {
+  const char *env = std::getenv("HIXL_STRESS_XFER_FAIL");
+  return (env != nullptr && std::string(env) == "1");
 }
 
 void SplitProtocolString(const std::string &input, std::vector<std::string> &out) {
@@ -180,12 +186,17 @@ int32_t InitEngine(EngineCtx &ctx, const std::vector<std::string> &protocols, in
   }
   ctx.initialized = true;
 
+  size_t alloc_size = GetXferFailMode() ? kXferBufSize / kXferOverflowDiv : kXferBufSize;
+  if (GetXferFailMode()) {
+    printf("[INFO] XFER_FAIL mode: alloc %zu, transfer will use %zu (overflow)\n", alloc_size, kXferBufSize);
+  }
+
   uint8_t *dev_ptr = nullptr;
-  CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&dev_ptr), kXferBufSize, ACL_MEM_MALLOC_HUGE_ONLY));
+  CHECK_ACL(aclrtMalloc(reinterpret_cast<void **>(&dev_ptr), alloc_size, ACL_MEM_MALLOC_HUGE_ONLY));
   ctx.dev_buf = dev_ptr;
   MemDesc desc{};
   desc.addr = reinterpret_cast<uintptr_t>(ctx.dev_buf);
-  desc.len = kXferBufSize;
+  desc.len = alloc_size;
   ret = ctx.engine.RegisterMem(desc, MEM_DEVICE, ctx.dev_handle);
   if (ret != SUCCESS) {
     printf("[ERROR] %s RegisterMem failed, ret=%u, errmsg:%s\n", ctx.name.c_str(), ret, GetRecentErrMsg());
