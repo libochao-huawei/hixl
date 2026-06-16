@@ -26,6 +26,7 @@ set(targets_list
     "fabric_mem_d2d"
     "hixl_example_d2rh"
     "hixl_example_d2rd"
+    "hixl_example_d2rd_stress"
 )
 
 foreach(target_name IN LISTS targets_list)
