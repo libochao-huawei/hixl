@@ -29,6 +29,19 @@ void SetMockRtGetDeviceWay(int32_t is_mock_new_way);
 }
 #endif
 
+class EnvGuard {
+ public:
+  EnvGuard(const char *key, const char *value) : key_(key) {
+    mmSetEnv(key, value, 1);
+  }
+  ~EnvGuard() {
+    unsetenv(key_.c_str());
+  }
+
+ private:
+  const std::string key_;
+};
+
 namespace llm {
 class RuntimeStub {
  public:
@@ -65,18 +78,7 @@ class RuntimeStub {
   size_t input_mem_copy_batch_count_{0UL};
 };
 
-class EnvGuard {
- public:
-  EnvGuard(const char *key, const char *value) : key_(key) {
-    mmSetEnv(key, value, 1);
-  }
-  ~EnvGuard() {
-    unsetenv(key_.c_str());
-  }
-
- private:
-  const std::string key_;
-};
+using ::EnvGuard;
 }  // namespace llm
 
 #ifdef __cplusplus
