@@ -175,13 +175,18 @@ Status Endpoint::CreateChannel(const ChannelDesc &channel_desc, ChannelHandle &c
   ChannelPtr channel = MakeShared<Channel>();
   HIXL_CHECK_NOTNULL(channel);
   Status ret = channel->Create(handle_, ch_desc, engine);
-  HIXL_CHK_STATUS_RET(ret, "[Channel] Create failed in Endpoint::CreateChannel");
+  HIXL_CHK_STATUS_RET(ret, "[Channel] Create failed, local=[%s], remote=[%s], type=%d, index=%u",
+                      EndpointToString(endpoint_).c_str(), EndpointToString(channel_desc.remote_endpoint).c_str(),
+                      static_cast<int32_t>(channel_desc.channel_type), channel_desc.channel_index);
   ChannelHandle h = channel->GetChannelHandle();
   {
     std::lock_guard<std::mutex> lock(mutex_);
     channels_[h] = channel;
     channel_handle = h;
   }
+  HIXL_LOGI("[Channel] Create success, handle=%lu, local=[%s], remote=[%s], type=%d, index=%u", h,
+            EndpointToString(endpoint_).c_str(), EndpointToString(channel_desc.remote_endpoint).c_str(),
+            static_cast<int32_t>(channel_desc.channel_type), channel_desc.channel_index);
   return SUCCESS;
 }
 
