@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <securec.h>
@@ -851,6 +852,10 @@ Status HixlCSClient::LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handl
   HIXL_CHK_ACL_RET(
       aclrtLaunchKernelWithConfig(funcHandle, block_dim, handle.shared_slot->stream, &cfg, argsHandle, nullptr),
       "[HixlClient] aclrtLaunchKernelWithConfig failed");
+  if (std::getenv("HIXL_INJECT_KERNEL_FAIL") != nullptr) {
+    HIXL_LOGE(FAILED, "[HixlClient] LaunchDeviceKernel injected failure for testing");
+    return FAILED;
+  }
   if (wait_notify) {
     HIXL_CHK_ACL_RET(aclrtWaitAndResetNotify(handle.shared_slot->notify, handle.shared_slot->stream, kCustomTimeoutMs),
                      "[HixlClient] aclrtWaitAndResetNotify failed");
