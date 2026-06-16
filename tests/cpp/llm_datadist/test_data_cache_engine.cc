@@ -35,6 +35,7 @@
 #include "fsm/send_state.h"
 #include "hccl/hccl_adapter.h"
 #include "depends/llm_datadist/src/hccl_stub.h"
+#include "depends/llm_datadist/src/hccl_test_helper.h"
 
 using namespace std;
 using namespace ge;
@@ -206,14 +207,22 @@ llm::PullCacheParam BuildSparsePullCacheParam(size_t block_count, uint64_t decod
   return param;
 }
 
-HcclResult HcclExchangeMemDesc1(HcclComm comm, uint32_t remoteRank, HcclMemDescs *local, int timeout,
-                                HcclMemDescs *remote, uint32_t *actualNum) {
-  for (uint32_t i = 0U; i < local->arrayLength; ++i) {
-    strcpy(remote->array[i].desc, local->array[i].desc);
-  }
-  *actualNum = local->arrayLength;
-  remote->arrayLength = local->arrayLength;
-  return HcclResult::HCCL_SUCCESS;
+llm::CacheDesc BuildB2B128x128CacheDesc() {
+  llm::CacheDesc desc{};
+  desc.num_tensors = 8;
+  desc.shape = {128, 128};
+  desc.data_type = DT_INT32;
+  desc.placement = 1;
+  desc.cache_mem_type = llm::CacheMemType::BLOCKS;
+  return desc;
+}
+
+llm::PullCacheParam BuildB2BSparsePullCacheParam() {
+  llm::PullCacheParam param{};
+  param.size = -1;
+  param.prompt_blocks = {0, 1, 4, 5, 6};
+  param.decoder_blocks = {1, 2, 4, 6, 9};
+  return param;
 }
 
 class MockMmpaLongTimeRegister : public MmpaStubApiGe {
@@ -224,19 +233,7 @@ class MockMmpaLongTimeRegister : public MmpaStubApiGe {
   }
 
   void *DlSym(void *handle, const char *func_name) override {
-    static const std::map<std::string, void *> func_map = {
-        {"HcclCommInitClusterInfoMemConfig", reinterpret_cast<void *>(&HcclCommInitClusterInfoMemConfig)},
-        {"HcclExchangeMemDesc", reinterpret_cast<void *>(&HcclExchangeMemDesc1)},
-        {"HcclCommDestroy", reinterpret_cast<void *>(&HcclCommDestroy)},
-        {"HcclBatchPut", reinterpret_cast<void *>(&HcclBatchPut)},
-        {"HcclBatchGet", reinterpret_cast<void *>(&HcclBatchGet)},
-        {"HcclRemapRegistedMemory", reinterpret_cast<void *>(&HcclRemapRegistedMemory)},
-        {"HcclRegisterGlobalMem", reinterpret_cast<void *>(&HcclRegisterGlobalMem)},
-        {"HcclDeregisterGlobalMem", reinterpret_cast<void *>(&HcclDeregisterGlobalMem)},
-        {"HcclCommBindMem", reinterpret_cast<void *>(&HcclCommBindMem)},
-        {"HcclCommUnbindMem", reinterpret_cast<void *>(&HcclCommUnbindMem)},
-        {"HcclCommPrepare", reinterpret_cast<void *>(&HcclCommPrepare)},
-    };
+    auto func_map = GetBaseHcclFuncMap();
     auto it = func_map.find(func_name);
     if (it != func_map.end()) {
       LLMLOGI("%s addr:%lu", func_name, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(it->second)));
@@ -455,21 +452,11 @@ TEST_F(DataCacheEngineSTest, PullDataCache_D2H_C2C) {
 }
 
 TEST_F(DataCacheEngineSTest, PullDataCache_D2H_B2B) {
-  llm::CacheDesc src_cache_desc{};
-  src_cache_desc.num_tensors = 8;
-  src_cache_desc.shape = {128, 128};
-  src_cache_desc.data_type = DT_INT32;
-  src_cache_desc.placement = 1;
-  src_cache_desc.cache_mem_type = llm::CacheMemType::BLOCKS;
-
-  llm::CacheDesc dst_cache_desc = src_cache_desc;
+  auto src_cache_desc = BuildB2B128x128CacheDesc();
+  auto dst_cache_desc = src_cache_desc;
   dst_cache_desc.placement = 0;
 
-  llm::PullCacheParam pull_cache_param{};
-  pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = {0, 1, 4, 5, 6};
-  pull_cache_param.decoder_blocks = {1, 2, 4, 6, 9};
-
+  auto pull_cache_param = BuildB2BSparsePullCacheParam();
   std::vector<int32_t> pull_result(128 * 128);
   DataCacheEngineRunner data_cache_engine_runner;
   data_cache_engine_runner.LlmDatadistInitAndLink(src_cache_desc, dst_cache_desc, pull_cache_param);
@@ -652,21 +639,10 @@ TEST_F(DataCacheEngineSTest, PullDataCache_D2D_C2C_sync_with_unlink) {
 }
 
 TEST_F(DataCacheEngineSTest, PullDataCache_D2D_B2B) {
-  llm::CacheDesc src_cache_desc{};
-  src_cache_desc.num_tensors = 8;
-  src_cache_desc.shape = {128, 128};
-  src_cache_desc.data_type = DT_INT32;
-  src_cache_desc.placement = 1;
-  src_cache_desc.cache_mem_type = llm::CacheMemType::BLOCKS;
+  auto src_cache_desc = BuildB2B128x128CacheDesc();
+  auto dst_cache_desc = src_cache_desc;
 
-  llm::CacheDesc dst_cache_desc = src_cache_desc;
-  dst_cache_desc.placement = 1;
-
-  llm::PullCacheParam pull_cache_param{};
-  pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = {0, 1, 4, 5, 6};
-  pull_cache_param.decoder_blocks = {1, 2, 4, 6, 9};
-
+  auto pull_cache_param = BuildB2BSparsePullCacheParam();
   std::vector<int32_t> pull_result(128 * 128);
   DataCacheEngineRunner data_cache_engine_runner;
   data_cache_engine_runner.LlmDatadistInitAndLink(src_cache_desc, dst_cache_desc, pull_cache_param);
@@ -678,21 +654,10 @@ TEST_F(DataCacheEngineSTest, PullDataCache_D2D_B2B) {
 }
 
 TEST_F(DataCacheEngineSTest, PullCache_D2D_B2B_BatchGet) {
-  llm::CacheDesc src_cache_desc{};
-  src_cache_desc.num_tensors = 8;
-  src_cache_desc.shape = {128, 128};
-  src_cache_desc.data_type = DT_INT32;
-  src_cache_desc.placement = 1;
-  src_cache_desc.cache_mem_type = llm::CacheMemType::BLOCKS;
+  auto src_cache_desc = BuildB2B128x128CacheDesc();
+  auto dst_cache_desc = src_cache_desc;
 
-  llm::CacheDesc dst_cache_desc = src_cache_desc;
-  dst_cache_desc.placement = 1;
-
-  llm::PullCacheParam pull_cache_param{};
-  pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = {0, 1, 4, 5, 6};
-  pull_cache_param.decoder_blocks = {1, 2, 4, 6, 9};
-
+  auto pull_cache_param = BuildB2BSparsePullCacheParam();
   std::vector<int32_t> pull_result(128 * 128);
   DataCacheEngineRunner data_cache_engine_runner;
   data_cache_engine_runner.LlmDatadistInitAndLink(src_cache_desc, dst_cache_desc, pull_cache_param, false, true);
@@ -933,21 +898,10 @@ TEST_F(DataCacheEngineSTest, TransferDataCache_D2D_C2C) {
 }
 
 TEST_F(DataCacheEngineSTest, TransferDataCache_D2D_B2B) {
-  llm::CacheDesc src_cache_desc{};
-  src_cache_desc.num_tensors = 8;
-  src_cache_desc.shape = {128, 128};
-  src_cache_desc.data_type = DT_INT32;
-  src_cache_desc.placement = 1;
-  src_cache_desc.cache_mem_type = llm::CacheMemType::BLOCKS;
+  auto src_cache_desc = BuildB2B128x128CacheDesc();
+  auto dst_cache_desc = src_cache_desc;
 
-  llm::CacheDesc dst_cache_desc = src_cache_desc;
-  dst_cache_desc.placement = 1;
-
-  llm::PullCacheParam pull_cache_param{};
-  pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = {0, 1, 4, 5, 6};
-  pull_cache_param.decoder_blocks = {1, 2, 4, 6, 9};
-
+  auto pull_cache_param = BuildB2BSparsePullCacheParam();
   std::vector<int32_t> pull_result(128 * 128);
   DataCacheEngineRunner data_cache_engine_runner;
   data_cache_engine_runner.LlmDatadistInitAndLink(src_cache_desc, dst_cache_desc, pull_cache_param);
@@ -1081,21 +1035,11 @@ TEST_F(DataCacheEngineSTest, TransferDataCache_D2H_C2C) {
 }
 
 TEST_F(DataCacheEngineSTest, TransferDataCache_D2H_B2B) {
-  llm::CacheDesc src_cache_desc{};
-  src_cache_desc.num_tensors = 8;
-  src_cache_desc.shape = {128, 128};
-  src_cache_desc.data_type = DT_INT32;
-  src_cache_desc.placement = 1;
-  src_cache_desc.cache_mem_type = llm::CacheMemType::BLOCKS;
-
-  llm::CacheDesc dst_cache_desc = src_cache_desc;
+  auto src_cache_desc = BuildB2B128x128CacheDesc();
+  auto dst_cache_desc = src_cache_desc;
   dst_cache_desc.placement = 0;
 
-  llm::PullCacheParam pull_cache_param{};
-  pull_cache_param.size = -1;
-  pull_cache_param.prompt_blocks = {0, 1, 4, 5, 6};
-  pull_cache_param.decoder_blocks = {1, 2, 4, 6, 9};
-
+  auto pull_cache_param = BuildB2BSparsePullCacheParam();
   std::vector<int32_t> pull_result(128 * 128);
   DataCacheEngineRunner data_cache_engine_runner;
   data_cache_engine_runner.LlmDatadistInitAndLink(src_cache_desc, dst_cache_desc, pull_cache_param, true);

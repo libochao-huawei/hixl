@@ -266,7 +266,7 @@ TEST_F(HixlUTest, TestHixl) {
 TEST_F(HccnConfTest, TestGetDeviceIpFromHccnConf) {
   std::string device_ip = "";
   EXPECT_EQ(hixl::GetDeviceIp(0, device_ip), hixl::SUCCESS);
-  EXPECT_EQ(device_ip, "1.1.1.0");
+  EXPECT_EQ(device_ip, "192.168.1.0");
 }
 
 TEST_F(HccnToolTest, TestGetDeviceIpFromHccnToolWhenHccnConfMissing) {
