@@ -27,6 +27,7 @@ struct HixlOneSideOpParam {
   uint64_t local_flag_addr;
   uint32_t notify_id;
   uint32_t use_notify_record;
+  uint32_t inject_fail;
 };
 
 namespace hixl {
