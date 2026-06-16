@@ -89,10 +89,7 @@ void MsgHandler::HandleMsg() {
     }
     auto proc = it->second;
     (void)thread_pool_->commit([this, req, proc]() -> void {
-      if (ctx_.SetCurrentContext() != SUCCESS) {
-        HIXL_LOGE(FAILED, "SetCurrentContext failed");
-        return;
-      }
+      HIXL_CHK_STATUS(ctx_.SetCurrentContext(), "SetCurrentContext failed");
       (void)HandleMsg(req.first, req.second, proc);
     });
   }
