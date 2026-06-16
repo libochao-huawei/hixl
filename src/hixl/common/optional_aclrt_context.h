@@ -11,18 +11,33 @@
 #ifndef CANN_HIXL_SRC_HIXL_COMMON_OPTIONAL_ACLRT_CONTEXT_H_
 #define CANN_HIXL_SRC_HIXL_COMMON_OPTIONAL_ACLRT_CONTEXT_H_
 
+#include <memory>
+
 #include "acl/acl.h"
+#include "common/hixl_utils.h"
 #include "hixl/hixl_types.h"
 
 namespace hixl {
 class OptionalAclrtContext {
  public:
+  OptionalAclrtContext() = default;
+  OptionalAclrtContext(const OptionalAclrtContext &other);
+  OptionalAclrtContext &operator=(const OptionalAclrtContext &other);
+  OptionalAclrtContext(OptionalAclrtContext &&other) noexcept;
+  OptionalAclrtContext &operator=(OptionalAclrtContext &&other) noexcept;
+  ~OptionalAclrtContext();
+
   Status GetCurrentContext();
+  Status CreateContext();
   Status SetCurrentContext() const;
+  std::unique_ptr<TemporaryRtContext> GetContextGuard() const;
+  void Reset();
+  aclrtContext Get() const;
 
  private:
   aclrtContext ctx_ = nullptr;
   bool has_context_ = false;
+  bool owns_context_ = false;
 };
 }  // namespace hixl
 

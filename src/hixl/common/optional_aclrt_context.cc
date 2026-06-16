@@ -15,19 +15,79 @@
 #include "common/hixl_log.h"
 
 namespace hixl {
+OptionalAclrtContext::OptionalAclrtContext(const OptionalAclrtContext &other)
+    : ctx_(other.ctx_), has_context_(other.has_context_), owns_context_(false) {}
+
+OptionalAclrtContext &OptionalAclrtContext::operator=(const OptionalAclrtContext &other) {
+  if (this != &other) {
+    Reset();
+    ctx_ = other.ctx_;
+    has_context_ = other.has_context_;
+    owns_context_ = false;
+  }
+  return *this;
+}
+
+OptionalAclrtContext::OptionalAclrtContext(OptionalAclrtContext &&other) noexcept
+    : ctx_(other.ctx_), has_context_(other.has_context_), owns_context_(other.owns_context_) {
+  other.ctx_ = nullptr;
+  other.has_context_ = false;
+  other.owns_context_ = false;
+}
+
+OptionalAclrtContext &OptionalAclrtContext::operator=(OptionalAclrtContext &&other) noexcept {
+  if (this != &other) {
+    Reset();
+    ctx_ = other.ctx_;
+    has_context_ = other.has_context_;
+    owns_context_ = other.owns_context_;
+    other.ctx_ = nullptr;
+    other.has_context_ = false;
+    other.owns_context_ = false;
+  }
+  return *this;
+}
+
+OptionalAclrtContext::~OptionalAclrtContext() {
+  Reset();
+}
+
 Status OptionalAclrtContext::GetCurrentContext() {
+  Reset();
   uint32_t device_count = 0;
   HIXL_CHK_ACL_RET(aclrtGetDeviceCount(&device_count), "aclrtGetDeviceCount failed");
   if (device_count == 0U) {
     ctx_ = nullptr;
     has_context_ = false;
+    owns_context_ = false;
     HIXL_LOGI("aclrtGetDeviceCount returns 0, skip aclrtGetCurrentContext");
     return SUCCESS;
   }
 
   HIXL_CHK_ACL_RET(aclrtGetCurrentContext(&ctx_));
   has_context_ = true;
+  owns_context_ = false;
   HIXL_LOGI("aclrtGetCurrentContext ctx=%p", ctx_);
+  return SUCCESS;
+}
+
+Status OptionalAclrtContext::CreateContext() {
+  Reset();
+  uint32_t device_count = 0;
+  HIXL_CHK_ACL_RET(aclrtGetDeviceCount(&device_count), "aclrtGetDeviceCount failed");
+  if (device_count == 0U) {
+    HIXL_LOGI("aclrtGetDeviceCount returns 0, skip aclrtCreateContext");
+    return SUCCESS;
+  }
+
+  int32_t device_id = -1;
+  aclrtContext ctx = nullptr;
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id), "aclrtGetDevice failed");
+  HIXL_CHK_ACL_RET(aclrtCreateContext(&ctx, device_id), "aclrtCreateContext failed");
+  ctx_ = ctx;
+  has_context_ = true;
+  owns_context_ = true;
+  HIXL_LOGI("Created optional aclrt context:%p, device_id:%d", ctx_, device_id);
   return SUCCESS;
 }
 
@@ -37,5 +97,25 @@ Status OptionalAclrtContext::SetCurrentContext() const {
   }
   HIXL_CHK_ACL_RET(aclrtSetCurrentContext(ctx_));
   return SUCCESS;
+}
+
+std::unique_ptr<TemporaryRtContext> OptionalAclrtContext::GetContextGuard() const {
+  if (!has_context_) {
+    return nullptr;
+  }
+  return MakeUnique<TemporaryRtContext>(ctx_);
+}
+
+void OptionalAclrtContext::Reset() {
+  if (owns_context_ && ctx_ != nullptr) {
+    HIXL_CHK_ACL(aclrtDestroyContext(ctx_), "aclrtDestroyContext failed");
+  }
+  ctx_ = nullptr;
+  has_context_ = false;
+  owns_context_ = false;
+}
+
+aclrtContext OptionalAclrtContext::Get() const {
+  return has_context_ ? ctx_ : nullptr;
 }
 }  // namespace hixl
