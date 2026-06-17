@@ -17,6 +17,7 @@
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
+#include "common/json_utils.h"
 
 namespace hixl {
 namespace {
@@ -32,20 +33,6 @@ constexpr int32_t kMaxRdmaTrafficClass = 255;
 constexpr int32_t kRdmaTrafficClassAlign = 4;
 constexpr int32_t kMinRdmaServiceLevel = 0;
 constexpr int32_t kMaxRdmaServiceLevel = 7;
-
-template <typename T>
-T JsonToNumber(const nlohmann::json &val) {
-  if (val.is_string()) {
-    T result{};
-    Status ret = ToNumber(val.get<std::string>(), result);
-    if (ret != SUCCESS) {
-      throw nlohmann::json::type_error::create(0, "Failed to convert string to number: " + val.get<std::string>(),
-                                               nullptr);
-    }
-    return result;
-  }
-  return val.get<T>();
-}
 
 void from_json(const nlohmann::json &j, FabricMemoryConfig &cfg) {
   if (j.contains("max_capacity")) {

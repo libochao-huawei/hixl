@@ -319,9 +319,9 @@ Status HixlCSServer::MatchEndpointMsg(int32_t fd, const char *msg, uint64_t msg_
     HIXL_DISMISS_GUARD(failed);
     return SUCCESS;
   }
-  uint32_t listen_port = 0;
-  if (req.listen_port > 0) {
-    listen_port = req.listen_port;
+  uint32_t listen_port = 0U;
+  if (global_config_.ListenPort().has_value()) {
+    listen_port = global_config_.ListenPort().value();
     ep->SetPort(listen_port);
   } else {
     auto ret = HcommProxy::EndpointGetListenPort(handle, &listen_port);
