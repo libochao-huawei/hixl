@@ -10,7 +10,9 @@
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <arpa/inet.h>
 #include <cstdlib>
+#include <cstring>
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 #include <fstream>
@@ -170,6 +172,116 @@ TEST_F(HixlUtilsUTest, GetBondIpAddress) {
   std::string bond_ip;
   EXPECT_EQ(GetBondIpAddress(0, 0, bond_ip), SUCCESS);
   EXPECT_EQ(bond_ip, "192.168.1.111");
+}
+
+TEST_F(HixlUtilsUTest, EndpointToStringRoceIpv4DeviceTest) {
+  EndpointDesc ep{};
+  ep.protocol = COMM_PROTOCOL_ROCE;
+  ep.commAddr.type = COMM_ADDR_TYPE_IP_V4;
+  (void)inet_pton(AF_INET, "192.168.1.10", &ep.commAddr.addr);
+  ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
+  ep.loc.device.devPhyId = 3;
+
+  const std::string text = EndpointToString(ep);
+  EXPECT_THAT(text, HasSubstr("protocol=roce"));
+  EXPECT_THAT(text, HasSubstr("addr=IPv4:192.168.1.10"));
+  EXPECT_THAT(text, HasSubstr("devPhyId=3"));
+}
+
+TEST_F(HixlUtilsUTest, EndpointToStringRoceIpv6DeviceTest) {
+  EndpointDesc ep{};
+  ep.protocol = COMM_PROTOCOL_ROCE;
+  ep.commAddr.type = COMM_ADDR_TYPE_IP_V6;
+  (void)inet_pton(AF_INET6, "fe80::1", &ep.commAddr.addr6);
+  ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
+  ep.loc.device.devPhyId = 0;
+
+  const std::string text = EndpointToString(ep);
+  EXPECT_THAT(text, HasSubstr("protocol=roce"));
+  EXPECT_THAT(text, HasSubstr("addr=IPv6:fe80::1"));
+  EXPECT_THAT(text, HasSubstr("devPhyId=0"));
+}
+
+TEST_F(HixlUtilsUTest, EndpointToStringHccsIdDeviceTest) {
+  EndpointDesc ep{};
+  ep.protocol = COMM_PROTOCOL_HCCS;
+  ep.commAddr.type = COMM_ADDR_TYPE_ID;
+  ep.commAddr.id = 0x1a2b;
+  ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
+  ep.loc.device.devPhyId = 1;
+
+  const std::string text = EndpointToString(ep);
+  EXPECT_THAT(text, HasSubstr("protocol=hccs"));
+  EXPECT_THAT(text, HasSubstr("addr=ID:0x1a2b"));
+  EXPECT_THAT(text, HasSubstr("devPhyId=1"));
+}
+
+TEST_F(HixlUtilsUTest, EndpointToStringUbTpEidDeviceTest) {
+  EndpointDesc ep{};
+  ep.protocol = COMM_PROTOCOL_UBC_TP;
+  ep.commAddr.type = COMM_ADDR_TYPE_EID;
+  const uint8_t eid_bytes[COMM_ADDR_EID_LEN] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                                                0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
+  (void)memcpy(ep.commAddr.eid, eid_bytes, COMM_ADDR_EID_LEN);
+  ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
+  ep.loc.device.devPhyId = 2;
+
+  const std::string text = EndpointToString(ep);
+  EXPECT_THAT(text, HasSubstr("protocol=ub_tp"));
+  EXPECT_THAT(text, HasSubstr("addr=EID[0001020304050607:08090a0b0c0d0e0f]"));
+  EXPECT_THAT(text, HasSubstr("devPhyId=2"));
+}
+
+TEST_F(HixlUtilsUTest, EndpointToStringUboeIpv4HostTest) {
+  EndpointDesc ep{};
+  ep.protocol = COMM_PROTOCOL_UBOE;
+  ep.commAddr.type = COMM_ADDR_TYPE_IP_V4;
+  (void)inet_pton(AF_INET, "10.0.0.1", &ep.commAddr.addr);
+  ep.loc.locType = ENDPOINT_LOC_TYPE_HOST;
+  ep.loc.host.id = 42;
+
+  const std::string text = EndpointToString(ep);
+  EXPECT_THAT(text, HasSubstr("protocol=uboe"));
+  EXPECT_THAT(text, HasSubstr("addr=IPv4:10.0.0.1"));
+  EXPECT_THAT(text, HasSubstr("hostId=42"));
+  EXPECT_THAT(text, Not(HasSubstr("devPhyId")));
+}
+
+TEST_F(HixlUtilsUTest, EndpointToStringUnknownProtocolTest) {
+  EndpointDesc ep{};
+  ep.protocol = static_cast<CommProtocol>(99);
+  ep.commAddr.type = COMM_ADDR_TYPE_ID;
+  ep.commAddr.id = 0;
+  ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
+  ep.loc.device.devPhyId = 0;
+
+  const std::string text = EndpointToString(ep);
+  EXPECT_THAT(text, HasSubstr("protocol=UNKNOWN(99)"));
+}
+
+TEST_F(HixlUtilsUTest, EndpointToStringUnknownAddrTypeTest) {
+  EndpointDesc ep{};
+  ep.protocol = COMM_PROTOCOL_ROCE;
+  ep.commAddr.type = static_cast<CommAddrType>(99);
+  ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
+  ep.loc.device.devPhyId = 0;
+
+  const std::string text = EndpointToString(ep);
+  EXPECT_THAT(text, HasSubstr("addr=UNKNOWN"));
+}
+
+TEST_F(HixlUtilsUTest, EndpointToStringReservedLocNoLocInfoTest) {
+  EndpointDesc ep{};
+  ep.protocol = COMM_PROTOCOL_UBC_CTP;
+  ep.commAddr.type = COMM_ADDR_TYPE_ID;
+  ep.commAddr.id = 5;
+  ep.loc.locType = ENDPOINT_LOC_TYPE_RESERVED;
+
+  const std::string text = EndpointToString(ep);
+  EXPECT_THAT(text, HasSubstr("protocol=ub_ctp"));
+  EXPECT_THAT(text, HasSubstr("addr=ID:0x5"));
+  EXPECT_THAT(text, Not(HasSubstr("devPhyId")));
+  EXPECT_THAT(text, Not(HasSubstr("hostId")));
 }
 
 }  // namespace hixl
