@@ -144,13 +144,13 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
     void *complete_handle = nullptr;
     const auto start = std::chrono::steady_clock::now();
     if (transfer_op == "write") {
-      HIXL_LOGI("HixlCSClientBatchPutAsync start, trans_num is:%u, remote_addrs is:%p, local_addrs is:%p, lens is:%u.", trans_num, desc_list[0].remote_buf, desc_list[0].local_buf, desc_list[0].len);
-      ret =
-          HixlCSClientBatchPutAsync(client_handle, trans_num, desc_list.data(), &complete_handle);
+      HIXL_LOGI("HixlCSClientBatchPutAsync start, trans_num is:%u, remote_addrs is:%p, local_addrs is:%p, lens is:%u.",
+                trans_num, desc_list[0].remote_buf, desc_list[0].local_buf, desc_list[0].len);
+      ret = HixlCSClientBatchPutAsync(client_handle, trans_num, desc_list.data(), &complete_handle);
     } else {
-      HIXL_LOGI("HixlCSClientBatchGetAsync start, trans_num is:%u, local_addrs is:%p, remote_addrs is:%p, lens is:%u.", trans_num, desc_list[0].local_buf, desc_list[0].remote_buf, desc_list[0].len);
-      ret =
-          HixlCSClientBatchGetAsync(client_handle, trans_num, desc_list.data(), &complete_handle);
+      HIXL_LOGI("HixlCSClientBatchGetAsync start, trans_num is:%u, local_addrs is:%p, remote_addrs is:%p, lens is:%u.",
+                trans_num, desc_list[0].local_buf, desc_list[0].remote_buf, desc_list[0].len);
+      ret = HixlCSClientBatchGetAsync(client_handle, trans_num, desc_list.data(), &complete_handle);
     }
     if (ret != HIXL_SUCCESS) {
       (void)printf("[ERROR] HixlCSClientBatchPutAsync/HixlCSClientBatchGetAsync failed, ret = %u\n", ret);
@@ -162,7 +162,7 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
       if (status == HIXL_COMPLETE_STATUS_COMPLETED) {
         break;
       } else if (status == HIXL_COMPLETE_STATUS_WAITING) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1)); //一毫秒查一次
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));  // 一毫秒查一次
         continue;
       }
       if (ret != HIXL_SUCCESS) {
@@ -218,11 +218,11 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
     (void)printf("[ERROR] %s transfer_data aclrtMalloc failed, ret = %d\n", device.c_str(), ret);
     ret = aclrtFreeHost(tmp);
   }
-  uint32_t *transfer_data = static_cast<uint32_t *>(tmp); //初始化后的内存
+  uint32_t *transfer_data = static_cast<uint32_t *>(tmp);  // 初始化后的内存
   HIXL_LOGI("The %s transfer_data addr is : %p", device.c_str(), transfer_data);
   // 如果是写数据，申请内存后，还需要设置内存为1，之后再复制给需要传输的内存
   if ((transfer_op == "write" and is_client) || (transfer_op == "read" and not is_client)) {
-    for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
+    for (uint32_t i = 0; i < kTransferMemSize / sizeof(uint32_t); i++) {
       transfer_data[i] = 1;
     }
     ret = aclrtMemcpy(mem.addr, kTransferMemSize, transfer_data, kTransferMemSize, copy_kind);
@@ -231,8 +231,8 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
     }
     HIXL_LOGI("The %s transfer_data have been copy to client_mem.", device.c_str());
   }
-  if ((transfer_op == "read" and is_client )|| (transfer_op == "write" and not is_client)) {
-    for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
+  if ((transfer_op == "read" and is_client) || (transfer_op == "write" and not is_client)) {
+    for (uint32_t i = 0; i < kTransferMemSize / sizeof(uint32_t); i++) {
       transfer_data[i] = 0;
     }
     ret = aclrtMemcpy(transfer_data, kTransferMemSize, mem.addr, kTransferMemSize, copy_kind);
@@ -242,8 +242,8 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
     HIXL_LOGI("The client transfer_data have been copy to client_mem.");
 
     uint32_t error_num = 0;
-    HIXL_LOGI("The num of this data transfer task is %u", kTransferMemSize/sizeof(uint32_t));
-    for (uint32_t i = 0; i < kTransferMemSize/sizeof(uint32_t); i++) {
+    HIXL_LOGI("The num of this data transfer task is %u", kTransferMemSize / sizeof(uint32_t));
+    for (uint32_t i = 0; i < kTransferMemSize / sizeof(uint32_t); i++) {
       if (transfer_data[i] != 1) {
         error_num++;
       }
@@ -282,15 +282,15 @@ int32_t RunClient(const Args &args) {
                                 .remote_endpoint = &remote_ep,
                                 .server_ip = ip.c_str(),
                                 .server_port = static_cast<uint32_t>(port),
-                                .tc = 0U,
-                                .sl = 0U};
+                                .tc = 128U,
+                                .sl = 4U};
   HixlClientConfig client_config{};
   auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientCreate failed, ret = %u\n", ret);
     return -1;
   }
-  uint32_t *kClientTransferData =nullptr;
+  uint32_t *kClientTransferData = nullptr;
   // 2. 注册内存地址
   MemHandle mem_handle = nullptr;
   CommMem mem{};
@@ -298,7 +298,7 @@ int32_t RunClient(const Args &args) {
   aclError acl_ret = ACL_ERROR_NONE;
   bool is_host = (args.transfer_mode == "h2d" || args.transfer_mode == "h2h");
   if (is_host) {
-    void *tmp  = nullptr;
+    void *tmp = nullptr;
     tmp = malloc(kTransferMemSize);
     // acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize); endpoint暂不支持该方式申请的内存
     mem.addr = tmp;
@@ -313,7 +313,7 @@ int32_t RunClient(const Args &args) {
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
     if (args.transfer_op == "read") {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
-    }else {
+    } else {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     }
     mem.type = COMM_MEM_TYPE_DEVICE;
@@ -334,7 +334,7 @@ int32_t RunClient(const Args &args) {
   (void)printf("[INFO] The client memory has been registered.\n");
   // 如果是写数据，需要再传输开始之前复制初始化后的数据到mem中
   if (args.transfer_op == "write") {
-    kClientTransferData = mem_alloc(args.transfer_op,true,copy_kind,mem);
+    kClientTransferData = mem_alloc(args.transfer_op, true, copy_kind, mem);
   }
 
   // 3. 建链
@@ -353,7 +353,7 @@ int32_t RunClient(const Args &args) {
 
   // 5.如果是读数据，传输完成后，基于copy_kind拷贝内存
   if (args.transfer_op == "read") {
-    kClientTransferData = mem_alloc(args.transfer_op,true,copy_kind,mem);
+    kClientTransferData = mem_alloc(args.transfer_op, true, copy_kind, mem);
   }
 
   // 6. 解注册，释放内存，析构
@@ -411,7 +411,7 @@ int32_t RunServer(const Args &args) {
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
   aclError acl_ret = ACL_ERROR_NONE;
   if (is_host) {
-    void *tmp  = nullptr;
+    void *tmp = nullptr;
     tmp = malloc(kTransferMemSize);
     // acl_ret = aclrtMallocHost(&mem.addr, kTransferMemSize); endpoint暂不支持该方式申请的内存
     mem.addr = tmp;
@@ -426,7 +426,7 @@ int32_t RunServer(const Args &args) {
     acl_ret = aclrtMalloc(&mem.addr, kTransferMemSize, ACL_MEM_MALLOC_HUGE_ONLY);
     if (args.transfer_op == "read") {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
-    }else {
+    } else {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
     }
     mem.type = COMM_MEM_TYPE_DEVICE;
@@ -439,7 +439,6 @@ int32_t RunServer(const Args &args) {
     HIXL_LOGI("Server host addr malloc success. addr is %p, size is %u", mem.addr, mem.size);
   }
 
-
   ret = HixlCSServerRegMem(server_handle, kServerMemTagName, &mem, &mem_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSServerRegMem failed, ret = %u\n", ret);
@@ -451,7 +450,7 @@ int32_t RunServer(const Args &args) {
 
   // 3.申请host侧地址，初始化内容之后复制给第二步申请的内存
   if (args.transfer_op == "read") {
-    kServerTransferData = mem_alloc(args.transfer_op,false,copy_kind,mem);
+    kServerTransferData = mem_alloc(args.transfer_op, false, copy_kind, mem);
   }
   // 4. 等待client transfer
   TCPClient tcp_client;
@@ -466,7 +465,7 @@ int32_t RunServer(const Args &args) {
 
   // 如果是写，则要再数据传输完成后再复制内存
   if (args.transfer_op == "write") {
-    kServerTransferData = mem_alloc(args.transfer_op,false,copy_kind,mem);
+    kServerTransferData = mem_alloc(args.transfer_op, false, copy_kind, mem);
   }
 
   // 5. 解注册，释放内存，析构

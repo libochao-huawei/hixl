@@ -1,9 +1,9 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN " "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
@@ -133,13 +133,13 @@ void PrintThroughput(uint64_t size_bytes, int64_t time_us) {
                static_cast<double>(size_bytes) / 1024 / 1024 / 1024, time_second, throughput_gb, throughput_gbps);
 }
 
-int32_t TransferLargeData(HixlClientHandle client_handle, uint8_t *local_addr, 
-                           const std::vector<uint64_t> &test_sizes, const std::string &transfer_op,
-                           uint64_t block_size) {
+int32_t TransferLargeData(HixlClientHandle client_handle, uint8_t *local_addr, const std::vector<uint64_t> &test_sizes,
+                          const std::string &transfer_op, uint64_t block_size) {
   CommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
-  auto ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
+  auto ret =
+      HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientGetRemoteMem failed, ret = %u\n", ret);
     return -1;
@@ -157,8 +157,8 @@ int32_t TransferLargeData(HixlClientHandle client_handle, uint8_t *local_addr,
     uint64_t actual_block_size = transfer_size / num_blocks;
     HIXL_LOGI("The size of actual_block_size is %u.", actual_block_size);
 
-    (void)printf("[INFO] TransferLargeData: size=%lu bytes, num_blocks=%u, block_size=%lu bytes\n",
-                 transfer_size, num_blocks, actual_block_size);
+    (void)printf("[INFO] TransferLargeData: size=%lu bytes, num_blocks=%u, block_size=%lu bytes\n", transfer_size,
+                 num_blocks, actual_block_size);
 
     std::vector<HixlOneSideOpDesc> desc_list(num_blocks);
     for (uint32_t j = 0; j < num_blocks; j++) {
@@ -197,14 +197,15 @@ int32_t TransferLargeData(HixlClientHandle client_handle, uint8_t *local_addr,
       }
     }
 
-    auto time_cost = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+    auto time_cost =
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
     PrintThroughput(transfer_size, time_cost);
   }
   return 0;
 }
 
-int32_t TransferMultiBlock(HixlClientHandle client_handle, uint8_t *local_addr,const std::string &transfer_op,
-                             uint32_t mem_block_count, uint64_t mem_block_size) {
+int32_t TransferMultiBlock(HixlClientHandle client_handle, uint8_t *local_addr, const std::string &transfer_op,
+                           uint32_t mem_block_count, uint64_t mem_block_size) {
   CommMem *remote_mem_list = nullptr;
   constexpr uint64_t transfer_block_size = 2ULL * 1024 * 1024;
   char **mem_tag_list = nullptr;
@@ -218,19 +219,20 @@ int32_t TransferMultiBlock(HixlClientHandle client_handle, uint8_t *local_addr,c
   std::map<std::string, CommMem> server_mems;
   for (uint32_t i = 0; i < list_num; ++i) {
     server_mems[mem_tag_list[i]] = remote_mem_list[i];
-    HIXL_LOGI("the num is %u, mem_tag is %s, CommMem.type is %u, CommMem.addr is %u, CommMem.size is %u.",i ,mem_tag_list[i], remote_mem_list[i].type, remote_mem_list[i].addr, remote_mem_list[i].size);
+    HIXL_LOGI("the num is %u, mem_tag is %s, CommMem.type is %u, CommMem.addr is %u, CommMem.size is %u.", i,
+              mem_tag_list[i], remote_mem_list[i].type, remote_mem_list[i].addr, remote_mem_list[i].size);
   }
   uint8_t *remote_addr = static_cast<uint8_t *>(server_mems["server_mem0"].addr);
   HIXL_LOGI("the remote addr is %p.", remote_addr);
   HIXL_LOGI("the local addr is %p.", local_addr);
 
-
   uint64_t total_size = mem_block_count * mem_block_size;
-  uint32_t num_tasks = static_cast<uint32_t>(total_size / transfer_block_size);// 获取传输的任务块数目
+  uint32_t num_tasks = static_cast<uint32_t>(total_size / transfer_block_size);  // 获取传输的任务块数目
 
-  (void)printf("[INFO] MultiBlock Test: mem_block_count=%u, mem_block_size=%lu bytes, total_size=%lu bytes, "
-                "transfer_block_size=%lu bytes, num_tasks=%u\n",
-                mem_block_count, mem_block_size, total_size, transfer_block_size, num_tasks);
+  (void)printf(
+      "[INFO] MultiBlock Test: mem_block_count=%u, mem_block_size=%lu bytes, total_size=%lu bytes, "
+      "transfer_block_size=%lu bytes, num_tasks=%u\n",
+      mem_block_count, mem_block_size, total_size, transfer_block_size, num_tasks);
 
   std::vector<HixlOneSideOpDesc> desc_list(num_tasks);
   for (uint32_t j = 0; j < num_tasks; j++) {
@@ -268,7 +270,8 @@ int32_t TransferMultiBlock(HixlClientHandle client_handle, uint8_t *local_addr,c
     }
   }
 
-  auto time_cost = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
+  auto time_cost =
+      std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
   PrintThroughput(total_size, time_cost);
   return 0;
 }
@@ -303,7 +306,7 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
   } else {
     device = "server";
   }
-  auto ret = aclrtMallocHost(&tmp, mem.size);//申请host侧的内存，用作与后续进行数据传输的内存进行交换数据
+  auto ret = aclrtMallocHost(&tmp, mem.size);  // 申请host侧的内存，用作与后续进行数据传输的内存进行交换数据
   if (ret != ACL_ERROR_NONE) {
     (void)printf("[ERROR] %s transfer_data aclrtMalloc failed, ret = %d\n", device.c_str(), ret);
     ret = aclrtFreeHost(tmp);
@@ -311,14 +314,14 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
   }
   uint32_t *transfer_data = static_cast<uint32_t *>(tmp);
   HIXL_LOGI("The %s transfer_data addr is : %p", device.c_str(), transfer_data);
-  if (transfer_data ==nullptr) {
+  if (transfer_data == nullptr) {
     HIXL_LOGI("[ERROR] %s transfer_data is nullptr after malloc.", device.c_str());
     return nullptr;
   }
   // 如果是写数据，申请内存后，还需要设置内存为1，之后再复制给需要传输的内存
   HIXL_LOGI("transfer_op is %s, device type is %s.", transfer_op.c_str(), device.c_str());
   if ((transfer_op == "write" and is_client) || (transfer_op == "read" and not is_client)) {
-    for (uint64_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
+    for (uint64_t i = 0; i < mem.size / sizeof(uint32_t); i++) {
       transfer_data[i] = 1;
     }
     HIXL_LOGI("%s write 1 to host mem.", device.c_str());
@@ -328,8 +331,8 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
     }
     HIXL_LOGI("The %s transfer_data have been copy to host_mem.", device.c_str());
   }
-  if ((transfer_op == "read" and is_client )|| (transfer_op == "write" and not is_client)) {
-    for (uint64_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
+  if ((transfer_op == "read" and is_client) || (transfer_op == "write" and not is_client)) {
+    for (uint64_t i = 0; i < mem.size / sizeof(uint32_t); i++) {
       transfer_data[i] = 0;
     }
     HIXL_LOGI("%s write 0 to host mem.", device.c_str());
@@ -340,8 +343,8 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
     HIXL_LOGI("The %s transfer_data have been copy to host_mem.", device.c_str());
 
     uint64_t error_num = 0;
-    HIXL_LOGI("The num of this data transfer task is %u", mem.size/sizeof(uint32_t));
-    for (uint64_t i = 0; i < mem.size/sizeof(uint32_t); i++) {
+    HIXL_LOGI("The num of this data transfer task is %u", mem.size / sizeof(uint32_t));
+    for (uint64_t i = 0; i < mem.size / sizeof(uint32_t); i++) {
       if (transfer_data[i] != 1) {
         error_num++;
       }
@@ -379,17 +382,17 @@ int32_t RunClientLargeData(const Args &args) {
                                 .remote_endpoint = &remote_ep,
                                 .server_ip = ip.c_str(),
                                 .server_port = static_cast<uint32_t>(port),
-                                .tc = 0U,
-                                .sl = 0U};
+                                .tc = 128U,
+                                .sl = 4U};
   HixlClientConfig client_config{};
   auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientCreate failed, ret = %u\n", ret);
-    HIXL_LOGE(ret,"[ERROR] HixlCSClientCreate failed, ret = %u\n", ret);
+    HIXL_LOGE(ret, "[ERROR] HixlCSClientCreate failed, ret = %u\n", ret);
     return -1;
   }
   // 2、注册内存地址
-  uint32_t *kClientTransferData =nullptr;
+  uint32_t *kClientTransferData = nullptr;
   std::vector<uint64_t> test_sizes = {k2GB, k4GB, k8GB, k16GB};
   uint64_t max_size = k16GB;
   uint64_t block_size = k2GB;
@@ -413,7 +416,7 @@ int32_t RunClientLargeData(const Args &args) {
     aclError acl_ret = aclrtMalloc(&mem.addr, max_size, ACL_MEM_MALLOC_HUGE_ONLY);
     if (args.transfer_op == "read") {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
-    }else {
+    } else {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     }
     mem.type = COMM_MEM_TYPE_DEVICE;
@@ -434,7 +437,7 @@ int32_t RunClientLargeData(const Args &args) {
   HIXL_LOGI("The client memory has been registered, start to copy mem");
   (void)printf("[INFO] Client memory registered, size: %lu bytes\n", max_size);
   if (args.transfer_op == "write") {
-    kClientTransferData = mem_alloc(args.transfer_op,true,copy_kind,mem);
+    kClientTransferData = mem_alloc(args.transfer_op, true, copy_kind, mem);
   }
 
   // 3、建链
@@ -447,15 +450,15 @@ int32_t RunClientLargeData(const Args &args) {
   }
 
   // 4、与server进行内存传输
-  if (TransferLargeData(client_handle, static_cast<uint8_t *>(mem.addr), test_sizes, 
-                        args.transfer_op, block_size) != 0) {
+  if (TransferLargeData(client_handle, static_cast<uint8_t *>(mem.addr), test_sizes, args.transfer_op, block_size) !=
+      0) {
     ClientFinalize(client_handle, {mem_handle});
     return -1;
   }
 
   // 5.如果是读数据，传输完成后，基于copy_kind拷贝内存
   if (args.transfer_op == "read") {
-    kClientTransferData = mem_alloc(args.transfer_op,true,copy_kind,mem);
+    kClientTransferData = mem_alloc(args.transfer_op, true, copy_kind, mem);
   }
 
   // 6. 解注册，释放内存，析构
@@ -494,7 +497,7 @@ int32_t RunClientMultiBlock(const Args &args) {
   } else {
     if (args.transfer_op == "read") {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
-    }else {
+    } else {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     }
   }
@@ -527,9 +530,9 @@ int32_t RunClientMultiBlock(const Args &args) {
   std::vector<MemHandle> mem_handles(mem_block_count);
   std::vector<CommMem> mems(mem_block_count);
   std::vector<uint8_t *> local_addrs(mem_block_count);
-  //申请一个大的内存块，之后再按照2MB划分成多个内存块
-  uint64_t transfer_buffer_size = mem_block_count* kMemBlockSize;
-  void * transfer_buffer_addr = nullptr;
+  // 申请一个大的内存块，之后再按照2MB划分成多个内存块
+  uint64_t transfer_buffer_size = mem_block_count * kMemBlockSize;
+  void *transfer_buffer_addr = nullptr;
   if (is_host) {
     transfer_buffer_addr = malloc(transfer_buffer_size);
     if (transfer_buffer_addr == nullptr) {
@@ -538,11 +541,11 @@ int32_t RunClientMultiBlock(const Args &args) {
       ServerFinalize(client_handle, mem_handles);
       return -1;
     }
-  }else {
+  } else {
     aclError acl_ret = aclrtMalloc(&transfer_buffer_addr, transfer_buffer_size, ACL_MEM_MALLOC_HUGE_ONLY);
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] Server aclrtMalloc failed for block %lu, ret = %d\n", transfer_buffer_size, acl_ret);
-      HIXL_LOGE(acl_ret,"Server aclrtMalloc failed for block %lu.", transfer_buffer_size);
+      HIXL_LOGE(acl_ret, "Server aclrtMalloc failed for block %lu.", transfer_buffer_size);
       ServerFinalize(client_handle, mem_handles);
       return -1;
     }
@@ -551,11 +554,11 @@ int32_t RunClientMultiBlock(const Args &args) {
   // 按照内存块个数完成内存注册
   for (uint32_t i = 0; i < mem_block_count; ++i) {
     if (is_host) {
-      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
+      mems[i].addr = static_cast<char *>(transfer_buffer_addr) + (i * kMemBlockSize);
       mems[i].type = COMM_MEM_TYPE_HOST;
       mems[i].size = kMemBlockSize;
     } else {
-      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
+      mems[i].addr = static_cast<char *>(transfer_buffer_addr) + (i * kMemBlockSize);
       mems[i].type = COMM_MEM_TYPE_DEVICE;
       mems[i].size = kMemBlockSize;
     }
@@ -570,7 +573,7 @@ int32_t RunClientMultiBlock(const Args &args) {
     local_addrs[i] = static_cast<uint8_t *>(mems[i].addr);
     // 写任务，提前初始化host侧的内存，之后拷贝到mem中
     if (args.transfer_op == "write") {
-      kClientTransferDataList[i]= mem_alloc(args.transfer_op, true, copy_kind, mems[i]);
+      kClientTransferDataList[i] = mem_alloc(args.transfer_op, true, copy_kind, mems[i]);
     }
   }
   (void)printf("[INFO] Client registered %u memory blocks, each size: %lu bytes\n", mem_block_count, kMemBlockSize);
@@ -584,7 +587,8 @@ int32_t RunClientMultiBlock(const Args &args) {
   }
   HIXL_LOGI("TransferMultiBlock start, local addr is %p.", static_cast<uint8_t *>(mems[0].addr));
   // 4. 与server进行内存传输
-  if (TransferMultiBlock(client_handle, static_cast<uint8_t *>(mems[0].addr), args.transfer_op, mem_block_count, kMemBlockSize) !=0) {
+  if (TransferMultiBlock(client_handle, static_cast<uint8_t *>(mems[0].addr), args.transfer_op, mem_block_count,
+                         kMemBlockSize) != 0) {
     for (uint32_t i = 0; i < mem_block_count; ++i) {
       ClientFinalize(client_handle, mem_handles);
       return -1;
@@ -649,7 +653,7 @@ int32_t RunServerLargeData(const Args &args) {
   uint32_t *kServerTransferData = nullptr;
   uint64_t max_size = k16GB;
   MemHandle mem_handle = nullptr;
-  aclrtMemcpyKind copy_kind ;
+  aclrtMemcpyKind copy_kind;
   CommMem mem{};
   bool is_host = (args.transfer_mode == "d2h" || args.transfer_mode == "h2h");
 
@@ -667,7 +671,7 @@ int32_t RunServerLargeData(const Args &args) {
     aclError acl_ret = aclrtMalloc(&mem.addr, max_size, ACL_MEM_MALLOC_HUGE_ONLY);
     if (args.transfer_op == "read") {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
-    }else {
+    } else {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
     }
     mem.type = COMM_MEM_TYPE_DEVICE;
@@ -689,7 +693,7 @@ int32_t RunServerLargeData(const Args &args) {
 
   // 3.申请host侧地址，初始化内容之后复制给第二步申请的内存
   if (args.transfer_op == "read") {
-    kServerTransferData = mem_alloc(args.transfer_op,false,copy_kind,mem);
+    kServerTransferData = mem_alloc(args.transfer_op, false, copy_kind, mem);
   }
 
   // 4. 等待client transfer
@@ -705,7 +709,7 @@ int32_t RunServerLargeData(const Args &args) {
 
   // 如果是写，则要再数据传输完成后再复制内存
   if (args.transfer_op == "write") {
-    kServerTransferData = mem_alloc(args.transfer_op,false,copy_kind,mem);
+    kServerTransferData = mem_alloc(args.transfer_op, false, copy_kind, mem);
   }
   // 5. 解注册，释放内存，析构
   ServerFinalize(server_handle, {mem_handle});
@@ -758,7 +762,7 @@ int32_t RunServerMultiBlock(const Args &args) {
   } else {
     if (args.transfer_op == "read") {
       copy_kind = ACL_MEMCPY_DEVICE_TO_HOST;
-    }else {
+    } else {
       copy_kind = ACL_MEMCPY_HOST_TO_DEVICE;
     }
   }
@@ -767,11 +771,10 @@ int32_t RunServerMultiBlock(const Args &args) {
   std::vector<MemHandle> mem_handles(mem_block_count);
   std::vector<CommMem> mems(mem_block_count);
   std::vector<uint32_t *> server_transfer_data_list(mem_block_count, nullptr);
-  //申请一个大的内存块，之后再按照2MB划分成多个内存块
-  uint64_t transfer_buffer_size = mem_block_count* kMemBlockSize;
-  void * transfer_buffer_addr = nullptr;
+  // 申请一个大的内存块，之后再按照2MB划分成多个内存块
+  uint64_t transfer_buffer_size = mem_block_count * kMemBlockSize;
+  void *transfer_buffer_addr = nullptr;
   if (is_host) {
-
     transfer_buffer_addr = malloc(transfer_buffer_size);
     if (transfer_buffer_addr == nullptr) {
       (void)printf("[ERROR] Server host addr malloc failed for block %lu\n", transfer_buffer_size);
@@ -779,11 +782,11 @@ int32_t RunServerMultiBlock(const Args &args) {
       ServerFinalize(server_handle, mem_handles);
       return -1;
     }
-  }else {
+  } else {
     aclError acl_ret = aclrtMalloc(&transfer_buffer_addr, transfer_buffer_size, ACL_MEM_MALLOC_HUGE_ONLY);
     if (acl_ret != ACL_ERROR_NONE) {
       (void)printf("[ERROR] Server aclrtMalloc failed for block %lu, ret = %d\n", transfer_buffer_size, acl_ret);
-      HIXL_LOGE(acl_ret,"Server aclrtMalloc failed for block %lu.", transfer_buffer_size);
+      HIXL_LOGE(acl_ret, "Server aclrtMalloc failed for block %lu.", transfer_buffer_size);
       ServerFinalize(server_handle, mem_handles);
       return -1;
     }
@@ -791,11 +794,11 @@ int32_t RunServerMultiBlock(const Args &args) {
 
   for (uint32_t i = 0; i < mem_block_count; ++i) {
     if (is_host) {
-      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
+      mems[i].addr = static_cast<char *>(transfer_buffer_addr) + (i * kMemBlockSize);
       mems[i].type = COMM_MEM_TYPE_HOST;
       mems[i].size = kMemBlockSize;
     } else {
-      mems[i].addr = static_cast<char*>(transfer_buffer_addr) + (i * kMemBlockSize);
+      mems[i].addr = static_cast<char *>(transfer_buffer_addr) + (i * kMemBlockSize);
       mems[i].type = COMM_MEM_TYPE_DEVICE;
       mems[i].size = kMemBlockSize;
     }
@@ -840,7 +843,7 @@ int32_t RunServerMultiBlock(const Args &args) {
       server_transfer_data_list[i] = mem_alloc(args.transfer_op, false, copy_kind, mems[i]);
     }
   }
-  //注销server和给server分配的内存地址
+  // 注销server和给server分配的内存地址
   ServerFinalize(server_handle, mem_handles);
   for (uint32_t i = 0; i < mem_block_count; ++i) {
     if (server_transfer_data_list[i] != nullptr) {
@@ -857,8 +860,10 @@ int32_t RunServerMultiBlock(const Args &args) {
 }  // namespace
 
 void PrintUsage(const char *prog_name) {
-  (void)printf("Usage: %s <device_id> <local_engine> <remote_engine> <tcp_port> <transfer_mode> "
-                "<transfer_op> <test_type> <local_comm_res> <remote_comm_res>\n", prog_name);
+  (void)printf(
+      "Usage: %s <device_id> <local_engine> <remote_engine> <tcp_port> <transfer_mode> "
+      "<transfer_op> <test_type> <local_comm_res> <remote_comm_res>\n",
+      prog_name);
   (void)printf("  test_type: 1=LargeData(2G/8G/32G), 2=MultiBlock(40/200/1000 blocks)\n");
   (void)printf("  Example (LargeData): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write 1 h2h h2h\n", prog_name);
   (void)printf("  Example (MultiBlock): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write 2 h2h h2h\n", prog_name);
@@ -885,11 +890,10 @@ int32_t main(int32_t argc, char **argv) {
         "[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, "
         "transfer_op = %s, test_type = %d, local_comm_res = %s, remote_comm_res = %s\n",
         device_id_str.c_str(), args.local_engine.c_str(), args.remote_engine.c_str(), tcp_port_str.c_str(),
-        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.test_type,
-        args.local_comm_res.c_str(), args.remote_comm_res.c_str());
+        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.test_type, args.local_comm_res.c_str(),
+        args.remote_comm_res.c_str());
   } else {
-    (void)printf(
-        "[ERROR] Expect 9 args, but got %d\n", argc - 1);
+    (void)printf("[ERROR] Expect 9 args, but got %d\n", argc - 1);
     PrintUsage(argv[0]);
     return -1;
   }

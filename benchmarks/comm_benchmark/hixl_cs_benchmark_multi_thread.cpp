@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -125,34 +125,25 @@ int32_t InitEndPointInfo(const std::string &comm_res, EndpointDesc &ep) {
 void PrintThroughput(uint64_t size_bytes, int64_t time_us, int32_t thread_id) {
   double time_second = static_cast<double>(time_us) / 1000 / 1000;
   double throughput_gb = static_cast<double>(size_bytes) / 1024 / 1024 / 1024 / time_second;
-  (void)printf("[INFO] Thread %d: Size: %.2f MB, Time: %.3f s, Throughput: %.3f GB/s\n",
-               thread_id,
-               static_cast<double>(size_bytes) / 1024 / 1024,
-               time_second,
-               throughput_gb);
+  (void)printf("[INFO] Thread %d: Size: %.2f MB, Time: %.3f s, Throughput: %.3f GB/s\n", thread_id,
+               static_cast<double>(size_bytes) / 1024 / 1024, time_second, throughput_gb);
 }
 
 // Single-threaded transfer function for multi-threaded scenario
 int32_t DoTransfer(HixlClientHandle client_handle, uint8_t *local_addr, uint8_t *remote_addr,
                    const std::string &transfer_op, int32_t thread_id, uint64_t offset, uint64_t chunk_size,
                    TransferResult *result) {
-  HixlOneSideOpDesc desc = {
-    .remote_buf = remote_addr + offset,
-    .local_buf = local_addr + offset,
-    .len = chunk_size
-  };
+  HixlOneSideOpDesc desc = {.remote_buf = remote_addr + offset, .local_buf = local_addr + offset, .len = chunk_size};
 
   void *complete_handle = nullptr;
   const auto start = std::chrono::steady_clock::now();
 
   HixlStatus ret;
   if (transfer_op == "write") {
-    HIXL_LOGI("Thread %d: HixlCSClientBatchPutAsync start, offset=%lu, size=%lu",
-               thread_id, offset, chunk_size);
+    HIXL_LOGI("Thread %d: HixlCSClientBatchPutAsync start, offset=%lu, size=%lu", thread_id, offset, chunk_size);
     ret = HixlCSClientBatchPutAsync(client_handle, 1, &desc, &complete_handle);
   } else {
-    HIXL_LOGI("Thread %d: HixlCSClientBatchGetAsync start, offset=%lu, size=%lu",
-               thread_id, offset, chunk_size);
+    HIXL_LOGI("Thread %d: HixlCSClientBatchGetAsync start, offset=%lu, size=%lu", thread_id, offset, chunk_size);
     ret = HixlCSClientBatchGetAsync(client_handle, 1, &desc, &complete_handle);
   }
 
@@ -179,8 +170,8 @@ int32_t DoTransfer(HixlClientHandle client_handle, uint8_t *local_addr, uint8_t 
     }
   }
 
-  auto time_cost = std::chrono::duration_cast<std::chrono::microseconds>(
-      std::chrono::steady_clock::now() - start).count();
+  auto time_cost =
+      std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
 
   result->thread_id = thread_id;
   result->success = true;
@@ -196,8 +187,8 @@ int32_t GetRemoteMem(HixlClientHandle client_handle, uint8_t **remote_addr) {
   CommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
-  auto ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list,
-                                       &list_num, kClientConnectTimeoutMs);
+  auto ret =
+      HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[ERROR] HixlCSClientGetRemoteMem failed, ret = %u\n", ret);
     return -1;
@@ -232,8 +223,8 @@ void ServerFinalize(HixlServerHandle server_handle, const std::vector<MemHandle>
   }
 }
 
-uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyKind copy_kind,
-                    void *mem_addr, uint64_t mem_size) {
+uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyKind copy_kind, void *mem_addr,
+                    uint64_t mem_size) {
   void *tmp = nullptr;
   std::string device = is_client ? "client" : "server";
 
@@ -292,8 +283,7 @@ int32_t RunClient(const Args &args) {
   // 1. Initialize endpoint info
   EndpointDesc local_ep;
   EndpointDesc remote_ep;
-  if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 ||
-      InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
+  if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 || InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
     (void)printf("[ERROR] Initialize EndPoint list failed\n");
     return -1;
   }
@@ -306,8 +296,8 @@ int32_t RunClient(const Args &args) {
                                 .remote_endpoint = &remote_ep,
                                 .server_ip = ip.c_str(),
                                 .server_port = static_cast<uint32_t>(port),
-                                .tc = 0U,
-                                .sl = 0U};
+                                .tc = 128U,
+                                .sl = 4U};
   HixlClientConfig client_config{};
   auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
   if (ret != HIXL_SUCCESS) {
@@ -384,14 +374,12 @@ int32_t RunClient(const Args &args) {
   std::vector<std::thread> threads;
   std::vector<TransferResult> results(args.num_threads);
 
-  (void)printf("[INFO] Starting %d threads for parallel transfer, chunk_size = %lu bytes\n",
-               args.num_threads, chunk_size);
+  (void)printf("[INFO] Starting %d threads for parallel transfer, chunk_size = %lu bytes\n", args.num_threads,
+               chunk_size);
 
   for (int32_t i = 0; i < args.num_threads; i++) {
-    threads.emplace_back(DoTransfer, client_handle,
-                        static_cast<uint8_t *>(mem.addr), remote_addr,
-                        args.transfer_op, i, i * chunk_size, chunk_size,
-                        &results[i]);
+    threads.emplace_back(DoTransfer, client_handle, static_cast<uint8_t *>(mem.addr), remote_addr, args.transfer_op, i,
+                         i * chunk_size, chunk_size, &results[i]);
   }
 
   // Wait for all threads to complete
@@ -416,9 +404,7 @@ int32_t RunClient(const Args &args) {
     double total_size_gb = static_cast<double>(kTransferMemSize) / 1024 / 1024 / 1024;
     (void)printf("[INFO] All transfers completed successfully!\n");
     (void)printf("[INFO] Total data: %.2f MB, Total time: %.3f s, Aggregate throughput: %.3f GB/s\n",
-                 static_cast<double>(kTransferMemSize) / 1024 / 1024,
-                 total_time_sec,
-                 total_size_gb / total_time_sec);
+                 static_cast<double>(kTransferMemSize) / 1024 / 1024, total_time_sec, total_size_gb / total_time_sec);
   }
 
   // If read operation, verify data
@@ -559,9 +545,10 @@ int32_t RunServer(const Args &args) {
 }  // namespace
 
 void PrintUsage(const char *prog_name) {
-  (void)printf("Usage: %s <device_id> <local_engine> <remote_engine> <tcp_port> <transfer_mode> "
-               "<transfer_op> <num_threads> <local_comm_res> <remote_comm_res>\n",
-               prog_name);
+  (void)printf(
+      "Usage: %s <device_id> <local_engine> <remote_engine> <tcp_port> <transfer_mode> "
+      "<transfer_op> <num_threads> <local_comm_res> <remote_comm_res>\n",
+      prog_name);
   (void)printf("  device_id: Device ID (e.g., 0)\n");
   (void)printf("  local_engine: Server engine address (e.g., 127.0.0.1:19999)\n");
   (void)printf("  remote_engine: Client connects to server address (e.g., 127.0.0.1:19998)\n");
@@ -596,8 +583,8 @@ int32_t main(int32_t argc, char **argv) {
         "[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, "
         "transfer_op = %s, num_threads = %d, local_comm_res = %s, remote_comm_res = %s\n",
         device_id_str.c_str(), args.local_engine.c_str(), args.remote_engine.c_str(), tcp_port_str.c_str(),
-        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.num_threads,
-        args.local_comm_res.c_str(), args.remote_comm_res.c_str());
+        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.num_threads, args.local_comm_res.c_str(),
+        args.remote_comm_res.c_str());
   } else {
     (void)printf(
         "[ERROR] Expect 9 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, "

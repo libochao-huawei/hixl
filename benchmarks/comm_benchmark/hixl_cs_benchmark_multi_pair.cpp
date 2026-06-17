@@ -1,6 +1,6 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -144,8 +144,8 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
   auto block_size = kBaseBlockSize;
   auto trans_num = static_cast<uint32_t>(kTransferMemSize / block_size);
 
-  (void)printf("[INFO] Transfer: size=%lu bytes, num_blocks=%u, block_size=%lu bytes\n",
-               kTransferMemSize, trans_num, block_size);
+  (void)printf("[INFO] Transfer: size=%lu bytes, num_blocks=%u, block_size=%lu bytes\n", kTransferMemSize, trans_num,
+               block_size);
 
   std::vector<HixlOneSideOpDesc> desc_list(trans_num);
   for (uint32_t j = 0; j < trans_num; j++) {
@@ -185,8 +185,8 @@ int32_t Transfer(HixlClientHandle client_handle, uint8_t *local_addr, const std:
     }
   }
 
-  auto time_cost = std::chrono::duration_cast<std::chrono::microseconds>(
-      std::chrono::steady_clock::now() - start).count();
+  auto time_cost =
+      std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
   PrintThroughput(kTransferMemSize, time_cost);
   return 0;
 }
@@ -215,8 +215,8 @@ void ServerFinalize(HixlServerHandle server_handle, const std::vector<MemHandle>
   }
 }
 
-uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyKind copy_kind,
-                    void *mem_addr, uint64_t mem_size) {
+uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyKind copy_kind, void *mem_addr,
+                    uint64_t mem_size) {
   void *tmp = nullptr;
   std::string device = is_client ? "client" : "server";
 
@@ -257,8 +257,7 @@ uint32_t *mem_alloc(const std::string &transfer_op, bool is_client, aclrtMemcpyK
         error_num++;
       }
     }
-    HIXL_LOGI("The error count for this data transfer task (first %lu MB) is %u",
-              check_size / 1024 / 1024, error_num);
+    HIXL_LOGI("The error count for this data transfer task (first %lu MB) is %u", check_size / 1024 / 1024, error_num);
   }
   return transfer_data;
 }
@@ -280,8 +279,7 @@ int32_t RunClient(const Args &args) {
   // 1. Initialize endpoint info
   EndpointDesc local_ep;
   EndpointDesc remote_ep;
-  if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 ||
-      InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
+  if (InitEndPointInfo(args.local_comm_res, local_ep) != 0 || InitEndPointInfo(args.remote_comm_res, remote_ep) != 0) {
     (void)printf("[ERROR] Initialize EndPoint list failed\n");
     return -1;
   }
@@ -293,8 +291,8 @@ int32_t RunClient(const Args &args) {
                                 .remote_endpoint = &remote_ep,
                                 .server_ip = ip.c_str(),
                                 .server_port = static_cast<uint32_t>(port),
-                                .tc = 0U,
-                                .sl = 0U};
+                                .tc = 128U,
+                                .sl = 4U};
   HixlClientConfig client_config{};
   auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
   if (ret != HIXL_SUCCESS) {
@@ -504,9 +502,10 @@ int32_t RunServer(const Args &args) {
 }  // namespace
 
 void PrintUsage(const char *prog_name) {
-  (void)printf("Usage: %s <device_id> <local_engine> <remote_engine> <tcp_port> <transfer_mode> "
-               "<transfer_op> <local_comm_res> <remote_comm_res>\n",
-               prog_name);
+  (void)printf(
+      "Usage: %s <device_id> <local_engine> <remote_engine> <tcp_port> <transfer_mode> "
+      "<transfer_op> <local_comm_res> <remote_comm_res>\n",
+      prog_name);
   (void)printf("  device_id: Device ID (e.g., 0)\n");
   (void)printf("  local_engine: Server engine address (e.g., 127.0.0.1:19999)\n");
   (void)printf("  remote_engine: Client connects to server address (e.g., 127.0.0.1:19998)\n");
@@ -515,12 +514,18 @@ void PrintUsage(const char *prog_name) {
   (void)printf("  transfer_op: write or read\n");
   (void)printf("  local_comm_res: Local endpoint JSON\n");
   (void)printf("  remote_comm_res: Remote endpoint JSON\n");
-  (void)printf("\nNote: Each instance uses unique ports (tcp_port for TCP control, engine port from local_engine/remote_engine).\n");
+  (void)printf(
+      "\nNote: Each instance uses unique ports (tcp_port for TCP control, engine port from "
+      "local_engine/remote_engine).\n");
   (void)printf("To run multiple instances in parallel, use different ports for each instance.\n");
-  (void)printf("\nExample (server instance 1): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write h2h h2h\n", prog_name);
-  (void)printf("Example (server instance 2): %s 0 127.0.0.1:19989 127.0.0.1:19988 19987 h2h write h2h h2h\n", prog_name);
-  (void)printf("Example (client instance 1): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write h2h h2h\n", prog_name);
-  (void)printf("Example (client instance 2): %s 0 127.0.0.1:19989 127.0.0.1:19988 19987 h2h write h2h h2h\n", prog_name);
+  (void)printf("\nExample (server instance 1): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write h2h h2h\n",
+               prog_name);
+  (void)printf("Example (server instance 2): %s 0 127.0.0.1:19989 127.0.0.1:19988 19987 h2h write h2h h2h\n",
+               prog_name);
+  (void)printf("Example (client instance 1): %s 0 127.0.0.1:19999 127.0.0.1:19998 19997 h2h write h2h h2h\n",
+               prog_name);
+  (void)printf("Example (client instance 2): %s 0 127.0.0.1:19989 127.0.0.1:19988 19987 h2h write h2h h2h\n",
+               prog_name);
 }
 
 int32_t main(int32_t argc, char **argv) {
@@ -543,8 +548,8 @@ int32_t main(int32_t argc, char **argv) {
         "[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, "
         "transfer_op = %s, local_comm_res = %s, remote_comm_res = %s\n",
         device_id_str.c_str(), args.local_engine.c_str(), args.remote_engine.c_str(), tcp_port_str.c_str(),
-        args.transfer_mode.c_str(), args.transfer_op.c_str(),
-        args.local_comm_res.c_str(), args.remote_comm_res.c_str());
+        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.local_comm_res.c_str(),
+        args.remote_comm_res.c_str());
   } else {
     (void)printf(
         "[ERROR] Expect 8 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, "

@@ -1,10 +1,10 @@
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software and/or redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -91,7 +91,7 @@ constexpr const char *kServerMemTagName = "server_mem";
 constexpr const char *kClientMemTagName = "client_mem";
 
 constexpr int32_t kScene5TransferCount = 3;     // 场景5: 传输次数
-constexpr int32_t kScene6TransferCount = 5000;   // 场景6: 传输5000次
+constexpr int32_t kScene6TransferCount = 5000;  // 场景6: 传输5000次
 constexpr int32_t kScene7DestroyDelayMs = 500;  // 场景7: 传输后销毁延迟(ms)
 
 #define CHECK_ACL_RETURN(x)                                                           \
@@ -133,7 +133,8 @@ int32_t Scene5ClientTest(HixlClientHandle client_handle, uint8_t *local_addr, co
   CommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
-  auto ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
+  auto ret =
+      HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[SCENE5 ERROR] HixlCSClientGetRemoteMem failed, ret = %u\n", ret);
     return -1;
@@ -223,14 +224,14 @@ int32_t Scene5ClientTest(HixlClientHandle client_handle, uint8_t *local_addr, co
 }
 
 // 场景6: 同一个client-server建链，传输5000次，测试资源上限
-int32_t Scene6Test(HixlClientHandle client_handle, uint8_t *local_addr,
-                   const std::string &transfer_op) {
+int32_t Scene6Test(HixlClientHandle client_handle, uint8_t *local_addr, const std::string &transfer_op) {
   (void)printf("[SCENE6] Start: Transfer 5000 times on single connection.\n");
 
   CommMem *remote_mem_list = nullptr;
   char **mem_tag_list = nullptr;
   uint32_t list_num = 0U;
-  auto ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
+  auto ret =
+      HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
   if (ret != HIXL_SUCCESS) {
     (void)printf("[SCENE6 ERROR] HixlCSClientGetRemoteMem failed, ret = %u\n", ret);
     return -1;
@@ -291,8 +292,8 @@ int32_t Scene6Test(HixlClientHandle client_handle, uint8_t *local_addr,
     }
 
     if ((i + 1) % 500 == 0) {
-      (void)printf("[SCENE6] Progress: %d/%d, success: %d, fail: %d\n",
-                   i + 1, kScene6TransferCount, success_count, fail_count);
+      (void)printf("[SCENE6] Progress: %d/%d, success: %d, fail: %d\n", i + 1, kScene6TransferCount, success_count,
+                   fail_count);
     }
   }
 
@@ -308,11 +309,10 @@ int32_t Scene6Test(HixlClientHandle client_handle, uint8_t *local_addr,
 }
 
 // 场景7: 传输过程中销毁client，测试server能否自动回收链路资源
-int32_t Scene7Test(HixlClientHandle client_handle, uint8_t *local_addr,
-                   HixlServerHandle server_handle, MemHandle mem_handle,
-                   const std::string &transfer_op, bool is_client) {
+int32_t Scene7Test(HixlClientHandle client_handle, uint8_t *local_addr, HixlServerHandle server_handle,
+                   MemHandle mem_handle, const std::string &transfer_op, bool is_client) {
   (void)server_handle;  // suppress unused warning
-  (void)mem_handle;    // suppress unused warning
+  (void)mem_handle;     // suppress unused warning
   (void)printf("[SCENE7] Start: Destroy client during transfer, check server resource recovery.\n");
 
   if (is_client) {
@@ -320,7 +320,8 @@ int32_t Scene7Test(HixlClientHandle client_handle, uint8_t *local_addr,
     CommMem *remote_mem_list = nullptr;
     char **mem_tag_list = nullptr;
     uint32_t list_num = 0U;
-    auto ret = HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
+    auto ret =
+        HixlCSClientGetRemoteMem(client_handle, &remote_mem_list, &mem_tag_list, &list_num, kClientConnectTimeoutMs);
     if (ret != HIXL_SUCCESS) {
       (void)printf("[SCENE7 ERROR] HixlCSClientGetRemoteMem failed, ret = %u\n", ret);
       return -1;
@@ -410,8 +411,8 @@ int32_t Scene8Test(const Args &args, bool is_client) {
                                   .remote_endpoint = &remote_ep,
                                   .server_ip = ip.c_str(),
                                   .server_port = static_cast<uint32_t>(port),
-                                  .tc = 0U,
-                                  .sl = 0U};
+                                  .tc = 128U,
+                                  .sl = 4U};
     HixlClientConfig client_config{};
     auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
     if (ret != HIXL_SUCCESS) {
@@ -561,8 +562,8 @@ int32_t RunClient(const Args &args) {
                                 .remote_endpoint = &remote_ep,
                                 .server_ip = ip.c_str(),
                                 .server_port = static_cast<uint32_t>(port),
-                                .tc = 0U,
-                                .sl = 0U};
+                                .tc = 128U,
+                                .sl = 4U};
   HixlClientConfig client_config{};
   auto ret = HixlCSClientCreate(&client_desc, &client_config, &client_handle);
   if (ret != HIXL_SUCCESS) {
@@ -635,8 +636,8 @@ int32_t RunClient(const Args &args) {
     case 7:
       // 场景7需要server_handle，client单独无法测试完整场景
       (void)printf("[INFO] Scene7: Transfer then destroy client...\n");
-      test_ret = Scene7Test(client_handle, static_cast<uint8_t *>(mem.addr), nullptr, mem_handle,
-                            args.transfer_op, true);
+      test_ret =
+          Scene7Test(client_handle, static_cast<uint8_t *>(mem.addr), nullptr, mem_handle, args.transfer_op, true);
       // 场景7中client已被销毁，不会执行到这里
       break;
     case 8:
@@ -806,14 +807,15 @@ int32_t main(int32_t argc, char **argv) {
         "[INFO] device_id = %s, local_engine = %s, remote_engine = %s, tcp_port = %s, transfer_mode = %s, "
         "transfer_op = %s, local_comm_res = %s, remote_comm_res = %s, test_case = %s\n",
         device_id_str.c_str(), args.local_engine.c_str(), args.remote_engine.c_str(), tcp_port_str.c_str(),
-        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.local_comm_res.c_str(),
-        args.remote_comm_res.c_str(), test_case_str.c_str());
+        args.transfer_mode.c_str(), args.transfer_op.c_str(), args.local_comm_res.c_str(), args.remote_comm_res.c_str(),
+        test_case_str.c_str());
   } else {
     (void)printf(
         "[ERROR] Expect 9 args(device_id, local_engine, remote_engine, tcp_port, transfer_mode, "
         "transfer_op, local_comm_res, remote_comm_res, test_case)\n");
-    (void)printf("test_case: 5=Scene5(unreg mem then transfer), 6=Scene6(5000 transfers), "
-                 "7=Scene7(destroy client during transfer), 8=Scene8(kill client process)\n");
+    (void)printf(
+        "test_case: 5=Scene5(unreg mem then transfer), 6=Scene6(5000 transfers), "
+        "7=Scene7(destroy client during transfer), 8=Scene8(kill client process)\n");
     return -1;
   }
 
