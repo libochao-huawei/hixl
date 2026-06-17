@@ -314,11 +314,27 @@ Status HixlCSClient::InitDeviceResource(const EndpointDesc &ep) {
   HIXL_CHECK_NOTNULL(pool);
   Status pret = pool->Initialize(kDeviceTransferPoolSize);
   HIXL_CHK_STATUS_RET(pret, "[HixlClient] TransferPool Initialize failed. devId=%d", device_id_);
+
+  // 提前加载 kernel，避免传输时引入耗时
+  {
+    std::lock_guard<std::mutex> lock(device_mu_);
+    HIXL_CHK_STATUS_RET(EnsureDeviceKernelLoadedLocked(), "[HixlClient] EnsureDeviceKernelLoadedLocked failed");
+  }
+  return SUCCESS;
+}
+
+Status HixlCSClient::InitNotifyResources(const EndpointDesc &ep) {
+  if (!IsDeviceEndpoint(ep)) {
+    return SUCCESS;
+  }
+
+  auto *pool = TransferPool::GetInstance(device_id_);
+  HIXL_CHECK_NOTNULL(pool);
   std::vector<TransferPool::SlotHandle> all_slots;
   HIXL_CHK_STATUS_RET(pool->GetAllSlots(all_slots), "[HixlClient] TransferPool GetAllSlots failed. devId=%d",
                       device_id_);
 
-  // 预先解析所有 slot 的 notify 地址，避免传输时重新获取
+  // 预先解析所有 slot 的 notify 地址并完成必要注册，避免传输时重新获取和注册。
   slot_notify_addrs_.clear();
   slot_notify_addrs_.resize(all_slots.size());
   for (size_t i = 0U; i < all_slots.size(); ++i) {
@@ -336,12 +352,6 @@ Status HixlCSClient::InitDeviceResource(const EndpointDesc &ep) {
     HIXL_CHK_STATUS_RET(RegisterNotifyMemForAllSlots(all_slots),
                         "[HixlClient] RegisterNotifyMemForAllSlots failed. devId=%d", device_id_);
   }
-
-  // 提前加载 kernel，避免传输时引入耗时
-  {
-    std::lock_guard<std::mutex> lock(device_mu_);
-    HIXL_CHK_STATUS_RET(EnsureDeviceKernelLoadedLocked(), "[HixlClient] EnsureDeviceKernelLoadedLocked failed");
-  }
   return SUCCESS;
 }
 
@@ -350,8 +360,9 @@ Status HixlCSClient::Create(const HixlClientDesc *client_desc, const HixlClientC
   HIXL_CHECK_NOTNULL(client_desc->local_endpoint);
   HIXL_CHECK_NOTNULL(client_desc->remote_endpoint);
   HIXL_CHECK_NOTNULL(config);
-  HIXL_CHK_STATUS_RET(GlobalConfig::Parse(config->global_resource_config, global_config_),
-                      "[HixlClient] Failed to parse global_resource_config");
+  HIXL_CHK_STATUS_RET(
+      GlobalConfig::Parse(config->global_resource_config, global_config_, GlobalConfig::ParseTarget::kClient),
+      "[HixlClient] Failed to parse global_resource_config");
   HIXL_EVENT(
       "[HixlClient] Create begin. Server=%s:%u. "
       "SrcEndpoint[Loc:%d, protocol:%d, commAddr.Type:%d, commAddr.id:0x%x], "
@@ -366,6 +377,7 @@ Status HixlCSClient::Create(const HixlClientDesc *client_desc, const HixlClientC
   HIXL_CHECK_NOTNULL(local_endpoint_);
   HIXL_CHK_STATUS_RET(InitDeviceResource(*(client_desc->local_endpoint)), "[HixlClient] InitDeviceResource failed");
   HIXL_CHK_STATUS_RET(InitBaseClient(client_desc), "[HixlClient] InitBaseClient failed");
+  HIXL_CHK_STATUS_RET(InitNotifyResources(*(client_desc->local_endpoint)), "[HixlClient] InitNotifyResources failed");
   EndpointHandle endpoint_handle = local_endpoint_->GetHandle();
   HIXL_EVENT("[HixlClient] Create success. server=%s:%u, src_ep_handle=%p", server_ip_.c_str(), server_port_,
              endpoint_handle);
@@ -1173,8 +1185,7 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
       "Src[protocol:%u, type:%u, id:%u], Dst[protocol:%u, type:%u, id:%u]",
       socket_, timeout_ms, src_ep.protocol, src_ep.commAddr.type, src_ep.commAddr.id, remote_endpoint_.protocol,
       remote_endpoint_.commAddr.type, remote_endpoint_.commAddr.id);
-  Status ret =
-      ConnMsgHandler::SendMatchEndpointRequest(socket_, remote_endpoint_, global_config_.ListenPort().value_or(0));
+  Status ret = ConnMsgHandler::SendMatchEndpointRequest(socket_, remote_endpoint_);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendMatchEndpointRequest failed. fd=%d", socket_);
   uint32_t remote_listen_port = 0;
   ret = ConnMsgHandler::RecvMatchEndpointResponse(socket_, remote_endpoint_handle_, remote_listen_port, timeout_ms);
