@@ -649,7 +649,7 @@ TEST_F(EndpointGeneratorUTest, OptionalAclrtContextCreateContextSkipsRuntimeWhen
   OptionalAclrtContext context;
   EXPECT_EQ(context.CreateContext(), SUCCESS);
   EXPECT_EQ(context.SetCurrentContext(), SUCCESS);
-  context.Reset();
+  context.DestroyContext();
 
   EXPECT_EQ(acl_stub_->get_device_count_calls_, 1);
   EXPECT_EQ(acl_stub_->get_device_calls_, 0);
@@ -664,7 +664,6 @@ TEST_F(EndpointGeneratorUTest, OptionalAclrtContextCreateContextOwnsAndDestroysC
   {
     OptionalAclrtContext context;
     EXPECT_EQ(context.CreateContext(), SUCCESS);
-    EXPECT_NE(context.Get(), nullptr);
     EXPECT_EQ(context.SetCurrentContext(), SUCCESS);
 
     EXPECT_EQ(acl_stub_->get_device_count_calls_, 1);
@@ -677,16 +676,17 @@ TEST_F(EndpointGeneratorUTest, OptionalAclrtContextCreateContextOwnsAndDestroysC
   EXPECT_EQ(acl_stub_->destroy_context_calls_, 1);
 }
 
-TEST_F(EndpointGeneratorUTest, OptionalAclrtContextResetDoesNotDestroyBorrowedCurrentContext) {
+TEST_F(EndpointGeneratorUTest, OptionalAclrtContextDestroyContextDoesNotDestroyBorrowedCurrentContext) {
   acl_stub_->device_count_ = 1;
 
   OptionalAclrtContext context;
   EXPECT_EQ(context.GetCurrentContext(), SUCCESS);
-  EXPECT_NE(context.Get(), nullptr);
-  context.Reset();
+  EXPECT_EQ(context.SetCurrentContext(), SUCCESS);
+  context.DestroyContext();
 
   EXPECT_EQ(acl_stub_->get_device_count_calls_, 1);
   EXPECT_EQ(acl_stub_->get_current_context_calls_, 1);
+  EXPECT_EQ(acl_stub_->set_current_context_calls_, 1);
   EXPECT_EQ(acl_stub_->destroy_context_calls_, 0);
 }
 

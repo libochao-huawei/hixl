@@ -80,7 +80,7 @@ Status UbClientHandler::Connect(uint32_t timeout_ms) {
   HIXL_CHK_STATUS_RET(context.GetCurrentContext(), "GetCurrentContext failed");
 
   for (const auto &[type, handle] : handles_) {
-    futures.emplace_back(thread_pool.commit([handle, timeout_ms, type, context]() -> Status {
+    futures.emplace_back(thread_pool.commit([handle, timeout_ms, type, &context]() -> Status {
       HIXL_CHK_STATUS_RET(context.SetCurrentContext(), "SetCurrentContext failed");
       HIXL_CHK_STATUS_RET(HixlCSClientConnect(handle, timeout_ms), "UbClientHandler Connect failed for type:%s",
                           CommTypeToString(type));

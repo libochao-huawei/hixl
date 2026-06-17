@@ -68,7 +68,7 @@ Status HixlEngine::Initialize(const HixlOptions &options) {
   Status ret = EndpointGenerator::BuildEndpointList(options, local_engine_, local_comm_res, endpoint_list_);
   HIXL_CHK_STATUS_RET(ret, "[HixlEngine] Failed to build endpoint list from options");
   HIXL_CHK_STATUS_RET(aclrt_context_.CreateContext(), "[HixlEngine] Failed to create optional aclrt context");
-  HIXL_DISMISSABLE_GUARD(ctx_fail_guard, ([this]() { aclrt_context_.Reset(); }));
+  HIXL_DISMISSABLE_GUARD(ctx_fail_guard, ([this]() { aclrt_context_.DestroyContext(); }));
   {
     auto with_context = aclrt_context_.GetContextGuard();
     HIXL_CHK_STATUS_RET(InitServer(), "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
@@ -299,7 +299,7 @@ void HixlEngine::Finalize() {
     client_manager_.Finalize();
     mem_map_.clear();
   }
-  aclrt_context_.Reset();
+  aclrt_context_.DestroyContext();
   is_initialized_ = false;
   HIXL_LOGI("[HixlEngine] Finalization succeeded");
 }

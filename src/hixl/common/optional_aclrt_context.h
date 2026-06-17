@@ -21,18 +21,17 @@ namespace hixl {
 class OptionalAclrtContext {
  public:
   OptionalAclrtContext() = default;
-  OptionalAclrtContext(const OptionalAclrtContext &other);
-  OptionalAclrtContext &operator=(const OptionalAclrtContext &other);
-  OptionalAclrtContext(OptionalAclrtContext &&other) noexcept;
-  OptionalAclrtContext &operator=(OptionalAclrtContext &&other) noexcept;
+  OptionalAclrtContext(const OptionalAclrtContext &other) = delete;
+  OptionalAclrtContext &operator=(const OptionalAclrtContext &other) = delete;
+  OptionalAclrtContext(OptionalAclrtContext &&other) = delete;
+  OptionalAclrtContext &operator=(OptionalAclrtContext &&other) = delete;
   ~OptionalAclrtContext();
 
   Status GetCurrentContext();
   Status CreateContext();
   Status SetCurrentContext() const;
   std::unique_ptr<TemporaryRtContext> GetContextGuard() const;
-  void Reset();
-  aclrtContext Get() const;
+  void DestroyContext();
 
  private:
   aclrtContext ctx_ = nullptr;
