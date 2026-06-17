@@ -15,45 +15,11 @@
 #include "common/hixl_log.h"
 
 namespace hixl {
-OptionalAclrtContext::OptionalAclrtContext(const OptionalAclrtContext &other)
-    : ctx_(other.ctx_), has_context_(other.has_context_), owns_context_(false) {}
-
-OptionalAclrtContext &OptionalAclrtContext::operator=(const OptionalAclrtContext &other) {
-  if (this != &other) {
-    Reset();
-    ctx_ = other.ctx_;
-    has_context_ = other.has_context_;
-    owns_context_ = false;
-  }
-  return *this;
-}
-
-OptionalAclrtContext::OptionalAclrtContext(OptionalAclrtContext &&other) noexcept
-    : ctx_(other.ctx_), has_context_(other.has_context_), owns_context_(other.owns_context_) {
-  other.ctx_ = nullptr;
-  other.has_context_ = false;
-  other.owns_context_ = false;
-}
-
-OptionalAclrtContext &OptionalAclrtContext::operator=(OptionalAclrtContext &&other) noexcept {
-  if (this != &other) {
-    Reset();
-    ctx_ = other.ctx_;
-    has_context_ = other.has_context_;
-    owns_context_ = other.owns_context_;
-    other.ctx_ = nullptr;
-    other.has_context_ = false;
-    other.owns_context_ = false;
-  }
-  return *this;
-}
-
 OptionalAclrtContext::~OptionalAclrtContext() {
-  Reset();
+  DestroyContext();
 }
 
 Status OptionalAclrtContext::GetCurrentContext() {
-  Reset();
   uint32_t device_count = 0;
   HIXL_CHK_ACL_RET(aclrtGetDeviceCount(&device_count), "aclrtGetDeviceCount failed");
   if (device_count == 0U) {
@@ -72,7 +38,7 @@ Status OptionalAclrtContext::GetCurrentContext() {
 }
 
 Status OptionalAclrtContext::CreateContext() {
-  Reset();
+  DestroyContext();
   uint32_t device_count = 0;
   HIXL_CHK_ACL_RET(aclrtGetDeviceCount(&device_count), "aclrtGetDeviceCount failed");
   if (device_count == 0U) {
@@ -106,16 +72,12 @@ std::unique_ptr<TemporaryRtContext> OptionalAclrtContext::GetContextGuard() cons
   return MakeUnique<TemporaryRtContext>(ctx_);
 }
 
-void OptionalAclrtContext::Reset() {
+void OptionalAclrtContext::DestroyContext() {
   if (owns_context_ && ctx_ != nullptr) {
     HIXL_CHK_ACL(aclrtDestroyContext(ctx_), "aclrtDestroyContext failed");
   }
   ctx_ = nullptr;
   has_context_ = false;
   owns_context_ = false;
-}
-
-aclrtContext OptionalAclrtContext::Get() const {
-  return has_context_ ? ctx_ : nullptr;
 }
 }  // namespace hixl
