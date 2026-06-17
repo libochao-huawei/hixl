@@ -195,7 +195,11 @@ int32_t ParseArgs(int32_t argc, char **argv, EngineCtx &ctx, std::vector<std::st
 int32_t PrepareLegacyOpts(EngineCtx &ctx, const std::vector<std::string> &protocols,
                           std::map<AscendString, AscendString> &options) {
   printf("[INFO] Using legacy flow (version=0)\n");
-  uint32_t listen_port = static_cast<uint32_t>(ParsePort(ctx.local_engine));
+  // In the legacy MatchEndpoint flow the client passed its local listen port to the server,
+  // and HCOMM channel creation used that port on both sides. The server-side config now owns
+  // listen_port, so use the peer(client) engine port on the server to keep the same behavior.
+  const std::string &listen_engine = ctx.is_client ? ctx.local_engine : ctx.remote_engine;
+  uint32_t listen_port = static_cast<uint32_t>(ParsePort(listen_engine));
   std::string local_comm_res = "{\"version\": \"1.2\"}";
   options[OPTION_LOCAL_COMM_RES] = local_comm_res.c_str();
   std::string resource_config = "{\"comm_resource_config.listen_port\": " + std::to_string(listen_port) + "}";
