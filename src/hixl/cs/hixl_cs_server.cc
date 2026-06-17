@@ -115,6 +115,7 @@ Status HixlCSServer::RegisterDeviceTransFinishedFlag() {
   HIXL_CHK_ACL_RET(
       aclrtMalloc(&dev_flag, sizeof(int64_t),
                   static_cast<aclrtMemMallocPolicy>(ACL_MEM_TYPE_HIGH_BAND_WIDTH | ACL_MEM_MALLOC_HUGE_ONLY)));
+  HIXL_DISMISSABLE_GUARD(dev_flag_guard, ([this, &dev_flag]() { FreeDeviceMem(dev_flag); }));
   int64_t val = 1;
   HIXL_CHK_ACL_RET(aclrtMemcpy(dev_flag, sizeof(int64_t), &val, sizeof(int64_t), ACL_MEMCPY_HOST_TO_DEVICE));
   CommMem mem{};
@@ -125,6 +126,7 @@ Status HixlCSServer::RegisterDeviceTransFinishedFlag() {
   HIXL_CHK_STATUS_RET(RegisterMem(kTransFlagNameDevice, &mem, &handle), "Failed to reg DEVICE trans finished flag");
   dev_trans_flag_ = dev_flag;
   dev_trans_flag_handle_ = handle;
+  HIXL_DISMISS_GUARD(dev_flag_guard);
   HIXL_DISMISS_GUARD(pool_rollback);
   device_id_ = dev_id;
   return SUCCESS;
