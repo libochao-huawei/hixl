@@ -14,6 +14,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <experimental/filesystem>
+#include "securec.h"
+#include "hcomm/hcomm_res_defs.h"
 namespace fs = std::experimental::filesystem;
 #include <fstream>
 #include <sys/stat.h>
@@ -178,7 +180,7 @@ TEST_F(HixlUtilsUTest, EndpointToStringRoceIpv4DeviceTest) {
   EndpointDesc ep{};
   ep.protocol = COMM_PROTOCOL_ROCE;
   ep.commAddr.type = COMM_ADDR_TYPE_IP_V4;
-  (void)inet_pton(AF_INET, "192.168.1.10", &ep.commAddr.addr);
+  ep.commAddr.addr.s_addr = htonl((192U << 24) | (168U << 16) | (1U << 8) | 10U);  // 192.168.1.10
   ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
   ep.loc.device.devPhyId = 3;
 
@@ -192,7 +194,9 @@ TEST_F(HixlUtilsUTest, EndpointToStringRoceIpv6DeviceTest) {
   EndpointDesc ep{};
   ep.protocol = COMM_PROTOCOL_ROCE;
   ep.commAddr.type = COMM_ADDR_TYPE_IP_V6;
-  (void)inet_pton(AF_INET6, "fe80::1", &ep.commAddr.addr6);
+  // fe80::1 = {0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+  const uint8_t ipv6_bytes[16] = {0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+  (void)memcpy_s(ep.commAddr.addr6.s6_addr, sizeof(ep.commAddr.addr6.s6_addr), ipv6_bytes, sizeof(ipv6_bytes));
   ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
   ep.loc.device.devPhyId = 0;
 
@@ -222,7 +226,7 @@ TEST_F(HixlUtilsUTest, EndpointToStringUbTpEidDeviceTest) {
   ep.commAddr.type = COMM_ADDR_TYPE_EID;
   const uint8_t eid_bytes[COMM_ADDR_EID_LEN] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
                                                 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
-  (void)memcpy(ep.commAddr.eid, eid_bytes, COMM_ADDR_EID_LEN);
+  (void)memcpy_s(ep.commAddr.eid, COMM_ADDR_EID_LEN, eid_bytes, COMM_ADDR_EID_LEN);
   ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
   ep.loc.device.devPhyId = 2;
 
@@ -236,7 +240,7 @@ TEST_F(HixlUtilsUTest, EndpointToStringUboeIpv4HostTest) {
   EndpointDesc ep{};
   ep.protocol = COMM_PROTOCOL_UBOE;
   ep.commAddr.type = COMM_ADDR_TYPE_IP_V4;
-  (void)inet_pton(AF_INET, "10.0.0.1", &ep.commAddr.addr);
+  ep.commAddr.addr.s_addr = htonl((10U << 24) | (0U << 16) | (0U << 8) | 1U);  // 10.0.0.1
   ep.loc.locType = ENDPOINT_LOC_TYPE_HOST;
   ep.loc.host.id = 42;
 
