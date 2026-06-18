@@ -135,7 +135,7 @@ checkopts() {
 
   CANN_3RD_LIB_PATH="$BASEPATH/third_party"
 
-  parsed_args=$(getopt -a -o t::s:cj:hv -l test::,suite:,cov,help,verbose,cann_3rd_lib_path:,cann-3rd-lib-path:,asan -- "$@") || {
+  parsed_args=$(getopt -a -o t::s:cj:hvf: -l test::,suite:,cov,help,verbose,cann_3rd_lib_path:,cann-3rd-lib-path:,asan -- "$@") || {
     usage
     exit 1
   }
@@ -183,6 +183,15 @@ checkopts() {
         VERBOSE="-v"
         shift
         ;;
+      -f)
+        CHANGED_FILES_FILE="$2"
+        if [ ! -f "$CHANGED_FILES_FILE" ]; then
+          echo "Error: File $CHANGED_FILES_FILE not found"
+          exit 1
+        fi
+        CHANGED_FILES=$(cat "$CHANGED_FILES_FILE")
+        shift 2
+        ;;
       --cann_3rd_lib_path | --cann-3rd-lib-path)
         CANN_3RD_LIB_PATH="$(realpath $2)"
         shift 2
@@ -216,6 +225,71 @@ checkopts() {
     exit 1
   fi
   apply_test_selection
+}
+
+# check if changed files only include docs/, examples/ or README.md
+# usage: check_changed_files "file1 file2 file3"
+check_changed_files() {
+  local changed_files="$1"
+  local skip_build=true
+
+  # if no changed files provided, return false (don't skip build)
+  if [ -z "$changed_files" ]; then
+    return 1
+  fi
+
+  # check each changed file
+  for file in $changed_files; do
+    # remove leading/trailing spaces and quotes
+    file=$(echo "$file" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//')
+
+    # check if file is README.md (case insensitive)
+    if echo "$file" | grep -qi "^README\.md$"; then
+      continue
+    fi
+
+    # check if file is CONTRIBUTING.md (case insensitive)
+    if echo "$file" | grep -qi "^CONTRIBUTING\.md$"; then
+      continue
+    fi
+
+    # check if file is in docs/ directory
+    if echo "$file" | grep -q "^docs/"; then
+      continue
+    fi
+
+    # check if file is in examples/ directory
+    if echo "$file" | grep -q "^examples/"; then
+      continue
+    fi
+
+    # check if file is in .claude/ directory
+    if echo "$file" | grep -q "^\.claude/"; then
+      continue
+    fi
+
+    # check if file is in .opencode/ directory
+    if echo "$file" | grep -q "^\.opencode/"; then
+      continue
+    fi
+
+    # check if file is AGENTS.md (case insensitive)
+    if echo "$file" | grep -qi "^AGENTS\.md$"; then
+      continue
+    fi
+
+    # if any file doesn't match the above patterns, don't skip build
+    skip_build=false
+    break
+  done
+
+  if [ "$skip_build" = true ]; then
+    echo "[INFO] Changed files only contain docs/, examples/, .claude/, .opencode/, README.md, CONTRIBUTING.md or AGENTS.md, skipping test."
+    echo "[INFO] Changed files: $changed_files"
+    return 0
+  fi
+
+  return 1
 }
 
 build() {
@@ -418,6 +492,14 @@ main() {
     echo "checkopts failed."
     return 1
   fi
+
+  # check if changed files only contain docs/, examples/ or README.md
+  if [ -n "$CHANGED_FILES" ]; then
+    if check_changed_files "$CHANGED_FILES"; then
+      exit 200
+    fi
+  fi
+
   run || { echo "run failed."; return; }
 }
 
