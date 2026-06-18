@@ -2,9 +2,9 @@
 
 - [Sample](#Sample)
 - [Directory Structure](#Directory-Structure)
-- [Environment Requirements](#)
+- [Environment Requirements](#Sample-Configuration)
 - [Build Instructions](#build-instructions)
-- [Sample Running](#Sample Running)
+- [Sample Running](#Sample-Running)
 
 ## Sample
 
