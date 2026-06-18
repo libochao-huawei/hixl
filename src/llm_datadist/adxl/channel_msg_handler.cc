@@ -50,6 +50,7 @@ static void from_json(const nlohmann::json &j, ChannelConnectInfo &c) {
   j.at("comm_res").get_to(c.comm_res);
   j.at("timeout").get_to(c.timeout);
   j.at("addrs").get_to(c.addrs);
+  c.comm_seq = j.value("comm_seq", static_cast<uint64_t>(0));
 }
 
 static void to_json(nlohmann::json &j, const ChannelConnectInfo &c) {
@@ -57,8 +58,20 @@ static void to_json(nlohmann::json &j, const ChannelConnectInfo &c) {
   j["channel_id"] = c.channel_id;
   j["comm_res"] = c.comm_res;
   j["timeout"] = c.timeout;
+  j["comm_seq"] = c.comm_seq;
   j["addrs"] = c.addrs;
   j["share_handles"] = nlohmann::json::array();
+}
+
+// Build the per-connection HCCL comm name. client_id/server_id are always ordered the same on both ends so
+// the two sides agree. comm_seq == 0 means the peer is an older version that does not support the unique tag,
+// so we fall back to the legacy name (no suffix) to stay wire-compatible across mixed versions.
+static std::string BuildCommName(const std::string &client_id, const std::string &server_id, uint64_t comm_seq) {
+  std::string comm_name = "hixl_" + client_id + "_" + server_id;
+  if (comm_seq != 0U) {
+    comm_name += "_" + std::to_string(comm_seq);
+  }
+  return comm_name;
 }
 
 static void from_json(const nlohmann::json &j, ChannelStatus &c) {
@@ -240,6 +253,12 @@ Status ChannelMsgHandler::RegisterMem(const MemDesc &mem, MemType type, MemHandl
 }
 
 Status ChannelMsgHandler::DeregisterMem(MemHandle mem_handle) {
+  // A previous disconnect may have deferred its comm-domain destruction; the global mem can still be bound to
+  // that comm (the unbind runs inside the async destroy). Wait for any pending destroy to finish first so we
+  // never deregister global mem that is still bound to a live comm.
+  if (channel_manager_ != nullptr) {
+    channel_manager_->WaitCommDestroyDone();
+  }
   std::lock_guard<std::mutex> lock(mutex_);
   auto it = handle_to_addr_.find(mem_handle);
   if (it == handle_to_addr_.end()) {
@@ -414,10 +433,14 @@ Status ChannelMsgHandler::ProcessConnectRequest(int32_t fd, const char *msg, uin
   ADXL_CHK_STATUS_RET(ChannelMsgHandler::Deserialize(msg, peer_connect_info), "Failed to deserialize connect msg");
   ChannelConnectInfo channel_connect_info = {};
   ADXL_CHK_STATUS_RET(FillLocalConnectInfo(channel_connect_info), "Failed to fill local connect info");
+  // Echo the client's comm_seq so a new-version client learns this server also understands the unique tag.
+  // For an old-version client comm_seq is 0 and both sides fall back to the legacy comm name.
+  channel_connect_info.comm_seq = peer_connect_info.comm_seq;
   ADXL_CHK_STATUS_RET(SendMsg(fd, ChannelMsgType::kConnect, channel_connect_info), "Failed to send connect msg");
   LLMLOGI("Start to process connect info, local engine:%s, remote engine:%s, timeout:%d ms.", listen_info_.c_str(),
           peer_connect_info.channel_id.c_str(), peer_connect_info.timeout);
-  peer_connect_info.comm_name = "hixl_" + peer_connect_info.channel_id + "_" + listen_info_;
+  // Build the same per-connection comm name as the client using the comm_seq it sent (0 => legacy name).
+  peer_connect_info.comm_name = BuildCommName(peer_connect_info.channel_id, listen_info_, peer_connect_info.comm_seq);
   auto ret = ConnectInfoProcess(peer_connect_info, peer_connect_info.timeout, false);
   if (ret == SUCCESS) {
     LLMEVENT("Success to process connect info, local engine:%s, remote engine:%s, timeout:%d ms.", listen_info_.c_str(),
@@ -522,13 +545,23 @@ Status ChannelMsgHandler::ConnectToPeer(const std::string &remote_engine, int32_
 
 Status ChannelMsgHandler::ExchangeConnectInfo(int32_t conn_fd, int32_t timeout_in_millis,
                                               ChannelConnectInfo &peer_connect_info) {
+  // The client (initiator) owns the unique per-connection tag and sends it; the server echoes the same
+  // comm_seq from the connect msg, so both ends build an identical, per-connection-unique comm name. A new
+  // connection of the same pair therefore never collides with a previous comm domain still pending async
+  // destruction.
+  const uint64_t comm_seq = comm_seq_.fetch_add(1U) + 1U;
   ChannelConnectInfo connect_info = {};
   connect_info.channel_id = listen_info_;
   connect_info.comm_res = local_comm_res_;
   connect_info.timeout = timeout_in_millis;
+  connect_info.comm_seq = comm_seq;
   ADXL_CHK_STATUS_RET(SendMsg(conn_fd, ChannelMsgType::kConnect, connect_info), "Failed to send connect msg");
   ADXL_CHK_STATUS_RET(RecvMsg(conn_fd, ChannelMsgType::kConnect, peer_connect_info), "Failed to recv connect msg");
-  peer_connect_info.comm_name = "hixl_" + listen_info_ + "_" + peer_connect_info.channel_id;
+  // Append the unique tag only when the server echoed a non-zero comm_seq (i.e. it is a new version that
+  // also appends the suffix). Against an old server (no comm_seq in its reply) fall back to the legacy name
+  // so the two sides still agree on the comm name.
+  const uint64_t effective_seq = peer_connect_info.comm_seq != 0U ? comm_seq : 0U;
+  peer_connect_info.comm_name = BuildCommName(listen_info_, peer_connect_info.channel_id, effective_seq);
   return SUCCESS;
 }
 

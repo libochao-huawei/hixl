@@ -19,6 +19,7 @@
 #include <atomic>
 #include <functional>
 #include "comm_channel.h"
+#include "comm_destroyer.h"
 #include "common/llm_mem_pool.h"
 #include "buffer_transfer_service.h"
 
@@ -36,6 +37,8 @@ class ChannelManager {
   ChannelPtr GetChannel(ChannelType channel_type, const std::string &channel_id);
   Status DestroyChannel(ChannelType channel_type, const std::string &channel_id);
   void DestroyChannels();
+  // Block until all comm domains pending asynchronous destruction have been destroyed.
+  void WaitCommDestroyDone();
   static void SetHeartbeatWaitTime(int32_t time_in_millis);
 
   void RegisterNotifyAckCallback(NotifyAckCallback callback) {
@@ -110,6 +113,7 @@ class ChannelManager {
   std::mutex fd_mutex_;
   std::map<int32_t, ChannelPtr> fd_to_channel_map_;
   StreamPool *stream_pool_ = nullptr;
+  CommDestroyer comm_destroyer_;
 
   std::thread msg_receiver_;
   aclrtContext aclrt_context_{nullptr};
