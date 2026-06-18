@@ -1,9 +1,9 @@
 ## Contents
 
-- [Contents](#Contents)
-- [Sample](#Sample)
-- [Directory Structure](#Directory-Structure)
-- [Environment Setup](#Environment-Setup)
+- [Contents](#contents)
+- [Sample](#sample)
+- [Directory Structure](#directory-structure)
+- [Environment Setup](#environment-setup)
 - [Sample Configuration](#sample-configuration)
 - [Sample Running](#sample-running)
 

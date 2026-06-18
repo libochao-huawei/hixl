@@ -1,10 +1,10 @@
 ## Contents
 
-- [Sample](#Sample)
-- [Directory Structure](#Directory-Structure)
-- [Environment Requirements](#Sample-Configuration)
+- [Sample](#sample)
+- [Directory Structure](#directory-structure)
+- [Environment Requirements](#sample-configuration)
 - [Build Instructions](#build-instructions)
-- [Sample Running](#Sample-Running)
+- [Sample Running](#sample-running)
 
 ## Sample
 
