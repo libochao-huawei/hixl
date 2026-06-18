@@ -23,6 +23,8 @@
 #include "adxl/stream_pool.h"
 
 namespace adxl {
+class CommDestroyer;
+
 enum class ChannelType {
   kClient = 0,
   kServer = 1,
@@ -86,6 +88,7 @@ class CommChannel {
   bool IsHeartbeatTimeout() const;
   void SetStreamPool(StreamPool *stream_pool);
   StreamPool *GetStreamPool();
+  void SetCommDestroyer(CommDestroyer *comm_destroyer);
 
   std::mutex &GetTransferMutex();
 
@@ -154,6 +157,7 @@ class CommChannel {
   std::mutex transfer_reqs_mutex_;
   std::unordered_map<uint64_t, AsyncRecord> req_2_async_record_;
   StreamPool *stream_pool_ = nullptr;
+  CommDestroyer *comm_destroyer_ = nullptr;
 };
 using ChannelPtr = std::shared_ptr<CommChannel>;
 }  // namespace adxl

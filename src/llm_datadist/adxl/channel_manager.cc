@@ -78,6 +78,7 @@ Status ChannelManager::Initialize(BufferTransferService *buffer_transfer_service
     LLMLOGE(FAILED, "Failed to create epoll fd.");
     return FAILED;
   }
+  ADXL_CHK_STATUS_RET(comm_destroyer_.Initialize(aclrt_context_), "Failed to init comm destroyer.");
   // send heartbeat periodically
   heartbeat_sender_ = std::thread([this]() {
     aclrtSetCurrentContext(aclrt_context_);
@@ -398,7 +399,14 @@ Status ChannelManager::Finalize() {
     (void)DestroyChannel(ChannelType::kClient, channel->GetChannelId());
   }
   channels_.clear();
+  // Drain comms just enqueued by the DestroyChannel calls above (destroyed immediately, no delay) and
+  // join the worker before the engine tears down the aclrt context.
+  comm_destroyer_.Finalize();
   return SUCCESS;
+}
+
+void ChannelManager::WaitCommDestroyDone() {
+  comm_destroyer_.DrainPending();
 }
 
 void ChannelManager::SetHeartbeatWaitTime(int32_t time_in_millis) {
@@ -458,6 +466,7 @@ Status ChannelManager::CreateChannel(const ChannelInfo &channel_info, ChannelPtr
   ADXL_CHECK_NOTNULL(channel);
   ADXL_CHK_STATUS_RET(channel->Initialize(), "Failed to init channel");
   channel->SetStreamPool(stream_pool_);
+  channel->SetCommDestroyer(&comm_destroyer_);
   LLM_DISMISSABLE_GUARD(failed_guard, ([channel]() { (void)channel->Finalize(); }));
   std::lock_guard<std::mutex> lock(mutex_);
   auto key = std::make_pair(channel_info.channel_type, channel_info.channel_id);
