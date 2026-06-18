@@ -69,12 +69,19 @@ class ChannelMsgHandlerUnitTest : public ::testing::Test {
     };
   }
 
-  std::thread StartPeerExchangeThread(const nlohmann::json &response_json) {
-    return std::thread([this, response_json]() {
+  // echo_comm_seq simulates a new-version server: it reads the client's comm_seq from the connect request
+  // and echoes it back, which is the signal the client uses to decide it may append the unique tag. When
+  // false the peer behaves like an old-version server that never sends comm_seq.
+  std::thread StartPeerExchangeThread(nlohmann::json response_json, bool echo_comm_seq = false) {
+    return std::thread([this, response_json, echo_comm_seq]() mutable {
       int32_t msg_type = 0;
       std::vector<char> msg;
       EXPECT_EQ(llm::MsgHandlerPlugin::RecvMsg(sockets_[1], msg_type, msg), SUCCESS);
       EXPECT_EQ(msg_type, static_cast<int32_t>(ChannelMsgType::kConnect));
+      if (echo_comm_seq) {
+        const auto request = nlohmann::json::parse(std::string(msg.begin(), msg.end()));
+        response_json["comm_seq"] = request.value("comm_seq", static_cast<uint64_t>(0));
+      }
       EXPECT_EQ(llm::MsgHandlerPlugin::SendMsg(sockets_[1], static_cast<int32_t>(ChannelMsgType::kConnect),
                                                response_json.dump()),
                 SUCCESS);
@@ -107,21 +114,77 @@ TEST_F(ChannelMsgHandlerUnitTest, SerializeConnectInfoWritesAdxlConnectInfo) {
   connect_info.channel_id = kListenInfo;
   connect_info.comm_res = kRemoteCommRes;
   connect_info.timeout = kTimeoutMs;
+  connect_info.comm_seq = 7U;
   connect_info.addrs.emplace_back(AddrInfo{kRemoteAddrStart, kRemoteAddrEnd, MEM_HOST});
 
   std::string serialized;
   ASSERT_EQ(ChannelMsgHandler::Serialize(connect_info, serialized), SUCCESS);
 
   const auto json = nlohmann::json::parse(serialized);
-  ASSERT_EQ(json.size(), 5U);
+  ASSERT_EQ(json.size(), 6U);
   EXPECT_EQ(json.at("channel_id").get<std::string>(), kListenInfo);
   EXPECT_EQ(json.at("comm_res").get<std::string>(), kRemoteCommRes);
   EXPECT_EQ(json.at("timeout").get<int32_t>(), kTimeoutMs);
+  EXPECT_EQ(json.at("comm_seq").get<uint64_t>(), 7U);
   EXPECT_EQ(json.at("share_handles").size(), 0U);
   ASSERT_EQ(json.at("addrs").size(), 1U);
   EXPECT_EQ(json.at("addrs").at(0).at("mem_type").get<int32_t>(), static_cast<int32_t>(MEM_HOST));
   EXPECT_EQ(json.at("addrs").at(0).at("start_addr").get<uintptr_t>(), kRemoteAddrStart);
   EXPECT_EQ(json.at("addrs").at(0).at("end_addr").get<uintptr_t>(), kRemoteAddrEnd);
+}
+
+TEST_F(ChannelMsgHandlerUnitTest, ConnectInfoSerializeRoundTripPreservesCommSeq) {
+  ChannelConnectInfo connect_info{};
+  connect_info.channel_id = kListenInfo;
+  connect_info.comm_res = kRemoteCommRes;
+  connect_info.timeout = kTimeoutMs;
+  connect_info.comm_seq = 12345U;
+
+  std::string serialized;
+  ASSERT_EQ(ChannelMsgHandler::Serialize(connect_info, serialized), SUCCESS);
+
+  ChannelConnectInfo parsed{};
+  ASSERT_EQ(ChannelMsgHandler::Deserialize(serialized.c_str(), parsed), SUCCESS);
+  EXPECT_EQ(parsed.comm_seq, 12345U);
+}
+
+TEST_F(ChannelMsgHandlerUnitTest, DeserializeConnectInfoWithoutCommSeqDefaultsToZero) {
+  // A connect msg from a peer that does not carry comm_seq must not fail to parse; it defaults to 0.
+  const std::string legacy = R"({"channel_id":"a","comm_res":"r","timeout":10,"addrs":[]})";
+  ChannelConnectInfo parsed{};
+  ASSERT_EQ(ChannelMsgHandler::Deserialize(legacy.c_str(), parsed), SUCCESS);
+  EXPECT_EQ(parsed.comm_seq, 0U);
+}
+
+TEST_F(ChannelMsgHandlerUnitTest, ExchangeConnectInfoWithNewServerGeneratesUniqueCommNamePerCall) {
+  // New-version server echoes comm_seq, so the client appends the unique tag.
+  auto peer_thread1 = StartPeerExchangeThread(BuildConnectInfoJson(), true);
+  ChannelConnectInfo first{};
+  ASSERT_EQ(handler_->ExchangeConnectInfo(sockets_[0], kTimeoutMs, first), SUCCESS);
+  peer_thread1.join();
+
+  auto peer_thread2 = StartPeerExchangeThread(BuildConnectInfoJson(), true);
+  ChannelConnectInfo second{};
+  ASSERT_EQ(handler_->ExchangeConnectInfo(sockets_[0], kTimeoutMs, second), SUCCESS);
+  peer_thread2.join();
+
+  // comm_name has the form hixl_<local>_<remote>_<seq>; the client-owned seq increments each connection so
+  // a reconnect of the same pair never reuses the previous (pending-destroy) comm name.
+  const std::string prefix = std::string("hixl_") + kListenInfo + "_" + kRemoteEngine + "_";
+  EXPECT_EQ(first.comm_name, prefix + "1");
+  EXPECT_EQ(second.comm_name, prefix + "2");
+  EXPECT_NE(first.comm_name, second.comm_name);
+}
+
+TEST_F(ChannelMsgHandlerUnitTest, ExchangeConnectInfoWithOldServerOmitsCommSeqSuffix) {
+  // Old-version server never returns comm_seq, so the client must fall back to the legacy comm name (no
+  // suffix) to stay compatible when new and old versions run together.
+  auto peer_thread = StartPeerExchangeThread(BuildConnectInfoJson(), false);
+  ChannelConnectInfo info{};
+  ASSERT_EQ(handler_->ExchangeConnectInfo(sockets_[0], kTimeoutMs, info), SUCCESS);
+  peer_thread.join();
+
+  EXPECT_EQ(info.comm_name, std::string("hixl_") + kListenInfo + "_" + kRemoteEngine);
 }
 
 TEST_F(ChannelMsgHandlerUnitTest, ParseTcSlRejectsOutOfRangeValues) {

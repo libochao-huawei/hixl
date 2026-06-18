@@ -14,6 +14,7 @@ set(ADXL_CORE_TEST_FILES
         buffer_transfer_service_unittest.cc
         channel_manager_unittest.cc
         channel_msg_handler_unittest.cc
+        comm_destroyer_unittest.cc
         control_msg_handler_unittest.cc
         control_msg_handler_write_unittest.cc
         segment_table_unittest.cc

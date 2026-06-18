@@ -12,6 +12,7 @@
 #include <mutex>
 #include <fcntl.h>
 #include <unistd.h>
+#include "comm_destroyer.h"
 #include "adxl/adxl_checker.h"
 #include "adxl/adxl_types.h"
 #include "adxl/adxl_utils.h"
@@ -133,16 +134,27 @@ Status CommChannel::Finalize() {
 Status CommChannel::ClearResources() {
   std::lock_guard<std::mutex> lock(transfer_mutex_);
   auto ret = SUCCESS;
-  for (const auto &reg_handle_it : channel_info_.registered_mems) {
-    auto reg_handle = reg_handle_it.first;
-    auto hccl_ret = llm::HcclAdapter::GetInstance().HcclCommUnbindMem(channel_info_.comm, reg_handle);
-    ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
-  }
-
+  // Defer the slow HcclCommUnbindMem + HcclCommDestroy to the async destroyer so that re-establishing a
+  // link with the same engine pair does not block on it. The new link uses a different comm name, so the
+  // not-yet-destroyed comm domain here does not collide with it.
   if (channel_info_.comm != nullptr) {
-    auto hccl_ret = llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
+    std::vector<void *> bind_handles;
+    bind_handles.reserve(channel_info_.registered_mems.size());
+    for (const auto &reg_handle_it : channel_info_.registered_mems) {
+      bind_handles.emplace_back(reg_handle_it.first);
+    }
+    if (comm_destroyer_ != nullptr) {
+      comm_destroyer_->Enqueue(channel_info_.comm, std::move(bind_handles));
+    } else {
+      // No async destroyer configured: fall back to synchronous destruction.
+      for (auto handle : bind_handles) {
+        auto unbind_ret = llm::HcclAdapter::GetInstance().HcclCommUnbindMem(channel_info_.comm, handle);
+        ret = unbind_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
+      }
+      auto hccl_ret = llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
+      ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
+    }
     channel_info_.comm = nullptr;
-    ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
   }
 
   std::lock_guard<std::mutex> transfer_reqs_lock(transfer_reqs_mutex_);
@@ -169,6 +181,10 @@ Status CommChannel::ClearResources() {
 
 void CommChannel::SetStreamPool(StreamPool *stream_pool) {
   stream_pool_ = stream_pool;
+}
+
+void CommChannel::SetCommDestroyer(CommDestroyer *comm_destroyer) {
+  comm_destroyer_ = comm_destroyer;
 }
 
 Status CommChannel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
