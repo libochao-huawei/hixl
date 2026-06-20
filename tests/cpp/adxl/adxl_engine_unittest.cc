@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -66,6 +66,17 @@ std::map<AscendString, AscendString> BuildHixlCsOptions(const std::string &ip) {
                                                     .c_str());
   return options;
 }
+
+// Forces CommChannel::TransferSync to time out by making the underlying stream synchronization report a sync
+// timeout, while keeping every other ACL call working via AutoCommResRuntimeMock.
+class SyncTransferFailMock : public llm::AutoCommResRuntimeMock {
+ public:
+  aclError aclrtSynchronizeStreamWithTimeout(aclrtStream stream, int32_t timeout) override {
+    (void)stream;
+    (void)timeout;
+    return ACL_ERROR_RT_STREAM_SYNC_TIMEOUT;
+  }
+};
 }  // namespace
 
 class AdxlEngineUTest : public ::testing::Test {
@@ -148,6 +159,20 @@ class AdxlEngineUTest : public ::testing::Test {
     RegisterInt32Mem(engine1, &mem.src, mem.handle1);
     RegisterInt32Mem(engine2, &mem.dst, mem.handle2);
     EXPECT_EQ(engine1.Connect("127.0.0.1:28101"), SUCCESS);
+    return mem;
+  }
+
+  Int32MemPair SetupAutoConnectInt32Engines(AdxlEngine &engine1, AdxlEngine &engine2) {
+    llm::AutoCommResRuntimeMock::SetDevice(0);
+    std::map<AscendString, AscendString> options1;
+    options1[OPTION_AUTO_CONNECT] = "1";
+    EXPECT_EQ(engine1.Initialize("127.0.0.1:28100", options1), SUCCESS);
+    llm::AutoCommResRuntimeMock::SetDevice(1);
+    std::map<AscendString, AscendString> options2;
+    EXPECT_EQ(engine2.Initialize("127.0.0.1:28101", options2), SUCCESS);
+    Int32MemPair mem;
+    RegisterInt32Mem(engine1, &mem.src, mem.handle1);
+    RegisterInt32Mem(engine2, &mem.dst, mem.handle2);
     return mem;
   }
 
@@ -802,19 +827,103 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyMsgTooLong) {
   engine2.Finalize();
 }
 
-TEST_F(AdxlEngineUTest, TestAdxlEngineAutoConnectEnabled) {
-  llm::AutoCommResRuntimeMock::SetDevice(0);
+// In plain mode (no auto-connect, no channel pool), a transport-level TransferSync failure (here a sync timeout)
+// marks the link unavailable so subsequent transfers fast-fail until the caller reconnects.
+TEST_F(AdxlEngineUTest, TestLinkUnavailableAfterSyncTransferFailure) {
   AdxlEngine engine1;
-  std::map<AscendString, AscendString> options1;
-  options1[OPTION_AUTO_CONNECT] = "1";
-  EXPECT_EQ(engine1.Initialize("127.0.0.1:28100", options1), SUCCESS);
-  llm::AutoCommResRuntimeMock::SetDevice(1);
   AdxlEngine engine2;
-  std::map<AscendString, AscendString> options2;
-  EXPECT_EQ(engine2.Initialize("127.0.0.1:28101", options2), SUCCESS);
-  Int32MemPair mem;
-  RegisterInt32Mem(engine1, &mem.src, mem.handle1);
-  RegisterInt32Mem(engine2, &mem.dst, mem.handle2);
+  auto mem = SetupInt32ConnectedEngines(engine1, engine2);
+  TransferOpDesc desc = MakeInt32TransferDesc(mem.src, mem.dst);
+
+  // Force a sync transfer timeout -> link is marked unavailable.
+  SyncTransferFailMock fail_mock;
+  llm::AclRuntimeStub::Install(&fail_mock);
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", READ, {desc}), TIMEOUT);
+  llm::AclRuntimeStub::UnInstall(&fail_mock);
+
+  // Even though the underlying transfer would now succeed, the link stays unavailable and fast-fails.
+  TransferReq req = nullptr;
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", READ, {desc}), FAILED);
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:28101", READ, {desc}, {}, req), FAILED);
+
+  // Recovery requires an explicit Disconnect + Connect.
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:28101"), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:28101"), SUCCESS);
+  mem.src = 1;
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", READ, {desc}), SUCCESS);
+  EXPECT_EQ(mem.src, 2);
+
+  CleanupEngine(engine1, engine2, mem.handle1, mem.handle2);
+}
+
+// A transfer accepted by TransferAsync but failing later (detected in GetTransferStatus) also marks the link
+// unavailable; other in-flight requests on that link then fast-fail.
+TEST_F(AdxlEngineUTest, TestLinkUnavailableAfterAsyncCompletionFailure) {
+  AdxlEngine engine1;
+  AdxlEngine engine2;
+  auto mem = SetupInt32ConnectedEngines(engine1, engine2);
+  TransferOpDesc desc = MakeInt32TransferDesc(mem.src, mem.dst);
+
+  TransferReq req1 = nullptr;
+  TransferReq req2 = nullptr;
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:28101", WRITE, {desc}, {}, req1), SUCCESS);
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:28101", WRITE, {desc}, {}, req2), SUCCESS);
+
+  // req1 fails at completion -> marks the link unavailable.
+  TransferStatus status = TransferStatus::WAITING;
+  TransferAsyncSteamRuntimeMocak stream_fail_mock;
+  llm::AclRuntimeStub::Install(&stream_fail_mock);
+  EXPECT_EQ(engine1.GetTransferStatus(req1, status), FAILED);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+  llm::AclRuntimeStub::UnInstall(&stream_fail_mock);
+
+  // req2 is in-flight on the now-unavailable link, so its status query fast-fails.
+  status = TransferStatus::WAITING;
+  EXPECT_EQ(engine1.GetTransferStatus(req2, status), FAILED);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+
+  // New transfers fast-fail until reconnect.
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", WRITE, {desc}), FAILED);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:28101"), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:28101"), SUCCESS);
+  mem.src = 1;
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", WRITE, {desc}), SUCCESS);
+  EXPECT_EQ(mem.dst, 1);
+
+  CleanupEngine(engine1, engine2, mem.handle1, mem.handle2);
+}
+
+// With auto-connect enabled the circuit breaker is disabled: a transfer failure must not permanently brick the
+// link, and the existing disconnect-on-error + reconnect behavior keeps working.
+TEST_F(AdxlEngineUTest, TestAutoConnectNotBrickedByTransferFailure) {
+  AdxlEngine engine1;
+  AdxlEngine engine2;
+  Int32MemPair mem = SetupAutoConnectInt32Engines(engine1, engine2);
+  TransferOpDesc desc = MakeInt32TransferDesc(mem.src, mem.dst);
+
+  // A failure under auto-connect must not mark the link unavailable.
+  SyncTransferFailMock fail_mock;
+  llm::AclRuntimeStub::Install(&fail_mock);
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", READ, {desc}), TIMEOUT);
+  llm::AclRuntimeStub::UnInstall(&fail_mock);
+
+  // The next transfer auto-reconnects and succeeds (not fast-failed).
+  mem.src = 1;
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", READ, {desc}), SUCCESS);
+  EXPECT_EQ(mem.src, 2);
+
+  engine1.Disconnect("127.0.0.1:28101");
+  EXPECT_EQ(engine1.DeregisterMem(mem.handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(mem.handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+TEST_F(AdxlEngineUTest, TestAdxlEngineAutoConnectEnabled) {
+  AdxlEngine engine1;
+  AdxlEngine engine2;
+  Int32MemPair mem = SetupAutoConnectInt32Engines(engine1, engine2);
   TransferOpDesc desc = MakeInt32TransferDesc(mem.src, mem.dst);
   EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", READ, {desc}), SUCCESS);
   EXPECT_EQ(mem.src, 2);
