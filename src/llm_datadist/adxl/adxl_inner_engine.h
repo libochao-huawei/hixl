@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -76,6 +76,13 @@ class AdxlInnerEngine {
                                uint64_t &npu_pool_size);
   Status ParseAutoConnectConfig(const std::map<AscendString, AscendString> &options);
   Status DisconnectOnError(const std::string &remote_engine, int32_t timeout_in_millis);
+  // Circuit breaker is only active in plain mode (no auto-connect and no channel pool); in those modes the
+  // existing reconnect-on-error behavior is kept unchanged.
+  bool IsBreakerMode() const {
+    return !auto_connect_ && !user_config_channel_pool_;
+  }
+  // Mark the link unavailable when a transport-level failure (including sync timeout) trips the breaker.
+  void MarkUnavailableOnError(const ChannelPtr &channel, Status ret) const;
 
   std::string local_engine_;
   ChannelManager channel_manager_;
