@@ -317,10 +317,7 @@ Status HixlCSClient::InitDeviceResource(const EndpointDesc &ep) {
                       "[HixlClient] TransferPool Initialize failed. devId=%d", device_id_);
 
   // 提前加载 kernel，避免传输时引入耗时
-  {
-    std::lock_guard<std::mutex> lock(device_mu_);
-    HIXL_CHK_STATUS_RET(EnsureDeviceKernelLoadedLocked(), "[HixlClient] EnsureDeviceKernelLoadedLocked failed");
-  }
+  HIXL_CHK_STATUS_RET(EnsureDeviceKernelLoadedLocked(), "[HixlClient] EnsureDeviceKernelLoadedLocked failed");
   return SUCCESS;
 }
 
@@ -423,9 +420,8 @@ Status HixlCSClient::RegMem(const char *mem_tag, const CommMem *mem, MemHandle *
   return SUCCESS;
 }
 
-// 获取列表中有效的flag，考虑多线程调用，加上线程锁
+// 获取列表中有效的flag。HixlCSClient 对外接口由 mutex_ 串行化。
 int32_t HixlCSClient::AcquireFlagIndex() {
-  std::lock_guard<std::mutex> lock(indices_mutex_);
   if (top_index_ == 0U) {
     return -1;
   }
@@ -435,7 +431,6 @@ int32_t HixlCSClient::AcquireFlagIndex() {
 
 // 释放flag索引
 void HixlCSClient::ReleaseFlagIndex(int32_t flag_index) {
-  std::lock_guard<std::mutex> lock(indices_mutex_);
   if (top_index_ < kFlagQueueSize) {
     available_indices_[top_index_] = flag_index;
     flag_queue_[flag_index] = kFlagResetValue;  // 将flag重置为0
@@ -652,7 +647,6 @@ Status HixlCSClient::ReleaseDevCompleteHandle(DeviceCompleteHandle *handle) {
 }
 
 Status HixlCSClient::AcquireSharedSlot(std::shared_ptr<TransferPool::SlotHandle> &slot_out) {
-  std::lock_guard<std::mutex> lock(active_slot_mu_);
   if (active_slot_ != nullptr && active_slot_.use_count() > 0) {
     const long ref_before = active_slot_.use_count();
     slot_out = active_slot_;
@@ -675,7 +669,6 @@ Status HixlCSClient::AcquireSharedSlot(std::shared_ptr<TransferPool::SlotHandle>
 }
 
 void HixlCSClient::ReleaseSharedSlotRef(std::shared_ptr<TransferPool::SlotHandle> &slot_ref) {
-  std::lock_guard<std::mutex> lock(active_slot_mu_);
   if (slot_ref == nullptr) {
     return;
   }
@@ -701,7 +694,6 @@ void HixlCSClient::ReleaseSharedSlotRef(std::shared_ptr<TransferPool::SlotHandle
 }
 
 void HixlCSClient::AbortSharedSlotAndReset() {
-  std::lock_guard<std::mutex> lock(active_slot_mu_);
   if (active_slot_ != nullptr) {
     auto *pool = TransferPool::GetInstance(active_slot_->device_id);
     if (pool != nullptr) {
@@ -877,9 +869,6 @@ Status HixlCSClient::BatchTransferDeviceAsync(bool is_get, uint32_t list_num, co
   void *handle_ptr = nullptr;
   HIXL_CHK_STATUS_RET(ValidateDeviceInputs(list_num, desc_list, handle_ptr), "ValidateDeviceInputs failed");
 
-  // Serialize the entire device transfer lifecycle to prevent concurrent threads from
-  // sharing the same stream or triggering Abort on it.
-  std::lock_guard<std::mutex> launch_lock(device_launch_mu_);
   std::shared_ptr<TransferPool::SlotHandle> slot;
   HIXL_CHK_STATUS_RET(AcquireSharedSlot(slot), "[HixlClient] AcquireSharedSlot failed");
 
@@ -937,9 +926,6 @@ Status HixlCSClient::BatchTransferDeviceSync(bool is_get, uint32_t list_num, con
   void *handle_ptr = nullptr;
   HIXL_CHK_STATUS_RET(ValidateDeviceInputs(list_num, desc_list, handle_ptr), "ValidateDeviceInputs failed");
 
-  // Serialize the entire device transfer lifecycle to prevent concurrent threads from
-  // sharing the same stream or triggering Abort on it.
-  std::lock_guard<std::mutex> launch_lock(device_launch_mu_);
   std::shared_ptr<TransferPool::SlotHandle> slot;
   HIXL_CHK_STATUS_RET(AcquireSharedSlot(slot), "[HixlClient] AcquireSharedSlot failed");
   HIXL_CHECK_NOTNULL(slot->notify, "[HixlClient] slot->notify is null");
@@ -1252,7 +1238,6 @@ Status HixlCSClient::GetRemoteMemLocked(uint32_t timeout_ms, CommMem **remote_me
 
   // 提前初始化 remote flag，避免传输时引入耗时
   if (device_id_ >= 0) {
-    std::lock_guard<std::mutex> lock(device_mu_);
     HIXL_CHK_STATUS_RET(EnsureDeviceRemoteFlagInitedLocked(), "[HixlClient] EnsureDeviceRemoteFlagInitedLocked failed");
   }
   return SUCCESS;
@@ -1357,17 +1342,13 @@ Status HixlCSClient::ClearRemoteMemInfo() {
   remote_mems_out_.clear();
   remote_tag_ptrs_.clear();
   remote_tag_storage_.clear();
-  {
-    std::lock_guard<std::mutex> lk(device_mu_);
-    device_remote_flag_inited_ = false;
-    device_remote_flag_addr_ = nullptr;
-    device_remote_flag_size_ = 0ULL;
-  }
+  device_remote_flag_inited_ = false;
+  device_remote_flag_addr_ = nullptr;
+  device_remote_flag_size_ = 0ULL;
   return SUCCESS;
 }
 
 void HixlCSClient::ReleaseLegacyHandlesLocked() {
-  std::lock_guard<std::mutex> lk(indices_mutex_);
   uint32_t live_cnt = 0U;
   for (size_t i = 0U; i < kFlagQueueSize; ++i) {
     if (live_handles_[i] != nullptr) {
