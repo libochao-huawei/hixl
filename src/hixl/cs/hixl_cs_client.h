@@ -132,6 +132,7 @@ class HixlCSClient {
   void ReleaseDeviceResourcesLocked();
   Status AcquireSharedSlot(std::shared_ptr<TransferPool::SlotHandle> &slot_out);
   void ReleaseSharedSlotRef(std::shared_ptr<TransferPool::SlotHandle> &slot_ref);
+  void AbortSharedSlotAndReset(std::shared_ptr<TransferPool::SlotHandle> &slot_ref);
   void CleanupActiveSlot();
   Status AllocateHostFlag(void *&host_flag) const;
   Status AllocateDeviceDescBuf(DeviceCompleteHandle &handle, uint32_t total_list_num,
@@ -184,7 +185,7 @@ class HixlCSClient {
   std::vector<uint64_t> slot_notify_addrs_{};
   uint32_t notify_len_{0U};
   std::unordered_set<DeviceCompleteHandle *> pending_device_handles_{};
-  // Active slot shared by concurrent transfers - reference counted
+  // Active slot shared by pending transfers on the same link; the link itself is serialized.
   std::shared_ptr<TransferPool::SlotHandle> active_slot_;
   std::mutex active_slot_mu_;
   // Mutex to protect LaunchDeviceKernel + memcpy/sync serialization

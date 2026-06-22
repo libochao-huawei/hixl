@@ -23,12 +23,15 @@ class ClientHandlerConfigHelper {
  public:
   static std::string BuildGlobalResourceConfig(const HandlerCreateArgs &args) {
     // force return "", default json construction will dump to "null" which not as expect
-    if (!args.qos.has_value()) {
+    if (!args.qos.has_value() && !args.resource_limit.has_value()) {
       return "";
     }
     nlohmann::json json;
     if (args.qos.has_value()) {
       json["comm_resource_config.qos"] = args.qos.value();
+    }
+    if (args.resource_limit.has_value()) {
+      json["comm_resource_config.resource_limit"] = args.resource_limit.value();
     }
     return json.dump();
   }

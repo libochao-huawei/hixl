@@ -152,6 +152,18 @@ TEST_F(TransferPoolTest, AcquireReturnsDevConstOne) {
   pool->Release(handle);
 }
 
+TEST_F(TransferPoolTest, AcquireReturnsDefaultAndNotifyStreams) {
+  auto *pool = TransferPool::GetInstance(kTransferPoolUtDevId);
+  ASSERT_NE(pool, nullptr);
+  ASSERT_EQ(pool->Initialize(1U), SUCCESS);
+  TransferPool::SlotHandle handle{};
+  ASSERT_EQ(pool->Acquire(&handle), SUCCESS);
+  EXPECT_NE(handle.stream, nullptr);
+  EXPECT_NE(handle.notify_stream, nullptr);
+  EXPECT_NE(handle.stream, handle.notify_stream);
+  pool->Release(handle);
+}
+
 TEST_F(TransferPoolTest, SlotHandleHasDevConstOneField) {
   TransferPool::SlotHandle handle{};
   handle.dev_const_one = nullptr;
