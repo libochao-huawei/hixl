@@ -79,6 +79,9 @@ class TransferPool {
   Status EnsureThreadLocked(Slot &slot) const;
   void DestroySlotLocked(Slot &slot) const;
 
+  void AbortSlotStreamsLocked(Slot &slot) const;
+  void DestroyAbortedSlotLocked(Slot &slot) const;
+  void ReinitAbortedSlotLocked(Slot &slot, uint32_t slot_index);
   void AbortSlotByIndexLocked(uint32_t slot_index);
 
   static void FillHandleFromSlot(int32_t device_id, uint32_t index, const Slot &slot, SlotHandle *handle);

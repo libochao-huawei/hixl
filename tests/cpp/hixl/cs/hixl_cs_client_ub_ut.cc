@@ -361,13 +361,13 @@ TEST_F(HixlCSClientDeviceFixture, BatchPutDeviceIndependentHostFlags) {
   setenv("HIXL_UT_DEVICE_FLAG_HACK", "1", 1);
   HixlOneSideOpDesc desc = SetupBatchTransfer(false);
 
-  MockAclRuntimeStub mock_acl;
-  llm::AclRuntimeStub::Install(&mock_acl);
-  EXPECT_CALL(mock_acl, aclrtWaitAndResetNotify(testing::_, testing::_, testing::_))
+  MockAclRuntimeStub stub;
+  llm::AclRuntimeStub::Install(&stub);
+  EXPECT_CALL(stub, aclrtWaitAndResetNotify(testing::_, testing::_, testing::_))
       .WillRepeatedly(testing::Return(ACL_SUCCESS));
-  EXPECT_CALL(mock_acl, aclrtMemcpyAsync(testing::_, testing::_, testing::_, testing::_, testing::_, testing::_))
+  EXPECT_CALL(stub, aclrtMemcpyAsync(testing::_, testing::_, testing::_, testing::_, testing::_, testing::_))
       .WillRepeatedly(testing::Return(ACL_SUCCESS));
-  EXPECT_CALL(mock_acl, aclrtSynchronizeStreamWithTimeout(testing::_, kDefaultStreamSyncTimeoutMsForTest))
+  EXPECT_CALL(stub, aclrtSynchronizeStreamWithTimeout(testing::_, kDefaultStreamSyncTimeoutMsForTest))
       .WillRepeatedly(testing::Return(ACL_ERROR_NONE));
 
   void *qh1 = nullptr;
@@ -390,7 +390,7 @@ TEST_F(HixlCSClientDeviceFixture, BatchPutDeviceIndependentHostFlags) {
   (void)PollUntilCompleted(cli_, qh1, &st);
   (void)PollUntilCompleted(cli_, qh2, &st);
 
-  llm::AclRuntimeStub::UnInstall(&mock_acl);
+  llm::AclRuntimeStub::UnInstall(&stub);
   unsetenv("HIXL_UT_DEVICE_FLAG_HACK");
 }
 
@@ -564,29 +564,22 @@ TEST_F(HixlCSClientSlotReuseFixture, HostFlagInDeviceCompleteHandle) {
   EXPECT_EQ(handle.host_flag, test_flag);
 }
 
-TEST_F(HixlCSClientSlotReuseFixture, DeviceLaunchMutexExists) {
-  // Verify the mutex exists and can be locked
-  std::lock_guard<std::mutex> lock(cli_.device_launch_mu_);
-  // If we can acquire the lock, the mutex works correctly
-  SUCCEED();
-}
-
 TEST_F(HixlCSClientSlotReuseFixture, AsyncTransferWithEnvHackAllocatesHostFlag) {
   setenv("HIXL_UT_DEVICE_FLAG_HACK", "1", 1);
   HixlOneSideOpDesc desc = SetupBatchTransfer(false);
 
-  MockAclRuntimeStub mock_acl;
-  llm::AclRuntimeStub::Install(&mock_acl);
-  EXPECT_CALL(mock_acl, aclrtWaitAndResetNotify(testing::_, testing::_, testing::_))
+  MockAclRuntimeStub mock;
+  llm::AclRuntimeStub::Install(&mock);
+  EXPECT_CALL(mock, aclrtWaitAndResetNotify(testing::_, testing::_, testing::_))
       .WillRepeatedly(testing::Return(ACL_SUCCESS));
-  EXPECT_CALL(mock_acl, aclrtMemcpyAsync(testing::_, testing::_, testing::_, testing::_, testing::_, testing::_))
+  EXPECT_CALL(mock, aclrtMemcpyAsync(testing::_, testing::_, testing::_, testing::_, testing::_, testing::_))
       .WillRepeatedly(testing::Return(ACL_SUCCESS));
-  EXPECT_CALL(mock_acl, aclrtSynchronizeStreamWithTimeout(testing::_, kDefaultStreamSyncTimeoutMsForTest))
+  EXPECT_CALL(mock, aclrtSynchronizeStreamWithTimeout(testing::_, kDefaultStreamSyncTimeoutMsForTest))
       .WillRepeatedly(testing::Return(ACL_ERROR_NONE));
 
   void *qh = nullptr;
   const Status ret = cli_.BatchTransferAsync(false, 1, &desc, &qh);
-  llm::AclRuntimeStub::UnInstall(&mock_acl);
+  llm::AclRuntimeStub::UnInstall(&mock);
 
   if (ret != SUCCESS) {
     GTEST_SKIP() << "BatchTransfer failed in UT env (TransferPool not initialized)";
