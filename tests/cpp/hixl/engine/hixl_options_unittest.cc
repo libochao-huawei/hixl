@@ -9,7 +9,10 @@
  */
 
 #include <cstdlib>
+#include <string>
+#include <vector>
 #include <gtest/gtest.h>
+#include "cs/transfer_pool.h"
 #include "engine/hixl_options.h"
 #include "hixl/hixl_types.h"
 #include "adxl/adxl_types.h"
@@ -281,6 +284,50 @@ TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigListenPortString) {
   EXPECT_EQ(*grc.comm_resource_config.listen_port, 26300U);
 }
 
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigMaxChannelConcurrency) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.max_channel_concurrency":256})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  auto grc = *result.GlobalResourceCfg();
+  ASSERT_TRUE(grc.comm_resource_config.max_channel_concurrency.has_value());
+  EXPECT_EQ(*grc.comm_resource_config.max_channel_concurrency, 256U);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigMaxChannelConcurrencyString) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.max_channel_concurrency":"128"})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  auto grc = *result.GlobalResourceCfg();
+  ASSERT_TRUE(grc.comm_resource_config.max_channel_concurrency.has_value());
+  EXPECT_EQ(*grc.comm_resource_config.max_channel_concurrency, 128U);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigMaxChannelConcurrencyMin) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.max_channel_concurrency":1})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  ASSERT_TRUE(result.GlobalResourceCfg()->comm_resource_config.max_channel_concurrency.has_value());
+  EXPECT_EQ(*result.GlobalResourceCfg()->comm_resource_config.max_channel_concurrency, 1U);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigMaxChannelConcurrencyMax) {
+  std::map<AscendString, AscendString> options;
+  const std::string json_str =
+      R"({"comm_resource_config.max_channel_concurrency":)" + std::to_string(TransferPool::kMaxPoolSize) + "}";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = json_str.c_str();
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  ASSERT_TRUE(result.GlobalResourceCfg()->comm_resource_config.max_channel_concurrency.has_value());
+  EXPECT_EQ(*result.GlobalResourceCfg()->comm_resource_config.max_channel_concurrency, TransferPool::kMaxPoolSize);
+}
+
 TEST_F(HixlOptionsUTest, GetProtocolDescReturnsEmptyWhenNotConfigured) {
   std::map<AscendString, AscendString> options;
   HixlOptions result;
@@ -321,6 +368,21 @@ TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigListenPortTypeInvalid) {
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.listen_port":"invalid"})";
   HixlOptions result;
   EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigMaxChannelConcurrencyInvalid) {
+  const std::string out_of_range =
+      R"({"comm_resource_config.max_channel_concurrency":)" + std::to_string(TransferPool::kMaxPoolSize + 1U) + "}";
+  const std::vector<std::string> invalid_configs = {R"({"comm_resource_config.max_channel_concurrency":0})",
+                                                    out_of_range,
+                                                    R"({"comm_resource_config.max_channel_concurrency":-1})",
+                                                    R"({"comm_resource_config.max_channel_concurrency":"invalid"})"};
+  for (const std::string &config_str : invalid_configs) {
+    std::map<AscendString, AscendString> options;
+    options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = config_str.c_str();
+    HixlOptions result;
+    EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID) << "config_str=" << config_str;
+  }
 }
 
 TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigInvalidJson) {
