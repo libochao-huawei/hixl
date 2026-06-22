@@ -38,7 +38,7 @@ bool HixlEngine::IsInitialized() const {
   return is_initialized_.load(std::memory_order::memory_order_relaxed);
 }
 
-Status HixlEngine::InitServer(std::optional<uint32_t> listen_port) {
+Status HixlEngine::InitServer(std::optional<uint32_t> listen_port, std::optional<uint32_t> resource_limit) {
   std::string ip;
   int32_t port = 0;
   HIXL_CHK_STATUS_RET(ParseListenInfo(local_engine_, ip, port),
@@ -47,7 +47,7 @@ Status HixlEngine::InitServer(std::optional<uint32_t> listen_port) {
                       "ipv6 should be '[host_ip]:host_port' or '[host_ip]' "
                       "current local_engine:%s",
                       local_engine_.c_str());
-  HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_, listen_port),
+  HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_, listen_port, resource_limit),
                       "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s", local_engine_.c_str());
   return SUCCESS;
 }
@@ -72,9 +72,11 @@ Status HixlEngine::Initialize(const HixlOptions &options) {
   if (global_resource_config.has_value()) {
     listen_port = global_resource_config->comm_resource_config.listen_port;
     qos_ = global_resource_config->comm_resource_config.qos;
+    resource_limit_ = global_resource_config->comm_resource_config.resource_limit;
   } else {
     listen_port.reset();
     qos_.reset();
+    resource_limit_.reset();
   }
   int32_t device_id = -1;
   HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
@@ -86,7 +88,7 @@ Status HixlEngine::Initialize(const HixlOptions &options) {
                          }));
   {
     hixl::TemporaryRtContext with_context(aclrt_context_);
-    HIXL_CHK_STATUS_RET(InitServer(listen_port),
+    HIXL_CHK_STATUS_RET(InitServer(listen_port, resource_limit_),
                         "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
                         local_engine_.c_str(), local_comm_res.c_str());
   }
@@ -386,6 +388,7 @@ void HixlEngine::BuildClientConfig(const AscendString &remote_engine, ClientConf
   config.rdma_sl = rdma_service_level_;
   config.timeout_ms = static_cast<uint32_t>(timeout_in_millis);
   config.qos = qos_;
+  config.resource_limit = resource_limit_;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto &pair : mem_map_) {

@@ -28,6 +28,7 @@
 #include "engine/direct_client_handler.h"
 #include "engine/ub_client_handler.h"
 #undef private
+#include "engine/client_handler_config_helper.h"
 #include "engine/endpoint_generator.h"
 #include "engine/endpoint_matcher.h"
 #include "common/hixl_inner_types.h"
@@ -1451,6 +1452,27 @@ TEST_F(HixlClientUTest, EndpointMatcherIgnoresIntraRoceEnv) {
   EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::UB);
   ASSERT_EQ(matched_pairs.size(), 1U);
   EXPECT_EQ(matched_pairs[0].type, CommType::COMM_TYPE_UB_D2D);
+}
+
+TEST_F(HixlClientUTest, BuildGlobalResourceConfigWithResourceLimit) {
+  HandlerCreateArgs args{};
+  args.qos = 7;
+  args.resource_limit = 64U;
+
+  const std::string config = ClientHandlerConfigHelper::BuildGlobalResourceConfig(args);
+  const auto json = nlohmann::json::parse(config);
+  EXPECT_EQ(json.at("comm_resource_config.qos").get<int32_t>(), 7);
+  EXPECT_EQ(json.at("comm_resource_config.resource_limit").get<uint32_t>(), 64U);
+}
+
+TEST_F(HixlClientUTest, BuildGlobalResourceConfigWithResourceLimitOnly) {
+  HandlerCreateArgs args{};
+  args.resource_limit = 128U;
+
+  const std::string config = ClientHandlerConfigHelper::BuildGlobalResourceConfig(args);
+  const auto json = nlohmann::json::parse(config);
+  EXPECT_FALSE(json.contains("comm_resource_config.qos"));
+  EXPECT_EQ(json.at("comm_resource_config.resource_limit").get<uint32_t>(), 128U);
 }
 
 TEST_F(HixlClientUTest, CheckAliveWritesControlSocket) {

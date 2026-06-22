@@ -10,11 +10,23 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstring>
+#include <deque>
+#include <functional>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <queue>
+#include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include <arpa/inet.h>
@@ -25,7 +37,9 @@
 #include <unistd.h>
 
 #include "hixl/hixl_types.h"
+#define private public
 #include "hixl_cs_client.h"
+#undef private
 #include "common/ctrl_msg.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "engine/test_mmpa_utils.h"
@@ -575,6 +589,21 @@ static EndpointDesc MakeIdEpEx(uint32_t id, CommProtocol protocol) {
   ep.commAddr.type = COMM_ADDR_TYPE_ID;
   ep.commAddr.id = id;
   return ep;
+}
+
+static EndpointDesc MakeHostEp(uint32_t id) {
+  EndpointDesc ep = MakeIdEp(id);
+  ep.loc.locType = ENDPOINT_LOC_TYPE_HOST;
+  return ep;
+}
+
+static HixlClientDesc MakeClientDesc(uint16_t port, EndpointDesc *src, EndpointDesc *dst) {
+  HixlClientDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = port;
+  desc.local_endpoint = src;
+  desc.remote_endpoint = dst;
+  return desc;
 }
 
 class HixlCSClientUT : public ::testing::Test {
@@ -1248,15 +1277,64 @@ TEST_F(HixlCSClientUT, ParseConfigQosInValidMax) {
 
 TEST_F(HixlCSClientUT, ParseConfigQosInValidPartString) {
   port_ = kPort;
-  HixlClientDesc desc{};
-  desc.server_ip = "127.0.0.1";
-  desc.server_port = port_;
-  desc.local_endpoint = &src_;
-  desc.remote_endpoint = &dst_;
+  HixlClientDesc desc = MakeClientDesc(port_, &src_, &dst_);
   HixlClientConfig config{};
   config.global_resource_config = R"({"comm_resource_config.qos": "invalid"})";
   HixlClientHandle handle = reinterpret_cast<HixlClientHandle>(&client_);
   EXPECT_EQ(HixlCSClientCreate(&desc, &config, &handle), HIXL_PARAM_INVALID);
   EXPECT_EQ(handle, nullptr);
+}
+
+TEST_F(HixlCSClientUT, ParseConfigResourceLimitDefault) {
+  port_ = kPort;
+  EndpointDesc host_src = MakeHostEp(kSrcEpId);
+  EndpointDesc host_dst = MakeHostEp(kDstEpId);
+  HixlClientDesc desc = MakeClientDesc(port_, &host_src, &host_dst);
+  HixlClientConfig config{};
+  EXPECT_EQ(client_.Create(&desc, &config), SUCCESS);
+  EXPECT_FALSE(client_.global_config_.ResourceLimit().has_value());
+  client_.Destroy();
+}
+
+TEST_F(HixlCSClientUT, ParseConfigResourceLimitMin) {
+  port_ = kPort;
+  EndpointDesc host_src = MakeHostEp(kSrcEpId);
+  EndpointDesc host_dst = MakeHostEp(kDstEpId);
+  HixlClientDesc desc = MakeClientDesc(port_, &host_src, &host_dst);
+  HixlClientConfig config{};
+  config.global_resource_config = R"({"comm_resource_config.resource_limit": 1})";
+  EXPECT_EQ(client_.Create(&desc, &config), SUCCESS);
+  EXPECT_TRUE(client_.global_config_.ResourceLimit().has_value());
+  EXPECT_EQ(client_.global_config_.ResourceLimit().value(), 1U);
+  client_.Destroy();
+}
+
+TEST_F(HixlCSClientUT, ParseConfigResourceLimitMax) {
+  port_ = kPort;
+  EndpointDesc host_src = MakeHostEp(kSrcEpId);
+  EndpointDesc host_dst = MakeHostEp(kDstEpId);
+  HixlClientDesc desc = MakeClientDesc(port_, &host_src, &host_dst);
+  HixlClientConfig config{};
+  config.global_resource_config = R"({"comm_resource_config.resource_limit": 4096})";
+  EXPECT_EQ(client_.Create(&desc, &config), SUCCESS);
+  EXPECT_TRUE(client_.global_config_.ResourceLimit().has_value());
+  EXPECT_EQ(client_.global_config_.ResourceLimit().value(), 4096U);
+  client_.Destroy();
+}
+
+TEST_F(HixlCSClientUT, ParseConfigResourceLimitInvalid) {
+  port_ = kPort;
+  EndpointDesc host_src = MakeHostEp(kSrcEpId);
+  EndpointDesc host_dst = MakeHostEp(kDstEpId);
+  HixlClientDesc desc = MakeClientDesc(port_, &host_src, &host_dst);
+  for (const char *config_str :
+       {R"({"comm_resource_config.resource_limit":0})", R"({"comm_resource_config.resource_limit":4097})",
+        R"({"comm_resource_config.resource_limit":-1})", R"({"comm_resource_config.resource_limit":"invalid"})"}) {
+    HixlClientConfig config{};
+    config.global_resource_config = config_str;
+    HixlClientHandle handle = reinterpret_cast<HixlClientHandle>(&client_);
+    EXPECT_EQ(HixlCSClientCreate(&desc, &config, &handle), HIXL_PARAM_INVALID) << "config_str=" << config_str;
+    EXPECT_EQ(handle, nullptr) << "config_str=" << config_str;
+  }
 }
 }  // namespace hixl
