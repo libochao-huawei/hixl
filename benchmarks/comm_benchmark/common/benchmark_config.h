@@ -58,6 +58,8 @@ struct BenchmarkConfig {
   uint32_t tcp_client_count = 1U;
   std::string transfer_op = "read";
   std::string transport = "hccs";
+  /// RoCE NIC IP address, used to build LocalCommRes when transport=roce.
+  std::string roce_ip;
   /// SOC class for HCCS / transport hints: auto (ACL probe), a2 (910B-class), a3 (910 excluding 910B), a5 (Ascend950,
   /// no HCCS).
   std::string soc_variant = "auto";
