@@ -474,7 +474,7 @@ Status AdxlInnerEngine::GetTransferType(const ChannelPtr &channel, TransferOp op
     need_buffer = need_buffer || ((local_segment == nullptr) || (remote_segment == nullptr));
 
     TransferType cur_type = DetermineTransferType(operation, local_mem_type, remote_mem_type);
-    LLMLOGD(
+    LLMLOGI(
       "Judge transfer type for local_addr:%lu, remote_addr:%lu, len:%lu, local_segment is %s, remote_segment is %s, "
       "transfer type:%s.",
       op_desc.local_addr, op_desc.remote_addr, op_desc.len, local_segment ? "found" : "not found",
