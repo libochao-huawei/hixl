@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 # ----------------------------------------------------------------------------
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
@@ -8,8 +10,19 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
-add_subdirectory(llm_datadist)
-add_subdirectory(llm_wrapper)
-add_subdirectory(metadef_wrapper)
-add_subdirectory(hixl_wrapper)
-add_subdirectory(hixl_engine)
+from setuptools import setup, Distribution
+
+class BinaryDistribution(Distribution):
+    """Distribution that always has a .so to install."""
+    def has_ext_modules(self):
+        return True
+
+setup(
+    name='hixl_engine',
+    version='0.0.1',
+    description='hixl engine api',
+    packages=[],               # ← 没有 Python 包
+    ext_modules=[],            # ← .so 由 CMake 外部提供
+    distclass=BinaryDistribution,
+    package_data={'': ['*.so']},  # ← 把 wheel1/ 里的 .so 当 data 打入
+)
