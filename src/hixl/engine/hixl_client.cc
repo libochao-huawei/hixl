@@ -43,29 +43,22 @@ Status ParseNotifyAckResult(const std::string &json_str) {
   }
   return result;
 }
+
 }  // namespace
 
 Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_list, uint32_t timeout_ms) {
-  if (local_endpoint_list.empty()) {
-    HIXL_LOGE(PARAM_INVALID, "The input local_endpoint_list is empty");
-    return PARAM_INVALID;
-  }
+  std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHK_BOOL_RET_STATUS(!local_endpoint_list.empty(), PARAM_INVALID, "The input local_endpoint_list is empty");
   std::vector<EndpointConfig> remote_endpoint_list;
   CtrlMsgPlugin::Initialize();
   HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip_, server_port_, ctrl_socket_, timeout_ms),
                       "Connect socket failed");
-  HIXL_DISMISSABLE_GUARD(close_ctrl_socket, [this] {
-    std::lock_guard<std::mutex> lock(ctrl_socket_mutex_);
-    CloseCtrlSocketLocked();
-  });
+  HIXL_DISMISSABLE_GUARD(close_ctrl_socket, [this] { CloseCtrlSocket(); });
   HIXL_CHK_STATUS_RET(SendEndpointInfoReq(ctrl_socket_, CtrlMsgType::kGetEndpointInfoReq),
                       "HixlClient send GetEndpointInfoReq failed, socket:%d", ctrl_socket_);
   HIXL_CHK_STATUS_RET(RecvEndpointInfoResp(ctrl_socket_, remote_endpoint_list, timeout_ms),
                       "HixlClient receive GetEndpointInfoResp failed, socket:%d", ctrl_socket_);
-  if (remote_endpoint_list.empty()) {
-    HIXL_LOGE(FAILED, "HixlClient received empty remote_endpoint_list");
-    return FAILED;
-  }
+  HIXL_CHK_BOOL_RET_STATUS(!remote_endpoint_list.empty(), FAILED, "HixlClient received empty remote_endpoint_list");
   std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
   HandlerCreateArgs::HandlerType handler_type;
   HIXL_CHK_STATUS_RET(
@@ -129,6 +122,8 @@ Status HixlClient::RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> 
 }
 
 Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHK_BOOL_RET_STATUS(client_handler_ != nullptr, FAILED, "HixlClient is not initialized");
   for (const auto &mi : mem_info_list) {
     HIXL_CHK_STATUS_RET(client_handler_->RegisterMem(mi));
   }
@@ -136,113 +131,76 @@ Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {
 }
 
 Status HixlClient::Connect(uint32_t timeout_ms) {
-  if (client_handler_ == nullptr) {
-    HIXL_LOGE(FAILED, "HixlClient is not initialized");
-    return FAILED;
-  }
+  std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHK_BOOL_RET_STATUS(client_handler_ != nullptr, FAILED, "HixlClient is not initialized");
+  HIXL_CHK_BOOL_RET_STATUS(!is_finalized_, FAILED, "HixlClient is finalized");
   HIXL_CHK_STATUS_RET(client_handler_->Connect(timeout_ms));
-  std::lock_guard<std::mutex> lock(status_mutex_);
   is_connected_ = true;
   return SUCCESS;
 }
 
 Status HixlClient::TransferSync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
                                 uint32_t timeout_ms) {
-  if (op_descs.empty()) {
-    HIXL_LOGE(PARAM_INVALID, "HixlClient TransferSync failed, op_descs is empty");
-    return PARAM_INVALID;
-  }
-  if (client_handler_ == nullptr) {
-    HIXL_LOGE(FAILED, "HixlClient is not initialized");
-    return FAILED;
-  }
-  {
-    std::lock_guard<std::mutex> lock(status_mutex_);
-    if (!is_connected_) {
-      HIXL_LOGE(NOT_CONNECTED, "HixlClient is not connected");
-      return NOT_CONNECTED;
-    }
-    if (is_finalized_ || finalize_pending_) {
-      HIXL_LOGE(FAILED, "HixlClient TransferSync rejected, client is finalizing or finalized");
-      return FAILED;
-    }
-    batch_cs_sync_inflight_.fetch_add(1, std::memory_order_acq_rel);
-  }
-  HIXL_DISMISSABLE_GUARD(sync_inflight_guard,
-                         ([this]() { batch_cs_sync_inflight_.fetch_sub(1, std::memory_order_acq_rel); }));
+  std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHK_BOOL_RET_STATUS(!op_descs.empty(), PARAM_INVALID, "HixlClient TransferSync failed, op_descs is empty");
+  HIXL_CHK_BOOL_RET_STATUS(client_handler_ != nullptr, FAILED, "HixlClient is not initialized");
+  HIXL_CHK_BOOL_RET_STATUS(is_connected_, NOT_CONNECTED, "HixlClient is not connected");
+  HIXL_CHK_BOOL_RET_STATUS(!is_finalized_, FAILED, "HixlClient TransferSync rejected, client is finalized");
   return client_handler_->TransferSync(op_descs, operation, timeout_ms);
 }
 
 Status HixlClient::TransferAsync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation,
                                  const TransferArgs &, TransferReq &req) {
-  if (op_descs.empty()) {
-    HIXL_LOGE(PARAM_INVALID, "HixlClient TransferAsync failed, op_descs is empty");
-    return PARAM_INVALID;
-  }
-  {
-    std::lock_guard<std::mutex> lock(status_mutex_);
-    if (!is_connected_) {
-      HIXL_LOGE(NOT_CONNECTED, "HixlClient is not connected");
-      return NOT_CONNECTED;
-    }
-  }
-  if (client_handler_ == nullptr) {
-    HIXL_LOGE(FAILED, "HixlClient is not initialized");
-    return FAILED;
-  }
+  std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHK_BOOL_RET_STATUS(!op_descs.empty(), PARAM_INVALID, "HixlClient TransferAsync failed, op_descs is empty");
+  HIXL_CHK_BOOL_RET_STATUS(is_connected_, NOT_CONNECTED, "HixlClient is not connected");
+  HIXL_CHK_BOOL_RET_STATUS(client_handler_ != nullptr, FAILED, "HixlClient is not initialized");
+  HIXL_CHK_BOOL_RET_STATUS(!is_finalized_, FAILED, "HixlClient TransferAsync rejected, client is finalized");
   HIXL_CHK_STATUS_RET(client_handler_->TransferAsync(op_descs, operation, req));
   TransferInfo transfer_info = {HixlProfilingReporter::GetSysCycleTime(), operation, AscendString()};
-  std::lock_guard<std::mutex> lock(req_map_mutex_);
   req_map_[req] = transfer_info;
   return SUCCESS;
 }
 
 Status HixlClient::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
-  if (client_handler_ == nullptr) {
-    HIXL_LOGE(FAILED, "HixlClient is not initialized");
-    status = TransferStatus::FAILED;
-    return FAILED;
-  }
+  std::lock_guard<std::mutex> lock(mutex_);
+  status = TransferStatus::FAILED;
+  HIXL_CHK_BOOL_RET_STATUS(client_handler_ != nullptr, FAILED, "HixlClient is not initialized");
+  HIXL_CHK_BOOL_RET_STATUS(!is_finalized_, FAILED, "HixlClient GetTransferStatus rejected, client is finalized");
   TransferInfo transfer_info{};
-  {
-    std::lock_guard<std::mutex> lock(req_map_mutex_);
-    auto it = req_map_.find(req);
-    if (it == req_map_.end()) {
-      HIXL_LOGE(PARAM_INVALID, "HixlClient GetTransferStatus failed, request not found, req:%p", req);
-      status = TransferStatus::FAILED;
-      return PARAM_INVALID;
-    }
-    transfer_info = it->second;
-  }
+  auto it = req_map_.find(req);
+  HIXL_CHK_BOOL_RET_STATUS(it != req_map_.end(), PARAM_INVALID,
+                           "HixlClient GetTransferStatus failed, request not found, req:%p", req);
+  transfer_info = it->second;
 
   Status ret = client_handler_->GetTransferStatus(req, status);
   if (ret != SUCCESS) {
-    RemoveTransferReq(req);
+    req_map_.erase(req);
     return ret;
   }
   if (status == TransferStatus::COMPLETED) {
     HixlProfType type =
         (transfer_info.op_type == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
     HIXL_API_PROFILING_WITH_TIME(type, transfer_info.start_time);
-    RemoveTransferReq(req);
+    req_map_.erase(req);
   } else if (status == TransferStatus::FAILED) {
-    RemoveTransferReq(req);
+    req_map_.erase(req);
   }
   return SUCCESS;
 }
 
 bool HixlClient::HasTransferReq(const TransferReq &req) {
-  std::lock_guard<std::mutex> lock(req_map_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   return req_map_.find(req) != req_map_.end();
 }
 
 void HixlClient::ClearTransferReqs() {
-  std::lock_guard<std::mutex> lock(req_map_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   req_map_.clear();
 }
 
 void HixlClient::RemoveTransferReq(const TransferReq &req) {
-  std::lock_guard<std::mutex> lock(req_map_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   req_map_.erase(req);
 }
 
@@ -250,13 +208,7 @@ const std::string &HixlClient::GetRemoteEngine() const {
   return remote_engine_;
 }
 
-void HixlClient::WaitBatchCsSyncInflightDrain() {
-  while (batch_cs_sync_inflight_.load(std::memory_order_acquire) != 0) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-}
-
-void HixlClient::CloseCtrlSocketLocked() {
+void HixlClient::CloseCtrlSocket() {
   if (ctrl_socket_ >= 0) {
     HIXL_LOGI("HixlClient close ctrl socket start, socket:%d", ctrl_socket_);
     close(ctrl_socket_);
@@ -266,28 +218,15 @@ void HixlClient::CloseCtrlSocketLocked() {
 }
 
 Status HixlClient::Finalize() {
-  {
-    std::lock_guard<std::mutex> lock(status_mutex_);
-    if (is_finalized_) {
-      return SUCCESS;
-    }
-    finalize_pending_ = true;
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (is_finalized_) {
+    return SUCCESS;
   }
-  WaitBatchCsSyncInflightDrain();
-  {
-    std::lock_guard<std::mutex> lock(status_mutex_);
-    is_finalized_ = true;
-  }
-  ClearTransferReqs();
-  {
-    std::lock_guard<std::mutex> lock(ctrl_socket_mutex_);
-    CloseCtrlSocketLocked();
-  }
+  is_finalized_ = true;
+  req_map_.clear();
+  CloseCtrlSocket();
   Status ret = (client_handler_ != nullptr) ? client_handler_->Finalize() : SUCCESS;
-  {
-    std::lock_guard<std::mutex> lock(status_mutex_);
-    is_connected_ = false;
-  }
+  is_connected_ = false;
   return ret;
 }
 
@@ -331,7 +270,7 @@ Status HixlClient::RecvNotifyAck(int32_t fd, int32_t timeout_ms) const {
 }
 
 Status HixlClient::CheckAlive() {
-  std::lock_guard<std::mutex> lock(ctrl_socket_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   if (ctrl_socket_ < 0) {
     HIXL_LOGE(FAILED, "HixlClient CheckAlive failed, ctrl socket is invalid, fd=%d", ctrl_socket_);
     return FAILED;
@@ -343,7 +282,7 @@ Status HixlClient::CheckAlive() {
   Status ret = CtrlMsgPlugin::Send(ctrl_socket_, &header, sizeof(header), err_no);
   HIXL_CHK_STATUS(ret, "HixlClient CheckAlive send header failed, fd=%d", ctrl_socket_);
   if (ret != SUCCESS && (err_no == EPIPE || err_no == EBADF)) {
-    CloseCtrlSocketLocked();
+    CloseCtrlSocket();
     return FAILED;
   }
 
@@ -352,13 +291,14 @@ Status HixlClient::CheckAlive() {
   ret = CtrlMsgPlugin::Send(ctrl_socket_, &msg_type, sizeof(msg_type), err_no);
   HIXL_CHK_STATUS(ret, "HixlClient CheckAlive send msg_type failed, fd=%d", ctrl_socket_);
   if (ret != SUCCESS && (err_no == EPIPE || err_no == EBADF)) {
-    CloseCtrlSocketLocked();
+    CloseCtrlSocket();
     return FAILED;
   }
   return SUCCESS;
 }
 
 Status HixlClient::SendNotify(const NotifyDesc &notify, int32_t timeout_ms) {
+  std::lock_guard<std::mutex> lock(mutex_);
   NotifyMsg notify_msg{notify.name.GetString(), notify.notify_msg.GetString()};
 
   if (notify_msg.name.size() > kMaxNotifyNameLen) {
@@ -385,7 +325,6 @@ Status HixlClient::SendNotify(const NotifyDesc &notify, int32_t timeout_ms) {
   header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + msg_str.size());
   CtrlMsgType msg_type = CtrlMsgType::kNotify;
 
-  std::lock_guard<std::mutex> lock(ctrl_socket_mutex_);
   if (ctrl_socket_ < 0) {
     HIXL_LOGE(FAILED, "HixlClient SendNotify failed, ctrl socket is invalid, fd=%d", ctrl_socket_);
     return FAILED;
