@@ -96,6 +96,7 @@ class HixlCSClient {
   Status InitNotifyResources(const EndpointDesc &ep);
   Status ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms);
   Status GetRemoteMemLocked(uint32_t timeout_ms, CommMem **remote_mem_list, char ***mem_tag_list, uint32_t *list_num);
+  Status RegMemLocked(const char *mem_tag, const CommMem *mem, MemHandle *mem_handle);
   Status InitFlagQueue() noexcept;
   int32_t AcquireFlagIndex();
   Status ReleaseCompleteHandle(CompleteHandleInfo *query_handle);
@@ -161,8 +162,7 @@ class HixlCSClient {
   static constexpr size_t kFlagQueueSize = 4096;  // 用于初始化队列和内存地址列表
   uint64_t *flag_queue_ = nullptr;
   std::array<uint32_t, kFlagQueueSize> available_indices_{};
-  size_t top_index_ = 0;  // 栈顶指针
-  std::mutex indices_mutex_;
+  size_t top_index_ = 0;                                             // 栈顶指针
   std::array<CompleteHandleInfo *, kFlagQueueSize> live_handles_{};  // 用来记录读写生成的 query_handle
   int32_t socket_ = -1;
   std::map<std::string, CommMem> tag_mem_descs_;
@@ -173,7 +173,6 @@ class HixlCSClient {
   std::vector<CommMem> imported_remote_bufs_;
   std::vector<HixlMemDesc> desc_list_;
   int32_t device_id_{-1};
-  std::mutex device_mu_;
   bool device_remote_flag_inited_{false};
   void *device_remote_flag_addr_{nullptr};
   uint64_t device_remote_flag_size_{0ULL};
@@ -187,9 +186,6 @@ class HixlCSClient {
   std::unordered_set<DeviceCompleteHandle *> pending_device_handles_{};
   // Active slot shared by pending transfers on the same link; the link itself is serialized.
   std::shared_ptr<TransferPool::SlotHandle> active_slot_;
-  std::mutex active_slot_mu_;
-  // Mutex to protect LaunchDeviceKernel + memcpy/sync serialization
-  std::mutex device_launch_mu_;
 };
 }  // namespace hixl
 

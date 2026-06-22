@@ -564,13 +564,6 @@ TEST_F(HixlCSClientSlotReuseFixture, HostFlagInDeviceCompleteHandle) {
   EXPECT_EQ(handle.host_flag, test_flag);
 }
 
-TEST_F(HixlCSClientSlotReuseFixture, DeviceLaunchMutexExists) {
-  // Verify the mutex exists and can be locked
-  std::lock_guard<std::mutex> lock(cli_.device_launch_mu_);
-  // If we can acquire the lock, the mutex works correctly
-  SUCCEED();
-}
-
 TEST_F(HixlCSClientSlotReuseFixture, AsyncTransferWithEnvHackAllocatesHostFlag) {
   setenv("HIXL_UT_DEVICE_FLAG_HACK", "1", 1);
   HixlOneSideOpDesc desc = SetupBatchTransfer(false);
