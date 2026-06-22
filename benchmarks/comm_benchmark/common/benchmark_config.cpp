@@ -700,13 +700,9 @@ std::map<AscendString, AscendString> BenchmarkConfigParser::BuildInitializeOptio
     options[AscendString(OPTION_LOCAL_COMM_RES)] = AscendString("{\"version\":\"1.3\"}");
   }
   if (cfg.transport == "roce") {
-    if (cfg.hixl_init_options.find(OPTION_GLOBAL_RESOURCE_CONFIG) == cfg.hixl_init_options.cend()) {
-      options[AscendString(OPTION_GLOBAL_RESOURCE_CONFIG)] =
-          AscendString("{\"comm_resource_config.protocol_desc\":[\"roce:host\"]}");
-    }
     if (cfg.hixl_init_options.find(OPTION_LOCAL_COMM_RES) == cfg.hixl_init_options.cend()) {
       std::string local_comm_res =
-          "{\"version\":\"1.3\",\"endpoint_list\":["
+          "{\"version\":\"1.3\",\"net_instance_id\":\"default\",\"endpoint_list\":["
           "{\"protocol\":\"roce\",\"comm_id\":\"" +
           cfg.roce_ip + "\",\"placement\":\"host\"}]}";
       options[AscendString(OPTION_LOCAL_COMM_RES)] = AscendString(local_comm_res.c_str());
