@@ -26,6 +26,8 @@ constexpr uint64_t kFlagInitValue = 0ULL;
 constexpr CommEngine kDefaultEngine = CommEngine::COMM_ENGINE_AICPU_TS;
 constexpr uint32_t kDefaultThreadNum = 1U;
 constexpr uint32_t kDefaultNotifyNumPerThread = 0U;
+constexpr uint32_t kStreamPriority = 0U;
+constexpr uint32_t kStreamFlags = ACL_STREAM_FAST_LAUNCH | ACL_STREAM_FAST_SYNC;
 }  // namespace
 
 namespace hixl {
@@ -86,6 +88,7 @@ Status TransferPool::Initialize(uint32_t pool_size) {
     s.in_use = false;
     s.ctx = nullptr;
     s.stream = nullptr;
+    s.notify_stream = nullptr;
     s.thread = 0U;
     s.notify = nullptr;
   }
@@ -206,6 +209,7 @@ void TransferPool::FillHandleFromSlot(int32_t device_id, uint32_t index, const S
   handle->slot_index = index;
   handle->ctx = slot.ctx;
   handle->stream = slot.stream;
+  handle->notify_stream = slot.notify_stream;
   handle->thread = slot.thread;
   handle->notify = slot.notify;
   handle->dev_const_one = nullptr;
@@ -240,6 +244,7 @@ Status TransferPool::InitOneSlotLocked(Slot &slot, uint32_t slot_index) const {
   (void)slot_index;
   HIXL_CHK_STATUS_RET(EnsureContextLocked(slot), "[TransferPool] EnsureContextLocked failed");
   HIXL_CHK_STATUS_RET(EnsureDefaultStreamLocked(slot), "[TransferPool] EnsureDefaultStreamLocked failed");
+  HIXL_CHK_STATUS_RET(EnsureNotifyStreamLocked(slot), "[TransferPool] EnsureNotifyStreamLocked failed");
   HIXL_CHK_STATUS_RET(EnsureThreadLocked(slot), "[TransferPool] EnsureThreadLocked failed");
   HIXL_CHK_STATUS_RET(EnsureNotifyLocked(slot), "[TransferPool] EnsureNotifyLocked failed");
   return SUCCESS;
@@ -259,6 +264,9 @@ void TransferPool::AbortSlotByIndexLocked(uint32_t slot_index) {
     if (slot.stream != nullptr) {
       HIXL_CHK_ACL(aclrtStreamAbort(slot.stream), "[TransferPool] aclrtStreamAbort failed");
     }
+    if (slot.notify_stream != nullptr) {
+      HIXL_CHK_ACL(aclrtStreamAbort(slot.notify_stream), "[TransferPool] aclrtStreamAbort notify_stream failed");
+    }
 
     if (slot.notify != nullptr) {
       aclrtNotify *notify_ptr = &slot.notify;
@@ -267,6 +275,11 @@ void TransferPool::AbortSlotByIndexLocked(uint32_t slot_index) {
         HIXL_CHK_ACL(aclrtDestroyNotify(slot.notify), "[TransferPool] aclrtDestroyNotify fallback after BatchReset");
         slot.notify = nullptr;
       }
+    }
+    if (slot.notify_stream != nullptr) {
+      HIXL_CHK_ACL(aclrtDestroyStream(slot.notify_stream),
+                   "[TransferPool] aclrtDestroyStream notify_stream failed in Abort");
+      slot.notify_stream = nullptr;
     }
   }
   if (slot.thread != 0U) {
@@ -279,6 +292,7 @@ void TransferPool::AbortSlotByIndexLocked(uint32_t slot_index) {
     HIXL_CHK_ACL(aclrtDestroyContext(slot.ctx), "[TransferPool] aclrtDestroyContext failed in Abort");
     slot.ctx = nullptr;
     slot.stream = nullptr;
+    slot.notify_stream = nullptr;
   }
 
   Status ret = InitOneSlotLocked(slot, slot_index);
@@ -364,6 +378,27 @@ Status TransferPool::EnsureDefaultStreamLocked(Slot &slot) const {
   return SUCCESS;
 }
 
+Status TransferPool::EnsureNotifyStreamLocked(Slot &slot) const {
+  if (slot.notify_stream != nullptr) {
+    return SUCCESS;
+  }
+  HIXL_CHK_BOOL_RET_STATUS(slot.ctx != nullptr, FAILED, "[TransferPool] EnsureNotifyStreamLocked: slot.ctx is null");
+  const hixl::TemporaryRtContext guard(slot.ctx);
+  aclrtStream stream = nullptr;
+  HIXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&stream, kStreamPriority, kStreamFlags),
+                   "[TransferPool] aclrtCreateStreamWithConfig notify_stream failed");
+  HIXL_DISMISSABLE_GUARD(stream_guard, ([&stream]() {
+                           HIXL_CHK_ACL(aclrtDestroyStream(stream),
+                                        "[TransferPool] aclrtDestroyStream notify_stream failed");
+                           stream = nullptr;
+                         }));
+  HIXL_CHK_ACL_RET(aclrtSetStreamFailureMode(stream, ACL_STOP_ON_FAILURE),
+                   "[TransferPool] aclrtSetStreamFailureMode notify_stream failed");
+  slot.notify_stream = stream;
+  HIXL_DISMISS_GUARD(stream_guard);
+  return SUCCESS;
+}
+
 Status TransferPool::EnsureThreadLocked(Slot &slot) const {
   if (slot.thread != 0U) {
     return SUCCESS;
@@ -394,6 +429,10 @@ void TransferPool::DestroySlotLocked(Slot &slot) const {
       HIXL_CHK_ACL(aclrtDestroyNotify(slot.notify));
       slot.notify = nullptr;
     }
+    if (slot.notify_stream != nullptr) {
+      HIXL_CHK_ACL(aclrtDestroyStream(slot.notify_stream), "[TransferPool] aclrtDestroyStream notify_stream failed");
+      slot.notify_stream = nullptr;
+    }
   }
   if (slot.thread != 0U) {
     const hixl::TemporaryRtContext rts_guard(rts_context_);
@@ -406,6 +445,7 @@ void TransferPool::DestroySlotLocked(Slot &slot) const {
     slot.ctx = nullptr;
   }
   slot.stream = nullptr;
+  slot.notify_stream = nullptr;
 }
 
 aclrtContext TransferPool::GetContext() const {
