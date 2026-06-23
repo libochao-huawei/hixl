@@ -792,11 +792,12 @@ def build_initiator_cmd(spec: InitiatorCommandSpec) -> list[str]:
     args = spec.args
     remote = lane["remote_engines"]
     local_port = lane["local_hixl_port"]
+    local_ip = args.host if args.host != "127.0.0.1" else get_local_ip()
     return [
         spec.bench_bin,
         "--role=initiator",
         f"--device_id={lane['device_id']}",
-        f"--local_engine={endpoint('127.0.0.1', local_port)}",
+        f"--local_engine={endpoint(local_ip, local_port)}",
         f"--remote_engine={remote}",
         f"--tcp_port={lane['tcp_port']}",
         *base_options(args, spec.bench_type),
