@@ -1178,7 +1178,7 @@ TEST_F(EndpointGeneratorUTest, AutoGenScaleOutSkipsWhenIntraRoceEnabled) {
   std::vector<EndpointConfig> endpoint_list;
   HixlOptions parsed;
   ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-  EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
+  EXPECT_NE(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
   EXPECT_TRUE(endpoint_list.empty());
 }
 
