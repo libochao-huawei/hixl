@@ -11,13 +11,15 @@
 #ifndef CANN_HIXL_TESTS_DEPENDS_DSMI_SRC_DSMI_STUB_H_
 #define CANN_HIXL_TESTS_DEPENDS_DSMI_SRC_DSMI_STUB_H_
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void DsmiStubSetInterconType(unsigned int type);
-void DsmiStubSetSuperPodId(unsigned int id);
-void DsmiStubSetSlotId(unsigned int slot_id, int ret);
+void DsmiStubSetInterconType(uint32_t type);
+void DsmiStubSetSuperPodId(uint32_t id);
+void DsmiStubSetSlotId(uint32_t slot_id, int ret);
 void DsmiStubSetDeviceInfoRet(int ret);
 
 #ifdef __cplusplus

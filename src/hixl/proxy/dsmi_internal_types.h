@@ -11,22 +11,24 @@
 #ifndef CANN_HIXL_SRC_HIXL_PROXY_DSMI_INTERNAL_TYPES_H_
 #define CANN_HIXL_SRC_HIXL_PROXY_DSMI_INTERNAL_TYPES_H_
 
+#include <cstdint>
+
 struct DsmiBoardInfoStru {
-  unsigned int board_id;
-  unsigned int pcb_id;
-  unsigned int bom_id;
-  unsigned int slot_id;
+  uint32_t board_id;
+  uint32_t pcb_id;
+  uint32_t bom_id;
+  uint32_t slot_id;
 };
 
 struct DsmiSpodInfo {
-  unsigned int sdid;
-  unsigned int scale_type;
-  unsigned int super_pod_id;
-  unsigned int server_id;
-  unsigned int chassis_id;
-  unsigned int super_pod_type;
-  unsigned int super_pod_intercon_type;
-  unsigned int reserve[5];
+  uint32_t sdid;
+  uint32_t scale_type;
+  uint32_t super_pod_id;
+  uint32_t server_id;
+  uint32_t chassis_id;
+  uint32_t super_pod_type;
+  uint32_t super_pod_intercon_type;
+  uint32_t reserve[5];
 };
 
 #endif  // CANN_HIXL_SRC_HIXL_PROXY_DSMI_INTERNAL_TYPES_H_

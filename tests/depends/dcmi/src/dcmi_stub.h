@@ -11,15 +11,17 @@
 #ifndef CANN_HIXL_TESTS_DEPENDS_DCMI_SRC_DCMI_STUB_H_
 #define CANN_HIXL_TESTS_DEPENDS_DCMI_SRC_DCMI_STUB_H_
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 void DcmiStubSetInitRet(int ret);
-void DcmiStubSetMainboardId(unsigned int id, int ret);
-void DcmiStubSetLogicId(unsigned int id, int ret);
-void DcmiStubSetUrmaDeviceCnt(unsigned int cnt, int ret);
-void DcmiStubSetSuperPodId(unsigned int id, int ret);
+void DcmiStubSetMainboardId(uint32_t id, int ret);
+void DcmiStubSetLogicId(uint32_t id, int ret);
+void DcmiStubSetUrmaDeviceCnt(uint32_t cnt, int ret);
+void DcmiStubSetSuperPodId(uint32_t id, int ret);
 void DcmiStubSetEidCount(int count);
 void DcmiStubSetEnableUbgEid(bool enable);
 

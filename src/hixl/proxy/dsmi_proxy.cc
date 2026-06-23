@@ -25,8 +25,8 @@ constexpr uint32_t kDsmiMainCmdChipInf = 12U;
 constexpr uint32_t kDsmiChipInfSubCmdSpodInfo = 1U;
 
 using DsmiGetBoardInfoFn = int (*)(int device_id, struct DsmiBoardInfoStru *pboard_info);
-using DsmiGetDeviceInfoFn = int (*)(unsigned int device_id, unsigned int main_cmd, unsigned int sub_cmd, void *buf,
-                                    unsigned int *buf_size);
+using DsmiGetDeviceInfoFn = int (*)(uint32_t device_id, uint32_t main_cmd, uint32_t sub_cmd, void *buf,
+                                    uint32_t *buf_size);
 
 struct LibDrvdsmiHostLoader {
   void *handle = nullptr;
@@ -113,8 +113,8 @@ Status DsmiProxy::GetInterconType(int32_t device_id, uint32_t &intercon_type) {
   }
 
   DsmiSpodInfo spod_info{};
-  unsigned int buf_size = static_cast<unsigned int>(sizeof(spod_info));
-  const int ret = ldr.dsmi_get_device_info(static_cast<unsigned int>(device_id), kDsmiMainCmdChipInf,
+  uint32_t buf_size = static_cast<uint32_t>(sizeof(spod_info));
+  const int ret = ldr.dsmi_get_device_info(static_cast<uint32_t>(device_id), kDsmiMainCmdChipInf,
                                            kDsmiChipInfSubCmdSpodInfo, &spod_info, &buf_size);
   if (ret != 0) {
     HIXL_LOGE(FAILED, "[DsmiProxy] dsmi_get_device_info failed, ret=%d, device_id=%d", ret, device_id);
