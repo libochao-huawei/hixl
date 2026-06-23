@@ -10,11 +10,13 @@
 
 #include "comm_channel.h"
 #include <mutex>
+#include <thread>
 #include <fcntl.h>
 #include <unistd.h>
 #include "adxl/adxl_checker.h"
 #include "adxl/adxl_types.h"
 #include "adxl/adxl_utils.h"
+#include "common/hixl_utils.h"
 #include "common/llm_scope_guard.h"
 #include "common/def_types.h"
 #include "common/llm_log.h"
@@ -29,6 +31,11 @@ std::mutex g_mutex_;
 constexpr uint32_t kMaxOpDescNum = 256U;
 constexpr int64_t kHeartbeatTimeoutInMillis = 120000;
 constexpr int32_t kMillisToMicros = 1000;
+// streamAbort cannot stop tasks already being unfolded by aicpu; when a disconnect races with that expansion the
+// comm must not be destroyed underneath it. If tasks were in flight we sleep this long (enough for aicpu to finish
+// unfolding) after aborting the stream and before destroying the comm.
+constexpr int32_t kAicpuUnfoldGuardMs = 100;
+constexpr uint64_t kHostFlagDoneValue = 1ULL;
 
 uint64_t GetDurationUs(const std::chrono::steady_clock::time_point &start,
                        const std::chrono::steady_clock::time_point &end) {
@@ -126,133 +133,363 @@ Status CommChannel::Finalize() {
   ClearNotifyMessages();
   disconnect_flag_.store(false, std::memory_order_release);
   transfer_count_.store(0, std::memory_order_release);
+  unavailable_.store(false, std::memory_order_release);
   LLMLOGI("Channel finalized, channel_id:%s.", channel_info_.channel_id.c_str());
   return SUCCESS;
 }
 
 Status CommChannel::ClearResources() {
-  std::lock_guard<std::mutex> lock(transfer_mutex_);
+  std::lock_guard<std::mutex> launch_lock(device_launch_mu_);
+  const bool in_flight = HasInFlightWorkForDisconnect();
+  AbortActiveSlotStreamForDisconnect();
+  if (in_flight) {
+    LLMLOGW("Channel has in-flight tasks at disconnect, sleep %dms before destroying comm, channel_id:%s.",
+            kAicpuUnfoldGuardMs, channel_info_.channel_id.c_str());
+    std::this_thread::sleep_for(std::chrono::milliseconds(kAicpuUnfoldGuardMs));
+  }
+  const Status ret = TeardownHcclComm();
+  ResetAsyncStateOnDisconnect();
+  return ret;
+}
+
+bool CommChannel::HasInFlightWorkForDisconnect() {
+  bool in_flight = IsUnavailable();
+  {
+    std::lock_guard<std::mutex> reqs_lock(transfer_reqs_mutex_);
+    in_flight = in_flight || !req_2_async_record_.empty();
+  }
+  {
+    std::lock_guard<std::mutex> slot_lock(active_slot_mu_);
+    if (active_slot_ != nullptr) {
+      in_flight = true;
+    }
+  }
+  return in_flight;
+}
+
+void CommChannel::AbortActiveSlotStreamForDisconnect() {
+  std::lock_guard<std::mutex> slot_lock(active_slot_mu_);
+  if ((active_slot_ == nullptr) || (active_slot_->stream == nullptr)) {
+    return;
+  }
+  hixl::TemporaryRtContext ctx_guard(active_slot_->ctx);
+  const auto abort_ret = aclrtStreamAbort(active_slot_->stream);
+  if (abort_ret != ACL_ERROR_NONE) {
+    LLMLOGE(FAILED, "Call aclrtStreamAbort ret:%d.", abort_ret);
+  }
+}
+
+Status CommChannel::TeardownHcclComm() {
   auto ret = SUCCESS;
   for (const auto &reg_handle_it : channel_info_.registered_mems) {
     auto reg_handle = reg_handle_it.first;
     auto hccl_ret = llm::HcclAdapter::GetInstance().HcclCommUnbindMem(channel_info_.comm, reg_handle);
     ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
   }
-
   if (channel_info_.comm != nullptr) {
     auto hccl_ret = llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
     channel_info_.comm = nullptr;
     ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
   }
-
-  std::lock_guard<std::mutex> transfer_reqs_lock(transfer_reqs_mutex_);
-  for (const auto &transfer_req : req_2_async_record_) {
-    const auto &async_resources = transfer_req.second.async_resources;
-    ADXL_CHK_BOOL_RET_STATUS(!async_resources.empty(), FAILED, "Failed to get request async resources, req:%lu.",
-                             transfer_req.first);
-    aclrtEvent event = async_resources[0].first;
-    aclrtStream stream = async_resources[0].second;
-    if (event != nullptr) {
-      auto aclrt_ret = aclrtDestroyEvent(event);
-      if (aclrt_ret != ACL_ERROR_NONE) {
-        LLMLOGE(FAILED, "Call aclrtDestroyEvent ret:%d.", aclrt_ret);
-        ret = FAILED;
-      }
-    }
-    // during exceptional scenarios, destroy the stream when destroying the channel.
-    if (stream != nullptr) {
-      stream_pool_->DestroyStream(stream);
-    }
-  }
   return ret;
 }
 
-void CommChannel::SetStreamPool(StreamPool *stream_pool) {
-  stream_pool_ = stream_pool;
+void CommChannel::ResetAsyncStateOnDisconnect() {
+  {
+    std::lock_guard<std::mutex> reqs_lock(transfer_reqs_mutex_);
+    for (auto &record_it : req_2_async_record_) {
+      if (record_it.second.host_flag != nullptr && record_it.second.slot != nullptr) {
+        ReleaseHostFlag(record_it.second.slot, record_it.second.host_flag);
+        record_it.second.host_flag = nullptr;
+      }
+    }
+    req_2_async_record_.clear();
+  }
+  {
+    std::lock_guard<std::mutex> slot_lock(active_slot_mu_);
+    if (active_slot_ != nullptr) {
+      if (slot_pool_ != nullptr) {
+        slot_pool_->Abort(*active_slot_);
+      }
+      active_slot_.reset();
+    }
+  }
+}
+
+void CommChannel::SetSlotPool(TransferSlotPool *slot_pool) {
+  slot_pool_ = slot_pool;
+}
+
+void CommChannel::MarkUnavailableOnError(Status ret) {
+  if (!IsLinkFatal(ret)) {
+    return;
+  }
+  if (!IsUnavailable()) {
+    LLMLOGW("Mark link unavailable due to transport failure, channel_id:%s, status:%u.",
+            channel_info_.channel_id.c_str(), ret);
+  }
+  unavailable_.store(true, std::memory_order_release);
+}
+
+Status CommChannel::CheckAvailableLocked() const {
+  if (fail_fast_enabled_ && IsUnavailable()) {
+    ADXL_CHK_BOOL_RET_STATUS(false, FAILED,
+                             "Channel is unavailable due to a previous transport failure, channel_id:%s.",
+                             channel_info_.channel_id.c_str());
+  }
+  return SUCCESS;
+}
+
+void CommChannel::FailSlotTransfer(std::shared_ptr<SlotHandle> &slot, void *host_flag, Status ret) {
+  if (host_flag != nullptr) {
+    ReleaseHostFlag(slot, host_flag);
+  }
+  AbortActiveSlot(&slot);
+  MarkUnavailableOnError(ret);
+}
+
+Status CommChannel::AcquireSharedSlot(std::shared_ptr<SlotHandle> &slot_out) {
+  std::lock_guard<std::mutex> lock(active_slot_mu_);
+  // Reuse the slot already bound to this channel so all in-flight transfers share one stream.
+  if (active_slot_ != nullptr) {
+    slot_out = active_slot_;
+    return SUCCESS;
+  }
+  ADXL_CHK_BOOL_RET_STATUS(slot_pool_ != nullptr, FAILED, "Slot pool is null, channel_id:%s.",
+                           channel_info_.channel_id.c_str());
+  SlotHandle new_slot{};
+  ADXL_CHK_STATUS_RET(slot_pool_->Acquire(&new_slot), "Slot pool acquire failed.");
+  active_slot_ = std::make_shared<SlotHandle>(new_slot);
+  slot_out = active_slot_;
+  return SUCCESS;
+}
+
+void CommChannel::ReleaseSharedSlotRef(std::shared_ptr<SlotHandle> &slot_ref) {
+  std::lock_guard<std::mutex> lock(active_slot_mu_);
+  if (slot_ref == nullptr) {
+    return;
+  }
+  if (active_slot_ == nullptr || active_slot_ != slot_ref) {
+    // The slot was already unbound (e.g. aborted on failure); just drop this caller's reference.
+    slot_ref.reset();
+    return;
+  }
+  slot_ref.reset();
+  // Only the channel's own binding remains: the whole batch is done, return the slot to the pool.
+  if (active_slot_.use_count() == 1) {
+    if (slot_pool_ != nullptr) {
+      slot_pool_->Release(*active_slot_);
+    }
+    active_slot_.reset();
+  }
+}
+
+void CommChannel::AbortActiveSlot(std::shared_ptr<SlotHandle> *slot_ref) {
+  std::lock_guard<std::mutex> lock(active_slot_mu_);
+  if (active_slot_ != nullptr) {
+    if (slot_pool_ != nullptr) {
+      slot_pool_->Abort(*active_slot_);
+    }
+    active_slot_.reset();
+  }
+  if (slot_ref != nullptr) {
+    slot_ref->reset();
+  }
+}
+
+void CommChannel::ReleaseHostFlag(const std::shared_ptr<SlotHandle> &slot, void *host_flag) {
+  if (host_flag == nullptr || slot == nullptr || slot_pool_ == nullptr) {
+    if (host_flag != nullptr) {
+      (void)aclrtFreeHost(host_flag);
+    }
+    return;
+  }
+  slot_pool_->ReleaseHostFlag(*slot, host_flag);
+}
+
+void CommChannel::CompleteRequest(uint64_t id, const std::chrono::steady_clock::time_point &transfer_start,
+                                  uint64_t transfer_bytes, uint64_t op_desc_count) {
+  const auto end = std::chrono::steady_clock::now();
+  const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - transfer_start).count();
+  StatisticManager::GetInstance().UpdateDirectTransferCost(GetStatisticChannelId(), cost, transfer_bytes,
+                                                           op_desc_count);
+  std::shared_ptr<SlotHandle> slot;
+  {
+    std::lock_guard<std::mutex> reqs_lock(transfer_reqs_mutex_);
+    auto it = req_2_async_record_.find(id);
+    if (it != req_2_async_record_.end()) {
+      if (it->second.host_flag != nullptr) {
+        ReleaseHostFlag(it->second.slot, it->second.host_flag);
+        it->second.host_flag = nullptr;
+      }
+      slot = std::move(it->second.slot);
+      req_2_async_record_.erase(it);
+    }
+  }
+  ReleaseSharedSlotRef(slot);
+  LLMLOGI("Transfer async request completed, req:%lu, time cost:%ld us.", id, cost);
+}
+
+void CommChannel::FailRequest(uint64_t id) {
+  std::shared_ptr<SlotHandle> slot;
+  void *host_flag = nullptr;
+  {
+    std::lock_guard<std::mutex> reqs_lock(transfer_reqs_mutex_);
+    auto it = req_2_async_record_.find(id);
+    if (it != req_2_async_record_.end()) {
+      host_flag = it->second.host_flag;
+      slot = std::move(it->second.slot);
+      req_2_async_record_.erase(it);
+    }
+  }
+  FailSlotTransfer(slot, host_flag, FAILED);
+}
+
+Status CommChannel::IssueAsyncBatchWithHostFlag(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
+                                                const std::shared_ptr<SlotHandle> &slot, void *host_flag) {
+  hixl::TemporaryRtContext ctx_guard(slot->ctx);
+  ADXL_CHK_STATUS_RET(IssueHcclBatch(operation, op_descs, slot->stream), "Channel Hccl batch issue failed.");
+  ADXL_CHK_ACL_RET(aclrtMemcpyAsync(host_flag, sizeof(uint64_t), slot->dev_const_one, sizeof(uint64_t),
+                                    ACL_MEMCPY_DEVICE_TO_HOST, slot->stream));
+  return SUCCESS;
 }
 
 Status CommChannel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                                   const TransferArgs &optional_args, TransferReq &req) {
   (void)optional_args;
-  aclrtStream stream = nullptr;
-  ADXL_CHK_STATUS_RET(stream_pool_->TryAllocStream(stream), "Stream pool get stream failed.");
-  auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
-  aclrtEvent event = nullptr;
-  LLM_DISMISSABLE_GUARD(fail_guard, ([this, &event, &stream]() {
-                          if (event != nullptr) {
-                            aclrtDestroyEvent(event);
-                          }
-                          if (stream != nullptr) {
-                            stream_pool_->DestroyStream(stream);
-                          }
-                        }));
+  std::lock_guard<std::mutex> launch_lock(device_launch_mu_);
+  ADXL_CHK_STATUS_RET(CheckAvailableLocked(), "Channel unavailable.");
+  ADXL_CHK_BOOL_RET_STATUS(channel_info_.comm != nullptr, FAILED,
+                           "Channel comm is null, channel may have been finalized, channel_id:%s.",
+                           channel_info_.channel_id.c_str());
+  const auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
   const auto transfer_start = std::chrono::steady_clock::now();
   const auto transfer_bytes = GetTransferBytes(op_descs);
   const auto op_desc_count = GetTransferOpDescCount(op_descs);
-  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream), "Channel transfer async failed.");
-  LLM_CHK_ACL_RET(aclrtCreateEvent(&event));
-  LLM_CHK_ACL_RET(aclrtRecordEvent(event, stream));
-  std::lock_guard<std::mutex> lock(transfer_reqs_mutex_);
-  std::vector<AsyncResource> async_resources;
-  async_resources.emplace_back(event, stream);
-  req_2_async_record_[id] = AsyncRecord{std::move(async_resources), transfer_start, transfer_bytes, op_desc_count};
-  LLM_DISMISS_GUARD(fail_guard);
+
+  std::shared_ptr<SlotHandle> slot;
+  ADXL_CHK_STATUS_RET(AcquireSharedSlot(slot), "Failed to acquire transfer slot.");
+
+  void *host_flag = nullptr;
+  ADXL_CHK_BOOL_RET_STATUS(slot_pool_ != nullptr, FAILED, "Slot pool is null, channel_id:%s.",
+                           channel_info_.channel_id.c_str());
+  Status alloc_ret = slot_pool_->AcquireHostFlag(*slot, host_flag);
+  if (alloc_ret != SUCCESS) {
+    ReleaseSharedSlotRef(slot);
+    MarkUnavailableOnError(alloc_ret);
+    LLMLOGE(alloc_ret, "Failed to allocate host flag, req:%lu.", id);
+    return alloc_ret;
+  }
+
+  const Status issue_ret = IssueAsyncBatchWithHostFlag(operation, op_descs, slot, host_flag);
+  if (issue_ret != SUCCESS) {
+    FailSlotTransfer(slot, host_flag, issue_ret);
+    LLMLOGE(issue_ret, "Failed to submit async transfer, req:%lu.", id);
+    return issue_ret;
+  }
+
+  {
+    std::lock_guard<std::mutex> reqs_lock(transfer_reqs_mutex_);
+    AsyncRecord record;
+    record.slot = slot;
+    record.host_flag = host_flag;
+    record.transfer_start = transfer_start;
+    record.transfer_bytes = transfer_bytes;
+    record.op_desc_count = op_desc_count;
+    req_2_async_record_[id] = std::move(record);
+  }
   return SUCCESS;
 }
 
-Status CommChannel::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
-  std::lock_guard<std::mutex> lock(transfer_reqs_mutex_);
-  auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
+Status CommChannel::LookupPendingAsyncTransfer(uint64_t id, std::shared_ptr<SlotHandle> &slot, void *&host_flag,
+                                               std::chrono::steady_clock::time_point &transfer_start,
+                                               uint64_t &transfer_bytes, uint64_t &op_desc_count) {
+  std::lock_guard<std::mutex> reqs_lock(transfer_reqs_mutex_);
   auto it = req_2_async_record_.find(id);
-  if (it == req_2_async_record_.end()) {
-    status = TransferStatus::FAILED;
-    LLMLOGE(FAILED, "Request not found, req:%lu.", id);
-    return FAILED;
-  }
+  ADXL_CHK_BOOL_RET_STATUS(it != req_2_async_record_.end(), FAILED, "Request not found, req:%lu.", id);
+  slot = it->second.slot;
+  host_flag = it->second.host_flag;
+  transfer_start = it->second.transfer_start;
+  transfer_bytes = it->second.transfer_bytes;
+  op_desc_count = it->second.op_desc_count;
+  ADXL_CHK_BOOL_RET_STATUS((slot != nullptr) && (host_flag != nullptr), FAILED, "Invalid async record, req:%lu.", id);
+  return SUCCESS;
+}
 
-  const auto &async_resources = it->second.async_resources;
-  ADXL_CHK_BOOL_RET_STATUS(!async_resources.empty(), FAILED, "Failed to get request async resources.");
-  auto event = async_resources[0].first;
-  auto stream = async_resources[0].second;
-  aclrtEventRecordedStatus event_status{};
-  auto ret = aclrtQueryEventStatus(event, &event_status);
-  if (ret != ACL_ERROR_NONE) {
-    LLMLOGE(FAILED, "aclrtQueryEventStatus failed for req:%lu, ret:%d.", id, ret);
-    aclrtDestroyEvent(event);
-    stream_pool_->DestroyStream(stream);
-    req_2_async_record_.erase(id);
+bool CommChannel::IsHostFlagDone(void *host_flag) {
+  volatile uint64_t *flag_ptr = static_cast<uint64_t *>(host_flag);
+  if (*flag_ptr != kHostFlagDoneValue) {
+    return false;
+  }
+  std::atomic_thread_fence(std::memory_order_acquire);
+  return true;
+}
+
+Status CommChannel::PollAsyncStreamCompletion(uint64_t id, const std::shared_ptr<SlotHandle> &slot, void *host_flag,
+                                              const std::chrono::steady_clock::time_point &transfer_start,
+                                              uint64_t transfer_bytes, uint64_t op_desc_count, TransferStatus &status) {
+  aclrtStreamStatus stream_status = ACL_STREAM_STATUS_RESERVED;
+  aclError query_ret;
+  {
+    hixl::TemporaryRtContext ctx_guard(slot->ctx);
+    query_ret = aclrtStreamQuery(slot->stream, &stream_status);
+  }
+  if (query_ret != ACL_ERROR_NONE) {
+    LLMLOGE(FAILED, "aclrtStreamQuery failed for req:%lu, ret:%d.", id, query_ret);
+    FailRequest(id);
     status = TransferStatus::FAILED;
     return FAILED;
   }
-  if (event_status != ACL_EVENT_RECORDED_STATUS_COMPLETE) {
+  if (stream_status == ACL_STREAM_STATUS_NOT_READY) {
     LLMLOGI("Transfer async request not yet completed, req:%lu.", id);
     status = TransferStatus::WAITING;
     return SUCCESS;
   }
-  auto steam_status = aclrtSynchronizeStream(stream);
-  if (steam_status != ACL_ERROR_NONE) {
-    // stream synchronize failed
+  if (stream_status != ACL_STREAM_STATUS_COMPLETE) {
+    LLMLOGE(FAILED, "aclrtStreamQuery returned unexpected status:%d for req:%lu.", static_cast<int32_t>(stream_status),
+            id);
+    FailRequest(id);
     status = TransferStatus::FAILED;
-    aclrtDestroyEvent(event);
-    stream_pool_->DestroyStream(stream);
-    req_2_async_record_.erase(id);
-    LLMLOGE(FAILED, "rtStreamSynchronize failed for req:%lu, ret:%d.", id, steam_status);
     return FAILED;
   }
-  status = TransferStatus::COMPLETED;
-  const auto end = std::chrono::steady_clock::now();
-  const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - it->second.transfer_start).count();
-  StatisticManager::GetInstance().UpdateDirectTransferCost(GetStatisticChannelId(), cost, it->second.transfer_bytes,
-                                                           it->second.op_desc_count);
-  LLMLOGI("Transfer async request completed, req:%lu, time cost:%lu us.", id, cost);
-  aclrtDestroyEvent(event);
-  stream_pool_->FreeStream(stream);
-  req_2_async_record_.erase(id);
-  return SUCCESS;
+  if (IsHostFlagDone(host_flag)) {
+    CompleteRequest(id, transfer_start, transfer_bytes, op_desc_count);
+    status = TransferStatus::COMPLETED;
+    return SUCCESS;
+  }
+  LLMLOGE(FAILED, "Stream completed but host flag not set for req:%lu.", id);
+  FailRequest(id);
+  status = TransferStatus::FAILED;
+  return FAILED;
 }
 
-Status CommChannel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
-                                  aclrtStream stream) {
+Status CommChannel::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
+  std::lock_guard<std::mutex> launch_lock(device_launch_mu_);
+  ADXL_CHK_STATUS_RET(CheckAvailableLocked(), "Channel unavailable.");
+  const auto id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(req));
+
+  std::shared_ptr<SlotHandle> slot;
+  void *host_flag = nullptr;
+  std::chrono::steady_clock::time_point transfer_start;
+  uint64_t transfer_bytes = 0UL;
+  uint64_t op_desc_count = 0UL;
+  Status lookup_ret =
+      LookupPendingAsyncTransfer(id, slot, host_flag, transfer_start, transfer_bytes, op_desc_count);
+  if (lookup_ret != SUCCESS) {
+    status = TransferStatus::FAILED;
+    return lookup_ret;
+  }
+
+  if (IsHostFlagDone(host_flag)) {
+    CompleteRequest(id, transfer_start, transfer_bytes, op_desc_count);
+    status = TransferStatus::COMPLETED;
+    return SUCCESS;
+  }
+  return PollAsyncStreamCompletion(id, slot, host_flag, transfer_start, transfer_bytes, op_desc_count, status);
+}
+
+Status CommChannel::IssueHcclBatch(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
+                                 aclrtStream stream) {
   ADXL_CHK_BOOL_RET_STATUS(channel_info_.comm != nullptr, FAILED,
                            "Channel comm is null, channel may have been finalized, channel_id:%s.",
                            channel_info_.channel_id.c_str());
@@ -310,27 +547,40 @@ Status CommChannel::TransferAsyncWithTimeout(TransferOp operation, const std::ve
   return SUCCESS;
 }
 
+Status CommChannel::RunSyncOnSlot(const std::function<Status(aclrtStream stream)> &issue_fn,
+                                 int32_t timeout_in_millis) {
+  // Serialize against async submit/poll so the shared stream is never shared or aborted mid-issue.
+  std::lock_guard<std::mutex> launch_lock(device_launch_mu_);
+  ADXL_CHK_STATUS_RET(CheckAvailableLocked(), "Channel unavailable.");
+  std::shared_ptr<SlotHandle> slot;
+  ADXL_CHK_STATUS_RET(AcquireSharedSlot(slot), "Failed to acquire transfer slot.");
+  const Status ret = [&issue_fn, &slot, timeout_in_millis]() -> Status {
+    hixl::TemporaryRtContext ctx_guard(slot->ctx);
+    ADXL_CHK_STATUS_RET(issue_fn(slot->stream), "Sync transfer issue failed.");
+    ADXL_CHK_ACL_RET(aclrtSynchronizeStreamWithTimeout(slot->stream, timeout_in_millis));
+    return SUCCESS;
+  }();
+  if (ret != SUCCESS) {
+    FailSlotTransfer(slot, nullptr, ret);
+    return ret;
+  }
+  ReleaseSharedSlotRef(slot);
+  return SUCCESS;
+}
+
 Status CommChannel::TransferSync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                                  int32_t timeout_in_millis) {
   const auto start = std::chrono::steady_clock::now();
-  aclrtStream stream = nullptr;
-  ADXL_CHK_STATUS_RET(stream_pool_->TryAllocStream(stream), "Stream pool get stream failed.");
-  LLM_DISMISSABLE_GUARD(fail_guard, ([this, &stream]() {
-                          if (stream != nullptr) {
-                            this->stream_pool_->DestroyStream(stream);
-                          }
-                        }));
-  ADXL_CHK_STATUS_RET(TransferAsync(operation, op_descs, stream), "Transfer failed.");
-
-  ADXL_CHK_ACL_RET(aclrtSynchronizeStreamWithTimeout(stream, timeout_in_millis));
+  auto issue_fn = [this, operation, &op_descs](aclrtStream stream) -> Status {
+    return IssueHcclBatch(operation, op_descs, stream);
+  };
+  ADXL_CHK_STATUS_RET(RunSyncOnSlot(issue_fn, timeout_in_millis), "TransferSync failed.");
   const auto end = std::chrono::steady_clock::now();
   const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
   StatisticManager::GetInstance().UpdateDirectTransferCost(GetStatisticChannelId(), cost, GetTransferBytes(op_descs),
                                                            GetTransferOpDescCount(op_descs));
   LLMLOGI("TransferSync success, operation:%s, num = %zu, channel_id:%s, time cost:%lu us.",
           operation == READ ? "HcclBatchGet" : "HcclBatchPut", op_descs.size(), channel_info_.channel_id.c_str(), cost);
-  LLM_DISMISS_GUARD(fail_guard);
-  stream_pool_->FreeStream(stream);
   return SUCCESS;
 }
 
@@ -391,14 +641,6 @@ bool CommChannel::IsHeartbeatTimeout() const {
     }
   }
   return false;
-}
-
-StreamPool *CommChannel::GetStreamPool() {
-  return stream_pool_;
-}
-
-std::mutex &CommChannel::GetTransferMutex() {
-  return transfer_mutex_;
 }
 
 void CommChannel::GetNotifyMessages(std::vector<NotifyDesc> &notifies) {
