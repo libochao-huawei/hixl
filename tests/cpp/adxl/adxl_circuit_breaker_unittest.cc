@@ -137,22 +137,25 @@ TEST_F(AdxlCircuitBreakerUTest, TestLinkUnavailableAfterAsyncCompletionFailure) 
   auto mem = SetupPlainConnectedEngines(engine1, engine2);
   TransferOpDesc desc = MakeInt32TransferDesc(mem.src, mem.dst);
 
+  // Suppress the host-flag completion copy and fail the stream query before submitting, so both async transfers
+  // (which share the one channel slot) stay incomplete and the first poll fails on the stream-query fallback.
+  llm::AsyncHostFlagStreamQueryFailMock stream_fail_mock;
+  llm::AclRuntimeStub::Install(&stream_fail_mock);
   TransferReq req1 = nullptr;
   TransferReq req2 = nullptr;
   EXPECT_EQ(engine1.TransferAsync(kPeerEngine, WRITE, {desc}, {}, req1), SUCCESS);
   EXPECT_EQ(engine1.TransferAsync(kPeerEngine, WRITE, {desc}, {}, req2), SUCCESS);
 
   TransferStatus status = TransferStatus::WAITING;
-  llm::TransferAsyncSteamRuntimeMocak stream_fail_mock;
-  llm::AclRuntimeStub::Install(&stream_fail_mock);
   EXPECT_EQ(engine1.GetTransferStatus(req1, status), FAILED);
   EXPECT_EQ(status, TransferStatus::FAILED);
-  llm::AclRuntimeStub::UnInstall(&stream_fail_mock);
 
+  // The first failure marks the link unavailable; concurrent async poll and sync transfers must fast-fail.
   status = TransferStatus::WAITING;
   EXPECT_EQ(engine1.GetTransferStatus(req2, status), FAILED);
   EXPECT_EQ(status, TransferStatus::FAILED);
   EXPECT_EQ(engine1.TransferSync(kPeerEngine, WRITE, {desc}), FAILED);
+  llm::AclRuntimeStub::UnInstall(&stream_fail_mock);
 
   EXPECT_EQ(engine1.Disconnect(kPeerEngine), SUCCESS);
   EXPECT_EQ(engine1.Connect(kPeerEngine), SUCCESS);
