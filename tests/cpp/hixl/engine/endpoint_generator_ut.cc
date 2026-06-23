@@ -1063,7 +1063,7 @@ TEST_F(EndpointGeneratorUTest, AutoGenUbgByInterconTypeWhenNoProtocolDescOnA5) {
   HixlOptions parsed;
   ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
   // BuildEndpointList 会因 GenerateLocalCommRes 找不到 topo 文件而 FAILED，
-  // 但 GenerateV5EndpointByInterconType 在此之前已执行并添加了 ScaleOut 端点
+  // 但 GenerateScaleOutEndpointByInterconType 在此之前已执行并添加了 ScaleOut 端点
   EXPECT_NE(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
   ASSERT_GE(endpoint_list.size(), 1U);
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolUbg);
@@ -1165,7 +1165,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFiltersExplicitEndpointsToRoceWh
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolRoce);
 }
 
-TEST_F(EndpointGeneratorUTest, AutoGenV5SkipsScaleOutWhenIntraRoceEnabled) {
+TEST_F(EndpointGeneratorUTest, AutoGenScaleOutSkipsWhenIntraRoceEnabled) {
   acl_stub_->soc_name_ = "Ascend950A";
   acl_stub_->device_id_ = 0;
   acl_stub_->phy_device_id_ = 3;
