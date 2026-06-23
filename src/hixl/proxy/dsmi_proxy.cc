@@ -21,8 +21,8 @@ namespace {
 
 constexpr const char *kLibDrvdsmiHostSo = "libdrvdsmi_host.so";
 
-constexpr unsigned int kDsmiMainCmdChipInf = 12U;
-constexpr unsigned int kDsmiChipInfSubCmdSpodInfo = 1U;
+constexpr uint32_t kDsmiMainCmdChipInf = 12U;
+constexpr uint32_t kDsmiChipInfSubCmdSpodInfo = 1U;
 
 using DsmiGetBoardInfoFn = int (*)(int device_id, struct DsmiBoardInfoStru *pboard_info);
 using DsmiGetDeviceInfoFn = int (*)(unsigned int device_id, unsigned int main_cmd, unsigned int sub_cmd, void *buf,
