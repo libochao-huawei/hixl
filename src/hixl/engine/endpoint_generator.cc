@@ -203,12 +203,12 @@ Status GenScaleOutEndpoint(ProtocolDescMode mode, std::vector<EndpointConfig> &e
   return SUCCESS;
 }
 
-Status GenerateV5EndpointByInterconType(int32_t logic_dev_id, int32_t phy_dev_id,
-                                        std::vector<EndpointConfig> &endpoint_list) {
-  // DSMI InterconType 未就绪时回退到 kV5 UB 自动生成，endpoint_list 为空由上层兜底
+Status GenerateScaleOutEndpointByInterconType(int32_t logic_dev_id, int32_t phy_dev_id,
+                                               std::vector<EndpointConfig> &endpoint_list) {
+  // DSMI InterconType 未就绪时回退到 UB 自动生成，endpoint_list 为空由上层兜底
   if (!DsmiProxy::IsInterconTypeSupported()) {
     HIXL_LOGW(
-        "[EndpointGenerator] DSMI InterconType not supported yet, fallback to existing kV5 UB generation, "
+        "[EndpointGenerator] DSMI InterconType not supported yet, fallback to existing UB generation, "
         "logic_dev_id=%d, phy_dev_id=%d",
         logic_dev_id, phy_dev_id);
     return SUCCESS;
@@ -231,10 +231,10 @@ Status GenerateV5EndpointByInterconType(int32_t logic_dev_id, int32_t phy_dev_id
     return SUCCESS;
   }
   if (IsRoceInterconType(intercon_type)) {
-    HIXL_EVENT("[EndpointGenerator] InterconType=%u is RoCE, keep existing kV5 UB generation", intercon_type);
+    HIXL_EVENT("[EndpointGenerator] InterconType=%u is RoCE, keep existing UB generation", intercon_type);
     return SUCCESS;
   }
-  HIXL_LOGE(FAILED, "Unsupported DSMI InterconType=%u for kV5 auto endpoint generation", intercon_type);
+  HIXL_LOGE(FAILED, "Unsupported DSMI InterconType=%u for ScaleOut auto endpoint generation", intercon_type);
   return FAILED;
 }
 
@@ -590,21 +590,21 @@ Status EndpointGenerator::BuildEndpointList(const HixlOptions &options, const st
   return SUCCESS;
 }
 
-Status EndpointGenerator::AutoGenV5EndpointList(const HixlOptions &options,
-                                                std::vector<EndpointConfig> &endpoint_list) {
+Status EndpointGenerator::AutoGenScaleOutEndpointList(const HixlOptions &options,
+                                                      std::vector<EndpointConfig> &endpoint_list) {
   int32_t device_id = 0;
   HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
   int32_t phy_id = 0;
   HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(device_id, &phy_id));
 
   if (IsIntraRoceEnabled()) {
-    HIXL_LOGI("[AutoGenEndpointList] HCCL_INTRA_ROCE_ENABLE=1, skip ScaleOut and UB generation on kV5");
+    HIXL_LOGI("[AutoGenEndpointList] HCCL_INTRA_ROCE_ENABLE=1, skip ScaleOut and UB generation");
     return SUCCESS;
   }
 
   if (options.GetProtocolDesc().empty()) {
-    HIXL_CHK_STATUS_RET(GenerateV5EndpointByInterconType(device_id, phy_id, endpoint_list),
-                        "[AutoGenEndpointList] GenerateV5EndpointByInterconType failed");
+    HIXL_CHK_STATUS_RET(GenerateScaleOutEndpointByInterconType(device_id, phy_id, endpoint_list),
+                        "[AutoGenEndpointList] GenerateScaleOutEndpointByInterconType failed");
   } else {
     HIXL_CHK_STATUS_RET(GenEndpointFromProtocolDesc(options, endpoint_list),
                         "[AutoGenEndpointList] GenEndpointFromProtocolDesc failed");
@@ -631,8 +631,8 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options, const 
   endpoint_list.clear();
 
   if (soc_type == SocType::kV5) {
-    HIXL_CHK_STATUS_RET(AutoGenV5EndpointList(options, endpoint_list), "AutoGenV5EndpointList failed");
-    HIXL_EVENT("[AutoGenEndpointList] kV5 generated %zu endpoints", endpoint_list.size());
+    HIXL_CHK_STATUS_RET(AutoGenScaleOutEndpointList(options, endpoint_list), "AutoGenScaleOutEndpointList failed");
+    HIXL_EVENT("[AutoGenEndpointList] ScaleOut generated %zu endpoints", endpoint_list.size());
   } else if (soc_type == SocType::kV2 || soc_type == SocType::kV3) {
     int32_t device_id = 0;
     HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
