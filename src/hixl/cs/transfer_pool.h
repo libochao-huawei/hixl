@@ -37,6 +37,10 @@ class TransferPool {
     aclrtNotify notify;
     void *dev_const_one;
     uint32_t notify_id;
+    uint64_t notify_ra_addr{0};
+    uint32_t notify_ra_len{0};
+    uint64_t notify_rt_addr{0};
+    uint32_t notify_rt_len{0};
   };
 
   TransferPool(const TransferPool &) = delete;
@@ -61,6 +65,10 @@ class TransferPool {
     ThreadHandle thread;
     aclrtNotify notify;
     uint32_t notify_id;
+    uint64_t notify_ra_addr{0};
+    uint32_t notify_ra_len{0};
+    uint64_t notify_rt_addr{0};
+    uint32_t notify_rt_len{0};
   };
 
   void InitFreeListLocked();

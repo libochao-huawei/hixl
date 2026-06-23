@@ -123,7 +123,6 @@ class HixlCSClient {
   Status ClearRemoteMemInfo();
   Status ValidateDeviceInputs(uint32_t list_num, const HixlOneSideOpDesc *desc_list, void *&query_handle) const;
   Status PrepareDeviceRemoteFlagAndKernel(void *&remote_flag) const;
-  Status ResolveNotifyDeviceAddress(aclrtNotify notify, uint64_t &notify_addr, uint32_t &notify_len);
   Status RegisterNotifyMemForAllSlots(const std::vector<TransferPool::SlotHandle> &slots);
   Status LaunchDeviceKernel(bool is_get, DeviceCompleteHandle &handle, const HixlOneSideOpParam &param,
                             bool wait_notify = true);
