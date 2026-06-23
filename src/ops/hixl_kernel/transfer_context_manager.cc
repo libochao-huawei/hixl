@@ -11,6 +11,7 @@
 
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
+#include "task_exception_handler.h"
 
 namespace hixl {
 namespace {
@@ -51,13 +52,20 @@ std::shared_ptr<TransferContext> TransferContextManager::Get(ThreadHandle thread
   return it->second;
 }
 
-TransferThreadState TransferContextManager::Add(ThreadHandle thread) {
+TransferThreadState TransferContextManager::Add(ThreadHandle thread, uint32_t user_stream_id, uint32_t notify_id,
+                                                uint64_t err_flag_dev_va) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto &ctx = contexts_[thread];
   if (ctx == nullptr) {
     ctx = std::make_shared<TransferContext>();
   }
   ctx->SetState(TRANSFER_THREAD_STATE_INITIALIZED);
+  ctx->user_stream_id = user_stream_id;
+  ctx->notify_id = notify_id;
+  ctx->err_flag_dev_va = err_flag_dev_va;
+
+  TaskExceptionHandler::Instance().EnableExceptionCallback();
+
   return TRANSFER_THREAD_STATE_INITIALIZED;
 }
 
@@ -76,6 +84,11 @@ TransferThreadState TransferContextManager::Delete(ThreadHandle thread) {
   ctx->SetState(TRANSFER_THREAD_STATE_DELETED);
   contexts_.erase(it);
   ctx->unlock();
+
+  if (contexts_.empty()) {
+    TaskExceptionHandler::Instance().DisableExceptionCallback();
+  }
+
   return TRANSFER_THREAD_STATE_DELETED;
 }
 
@@ -87,7 +100,8 @@ uint32_t DoSyncTransferContext(TransferContextSyncParam *param) {
   TransferThreadState state = TRANSFER_THREAD_STATE_DELETED;
   for (uint32_t i = 0U; i < param->entry_num; ++i) {
     if (entries[i].op == TRANSFER_CONTEXT_OP_ADD) {
-      state = TransferContextManager::Instance().Add(entries[i].thread);
+      state = TransferContextManager::Instance().Add(entries[i].thread, entries[i].user_stream_id, entries[i].notify_id,
+                                                     entries[i].err_flag_dev_va);
     } else if (entries[i].op == TRANSFER_CONTEXT_OP_DELETE) {
       state = TransferContextManager::Instance().Delete(entries[i].thread);
     } else {

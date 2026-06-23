@@ -1,0 +1,213 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+#include "task_exception_handler.h"
+
+#include "common/hixl_log.h"
+#include "common/hixl_checker.h"
+#include "hixl/hixl_types.h"
+#include "transfer_context_manager.h"
+#include "ascend_hal.h"
+#include "aicpu/aicpu_schedule/aicpu_context.h"
+
+namespace hixl {
+namespace {
+
+constexpr uint8_t AICPU_RECORD = 12U;
+constexpr uint8_t AICPU_MSG_NOTIFY_RECORD = 2U;
+
+struct TsAicpuRecord {
+  volatile uint32_t record_id;
+  volatile uint8_t record_type;
+  volatile uint8_t reserved;
+  volatile uint16_t ret_code;
+  volatile uint16_t fault_task_id;
+  volatile uint16_t fault_stream_id;
+};
+
+struct TsAicpuSqe {
+  volatile uint32_t pid;
+  volatile uint8_t cmd_type;
+  volatile uint8_t vf_id;
+  volatile uint8_t tid;
+  volatile uint8_t ts_id;
+  TsAicpuRecord aicpu_record;
+};
+
+Status NotifyTsfwTaskException(uint32_t notify_id, int32_t user_stream_id, uint32_t error_code) {
+  if (halEschedSubmitEvent == nullptr) {
+    HIXL_LOGI("[TaskExceptionHandler] halEschedSubmitEvent is null, API unavailable");
+    return FAILED;
+  }
+
+  aicpu::aicpuContext_t ctx = {};
+  if (aicpu::aicpuGetContext == nullptr) {
+    HIXL_LOGI("[TaskExceptionHandler] aicpuGetContext is null, API unavailable");
+    return FAILED;
+  }
+  aicpu::status_t ctx_ret = aicpu::aicpuGetContext(&ctx);
+  if (ctx_ret != aicpu::AICPU_ERROR_NONE) {
+    HIXL_LOGI("[TaskExceptionHandler] aicpuGetContext failed, ret=%d", ctx_ret);
+    return FAILED;
+  }
+
+  TsAicpuSqe aicpu_sqe = {};
+  aicpu_sqe.pid = static_cast<uint32_t>(ctx.hostPid);
+  aicpu_sqe.cmd_type = AICPU_RECORD;
+  aicpu_sqe.vf_id = static_cast<uint8_t>(ctx.vfId);
+  aicpu_sqe.tid = 0U;
+  aicpu_sqe.ts_id = static_cast<uint8_t>(ctx.tsId);
+  aicpu_sqe.aicpu_record.record_type = AICPU_MSG_NOTIFY_RECORD;
+  aicpu_sqe.aicpu_record.record_id = notify_id;
+  aicpu_sqe.aicpu_record.fault_stream_id = static_cast<uint16_t>(user_stream_id);
+  aicpu_sqe.aicpu_record.ret_code = static_cast<uint16_t>(error_code);
+
+  struct event_summary event = {};
+  event.dst_engine = TS_CPU;
+  event.policy = ONLY;
+  event.pid = 0;
+  event.grp_id = 0;
+  event.event_id = EVENT_TS_CTRL_MSG;
+  event.subevent_id = 0U;
+  event.msg_len = static_cast<uint32_t>(sizeof(TsAicpuSqe));
+  event.msg = reinterpret_cast<char *>(&aicpu_sqe);
+
+  drvError_t ret = halEschedSubmitEvent(ctx.deviceId, &event);
+  if (ret != DRV_ERROR_NONE) {
+    HIXL_LOGI("[TaskExceptionHandler] halEschedSubmitEvent failed, ret=%d, streamId=%d, notifyId=%u", ret,
+              user_stream_id, notify_id);
+    return FAILED;
+  }
+
+  HIXL_LOGI("[TaskExceptionHandler] Submit to TSFW success. deviceId=%u, streamId=%d, notifyId=%u, errCode=%u",
+            ctx.deviceId, user_stream_id, notify_id, error_code);
+  return SUCCESS;
+}
+
+enum HcommExceptionExpandType {
+  HCOMM_EXCEPTION_INVALID = 0,
+  HCOMM_EXCEPTION_STARS,
+  HCOMM_EXCEPTION_ROCE_HOST,
+  HCOMM_EXCEPTION_ROCE_DEVICE,
+  HCOMM_EXCEPTION_UB_HOST,
+  HCOMM_EXCEPTION_UB_DEVICE,
+};
+
+struct StarsExDetailInfo {
+  uint8_t sqeType;
+  uint8_t statusMerged;
+  uint32_t starsErrcode;
+  uint8_t rsvd[128];
+};
+
+struct RoCEExDetailInfo {
+  uint8_t data[128];
+};
+
+struct UBExDetailInfo {
+  uint8_t data[128];
+};
+
+struct HcommExceptionExpandInfo {
+  HcommExceptionExpandType type;
+  union {
+    StarsExDetailInfo starsInfo;
+    RoCEExDetailInfo roceHostInfo;
+    RoCEExDetailInfo roceDeviceInfo;
+    UBExDetailInfo ubHostInfo;
+    UBExDetailInfo ubDeviceInfo;
+  } u;
+};
+
+struct HcommExceptionInfo {
+  uint32_t taskId;
+  uint64_t thread;
+  uint64_t channel;
+  uint32_t retCode;
+  HcommExceptionExpandInfo expandInfo;
+};
+
+typedef void (*ExceptionCallback)(const HcommExceptionInfo *exceptionInfo);
+
+extern "C" {
+int __attribute__((weak)) HcommRegisterExceptionCallback(ExceptionCallback cb);
+int __attribute__((weak)) HcommUnregisterExceptionCallback(ExceptionCallback cb);
+}
+
+void HixlTaskExceptionCallback(const HcommExceptionInfo *exceptionInfo) {
+  if (exceptionInfo == nullptr) {
+    return;
+  }
+  uint64_t thread_handle = exceptionInfo->thread;
+  uint32_t error_code = exceptionInfo->retCode;
+  HIXL_LOGI("[TaskExceptionHandler] Exception callback triggered. thread=%lu, err=%u, channel=%lu, task=%u",
+            thread_handle, error_code, exceptionInfo->channel, exceptionInfo->taskId);
+
+  auto ctx = TransferContextManager::Instance().Get(thread_handle);
+  if (ctx == nullptr) {
+    HIXL_LOGI("[TaskExceptionHandler] Thread %lu not found in mapping table", thread_handle);
+    return;
+  }
+
+  if (ctx->GetState() != TRANSFER_THREAD_STATE_INITIALIZED) {
+    HIXL_LOGI("[TaskExceptionHandler] Thread %lu state is not INITIALIZED, state=%u", thread_handle,
+              static_cast<uint32_t>(ctx->GetState()));
+    return;
+  }
+
+  if (ctx->err_flag_dev_va != 0U) {
+    volatile uint8_t *err_flag_ptr = reinterpret_cast<volatile uint8_t *>(ctx->err_flag_dev_va);
+    *err_flag_ptr = static_cast<uint8_t>(error_code);
+    HIXL_LOGI("[TaskExceptionHandler] Written err_flag=%u to va=%lu", error_code, ctx->err_flag_dev_va);
+  }
+
+  Status notify_ret = NotifyTsfwTaskException(ctx->notify_id, static_cast<int32_t>(ctx->user_stream_id), error_code);
+  if (notify_ret != SUCCESS) {
+    HIXL_LOGI("[TaskExceptionHandler] NotifyTsfwTaskException failed, ret=%u", notify_ret);
+  }
+}
+
+}  // namespace
+
+TaskExceptionHandler &TaskExceptionHandler::Instance() {
+  static TaskExceptionHandler handler;
+  return handler;
+}
+
+void TaskExceptionHandler::EnableExceptionCallback() {
+  bool expected = false;
+  if (!callback_registered_.compare_exchange_strong(expected, true)) {
+    return;
+  }
+  if (HcommRegisterExceptionCallback != nullptr) {
+    int ret = HcommRegisterExceptionCallback(HixlTaskExceptionCallback);
+    if (ret != 0) {
+      HIXL_LOGI("[TaskExceptionHandler] HcommRegisterExceptionCallback failed, ret=%d", ret);
+      callback_registered_.store(false);
+    }
+  } else {
+    HIXL_LOGI("[TaskExceptionHandler] HcommRegisterExceptionCallback API unavailable");
+    callback_registered_.store(false);
+  }
+}
+
+void TaskExceptionHandler::DisableExceptionCallback() {
+  bool expected = true;
+  if (!callback_registered_.compare_exchange_strong(expected, false)) {
+    return;
+  }
+  if (HcommUnregisterExceptionCallback != nullptr) {
+    int ret = HcommUnregisterExceptionCallback(HixlTaskExceptionCallback);
+    if (ret != 0) {
+      HIXL_LOGI("[TaskExceptionHandler] HcommUnregisterExceptionCallback failed, ret=%d", ret);
+    }
+  }
+}
+
+}  // namespace hixl
