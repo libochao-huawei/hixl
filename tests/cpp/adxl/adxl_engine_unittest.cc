@@ -639,19 +639,21 @@ TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithInterrupt) {
   engine2.Finalize();
 }
 
-TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithQueryEventFailed) {
+TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithStreamQueryFailed) {
   AdxlEngine engine1;
   AdxlEngine engine2;
   auto mem = SetupInt32ConnectedEngines(engine1, engine2);
   TransferOpDesc desc = MakeInt32TransferDesc(mem.src, mem.dst);
   TransferReq req = nullptr;
-  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:28101", WRITE, {desc}, {}, req), SUCCESS);
   TransferStatus status = TransferStatus::WAITING;
-  TransferAsyncRuntimeMock instance;
-  ;
-  llm::AclRuntimeStub::Install(&instance);
+  // Install before submit so the host flag never completes (suppressed D2H copy) and the stream query fails,
+  // forcing the aclrtStreamQuery fallback to surface FAILED.
+  AsyncHostFlagStreamQueryFailMock fail_mock;
+  llm::AclRuntimeStub::Install(&fail_mock);
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:28101", WRITE, {desc}, {}, req), SUCCESS);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
-  llm::AclRuntimeStub::UnInstall(&instance);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+  llm::AclRuntimeStub::UnInstall(&fail_mock);
   engine1.Finalize();
   engine2.Finalize();
 }
@@ -768,19 +770,21 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyNameTooLong) {
   engine1.Finalize();
   engine2.Finalize();
 }
-TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithStreamSyncFailed) {
+TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithHostFlagNeverSet) {
   AdxlEngine engine1;
   AdxlEngine engine2;
   auto mem = SetupInt32ConnectedEngines(engine1, engine2);
   TransferOpDesc desc = MakeInt32TransferDesc(mem.src, mem.dst);
   TransferReq req = nullptr;
-  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:28101", WRITE, {desc}, {}, req), SUCCESS);
   TransferStatus status = TransferStatus::WAITING;
-  TransferAsyncSteamRuntimeMocak instance;
-  ;
-  llm::AclRuntimeStub::Install(&instance);
+  // The host flag never completes, but the stream query reports "complete"; GetTransferStatus must treat the
+  // missing completion signal as a failure.
+  AsyncHostFlagNeverSetMock fail_mock;
+  llm::AclRuntimeStub::Install(&fail_mock);
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:28101", WRITE, {desc}, {}, req), SUCCESS);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
-  llm::AclRuntimeStub::UnInstall(&instance);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+  llm::AclRuntimeStub::UnInstall(&fail_mock);
   engine1.Finalize();
   engine2.Finalize();
 }
