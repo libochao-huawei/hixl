@@ -224,22 +224,6 @@ Status EndpointMatcher::MatchEndpoints(const std::vector<EndpointConfig> &local,
                                        const std::vector<EndpointConfig> &remote,
                                        std::vector<HandlerCreateArgs::EndpointPair> &matched_pairs,
                                        HandlerCreateArgs::HandlerType &handler_type) {
-  if (IsIntraRoceEnabled()) {
-    if (TryMatchSingle(local, remote, kProtocolRoce, kPlacementDevice, CommType::COMM_TYPE_ROCE, matched_pairs) ==
-        SUCCESS) {
-      handler_type = HandlerCreateArgs::HandlerType::DIRECT;
-      LogMatchedEndpoints(matched_pairs, handler_type);
-      return SUCCESS;
-    }
-    if (TryMatchSingle(local, remote, kProtocolRoce, kPlacementHost, CommType::COMM_TYPE_ROCE, matched_pairs) ==
-        SUCCESS) {
-      handler_type = HandlerCreateArgs::HandlerType::DIRECT;
-      LogMatchedEndpoints(matched_pairs, handler_type);
-      return SUCCESS;
-    }
-    HIXL_LOGE(PARAM_INVALID, "Failed to find matched endpoints (force RoCE)");
-    return PARAM_INVALID;
-  }
   return TryMatchByPriority(local, remote, IsCrossInstance(local, remote), matched_pairs, handler_type);
 }
 

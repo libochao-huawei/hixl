@@ -85,8 +85,8 @@ bool IsUbgInterconType(uint32_t intercon_type) {
 Status GetScaleOutNetInstanceId(int32_t logic_dev_id, std::string &net_instance_id) {
   DcmiSpodInfo spod_info = {};
   uint32_t buf_size = sizeof(DcmiSpodInfo);
-  int32_t ret = DcmiProxy::GetDeviceInfo(static_cast<uint32_t>(logic_dev_id), kDcmiMainCmdChipInf,
-                                         kDcmiSubCmdSpodInfo, &spod_info, &buf_size);
+  int32_t ret = DcmiProxy::GetDeviceInfo(static_cast<uint32_t>(logic_dev_id), kDcmiMainCmdChipInf, kDcmiSubCmdSpodInfo,
+                                         &spod_info, &buf_size);
   HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED,
                            "Failed to get spod info for ScaleOut net_instance_id, logic_dev_id=%d, ret=%d",
                            logic_dev_id, ret);
@@ -203,14 +203,6 @@ Status GenScaleOutEndpoint(ProtocolDescMode mode, std::vector<EndpointConfig> &e
   return SUCCESS;
 }
 
-Status GenerateScaleOutEndpoints(const HixlOptions &options, int32_t device_id, int32_t phy_id,
-                                 std::vector<EndpointConfig> &endpoint_list) {
-  if (options.GetProtocolDesc().empty()) {
-    return GenerateV5EndpointByInterconType(device_id, phy_id, endpoint_list);
-  }
-  return GenEndpointFromProtocolDesc(options, endpoint_list);
-}
-
 Status GenerateV5EndpointByInterconType(int32_t logic_dev_id, int32_t phy_dev_id,
                                         std::vector<EndpointConfig> &endpoint_list) {
   // DSMI InterconType 未就绪时回退到 kV5 UB 自动生成，endpoint_list 为空由上层兜底
@@ -244,6 +236,14 @@ Status GenerateV5EndpointByInterconType(int32_t logic_dev_id, int32_t phy_dev_id
   }
   HIXL_LOGE(FAILED, "Unsupported DSMI InterconType=%u for kV5 auto endpoint generation", intercon_type);
   return FAILED;
+}
+
+Status GenerateScaleOutEndpoints(const HixlOptions &options, int32_t device_id, int32_t phy_id,
+                                 std::vector<EndpointConfig> &endpoint_list) {
+  if (options.GetProtocolDesc().empty()) {
+    return GenerateV5EndpointByInterconType(device_id, phy_id, endpoint_list);
+  }
+  return GenEndpointFromProtocolDesc(options, endpoint_list);
 }
 
 Status ParseRequiredJsonField(const nlohmann::json &json_obj, const std::string &field_name, std::string &field_value) {
@@ -580,6 +580,12 @@ Status EndpointGenerator::BuildEndpointList(const HixlOptions &options, const st
   HIXL_CHK_STATUS_RET(ParseEndpointListFromLocalCommRes(options, local_comm_res, endpoint_list),
                       "ParseEndpointListFromLocalCommRes failed");
   if (!endpoint_list.empty()) {
+    if (IsIntraRoceEnabled()) {
+      HIXL_LOGI("HCCL_INTRA_ROCE_ENABLE=1, filter to RoCE only");
+      endpoint_list.erase(std::remove_if(endpoint_list.begin(), endpoint_list.end(),
+                                         [](const EndpointConfig &ep) { return ep.protocol != kProtocolRoce; }),
+                          endpoint_list.end());
+    }
     HIXL_CHK_STATUS_RET(FillDeviceInfoIfNeeded(endpoint_list), "FillDeviceInfoIfNeeded failed");
     return SUCCESS;
   }
@@ -604,18 +610,22 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options, const 
     int32_t phy_id = 0;
     HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(device_id, &phy_id));
 
-    HIXL_CHK_STATUS_RET(GenerateScaleOutEndpoints(options, device_id, phy_id, endpoint_list),
-                        "[AutoGenEndpointList] GenerateScaleOutEndpoints failed");
+    if (IsIntraRoceEnabled()) {
+      HIXL_LOGI("[AutoGenEndpointList] HCCL_INTRA_ROCE_ENABLE=1, skip ScaleOut and UB generation on kV5");
+    } else {
+      HIXL_CHK_STATUS_RET(GenerateScaleOutEndpoints(options, device_id, phy_id, endpoint_list),
+                          "[AutoGenEndpointList] GenerateScaleOutEndpoints failed");
 
-    bool ub_auto_gen_needed = false;
-    HIXL_CHK_STATUS_RET(IsA5UbAutoGenNeeded(options, ub_auto_gen_needed), "IsA5UbAutoGenNeeded failed");
-    if (ub_auto_gen_needed) {
-      HIXL_LOGI("[AutoGenEndpointList] A5 UB auto-generate: logic_id=%d, phy_id=%d", device_id, phy_id);
-      hixl::LocalCommRes local_comm_res;
-      HIXL_CHK_STATUS_RET(hixl::GenerateLocalCommRes(phy_id, local_comm_res),
-                          "[AutoGenEndpointList] GenerateLocalCommRes failed");
-      for (auto &ep : local_comm_res.endpoint_list) {
-        endpoint_list.emplace_back(std::move(ep));
+      bool ub_auto_gen_needed = false;
+      HIXL_CHK_STATUS_RET(IsA5UbAutoGenNeeded(options, ub_auto_gen_needed), "IsA5UbAutoGenNeeded failed");
+      if (ub_auto_gen_needed) {
+        HIXL_LOGI("[AutoGenEndpointList] A5 UB auto-generate: logic_id=%d, phy_id=%d", device_id, phy_id);
+        hixl::LocalCommRes local_comm_res;
+        HIXL_CHK_STATUS_RET(hixl::GenerateLocalCommRes(phy_id, local_comm_res),
+                            "[AutoGenEndpointList] GenerateLocalCommRes failed");
+        for (auto &ep : local_comm_res.endpoint_list) {
+          endpoint_list.emplace_back(std::move(ep));
+        }
       }
     }
     HIXL_EVENT("[AutoGenEndpointList] kV5 generated %zu endpoints", endpoint_list.size());

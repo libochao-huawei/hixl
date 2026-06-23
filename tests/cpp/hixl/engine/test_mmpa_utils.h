@@ -107,16 +107,6 @@ class KernelJsonMmpaStub : public llm::MmpaStubApiGe {
   }
 };
 
-class UboeTestMmpaStub : public TestMmpaStub {
- public:
-  INT32 Access(const CHAR *path_name) override {
-    if (std::string(path_name).find("hccn_tool") != std::string::npos) {
-      return EN_ERROR;
-    }
-    return TestMmpaStub::Access(path_name);
-  }
-};
-
 inline std::string CreateTempFileWithContent(const std::string &file_template, const std::string &content) {
   std::vector<char> template_buf(file_template.begin(), file_template.end());
   template_buf.push_back('\0');
