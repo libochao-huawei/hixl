@@ -43,6 +43,10 @@ enum TransferContextOp : uint32_t {
 struct TransferContextSyncEntry {
   ThreadHandle thread;
   uint32_t op;
+  uint32_t user_stream_id;
+  uint32_t notify_id;
+  uint64_t err_flag_dev_va;
+  uint32_t reserved;
 };
 
 struct TransferContextSyncParam {
