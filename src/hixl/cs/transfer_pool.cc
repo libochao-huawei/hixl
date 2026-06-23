@@ -19,6 +19,7 @@
 #include "common/hixl_utils.h"
 #include "common/llm_utils.h"
 #include "common/scope_guard.h"
+#include "proxy/hccp_proxy.h"
 #include "proxy/hcomm_proxy.h"
 
 namespace {
@@ -210,6 +211,10 @@ void TransferPool::FillHandleFromSlot(int32_t device_id, uint32_t index, const S
   handle->notify = slot.notify;
   handle->dev_const_one = nullptr;
   handle->notify_id = slot.notify_id;
+  handle->notify_ra_addr = slot.notify_ra_addr;
+  handle->notify_ra_len = slot.notify_ra_len;
+  handle->notify_rt_addr = slot.notify_rt_addr;
+  handle->notify_rt_len = slot.notify_rt_len;
 }
 
 Status TransferPool::InitAllSlotsLocked() {
@@ -242,6 +247,22 @@ Status TransferPool::InitOneSlotLocked(Slot &slot, uint32_t slot_index) const {
   HIXL_CHK_STATUS_RET(EnsureDefaultStreamLocked(slot), "[TransferPool] EnsureDefaultStreamLocked failed");
   HIXL_CHK_STATUS_RET(EnsureThreadLocked(slot), "[TransferPool] EnsureThreadLocked failed");
   HIXL_CHK_STATUS_RET(EnsureNotifyLocked(slot), "[TransferPool] EnsureNotifyLocked failed");
+
+  // Resolve and cache notify addresses so subsequent clients avoid repeated Ascend runtime queries.
+  (void)HccpProxy::RaGetNotifyAddrLen(device_id_, slot.notify, slot.notify_ra_addr, slot.notify_ra_len);
+  constexpr rtDevResProcType_t kNotifyDevResProcType = RT_PROCESS_HCCP;
+  constexpr rtDevResType_t kNotifyDevResType = RT_RES_TYPE_STARS_NOTIFY_RECORD;
+  rtDevResInfo res_info{};
+  res_info.dieId = 0U;
+  res_info.procType = kNotifyDevResProcType;
+  res_info.resType = kNotifyDevResType;
+  res_info.resId = slot.notify_id;
+  res_info.flag = 0U;
+  rtDevResAddrInfo addr_info{};
+  addr_info.resAddress = &slot.notify_rt_addr;
+  addr_info.len = &slot.notify_rt_len;
+  (void)rtGetDevResAddress(&res_info, &addr_info);
+
   return SUCCESS;
 }
 

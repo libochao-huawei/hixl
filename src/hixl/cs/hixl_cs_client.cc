@@ -31,8 +31,6 @@
 #include "load_kernel.h"
 #include "mem_msg_handler.h"
 #include "proxy/hcomm_proxy.h"
-#include "proxy/hccp_proxy.h"
-#include "rt_external.h"
 
 namespace hixl {
 namespace {
@@ -181,44 +179,18 @@ bool HixlCSClient::IsDeviceEndpoint(const EndpointDesc &ep) {
   return (ep.loc.locType == ENDPOINT_LOC_TYPE_DEVICE);
 }
 
-Status HixlCSClient::ResolveNotifyDeviceAddress(aclrtNotify notify, uint64_t &notify_addr, uint32_t &notify_len) {
-  HIXL_CHECK_NOTNULL(notify);
-  const EndpointDesc &ep = local_endpoint_->GetEndpoint();
-  if (ep.protocol == COMM_PROTOCOL_HCCS) {
-    return SUCCESS;
-  } else if (ep.protocol == COMM_PROTOCOL_ROCE) {
-    HIXL_LOGI("[HixlClient] ResolveNotifyDeviceAddress for ROCE");
-    return HccpProxy::RaGetNotifyAddrLen(device_id_, notify, notify_addr, notify_len);
-  }
-  constexpr rtDevResProcType_t kNotifyDevResProcType = RT_PROCESS_HCCP;
-  constexpr rtDevResType_t kNotifyDevResType = RT_RES_TYPE_STARS_NOTIFY_RECORD;
-  uint32_t notify_id = 0U;
-  HIXL_CHK_ACL_RET(aclrtGetNotifyId(notify, &notify_id), "[HixlClient] aclrtGetNotifyId failed");
-  rtDevResInfo res_info{};
-  res_info.dieId = 0U;
-  res_info.procType = kNotifyDevResProcType;
-  res_info.resType = kNotifyDevResType;
-  res_info.resId = notify_id;
-  res_info.flag = 0U;
-  rtDevResAddrInfo addr_info{};
-  addr_info.resAddress = &notify_addr;
-  addr_info.len = &notify_len;
-  HIXL_CHK_ACL_RET(rtGetDevResAddress(&res_info, &addr_info), "[HixlClient] rtGetDevResAddress failed");
-  return SUCCESS;
-}
 
 Status HixlCSClient::RegisterNotifyMemForAllSlots(const std::vector<TransferPool::SlotHandle> &slots) {
+  // This is only called for non-RoCE, non-HCCS protocols (see InitNotifyResources),
+  // so notify_rt_* (from rtGetDevResAddress) is the correct resolution path.
   notify_mem_handles_.clear();
   notify_mem_handles_.resize(slots.size());
   for (size_t i = 0U; i < slots.size(); ++i) {
-    uint64_t notify_addr = 0U;
-    uint32_t notify_len = 0U;
-    HIXL_CHK_STATUS_RET(ResolveNotifyDeviceAddress(slots[i].notify, notify_addr, notify_len),
-                        "[HixlClient] ResolveNotifyDeviceAddress failed for slot %zu", i);
+    const auto &slot = slots[i];
     CommMem mem{};
     mem.type = COMM_MEM_TYPE_DEVICE;
-    mem.addr = reinterpret_cast<void *>(static_cast<uintptr_t>(notify_addr));
-    mem.size = notify_len;
+    mem.addr = reinterpret_cast<void *>(static_cast<uintptr_t>(slot.notify_rt_addr));
+    mem.size = slot.notify_rt_len;
     HIXL_CHK_STATUS_RET(local_endpoint_->RegisterMem(nullptr, mem, notify_mem_handles_[i]),
                         "[HixlClient] register notify mem failed for slot %zu", i);
   }
@@ -334,14 +306,20 @@ Status HixlCSClient::InitNotifyResources(const EndpointDesc &ep) {
   HIXL_CHK_STATUS_RET(pool->GetAllSlots(all_slots), "[HixlClient] TransferPool GetAllSlots failed. devId=%d",
                       device_id_);
 
-  // 预先解析所有 slot 的 notify 地址并完成必要注册，避免传输时重新获取和注册。
+  // Read notify addresses from TransferPool cache (resolved during pool init).
   slot_notify_addrs_.clear();
   slot_notify_addrs_.resize(all_slots.size());
   for (size_t i = 0U; i < all_slots.size(); ++i) {
+    const auto &slot = all_slots[i];
     uint64_t notify_addr = 0U;
     uint32_t notify_len = 0U;
-    HIXL_CHK_STATUS_RET(ResolveNotifyDeviceAddress(all_slots[i].notify, notify_addr, notify_len),
-                        "[HixlClient] ResolveNotifyDeviceAddress failed for slot %zu", i);
+    if (ep.protocol == COMM_PROTOCOL_ROCE) {
+      notify_addr = slot.notify_ra_addr;
+      notify_len = slot.notify_ra_len;
+    } else if (ep.protocol != COMM_PROTOCOL_HCCS) {
+      notify_addr = slot.notify_rt_addr;
+      notify_len = slot.notify_rt_len;
+    }
     slot_notify_addrs_[i] = notify_addr;
     if (i == 0U) {
       notify_len_ = notify_len;
