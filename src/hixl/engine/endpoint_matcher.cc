@@ -74,11 +74,6 @@ bool EndpointMatcher::IsUbProtocol(const std::string &protocol) {
   return protocol == kProtocolUbCtp || protocol == kProtocolUbTp;
 }
 
-bool EndpointMatcher::IsDirectProtocol(const std::string &protocol) {
-  return protocol == kProtocolRoce || protocol == kProtocolHccs || protocol == kProtocolUboe ||
-         protocol == kProtocolUbg;
-}
-
 const char *EndpointMatcher::HandlerTypeToString(HandlerCreateArgs::HandlerType type) {
   switch (type) {
     case HandlerCreateArgs::HandlerType::DIRECT:
@@ -88,13 +83,6 @@ const char *EndpointMatcher::HandlerTypeToString(HandlerCreateArgs::HandlerType 
     default:
       return "UNKNOWN";
   }
-}
-
-const EndpointConfig *EndpointMatcher::FindByProtocol(const std::vector<EndpointConfig> &endpoints,
-                                                      const std::string &protocol) {
-  auto it =
-      std::find_if(endpoints.begin(), endpoints.end(), [&protocol](const auto &e) { return e.protocol == protocol; });
-  return it != endpoints.end() ? &(*it) : nullptr;
 }
 
 void EndpointMatcher::BuildMatchMap(const std::vector<EndpointConfig> &endpoints,
