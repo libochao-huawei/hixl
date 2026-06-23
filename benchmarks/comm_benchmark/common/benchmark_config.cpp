@@ -362,6 +362,11 @@ bool ApplyTransportKv(const std::string &val, BenchmarkConfig *cfg) {
 
 bool ApplyRoceIpKv(const std::string &val, BenchmarkConfig *cfg) {
   cfg->roce_ip = val;
+  cfg->roce_ip_list = SplitCommaList(val);
+  if (cfg->roce_ip_list.empty()) {
+    fprintf(stderr, "[ERROR] roce_ip is empty\n");
+    return false;
+  }
   return true;
 }
 
@@ -676,7 +681,8 @@ void BenchmarkConfigParser::PrintUsage(FILE *out) {
       kTcpClientCountMax, kDefaultTotalSize, kDefaultBufferSize, kDefaultBlockSteps, kDefaultLoops);
 }
 
-std::map<AscendString, AscendString> BenchmarkConfigParser::BuildInitializeOptions(const BenchmarkConfig &cfg) {
+std::map<AscendString, AscendString> BenchmarkConfigParser::BuildInitializeOptions(const BenchmarkConfig &cfg,
+                                                                                   size_t lane_index) {
   std::map<AscendString, AscendString> options;
   for (const auto &entry : cfg.hixl_init_options) {
     options[AscendString(entry.first.c_str())] = AscendString(entry.second.c_str());
@@ -701,10 +707,12 @@ std::map<AscendString, AscendString> BenchmarkConfigParser::BuildInitializeOptio
   }
   if (cfg.transport == "roce") {
     if (cfg.hixl_init_options.find(OPTION_LOCAL_COMM_RES) == cfg.hixl_init_options.cend()) {
+      const std::string &lane_roce_ip =
+          (lane_index < cfg.expanded_roce_ips.size()) ? cfg.expanded_roce_ips[lane_index] : cfg.roce_ip;
       std::string local_comm_res =
           "{\"version\":\"1.3\",\"net_instance_id\":\"default\",\"endpoint_list\":["
           "{\"protocol\":\"roce\",\"comm_id\":\"" +
-          cfg.roce_ip + "\",\"placement\":\"host\"}]}";
+          lane_roce_ip + "\",\"placement\":\"host\"}]}";
       options[AscendString(OPTION_LOCAL_COMM_RES)] = AscendString(local_comm_res.c_str());
     }
   }
@@ -797,7 +805,7 @@ bool ValidateEnginesNotEmpty(const BenchmarkConfig *cfg) {
   return true;
 }
 
-bool ValidateListLengths(size_t nd, size_t nl, size_t nr, size_t nt, size_t n_max) {
+bool ValidateListLengths(size_t nd, size_t nl, size_t nr, size_t nt, size_t nr_ip, size_t n_max) {
   auto invalid_len = [](size_t n, size_t cap) { return n != 1U && n != cap; };
   if (invalid_len(nd, n_max) || invalid_len(nl, n_max) || invalid_len(nr, n_max)) {
     fprintf(stderr, "[ERROR] device_id/local_engine/remote_engine list lengths (%zu,%zu,%zu) must each be 1 or %zu\n",
@@ -811,6 +819,13 @@ bool ValidateListLengths(size_t nd, size_t nl, size_t nr, size_t nt, size_t n_ma
             nt, n_max);
     return false;
   }
+  if (nr_ip > 0U && invalid_len(nr_ip, n_max)) {
+    fprintf(stderr,
+            "[ERROR] --roce_ip comma-list length (%zu) must be 1 or %zu (same rule as multi local_engine / "
+            "remote_engine)\n",
+            nr_ip, n_max);
+    return false;
+  }
   return true;
 }
 
@@ -822,23 +837,33 @@ bool ValidateMultiDeviceRequirement(size_t n_max, size_t nl, size_t nr) {
   return true;
 }
 
-void ExpandConfigLists(BenchmarkConfig *cfg, size_t n_max, size_t nd, size_t nl, size_t nr, size_t nt) {
+void ExpandConfigLists(BenchmarkConfig *cfg, size_t n_max, size_t nd, size_t nl, size_t nr, size_t nt, size_t nr_ip) {
   cfg->expanded_device_ids.clear();
   cfg->expanded_local_engines.clear();
   cfg->expanded_remote_engines.clear();
   cfg->expanded_tcp_ports.clear();
+  cfg->expanded_roce_ips.clear();
   cfg->expanded_device_ids.reserve(n_max);
   cfg->expanded_local_engines.reserve(n_max);
   cfg->expanded_remote_engines.reserve(n_max);
   cfg->expanded_tcp_ports.reserve(n_max);
+  cfg->expanded_roce_ips.reserve(n_max);
   for (size_t i = 0; i < n_max; ++i) {
     cfg->expanded_device_ids.push_back(cfg->device_id_list[nd == 1U ? 0 : i]);
     cfg->expanded_local_engines.push_back(cfg->local_engine_list[nl == 1U ? 0 : i]);
     cfg->expanded_remote_engines.push_back(cfg->remote_engine_list[nr == 1U ? 0 : i]);
     cfg->expanded_tcp_ports.push_back(cfg->tcp_port_list[nt == 1U ? 0 : i]);
+    if (nr_ip > 0U) {
+      cfg->expanded_roce_ips.push_back(cfg->roce_ip_list[nr_ip == 1U ? 0 : i]);
+    } else {
+      cfg->expanded_roce_ips.push_back(cfg->roce_ip);
+    }
   }
   cfg->device_id = cfg->expanded_device_ids[0];
   cfg->tcp_port = cfg->expanded_tcp_ports[0];
+  if (!cfg->expanded_roce_ips.empty()) {
+    cfg->roce_ip = cfg->expanded_roce_ips[0];
+  }
 }
 
 bool ValidateClientRemoteEngines(const BenchmarkConfig *cfg) {
@@ -1074,13 +1099,17 @@ bool ValidateBenchmarkTopology(BenchmarkConfig *cfg) {
     cfg->tcp_port_list.push_back(cfg->tcp_port);
   }
   const size_t nt = cfg->tcp_port_list.size();
-  if (!ValidateListLengths(nd, nl, nr, nt, n_max)) {
+  if (cfg->roce_ip_list.empty() && !cfg->roce_ip.empty()) {
+    cfg->roce_ip_list.push_back(cfg->roce_ip);
+  }
+  const size_t nr_ip = cfg->roce_ip_list.size();
+  if (!ValidateListLengths(nd, nl, nr, nt, nr_ip, n_max)) {
     return false;
   }
   if (!ValidateMultiDeviceRequirement(n_max, nl, nr)) {
     return false;
   }
-  ExpandConfigLists(cfg, n_max, nd, nl, nr, nt);
+  ExpandConfigLists(cfg, n_max, nd, nl, nr, nt, nr_ip);
   if (cfg->role == BenchmarkRole::kClient && !ValidateClientRemoteEngines(cfg)) {
     return false;
   }
@@ -1137,9 +1166,16 @@ void BenchmarkConfigParser::LogExpandedEndpoints(FILE *out, const BenchmarkConfi
   fprintf(out, "[INFO] endpoint_pairs=%zu\n", n);
   for (size_t i = 0; i < n; ++i) {
     const unsigned tcp_p = (i < cfg.expanded_tcp_ports.size()) ? static_cast<unsigned>(cfg.expanded_tcp_ports[i]) : 0U;
-    fprintf(out, "[INFO]   [%zu] device_id=%d local_engine=%s remote_engine=%s tcp_coord_port=%u\n", i,
-            static_cast<int>(cfg.expanded_device_ids[i]), cfg.expanded_local_engines[i].c_str(),
-            cfg.expanded_remote_engines[i].c_str(), tcp_p);
+    const char *roce_ip_str = (i < cfg.expanded_roce_ips.size()) ? cfg.expanded_roce_ips[i].c_str() : "";
+    if (cfg.transport == "roce" && roce_ip_str[0] != '\0') {
+      fprintf(out, "[INFO]   [%zu] device_id=%d local_engine=%s remote_engine=%s tcp_coord_port=%u roce_ip=%s\n", i,
+              static_cast<int>(cfg.expanded_device_ids[i]), cfg.expanded_local_engines[i].c_str(),
+              cfg.expanded_remote_engines[i].c_str(), tcp_p, roce_ip_str);
+    } else {
+      fprintf(out, "[INFO]   [%zu] device_id=%d local_engine=%s remote_engine=%s tcp_coord_port=%u\n", i,
+              static_cast<int>(cfg.expanded_device_ids[i]), cfg.expanded_local_engines[i].c_str(),
+              cfg.expanded_remote_engines[i].c_str(), tcp_p);
+    }
   }
 }
 

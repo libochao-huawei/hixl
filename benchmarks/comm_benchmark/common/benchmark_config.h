@@ -60,6 +60,10 @@ struct BenchmarkConfig {
   std::string transport = "hccs";
   /// RoCE NIC IP address, used to build LocalCommRes when transport=roce.
   std::string roce_ip;
+  /// Parsed from `--roce_ip` (comma-separated); if empty before Validate, set to `{roce_ip}`.
+  std::vector<std::string> roce_ip_list;
+  /// After Validate: same length as expanded_*; per-lane RoCE NIC IP.
+  std::vector<std::string> expanded_roce_ips;
   /// SOC class for HCCS / transport hints: auto (ACL probe), a2 (910B-class), a3 (910 excluding 910B), a5 (Ascend950,
   /// no HCCS).
   std::string soc_variant = "auto";
@@ -120,7 +124,8 @@ class BenchmarkConfigParser {
   /// Validates cfg and fills expanded_* vectors (same length N).
   static bool Validate(BenchmarkConfig *cfg);
   static void LogExpandedEndpoints(FILE *out, const BenchmarkConfig &cfg);
-  static std::map<hixl::AscendString, hixl::AscendString> BuildInitializeOptions(const BenchmarkConfig &cfg);
+  static std::map<hixl::AscendString, hixl::AscendString> BuildInitializeOptions(const BenchmarkConfig &cfg,
+                                                                                 size_t lane_index = 0U);
   static bool ApplyTransportEnvironment(const BenchmarkConfig &cfg);
 };
 

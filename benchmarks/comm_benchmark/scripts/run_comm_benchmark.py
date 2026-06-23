@@ -334,6 +334,7 @@ class SingleTargetCommandSpec:
     device_id: int
     target: str
     tcp_port: int
+    lane_index: int = 0
 
 
 @dataclass
@@ -345,6 +346,7 @@ class SingleInitiatorCommandSpec:
     local_port: int
     remotes: str
     ports: str
+    lane_index: int = 0
 
 
 @dataclass
@@ -735,7 +737,18 @@ def benchmark_group_for_run(args) -> str:
     return "single"
 
 
-def base_options(args, bench_type: str):
+def _get_roce_ip_for_lane(roce_ip: str | None, lane_index: int) -> str | None:
+    if not roce_ip:
+        return None
+    ips = [ip.strip() for ip in roce_ip.split(",") if ip.strip()]
+    if not ips:
+        return None
+    if lane_index < len(ips):
+        return ips[lane_index]
+    return ips[0] if len(ips) == 1 else None
+
+
+def base_options(args, bench_type: str, lane_index: int = 0):
     (im, tm, op) = TYPE_MAP[bench_type]
     options = [
         f"--benchmark_group={benchmark_group_for_run(args)}",
@@ -758,8 +771,9 @@ def base_options(args, bench_type: str):
         options.append(f"--total_size={args.total_size}")
     if args.buffer_size is not None:
         options.append(f"--buffer_size={args.buffer_size}")
-    if args.roce_ip:
-        options.append(f"--roce_ip={args.roce_ip}")
+    lane_roce_ip = _get_roce_ip_for_lane(args.roce_ip, lane_index)
+    if lane_roce_ip:
+        options.append(f"--roce_ip={lane_roce_ip}")
     return options
 
 
@@ -774,6 +788,7 @@ def tcp_accept_wait_for_run(args, run_count: int) -> int:
 def build_target_cmd(spec: TargetCommandSpec) -> list[str]:
     lane = spec.lane
     args = spec.args
+    lane_index = lane.get("lane_index", 0)
     return [
         spec.bench_bin,
         "--role=target",
@@ -782,7 +797,7 @@ def build_target_cmd(spec: TargetCommandSpec) -> list[str]:
         f"--tcp_port={lane['tcp_port']}",
         f"--tcp_client_count={lane['tcp_client_count']}",
         f"--tcp_accept_wait_s={spec.tcp_accept_wait_s}",
-        *base_options(args, spec.bench_type),
+        *base_options(args, spec.bench_type, lane_index),
         *hixl_init_extra_args(args),
     ]
 
@@ -793,6 +808,7 @@ def build_initiator_cmd(spec: InitiatorCommandSpec) -> list[str]:
     remote = lane["remote_engines"]
     local_port = lane["local_hixl_port"]
     local_ip = args.host if args.host != "127.0.0.1" else get_local_ip()
+    lane_index = lane.get("lane_index", 0)
     return [
         spec.bench_bin,
         "--role=initiator",
@@ -800,7 +816,7 @@ def build_initiator_cmd(spec: InitiatorCommandSpec) -> list[str]:
         f"--local_engine={endpoint(local_ip, local_port)}",
         f"--remote_engine={remote}",
         f"--tcp_port={lane['tcp_port']}",
-        *base_options(args, spec.bench_type),
+        *base_options(args, spec.bench_type, lane_index),
         *hixl_init_extra_args(args),
     ]
 
@@ -1046,6 +1062,7 @@ def _dual_target_lanes(
         for idx, device_id in enumerate(topology.target_device_ids):
             lanes.append(
                 {
+                    "lane_index": idx,
                     "device_id": device_id,
                     "local_ip": local_ip,
                     "hixl_port": base_hixl_port + idx,
@@ -1056,6 +1073,7 @@ def _dual_target_lanes(
         return lanes
     return [
         {
+            "lane_index": 0,
             "device_id": topology.target_device_ids[0],
             "local_ip": local_ip,
             "hixl_port": base_hixl_port,
@@ -1078,6 +1096,7 @@ def _dual_initiator_lanes(
         ports = ",".join((str(base_tcp_port + i) for i in range(topology.target_count)))
         return [
             {
+                "lane_index": 0,
                 "device_id": topology.initiator_device_ids[0],
                 "remote_engines": remotes,
                 "tcp_port": ports,
@@ -1090,6 +1109,7 @@ def _dual_initiator_lanes(
         for idx, device_id in enumerate(topology.initiator_device_ids):
             lanes.append(
                 {
+                    "lane_index": idx,
                     "device_id": device_id,
                     "remote_engines": remote,
                     "tcp_port": str(base_tcp_port),
@@ -1099,6 +1119,7 @@ def _dual_initiator_lanes(
         return lanes
     return [
         {
+            "lane_index": 0,
             "device_id": topology.initiator_device_ids[0],
             "remote_engines": endpoint(target_host, base_hixl_port),
             "tcp_port": str(base_tcp_port),
@@ -1444,7 +1465,7 @@ def _single_target_cmd(spec: SingleTargetCommandSpec) -> list[str]:
         f"--tcp_port={spec.tcp_port}",
         f"--tcp_client_count={target_peer_count(args.pattern, args.initiator_count)}",
         f"--tcp_accept_wait_s={args.tcp_accept_wait_s}",
-        *base_options(args, spec.bench_type),
+        *base_options(args, spec.bench_type, spec.lane_index),
         *hixl_init_extra_args(args),
     ]
 
@@ -1458,7 +1479,7 @@ def _single_initiator_cmd(spec: SingleInitiatorCommandSpec) -> list[str]:
         f"--local_engine={endpoint(args.host, spec.local_port)}",
         f"--remote_engine={spec.remotes}",
         f"--tcp_port={spec.ports}",
-        *base_options(args, spec.bench_type),
+        *base_options(args, spec.bench_type, spec.lane_index),
         *hixl_init_extra_args(args),
     ]
 
@@ -1490,6 +1511,7 @@ def _run_single_direction(
                         devices[idx],
                         target,
                         tcp_ports[idx],
+                        lane_index=idx,
                     )
                 )
             )
@@ -1511,6 +1533,7 @@ def _run_single_direction(
                         local_port,
                         remotes,
                         ports,
+                        lane_index=target_count + idx,
                     )
                 )
             )

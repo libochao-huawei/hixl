@@ -19,10 +19,10 @@
 
 using hixl::AscendString;
 using hixl::FabricMemTransferService;
+using hixl::Hixl;
 using hixl::MemDesc;
 using hixl::MemType;
 using hixl::SUCCESS;
-using hixl::Hixl;
 
 namespace {
 
@@ -34,9 +34,10 @@ const char *RecentErrMsg() {
   return errmsg;
 }
 
-int32_t InitializeHixl(const std::string &local_engine, const hixl_benchmark::BenchmarkConfig &cfg, Hixl *hixl) {
+int32_t InitializeHixl(const std::string &local_engine, const hixl_benchmark::BenchmarkConfig &cfg, Hixl *hixl,
+                       size_t lane_index = 0U) {
   const std::map<AscendString, AscendString> init_options =
-      hixl_benchmark::BenchmarkConfigParser::BuildInitializeOptions(cfg);
+      hixl_benchmark::BenchmarkConfigParser::BuildInitializeOptions(cfg, lane_index);
   const auto ret = hixl->Initialize(AscendString(local_engine.c_str()), init_options);
   if (ret != SUCCESS) {
     std::printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, RecentErrMsg());
@@ -87,8 +88,7 @@ void FreeDeviceBuffers(const std::vector<void *> &buffers, const std::string &tr
 }
 
 void ReleaseHixlResources(Hixl &hixl_engine, bool need_register, bool is_host,
-                          const std::vector<hixl::MemHandle> &handles,
-                          const std::vector<void *> &buffers,
+                          const std::vector<hixl::MemHandle> &handles, const std::vector<void *> &buffers,
                           const std::string &transport = "") {
   if (need_register) {
     DeregisterMemHandles(hixl_engine, handles);
@@ -103,7 +103,9 @@ void ReleaseHixlResources(Hixl &hixl_engine, bool need_register, bool is_host,
 
 namespace hixl_benchmark {
 
-ServerRunner::~ServerRunner() { Shutdown(); }
+ServerRunner::~ServerRunner() {
+  Shutdown();
+}
 
 void ServerRunner::ReleaseServerResources() {
   tcp_session_.reset();
