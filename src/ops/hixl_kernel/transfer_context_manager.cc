@@ -11,9 +11,47 @@
 
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
+#include "tsfw_notifier.h"
+#include "hccl/hccl_types.h"
 
 namespace hixl {
 namespace {
+
+typedef void (*HcommTaskExceptionCallbackFn)(uint64_t thread_handle, uint32_t error_code, uint32_t exe_stream_id,
+                                             uint32_t task_id);
+
+extern "C" {
+HcclResult __attribute__((weak)) HcommRegisterTaskExceptionCallback(const char *module_name,
+                                                                    HcommTaskExceptionCallbackFn callback);
+}
+
+void HixlTaskExceptionCallback(uint64_t thread_handle, uint32_t error_code, uint32_t exe_stream_id, uint32_t task_id) {
+  HIXL_LOGI("[HixlSyncTransferContext] Exception callback triggered. thread=%lu, err=%u, stream=%u, task=%u",
+            thread_handle, error_code, exe_stream_id, task_id);
+
+  auto ctx = TransferContextManager::Instance().Get(thread_handle);
+  if (ctx == nullptr) {
+    HIXL_LOGI("[HixlSyncTransferContext] Thread %lu not found in mapping table", thread_handle);
+    return;
+  }
+
+  if (ctx->GetState() != TRANSFER_THREAD_STATE_INITIALIZED) {
+    HIXL_LOGI("[HixlSyncTransferContext] Thread %lu state is not INITIALIZED, state=%u", thread_handle,
+              static_cast<uint32_t>(ctx->GetState()));
+    return;
+  }
+
+  if (ctx->err_flag_dev_va != 0U) {
+    volatile uint8_t *err_flag_ptr = reinterpret_cast<volatile uint8_t *>(ctx->err_flag_dev_va);
+    *err_flag_ptr = static_cast<uint8_t>(error_code);
+    HIXL_LOGI("[HixlSyncTransferContext] Written err_flag=%u to va=%lu", error_code, ctx->err_flag_dev_va);
+  }
+
+  uint32_t notify_ret = NotifyTsfwTaskException(ctx->notify_id, static_cast<int32_t>(ctx->user_stream_id), error_code);
+  if (notify_ret != TSFW_NOTIFY_SUCCESS) {
+    HIXL_LOGI("[HixlSyncTransferContext] NotifyTsfwTaskException failed, ret=%u", notify_ret);
+  }
+}
 
 Status ValidateSyncTransferContextParam(const TransferContextSyncParam *param) {
   if (param == nullptr) {
@@ -51,13 +89,27 @@ std::shared_ptr<TransferContext> TransferContextManager::Get(ThreadHandle thread
   return it->second;
 }
 
-TransferThreadState TransferContextManager::Add(ThreadHandle thread) {
+TransferThreadState TransferContextManager::Add(ThreadHandle thread, uint32_t user_stream_id, uint32_t notify_id,
+                                                uint64_t err_flag_dev_va) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto &ctx = contexts_[thread];
   if (ctx == nullptr) {
     ctx = std::make_shared<TransferContext>();
   }
   ctx->SetState(TRANSFER_THREAD_STATE_INITIALIZED);
+  ctx->user_stream_id = user_stream_id;
+  ctx->notify_id = notify_id;
+  ctx->err_flag_dev_va = err_flag_dev_va;
+
+  if (HcommRegisterTaskExceptionCallback != nullptr) {
+    HcclResult ret = HcommRegisterTaskExceptionCallback("HIXL", HixlTaskExceptionCallback);
+    if (ret != HCCL_SUCCESS) {
+      HIXL_LOGI("[HixlSyncTransferContext] HcommRegisterTaskExceptionCallback failed, ret=%d", ret);
+    }
+  } else {
+    HIXL_LOGI("[HixlSyncTransferContext] HcommRegisterTaskExceptionCallback API unavailable");
+  }
+
   return TRANSFER_THREAD_STATE_INITIALIZED;
 }
 
@@ -76,6 +128,14 @@ TransferThreadState TransferContextManager::Delete(ThreadHandle thread) {
   ctx->SetState(TRANSFER_THREAD_STATE_DELETED);
   contexts_.erase(it);
   ctx->unlock();
+
+  if (contexts_.empty() && HcommRegisterTaskExceptionCallback != nullptr) {
+    HcclResult ret = HcommRegisterTaskExceptionCallback("HIXL", nullptr);
+    if (ret != HCCL_SUCCESS) {
+      HIXL_LOGI("[HixlSyncTransferContext] Unregister callback failed, ret=%d", ret);
+    }
+  }
+
   return TRANSFER_THREAD_STATE_DELETED;
 }
 
@@ -87,7 +147,8 @@ uint32_t DoSyncTransferContext(TransferContextSyncParam *param) {
   TransferThreadState state = TRANSFER_THREAD_STATE_DELETED;
   for (uint32_t i = 0U; i < param->entry_num; ++i) {
     if (entries[i].op == TRANSFER_CONTEXT_OP_ADD) {
-      state = TransferContextManager::Instance().Add(entries[i].thread);
+      state = TransferContextManager::Instance().Add(entries[i].thread, entries[i].user_stream_id, entries[i].notify_id,
+                                                     entries[i].err_flag_dev_va);
     } else if (entries[i].op == TRANSFER_CONTEXT_OP_DELETE) {
       state = TransferContextManager::Instance().Delete(entries[i].thread);
     } else {

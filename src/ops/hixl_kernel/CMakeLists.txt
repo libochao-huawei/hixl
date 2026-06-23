@@ -18,6 +18,7 @@ set(INCLUDE_LIST
 add_library(cann_hixl_kernel SHARED
         hixl_batch_transfer.cc
         transfer_context_manager.cc
+        tsfw_notifier.cc
 )
 
 target_include_directories(cann_hixl_kernel PRIVATE
@@ -33,6 +34,9 @@ target_link_libraries(cann_hixl_kernel PRIVATE
         $<BUILD_INTERFACE:c_sec_headers>
         $<BUILD_INTERFACE:error_manager_headers>
         $<BUILD_INTERFACE:metadef_headers>
+        $<BUILD_INTERFACE:runtime_headers>
+        ascend_hal
+        aicpu_sharder
         -Wl,--no-as-needed
         slog_dev
         hcomm_proxy_static
