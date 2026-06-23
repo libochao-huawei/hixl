@@ -238,14 +238,6 @@ Status GenerateV5EndpointByInterconType(int32_t logic_dev_id, int32_t phy_dev_id
   return FAILED;
 }
 
-Status GenerateScaleOutEndpoints(const HixlOptions &options, int32_t device_id, int32_t phy_id,
-                                 std::vector<EndpointConfig> &endpoint_list) {
-  if (options.GetProtocolDesc().empty()) {
-    return GenerateV5EndpointByInterconType(device_id, phy_id, endpoint_list);
-  }
-  return EndpointGenerator::GenEndpointFromProtocolDesc(options, endpoint_list);
-}
-
 Status ParseRequiredJsonField(const nlohmann::json &json_obj, const std::string &field_name, std::string &field_value) {
   if (!json_obj.contains(field_name)) {
     HIXL_LOGE(PARAM_INVALID, "Missing required field '%s' in EndpointConfig", field_name.c_str());
@@ -610,8 +602,13 @@ Status EndpointGenerator::AutoGenV5EndpointList(const HixlOptions &options,
     return SUCCESS;
   }
 
-  HIXL_CHK_STATUS_RET(GenerateScaleOutEndpoints(options, device_id, phy_id, endpoint_list),
-                      "[AutoGenEndpointList] GenerateScaleOutEndpoints failed");
+  if (options.GetProtocolDesc().empty()) {
+    HIXL_CHK_STATUS_RET(GenerateV5EndpointByInterconType(device_id, phy_id, endpoint_list),
+                        "[AutoGenEndpointList] GenerateV5EndpointByInterconType failed");
+  } else {
+    HIXL_CHK_STATUS_RET(GenEndpointFromProtocolDesc(options, endpoint_list),
+                        "[AutoGenEndpointList] GenEndpointFromProtocolDesc failed");
+  }
 
   bool ub_auto_gen_needed = false;
   HIXL_CHK_STATUS_RET(IsA5UbAutoGenNeeded(options, ub_auto_gen_needed), "IsA5UbAutoGenNeeded failed");
