@@ -598,6 +598,35 @@ Status EndpointGenerator::BuildEndpointList(const HixlOptions &options, const st
   return SUCCESS;
 }
 
+Status EndpointGenerator::AutoGenV5EndpointList(const HixlOptions &options,
+                                                std::vector<EndpointConfig> &endpoint_list) {
+  int32_t device_id = 0;
+  HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
+  int32_t phy_id = 0;
+  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(device_id, &phy_id));
+
+  if (IsIntraRoceEnabled()) {
+    HIXL_LOGI("[AutoGenEndpointList] HCCL_INTRA_ROCE_ENABLE=1, skip ScaleOut and UB generation on kV5");
+    return SUCCESS;
+  }
+
+  HIXL_CHK_STATUS_RET(GenerateScaleOutEndpoints(options, device_id, phy_id, endpoint_list),
+                      "[AutoGenEndpointList] GenerateScaleOutEndpoints failed");
+
+  bool ub_auto_gen_needed = false;
+  HIXL_CHK_STATUS_RET(IsA5UbAutoGenNeeded(options, ub_auto_gen_needed), "IsA5UbAutoGenNeeded failed");
+  if (ub_auto_gen_needed) {
+    HIXL_LOGI("[AutoGenEndpointList] A5 UB auto-generate: logic_id=%d, phy_id=%d", device_id, phy_id);
+    hixl::LocalCommRes local_comm_res;
+    HIXL_CHK_STATUS_RET(hixl::GenerateLocalCommRes(phy_id, local_comm_res),
+                        "[AutoGenEndpointList] GenerateLocalCommRes failed");
+    for (auto &ep : local_comm_res.endpoint_list) {
+      endpoint_list.emplace_back(std::move(ep));
+    }
+  }
+  return SUCCESS;
+}
+
 Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options, const std::string &local_engine,
                                               std::vector<EndpointConfig> &endpoint_list) {
   SocType soc_type = SocType::kOther;
@@ -605,29 +634,7 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options, const 
   endpoint_list.clear();
 
   if (soc_type == SocType::kV5) {
-    int32_t device_id = 0;
-    HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
-    int32_t phy_id = 0;
-    HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(device_id, &phy_id));
-
-    if (IsIntraRoceEnabled()) {
-      HIXL_LOGI("[AutoGenEndpointList] HCCL_INTRA_ROCE_ENABLE=1, skip ScaleOut and UB generation on kV5");
-    } else {
-      HIXL_CHK_STATUS_RET(GenerateScaleOutEndpoints(options, device_id, phy_id, endpoint_list),
-                          "[AutoGenEndpointList] GenerateScaleOutEndpoints failed");
-
-      bool ub_auto_gen_needed = false;
-      HIXL_CHK_STATUS_RET(IsA5UbAutoGenNeeded(options, ub_auto_gen_needed), "IsA5UbAutoGenNeeded failed");
-      if (ub_auto_gen_needed) {
-        HIXL_LOGI("[AutoGenEndpointList] A5 UB auto-generate: logic_id=%d, phy_id=%d", device_id, phy_id);
-        hixl::LocalCommRes local_comm_res;
-        HIXL_CHK_STATUS_RET(hixl::GenerateLocalCommRes(phy_id, local_comm_res),
-                            "[AutoGenEndpointList] GenerateLocalCommRes failed");
-        for (auto &ep : local_comm_res.endpoint_list) {
-          endpoint_list.emplace_back(std::move(ep));
-        }
-      }
-    }
+    HIXL_CHK_STATUS_RET(AutoGenV5EndpointList(options, endpoint_list), "AutoGenV5EndpointList failed");
     HIXL_EVENT("[AutoGenEndpointList] kV5 generated %zu endpoints", endpoint_list.size());
   } else if (soc_type == SocType::kV2 || soc_type == SocType::kV3) {
     int32_t device_id = 0;
