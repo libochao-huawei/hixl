@@ -243,7 +243,7 @@ Status GenerateScaleOutEndpoints(const HixlOptions &options, int32_t device_id, 
   if (options.GetProtocolDesc().empty()) {
     return GenerateV5EndpointByInterconType(device_id, phy_id, endpoint_list);
   }
-  return GenEndpointFromProtocolDesc(options, endpoint_list);
+  return EndpointGenerator::GenEndpointFromProtocolDesc(options, endpoint_list);
 }
 
 Status ParseRequiredJsonField(const nlohmann::json &json_obj, const std::string &field_name, std::string &field_value) {
