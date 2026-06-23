@@ -535,7 +535,7 @@ Status TransferPool::SyncContextsLocked(const std::vector<ThreadHandle> &threads
     if (thread == 0U) {
       continue;
     }
-    pending.push_back({thread, op});
+    pending.push_back({thread, op, 0U, 0U, 0U, 0U});
   }
   if (pending.empty()) {
     return SUCCESS;
@@ -589,7 +589,7 @@ Status TransferPool::CollectRetrySyncEntries(const std::vector<TransferContextSy
                 static_cast<uint64_t>(entries[i].thread), op, expect_state);
       return FAILED;
     }
-    retry_entries.push_back({entries[i].thread, op});
+    retry_entries.push_back({entries[i].thread, op, 0U, 0U, 0U, 0U});
     retry_states.push_back(state);
   }
   return SUCCESS;
