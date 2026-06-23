@@ -464,11 +464,12 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options, const 
 Status EndpointGenerator::ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc &endpoint) {
   HIXL_CHK_STATUS_RET(ParseEndpointPlacement(endpoint_config, endpoint), "ParseEndpointPlacement failed");
   HIXL_CHK_STATUS_RET(ParseEndpointProtocol(endpoint_config, endpoint), "ParseEndpointProtocol failed");
+  if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
+    HIXL_CHK_STATUS_RET(FillEndpointDeviceLocation(endpoint_config, endpoint), "FillEndpointDeviceLocation failed");
+  }
+
   if (endpoint_config.protocol == kProtocolRoce || endpoint_config.protocol == kProtocolUboe) {
     HIXL_CHK_STATUS_RET(ParseIpAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseIpAddress failed");
-    if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
-      HIXL_CHK_STATUS_RET(FillEndpointDeviceLocation(endpoint_config, endpoint), "FillEndpointDeviceLocation failed");
-    }
     return SUCCESS;
   }
 
@@ -477,17 +478,11 @@ Status EndpointGenerator::ConvertToEndpointDesc(const EndpointConfig &endpoint_c
     HIXL_CHK_STATUS_RET(ParseHccsCommId(endpoint_config.comm_id, device_id), "ParseHccsCommId failed");
     endpoint.commAddr.type = COMM_ADDR_TYPE_ID;
     endpoint.commAddr.id = device_id;
-    if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
-      HIXL_CHK_STATUS_RET(FillEndpointDeviceLocation(endpoint_config, endpoint), "FillEndpointDeviceLocation failed");
-    }
     return SUCCESS;
   }
 
   if (endpoint_config.protocol == kProtocolUbCtp || endpoint_config.protocol == kProtocolUbTp) {
     HIXL_CHK_STATUS_RET(ParseEidAddress(endpoint_config.comm_id, endpoint.commAddr), "ParseEidAddress failed");
-    if (endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
-      HIXL_CHK_STATUS_RET(FillEndpointDeviceLocation(endpoint_config, endpoint), "FillEndpointDeviceLocation failed");
-    }
   }
   return SUCCESS;
 }
