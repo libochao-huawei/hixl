@@ -175,6 +175,22 @@ class EndpointGeneratorUTest : public ::testing::Test {
     }
     return EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list);
   }
+
+  void ExpectAutoGenerateRejectedWithoutDevice(const std::map<AscendString, AscendString> &options) {
+    acl_stub_->device_count_ = 0;
+
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+
+    std::string local_comm_res;
+    std::vector<EndpointConfig> endpoint_list;
+    EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
+              PARAM_INVALID);
+    EXPECT_EQ(acl_stub_->get_device_count_calls_, 1);
+    EXPECT_EQ(acl_stub_->get_soc_name_calls_, 0);
+    EXPECT_EQ(acl_stub_->get_device_calls_, 0);
+    EXPECT_EQ(acl_stub_->get_phy_dev_calls_, 0);
+  }
 };
 
 TEST_F(EndpointGeneratorUTest, BuildHccsEndpointSuccess) {
@@ -487,6 +503,17 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsDeviceEndpoint
   EXPECT_EQ(acl_stub_->get_phy_dev_calls_, 1);
 }
 
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsMissingLocalCommResWithoutDevice) {
+  std::map<AscendString, AscendString> options;
+  ExpectAutoGenerateRejectedWithoutDevice(options);
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsVersionOnlyLocalCommResWithoutDevice) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(R"({"version":"1.3"})");
+  ExpectAutoGenerateRejectedWithoutDevice(options);
+}
+
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsAutoGenerateWhenPhyIdQueryFails) {
   acl_stub_->phy_dev_failed_ = true;
 
@@ -498,7 +525,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsRejectsAutoGenerateWh
   HixlOptions parsed;
   ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
   EXPECT_NE(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
-  EXPECT_EQ(acl_stub_->get_device_count_calls_, 0);
+  EXPECT_EQ(acl_stub_->get_device_count_calls_, 1);
   EXPECT_EQ(acl_stub_->get_soc_name_calls_, 1);
   EXPECT_EQ(acl_stub_->get_device_calls_, 1);
   EXPECT_EQ(acl_stub_->get_phy_dev_calls_, 1);
