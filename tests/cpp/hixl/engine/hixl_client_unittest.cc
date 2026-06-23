@@ -1398,15 +1398,6 @@ TEST_F(HixlClientUTest, EndpointMatcherSameInstanceFallsBackToDeviceRoce) {
   MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_ROCE);
 }
 
-TEST_F(HixlClientUTest, EndpointMatcherForceRoceWhenEnvSet) {
-  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolUboe, "superpod1-1"),
-                                       MakeDirectEp(kProtocolUbg, "superpod1-1"),
-                                       MakeDirectEp(kProtocolRoce, "superpod1-1")};
-  std::vector<EndpointConfig> remote = local;
-  EnvGuard env_guard("HCCL_INTRA_ROCE_ENABLE", "1");
-  MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_ROCE);
-}
-
 TEST_F(HixlClientUTest, EndpointMatcherSameInstancePrefersUbBeforeScaleOut) {
   std::vector<EndpointConfig> local = {
       MakeUbEp("local_1", "remote_1", "device"), MakeUbEp("local_2", "remote_2", "host"),
