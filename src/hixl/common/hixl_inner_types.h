@@ -29,6 +29,24 @@ struct HixlOneSideOpParam {
   uint32_t use_notify_record;
 };
 
+constexpr uint32_t SYNC_TYPE_ADD = 0U;
+constexpr uint32_t SYNC_TYPE_DELETE = 1U;
+
+struct HixlSyncTransferCtxOp {
+  uint64_t thread_handle;
+  uint64_t err_flag_dev_va;
+  uint32_t user_stream_id;
+  uint32_t notify_id;
+  uint32_t sync_type;
+  uint32_t reserved;
+};
+
+struct HixlSyncTransferCtxParam {
+  uint64_t entries_addr;
+  uint32_t count;
+  uint32_t reserved;
+};
+
 namespace hixl {
 constexpr const char *kProtocolRoce = "roce";
 constexpr const char *kProtocolUbCtp = "ub_ctp";
