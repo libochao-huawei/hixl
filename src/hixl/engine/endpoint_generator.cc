@@ -405,6 +405,11 @@ Status EndpointGenerator::BuildEndpointList(const HixlOptions &options, const st
                       "ParseEndpointListFromLocalCommRes failed");
 
   if (endpoint_list.empty()) {
+    uint32_t device_count = 0;
+    HIXL_CHK_ACL_RET(aclrtGetDeviceCount(&device_count), "aclrtGetDeviceCount failed");
+    HIXL_CHK_BOOL_RET_STATUS(device_count > 0U, PARAM_INVALID,
+                             "LocalCommRes with endpoint_list is required when no local NPU device exists; "
+                             "auto generation is not supported on generic server");
     // Step 2: Build default endpoint list based on soc type
     HIXL_CHK_STATUS_RET(AutoGenEndpointList(options, local_engine, endpoint_list), "AutoGenEndpointList failed");
   }
