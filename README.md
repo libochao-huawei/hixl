@@ -16,7 +16,7 @@
 
 - [2026/05] [《HIXL应用开发系列教程》](https://gitcode.com/cann/cann-learning-hub/tree/master/tutorials/hixl_development)发布，讲解昇腾单边通信库核心概念与应用开发方法。
 - [2026/04] HIXL支持Device UBoE，详见[[Issue #275](https://gitcode.com/cann/hixl/issues/275)]; HIXL跨代际能力增强，支持A2/A3/A5异构 [[Issue #138](https://gitcode.com/cann/hixl/issues/138)]，[[Issue #115](https://gitcode.com/cann/hcomm/issues/115)]。
-- [2026/03] HIXL已支持超节点内FabricMem模式，详见 [FabricMem](docs/FabricMem.md)。
+- [2026/03] HIXL已支持超节点内FabricMem模式，详见 [FabricMem](docs/zh/FabricMem.md)。
 - [2026/01] LLM-DataDist与HIXL已支持下一代芯片的Host RoCE传输能力。
 - [2025/12] 基于A3超平面实现D2rH直传；新增链路池与IPv6支持，并对接Mooncake社区的下一代TENT架构。
 - [2025/11] HIXL提供异步传输能力，支持更高并发的非阻塞数据传输场景。
@@ -87,7 +87,7 @@ HIXL（Huawei Xfer Library）是一个灵活、高效的昇腾单边通信库，
 
 若您希望快速体验该组件的构建和样例执行，请访问如下文档获取简易教程。
 
-- [构建](docs/build.md)：介绍组件的编译和安装，包括编译成功后利用tests进行本地验证。
+- [构建](docs/zh/build.md)：介绍组件的编译和安装，包括编译成功后利用tests进行本地验证。
 - [样例执行](examples/README.md)：介绍如何端到端执行样例代码，包括C++和Python样例。
 
 
@@ -95,8 +95,8 @@ HIXL（Huawei Xfer Library）是一个灵活、高效的昇腾单边通信库，
 
 若您希望深入了解组件的相关接口并修改源码，请访问如下文档获取详细教程。
 
-- [C/C++接口](docs/cpp/README.md)：C++接口介绍。
-- [Python接口](docs/python/README.md)：Python接口介绍。
+- [C/C++接口](docs/zh/api/cpp/README.md)：C++接口介绍。
+- [Python接口](docs/zh/api/python/README.md)：Python接口介绍。
 
 如果希望深入了解 HIXL 开发指南和技术文章等内容，可参考以下文档：
 
