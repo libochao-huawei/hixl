@@ -670,6 +670,19 @@ TEST_F(EndpointGeneratorUTest, OptionalAclrtContextCapturesAndSetsContextWhenDev
   EXPECT_EQ(acl_stub_->set_current_context_calls_, 1);
 }
 
+TEST_F(EndpointGeneratorUTest, OptionalAclrtContextGetCurrentContextKeepsExistingContext) {
+  acl_stub_->device_count_ = 1;
+
+  OptionalAclrtContext context;
+  EXPECT_EQ(context.GetCurrentContext(), SUCCESS);
+  EXPECT_EQ(context.GetCurrentContext(), SUCCESS);
+  EXPECT_EQ(context.SetCurrentContext(), SUCCESS);
+
+  EXPECT_EQ(acl_stub_->get_device_count_calls_, 1);
+  EXPECT_EQ(acl_stub_->get_current_context_calls_, 1);
+  EXPECT_EQ(acl_stub_->set_current_context_calls_, 1);
+}
+
 TEST_F(EndpointGeneratorUTest, OptionalAclrtContextCreateContextSkipsRuntimeWhenNoDevice) {
   acl_stub_->device_count_ = 0;
 
@@ -696,6 +709,26 @@ TEST_F(EndpointGeneratorUTest, OptionalAclrtContextCreateContextOwnsAndDestroysC
     EXPECT_EQ(acl_stub_->get_device_count_calls_, 1);
     EXPECT_EQ(acl_stub_->get_device_calls_, 1);
     EXPECT_EQ(acl_stub_->create_context_calls_, 1);
+    EXPECT_EQ(acl_stub_->set_current_context_calls_, 1);
+    EXPECT_EQ(acl_stub_->destroy_context_calls_, 0);
+  }
+
+  EXPECT_EQ(acl_stub_->destroy_context_calls_, 1);
+}
+
+TEST_F(EndpointGeneratorUTest, OptionalAclrtContextCreateThenGetCurrentKeepsOwnedContext) {
+  acl_stub_->device_count_ = 1;
+
+  {
+    OptionalAclrtContext context;
+    EXPECT_EQ(context.CreateContext(), SUCCESS);
+    EXPECT_EQ(context.GetCurrentContext(), SUCCESS);
+    EXPECT_EQ(context.SetCurrentContext(), SUCCESS);
+
+    EXPECT_EQ(acl_stub_->get_device_count_calls_, 1);
+    EXPECT_EQ(acl_stub_->get_device_calls_, 1);
+    EXPECT_EQ(acl_stub_->create_context_calls_, 1);
+    EXPECT_EQ(acl_stub_->get_current_context_calls_, 0);
     EXPECT_EQ(acl_stub_->set_current_context_calls_, 1);
     EXPECT_EQ(acl_stub_->destroy_context_calls_, 0);
   }

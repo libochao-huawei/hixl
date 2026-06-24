@@ -20,6 +20,10 @@ OptionalAclrtContext::~OptionalAclrtContext() {
 }
 
 Status OptionalAclrtContext::GetCurrentContext() {
+  if (has_context_) {
+    return SUCCESS;
+  }
+
   uint32_t device_count = 0;
   HIXL_CHK_ACL_RET(aclrtGetDeviceCount(&device_count), "aclrtGetDeviceCount failed");
   if (device_count == 0U) {
