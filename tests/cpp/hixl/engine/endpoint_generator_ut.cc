@@ -796,7 +796,9 @@ TEST_F(EndpointGeneratorUTest, OptionalAclrtContextGetContextGuardSwitchesAndRes
 }
 
 TEST_F(EndpointGeneratorUTest, TemporaryRtContextKeepsNullContextRestoreSemanticsByDefault) {
-  { TemporaryRtContext context(nullptr); }
+  {
+    TemporaryRtContext context(nullptr);
+  }
 
   EXPECT_EQ(acl_stub_->get_current_context_calls_, 1);
   EXPECT_EQ(acl_stub_->set_current_context_calls_, 1);
