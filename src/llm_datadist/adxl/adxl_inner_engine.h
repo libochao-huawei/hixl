@@ -87,6 +87,10 @@ class AdxlInnerEngine {
   Status ParseAutoConnectConfig(const std::map<AscendString, AscendString> &options);
   Status DisconnectOnError(const std::string &remote_engine, int32_t timeout_in_millis);
   Status ParseTaskStreamNum(const std::map<AscendString, AscendString> &json_options);
+  void MarkUnavailableOnError(const ChannelPtr &channel, Status ret) const;
+  bool IsLinkFailFastEnabled() const {
+    return auto_connect_ || !user_config_channel_pool_;
+  }
 
   std::string local_engine_;
   ChannelManager channel_manager_;
