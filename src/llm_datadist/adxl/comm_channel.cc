@@ -189,6 +189,7 @@ Status CommChannel::TeardownHcclComm() {
     ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
   }
   if (channel_info_.comm != nullptr) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(kAicpuUnfoldGuardMs));
     auto hccl_ret = llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
     channel_info_.comm = nullptr;
     ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
