@@ -49,8 +49,7 @@ int dsmi_get_board_info(int device_id, struct dsmi_board_info_stru *pboard_info)
   return 0;
 }
 
-int dsmi_get_device_info(uint32_t device_id, uint32_t main_cmd, uint32_t sub_cmd, void *buf,
-                         uint32_t *buf_size) {
+int dsmi_get_device_info(uint32_t device_id, uint32_t main_cmd, uint32_t sub_cmd, void *buf, uint32_t *buf_size) {
   (void)device_id;
   if (buf == nullptr || buf_size == nullptr) {
     return -1;

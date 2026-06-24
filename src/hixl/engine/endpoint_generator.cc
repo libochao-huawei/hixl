@@ -205,7 +205,7 @@ Status GenScaleOutEndpoint(ProtocolDescMode mode, std::vector<EndpointConfig> &e
 }
 
 Status GenerateScaleOutEndpointByInterconType(int32_t logic_dev_id, int32_t phy_dev_id,
-                                               std::vector<EndpointConfig> &endpoint_list) {
+                                              std::vector<EndpointConfig> &endpoint_list) {
   // DSMI InterconType 未就绪时回退到 UB 自动生成，endpoint_list 为空由上层兜底
   if (!DsmiProxy::IsInterconTypeSupported()) {
     HIXL_LOGW(
