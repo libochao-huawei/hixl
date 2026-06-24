@@ -6,7 +6,10 @@
  * 通过 dlopen("libdcmi.so") 加载的 DCMI 接口在测试环境下可调用。
  */
 
+#include "dcmi_stub.h"
+
 #include <algorithm>
+#include <cstdint>
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,19 +21,19 @@ extern "C" {
 static int g_dcmi_init_ret = 0;
 
 // dcmiv2_get_mainboard_id 控制
-static unsigned int g_mainboard_id = 0x3;  // 默认 Pod1
+static uint32_t g_mainboard_id = 0x3;  // 默认 Pod1
 static int g_mainboard_id_ret = 0;
 
 // dcmiv2_get_dev_id_by_chip_phy_id 控制
-static unsigned int g_logic_id = 0;
+static uint32_t g_logic_id = 0;
 static int g_logicid_ret = 0;
 
 // dcmiv2_get_urma_device_cnt 控制
-static unsigned int g_urma_device_cnt = 1;
+static uint32_t g_urma_device_cnt = 1;
 static int g_urma_device_cnt_ret = 0;
 
 // dcmiv2_get_device_info (SPOD) 控制
-static unsigned int g_super_pod_id = 0;
+static uint32_t g_super_pod_id = 0;
 static int g_device_info_ret = 0;
 
 // dcmiv2_get_eid_list_by_urma_dev_index 控制：返回 EID 数量（0=不返回, 1=仅非PG, 2=全部）
@@ -171,22 +174,22 @@ void DcmiStubSetInitRet(int ret) {
   g_dcmi_init_ret = ret;
 }
 
-void DcmiStubSetMainboardId(unsigned int id, int ret) {
+void DcmiStubSetMainboardId(uint32_t id, int ret) {
   g_mainboard_id = id;
   g_mainboard_id_ret = ret;
 }
 
-void DcmiStubSetLogicId(unsigned int id, int ret) {
+void DcmiStubSetLogicId(uint32_t id, int ret) {
   g_logic_id = id;
   g_logicid_ret = ret;
 }
 
-void DcmiStubSetUrmaDeviceCnt(unsigned int cnt, int ret) {
+void DcmiStubSetUrmaDeviceCnt(uint32_t cnt, int ret) {
   g_urma_device_cnt = cnt;
   g_urma_device_cnt_ret = ret;
 }
 
-void DcmiStubSetSuperPodId(unsigned int id, int ret) {
+void DcmiStubSetSuperPodId(uint32_t id, int ret) {
   g_super_pod_id = id;
   g_device_info_ret = ret;
 }

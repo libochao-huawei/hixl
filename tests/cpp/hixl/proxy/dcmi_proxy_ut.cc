@@ -29,16 +29,7 @@
 #include <memory>
 #include "gtest/gtest.h"
 #include "proxy/dcmi_proxy.h"
-
-// DCMI 桩函数控制接口（定义在 tests/depends/dcmi/src/dcmi_stub.cc）
-extern "C" {
-void DcmiStubSetInitRet(int ret);
-void DcmiStubSetMainboardId(unsigned int id, int ret);
-void DcmiStubSetLogicId(unsigned int id, int ret);
-void DcmiStubSetUrmaDeviceCnt(unsigned int cnt, int ret);
-void DcmiStubSetSuperPodId(unsigned int id, int ret);
-void DcmiStubSetEidCount(int count);
-}
+#include "depends/dcmi/src/dcmi_stub.h"
 
 namespace hixl {
 

@@ -427,7 +427,6 @@ bool IsSupportedProtocolDesc(const std::string &protocol, const std::string &pla
     return false;
   }
   if ((protocol == kProtocolUboe || protocol == kProtocolUbg) && placement != kPlacementDevice) {
-    HIXL_LOGE(PARAM_INVALID, "ScaleOut protocol %s only supports device placement", protocol.c_str());
     return false;
   }
   return true;
