@@ -38,6 +38,9 @@ usage() {
   echo "        --cann_3rd_lib_path=<PATH> | --cann-3rd-lib-path=<PATH>"
   echo "                   Set ascend third_party package install path, default ./third_party"
   echo "    --asan         Enable AddressSanitizer, default is OFF. when cov is set, asan is set too."
+  echo "    -f, --changed-files-file <FILE>"
+  echo "                   Path to file containing changed file list (one per line),"
+  echo "                   used to skip tests when only doc files are changed."
   echo ""
 }
 
@@ -135,7 +138,7 @@ checkopts() {
 
   CANN_3RD_LIB_PATH="$BASEPATH/third_party"
 
-  parsed_args=$(getopt -a -o t::s:cj:hvf: -l test::,suite:,cov,help,verbose,cann_3rd_lib_path:,cann-3rd-lib-path:,asan -- "$@") || {
+  parsed_args=$(getopt -a -o t::s:cj:hvf: -l test::,suite:,cov,help,verbose,cann_3rd_lib_path:,cann-3rd-lib-path:,asan,changed-files-file: -- "$@") || {
     usage
     exit 1
   }
@@ -183,7 +186,7 @@ checkopts() {
         VERBOSE="-v"
         shift
         ;;
-      -f)
+      -f | --changed-files-file)
         CHANGED_FILES_FILE="$2"
         if [ ! -f "$CHANGED_FILES_FILE" ]; then
           echo "Error: File $CHANGED_FILES_FILE not found"
@@ -239,7 +242,10 @@ check_changed_files() {
   fi
 
   # check each changed file
-  for file in $changed_files; do
+  while IFS= read -r file; do
+    # skip empty lines
+    [ -z "$file" ] && continue
+
     # remove leading/trailing spaces and quotes
     file=$(echo "$file" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//;s/^"//;s/"$//')
 
@@ -281,7 +287,7 @@ check_changed_files() {
     # if any file doesn't match the above patterns, don't skip build
     skip_build=false
     break
-  done
+  done <<< "$changed_files"
 
   if [ "$skip_build" = true ]; then
     echo "[INFO] Changed files only contain docs/, examples/, .claude/, .opencode/, README.md, CONTRIBUTING.md or AGENTS.md, skipping test."
