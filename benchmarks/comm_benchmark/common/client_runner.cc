@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cinttypes>
 #include <cstdio>
+#include <cstdlib>
 #include <experimental/filesystem>
 namespace fs = std::experimental::filesystem;
 #include <fstream>
@@ -111,6 +112,8 @@ void FreeHostBuffers(const std::vector<void *> &buffers, const std::string &tran
     }
     if (transport == "fabric_mem") {
       (void)FabricMemTransferService::FreeMem(element);
+    } else if (transport == "roce") {
+      std::free(element);
     } else {
       (void)aclrtFreeHost(element);
     }
@@ -151,6 +154,12 @@ int32_t AllocLocalBuffer(const BenchmarkConfig &cfg, bool *is_host, void **out_s
     auto status = FabricMemTransferService::MallocMem(MemType::MEM_HOST, alloc_size, &tmp);
     if (status != SUCCESS) {
       std::fprintf(stderr, "[ERROR] client fabric_mem host alloc failed status=%d\n", static_cast<int>(status));
+      return -1;
+    }
+  } else if (*is_host && cfg.transport == "roce") {
+    tmp = std::malloc(alloc_size);
+    if (tmp == nullptr) {
+      std::fprintf(stderr, "[ERROR] client alloc host failed: malloc returned null\n");
       return -1;
     }
   } else if (*is_host) {

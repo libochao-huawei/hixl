@@ -11,6 +11,7 @@
 #include "server_runner.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <vector>
 
@@ -135,6 +136,8 @@ void ServerRunner::ReleaseServerResources() {
     if (is_host_) {
       if (cfg_.transport == "fabric_mem") {
         (void)FabricMemTransferService::FreeMem(buffer_);
+      } else if (cfg_.transport == "roce") {
+        std::free(buffer_);
       } else {
         (void)aclrtFreeHost(buffer_);
       }
@@ -172,6 +175,12 @@ bool ServerRunner::AllocServerBufferForRun() {
     auto status = FabricMemTransferService::MallocMem(MemType::MEM_HOST, alloc_size, &buffer_);
     if (status != SUCCESS) {
       std::printf("[ERROR] server fabric_mem alloc failed status=%d\n", static_cast<int>(status));
+      return false;
+    }
+  } else if (is_host_ && cfg_.transport == "roce") {
+    buffer_ = std::malloc(alloc_size);
+    if (buffer_ == nullptr) {
+      std::printf("[ERROR] server alloc host failed: malloc returned null\n");
       return false;
     }
   } else if (is_host_) {
