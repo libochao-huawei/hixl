@@ -216,22 +216,36 @@ class DataCacheEngineRuntimeMock : public llm::AclRuntimeStub {
   int32_t counter_ = 0;
 };
 
-class TransferAsyncRuntimeMock : public llm::AclRuntimeStub {
+// Suppresses the async completion D2H copy so the host flag never signals done.
+class AsyncHostFlagSuppressCompletionCopyMock : public llm::AclRuntimeStub {
  public:
-  aclError aclrtQueryEventStatus(aclrtEvent evt, aclrtEventRecordedStatus *status) override {
-    (void)evt;
-    *status = ACL_EVENT_RECORDED_STATUS_NOT_READY;
-    return -1;
+  aclError aclrtMemcpyAsync(void *dst, size_t destMax, const void *src, size_t count, aclrtMemcpyKind kind,
+                            aclrtStream stream) override {
+    (void)dst;
+    (void)destMax;
+    (void)src;
+    (void)count;
+    (void)kind;
+    (void)stream;
+    return ACL_ERROR_NONE;
   }
 };
 
-class TransferAsyncSteamRuntimeMocak : public llm::AclRuntimeStub {
+// Drives the adxl async transfer path (per-request host flag + aclrtStreamQuery fallback) to failure: the
+// device-to-host completion copy is suppressed so the host flag never signals done, and the stream query reports an
+// error so GetTransferStatus must surface FAILED.
+class AsyncHostFlagStreamQueryFailMock : public AsyncHostFlagSuppressCompletionCopyMock {
  public:
-  aclError aclrtSynchronizeStream(aclrtStream stream) override {
+  aclError aclrtStreamQuery(aclrtStream stream, aclrtStreamStatus *status) override {
     (void)stream;
-    return -1;
+    (void)status;
+    return ACL_ERROR_RT_INTERNAL_ERROR;
   }
 };
+
+// Same suppression of the host-flag completion copy, but the stream query succeeds reporting "complete". This
+// exercises the "stream finished but completion flag never landed" failure branch of GetTransferStatus.
+class AsyncHostFlagNeverSetMock : public AsyncHostFlagSuppressCompletionCopyMock {};
 
 class AutoCommResRuntimeMock : public llm::AclRuntimeStub {
  public:

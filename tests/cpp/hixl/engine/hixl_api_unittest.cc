@@ -555,7 +555,7 @@ TEST_F(HixlUTest, TestHixlGetTransferStatusWithInterrupt) {
   engine2.Finalize();
 }
 
-TEST_F(HixlUTest, TestHixlGetTransferStatusWithQueryEventFailed) {
+TEST_F(HixlUTest, TestHixlGetTransferStatusWithStreamQueryFailed) {
   Hixl engine1;
   Hixl engine2;
   SetupEngines(engine1, engine2);
@@ -568,12 +568,13 @@ TEST_F(HixlUTest, TestHixlGetTransferStatusWithQueryEventFailed) {
   EXPECT_EQ(engine1.Connect("127.0.0.1:26201"), SUCCESS);
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
   TransferReq req = nullptr;
-  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26201", WRITE, {desc}, {}, req), SUCCESS);
   TransferStatus status = TransferStatus::WAITING;
-  TransferAsyncRuntimeMock instance;
-  llm::AclRuntimeStub::Install(&instance);
+  llm::AsyncHostFlagStreamQueryFailMock fail_mock;
+  llm::AclRuntimeStub::Install(&fail_mock);
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26201", WRITE, {desc}, {}, req), SUCCESS);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
-  llm::AclRuntimeStub::UnInstall(&instance);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+  llm::AclRuntimeStub::UnInstall(&fail_mock);
   engine1.Finalize();
   engine2.Finalize();
 }
@@ -785,7 +786,7 @@ TEST_F(HixlUTest, TestHixlSendNotifyMsgTooLong) {
   engine2.Finalize();
 }
 
-TEST_F(HixlUTest, TestHixlGetTransferStatusWithStreamSyncFailed) {
+TEST_F(HixlUTest, TestHixlGetTransferStatusWithHostFlagNeverSet) {
   Hixl engine1;
   Hixl engine2;
   SetupEngines(engine1, engine2);
@@ -798,12 +799,13 @@ TEST_F(HixlUTest, TestHixlGetTransferStatusWithStreamSyncFailed) {
   EXPECT_EQ(engine1.Connect("127.0.0.1:26201"), SUCCESS);
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
   TransferReq req = nullptr;
-  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26201", WRITE, {desc}, {}, req), SUCCESS);
   TransferStatus status = TransferStatus::WAITING;
-  TransferAsyncSteamRuntimeMocak instance;
-  llm::AclRuntimeStub::Install(&instance);
+  llm::AsyncHostFlagNeverSetMock fail_mock;
+  llm::AclRuntimeStub::Install(&fail_mock);
+  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26201", WRITE, {desc}, {}, req), SUCCESS);
   EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
-  llm::AclRuntimeStub::UnInstall(&instance);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+  llm::AclRuntimeStub::UnInstall(&fail_mock);
   engine1.Finalize();
   engine2.Finalize();
 }
