@@ -136,9 +136,22 @@ ifconfig
 
 ### 2. HIXL样例
   - 说明：
-    - 单进程用例（hixl_example_d2rd、hixl_example_d2rh）在一个进程内启动两个engine，无需分开终端。
-    - 多进程用例（hixl_example_d2rd_multiproc）需要分别在两个终端启动server和client，server先启动。
+    - 单进程用例（hixl_example_d2rd、hixl_example_d2rh）在一个进程内启动两个engine，无需分开终端，仅在CANN-9.1.0支持。
+    - 多进程用例（hixl_example_d2rd_multiproc）需要分别在两个终端启动server和client，server先启动，无CANN版本要求。
     - fabric_mem_d2d需要成对运行，两个终端分别启动。
+    - HIXL样例的protocol依赖硬件环境，协议支持范围参考[HIXL接口](../../docs/zh/api/cpp/HIXL-interface.md)中 `comm_resource_config.protocol_desc` 的option说明：`roce:device`、`hccs:device`仅支持Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品；`uboe:device`、`ub_ctp:device`、`ub_tp:device`、`ub_ctp:host`、`ub_tp:host`协议仅支持Ascend 950PR/Ascend 950DT。
+
+  - HIXL样例进程参数说明
+
+    | 参数 | 适用样例 | 必选/可选 | 默认值 | 说明 |
+    | --- | --- | --- | --- | --- |
+    | `--protocol=<type>[,...]` | hixl_example_d2rd、hixl_example_d2rh、hixl_example_d2rd_multiproc | 必选 | - | 通信协议，支持逗号分隔多协议。 |
+    | `--device=id1,id2` | hixl_example_d2rd、hixl_example_d2rh | 可选 | 0,2 | 指定两个engine分别绑定的device。 |
+    | `--device=<id>` | hixl_example_d2rd_multiproc | 可选 | client=0、server=2 | 指定当前进程绑定的device。 |
+    | `--version=0|1` | hixl_example_d2rd、hixl_example_d2rh、hixl_example_d2rd_multiproc | 可选 | 1 | 配置为0时，表示使用HCCL集合通信通信域方式构筑的单边通信能力，仅支持Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品；配置为1时，表示HIXL调用HIXL CS接口实现的单边通信能力，解耦通信域，推荐使用，支持Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品、Ascend 950PR/Ascend 950DT。 |
+    | `--role=client|server` | hixl_example_d2rd_multiproc | 必选 | - | 指定当前进程为client或server。 |
+    | `--local-engine=<ip:port>` | hixl_example_d2rd_multiproc | 可选 | client=127.0.0.1:16000、server=127.0.0.1:16001 | 指定当前进程的engine地址。 |
+    | `--remote-engine=<ip:port>` | hixl_example_d2rd_multiproc | 可选 | client=127.0.0.1:16001、server=127.0.0.1:16000 | 指定对端进程的engine地址。 |
 
   - 配置环境变量
     - 若运行环境上安装的”Ascend-cann-toolkit”包，环境变量设置如下：
@@ -162,9 +175,8 @@ ifconfig
     (1) 执行hixl_example_d2rd, D2RD单进程场景
 
       - 说明：
-        - 单进程内启动两个engine，分别绑定不同device，由engine A发起WRITE传输到engine B的device buffer。
-        - 支持协议：`roce:device`、`roce:host`、`uboe:device`、`ubg:device`、`ub_ctp:device`、`ub_tp:device`。
-        - 参数：`--protocol=<type>[,...]` 必选，支持逗号分隔多协议；`--device=id1,id2` 可选，默认0,2；`--version=0|1` 可选，默认1。
+        - 单进程一个线程内启动两个engine，分别绑定不同device，由engine A发起WRITE传输到engine B的device buffer。
+        - 支持协议：`roce:device`、`uboe:device`、`ub_ctp:device`、`ub_tp:device`。
 
       - 运行示例：
           ```
@@ -174,16 +186,15 @@ ifconfig
           # 指定device
           ./hixl_example_d2rd --protocol=roce:device --device=0,2
 
-          # 使用legacy模式（仅支持roce:device）
+          # 使用version 0模式（仅支持roce:device）
           ./hixl_example_d2rd --protocol=roce:device --version=0
           ```
 
     (2) 执行hixl_example_d2rh, D2RH单进程场景
 
       - 说明：
-        - 单进程内启动两个engine，分别绑定不同device，双方各自发起WRITE传输到对方的host buffer。
-        - 支持协议：`roce:device`、`roce:host`、`uboe:device`、`ubg:device`、`ub_ctp:device`、`ub_tp:device`、`ub_ctp:host`、`ub_tp:host`。
-        - 参数：`--protocol=<type>[,...]` 必选，支持逗号分隔多协议；`--device=id1,id2` 可选，默认0,2；`--version=0|1` 可选，默认1。
+        - 单进程一个线程内启动两个engine，分别绑定不同device，双方各自发起WRITE传输到对方的host buffer。
+        - 支持协议：`roce:device`、`uboe:device`、`ub_ctp:device`、`ub_tp:device`、`ub_ctp:host`、`ub_tp:host`。
 
       - 运行示例：
           ```
@@ -193,7 +204,7 @@ ifconfig
           # 使用host侧协议
           ./hixl_example_d2rh --protocol=ub_ctp:host,ub_ctp:device
 
-          # 使用legacy模式
+          # 使用version 0模式
           ./hixl_example_d2rh --protocol=roce:device --version=0
           ```
 
@@ -201,8 +212,7 @@ ifconfig
 
       - 说明：
         - 两个独立进程分别启动engine，通过socket交换buffer地址后，由client发起READ传输并本地校验。
-        - 支持协议：`hccs:device`、`roce:device`、`roce:host`、`uboe:device`、`ubg:device`、`ub_ctp:device`、`ub_tp:device`。
-        - 参数：`--role=client|server` 必选；`--protocol=<type>[,...]` 必选，支持逗号分隔多协议；`--device=<id>` 可选，默认client=0、server=2；`--version=0|1` 可选，默认1；`--local-engine=<ip:port>` 和 `--remote-engine=<ip:port>` 可选，默认client=127.0.0.1:16000、server=127.0.0.1:16001。
+        - 支持协议：`hccs:device`、`roce:device`、`uboe:device`、`ub_ctp:device`、`ub_tp:device`。
 
       - 运行示例：
           ```
@@ -214,7 +224,7 @@ ifconfig
           ./hixl_example_d2rd_multiproc --role=server --protocol=hccs:device
           ./hixl_example_d2rd_multiproc --role=client --protocol=hccs:device
 
-          # 使用legacy模式
+          # 使用version 0模式
           ./hixl_example_d2rd_multiproc --role=server --protocol=roce:device --version=0
           ./hixl_example_d2rd_multiproc --role=client --protocol=roce:device --version=0
           ```
