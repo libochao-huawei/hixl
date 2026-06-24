@@ -59,6 +59,7 @@ class ChannelManager {
   }
 
   void SetAutoConnect(bool auto_connect);
+  void SetFailFastEnabled(bool enabled);
 
  private:
   void SendHeartbeats();
@@ -117,6 +118,7 @@ class ChannelManager {
   std::function<void(const RequestDisconnectResp&)>
                 disconnect_response_callback_;
   bool auto_connect_{false};
+  bool fail_fast_enabled_{true};
 };
 }  // namespace adxl
 

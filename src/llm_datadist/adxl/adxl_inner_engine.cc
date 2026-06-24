@@ -234,6 +234,7 @@ Status AdxlInnerEngine::Initialize(const std::map<AscendString, AscendString> &o
   ADXL_CHK_STATUS_RET(channel_manager_.Initialize(buffer_transfer_service_.get()),
                       "Failed to init channel manager.");
   channel_manager_.SetAutoConnect(auto_connect_);
+  channel_manager_.SetFailFastEnabled(auto_connect_ || !user_config_channel_pool_);
   channel_manager_.SetStreamPool(stream_pool_.get());
   channel_manager_.RegisterNotifyAckCallback([this](uint64_t req_id) {
     std::lock_guard<std::mutex> lock(notify_mutex_);
@@ -497,6 +498,17 @@ Status AdxlInnerEngine::DisconnectOnError(const std::string &remote_engine, int3
   return SUCCESS;
 }
 
+void AdxlInnerEngine::MarkUnavailableOnError(const ChannelPtr &channel, Status ret) const {
+  if (channel == nullptr || !IsLinkFatal(ret)) {
+    return;
+  }
+  if (!channel->IsUnavailable()) {
+    LLMLOGW("Mark link unavailable due to transport failure, channel_id:%s, status:%u.",
+            channel->GetChannelId().c_str(), ret);
+  }
+  channel->MarkUnavailable();
+}
+
 Status AdxlInnerEngine::ConnectWhenTransfer(const AscendString &remote_engine, int32_t timeout_in_millis) {
   auto start_time = std::chrono::steady_clock::now();
   ChannelPtr channel;
@@ -579,6 +591,7 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
       Status ret = buffer_transfer_service_->Transfer(channel, type, op_descs, timeout_in_millis);
       if (ret != SUCCESS) {
         LLMLOGE(ret, "Failed to transfer via buffer transfer service, remote_engine:%s", remote_engine.GetString());
+        MarkUnavailableOnError(channel, ret);
         ADXL_CHK_STATUS_RET(DisconnectOnError(remote_engine.GetString(), timeout_in_millis),
                             "Failed to disconnect on error.");
       }
@@ -586,10 +599,16 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine,
     }
   }
   std::unique_lock<std::mutex> transfer_lock(channel->GetTransferMutex());
+  if (IsLinkFailFastEnabled() && channel->IsUnavailable()) {
+    LLMLOGE(FAILED, "Link is unavailable due to a previous transport failure, please reconnect. remote_engine:%s",
+            remote_engine.GetString());
+    return FAILED;
+  }
   Status ret = channel->TransferSync(operation, op_descs, timeout_in_millis);
   transfer_lock.unlock();
   if (ret != SUCCESS) {
     LLMLOGE(ret, "Failed to transfer sync, remote_engine:%s", remote_engine.GetString());
+    MarkUnavailableOnError(channel, ret);
     ADXL_CHK_STATUS_RET(DisconnectOnError(remote_engine.GetString(), timeout_in_millis),
                         "Failed to disconnect on error.");
     return ret;

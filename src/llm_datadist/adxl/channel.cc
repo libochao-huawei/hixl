@@ -10,6 +10,7 @@
 
 #include "channel.h"
 #include <mutex>
+#include <thread>
 #include <fcntl.h>
 #include <unistd.h>
 #include "adxl/adxl_checker.h"
@@ -29,6 +30,7 @@ std::mutex g_mutex_;
 constexpr uint32_t kMaxOpDescNum = 256U;
 constexpr int64_t kHeartbeatTimeoutInMillis = 120000;
 constexpr int32_t kMillisToMicros = 1000;
+constexpr int32_t kCommDestroyGuardMs = 100;
 }
 
 int64_t Channel::timeout_in_millis_ = kHeartbeatTimeoutInMillis;
@@ -113,6 +115,7 @@ Status Channel::Finalize() {
   }
   ClearNotifyMessages();
   disconnect_flag_.store(false, std::memory_order_release);
+  unavailable_.store(false, std::memory_order_release);
   transfer_count_.store(0, std::memory_order_release);
   return ret;
 }
@@ -127,7 +130,9 @@ Status Channel::ClearResources() {
   }
 
   if (channel_info_.comm != nullptr) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(kCommDestroyGuardMs));
     auto hccl_ret = llm::HcclAdapter::GetInstance().HcclCommDestroy(channel_info_.comm);
+    channel_info_.comm = nullptr;
     ret = hccl_ret != HcclResult::HCCL_SUCCESS ? FAILED : ret;
   }
 
@@ -385,6 +390,14 @@ void Channel::StopHeartbeat() {
   std::lock_guard<std::mutex> lock(mutex_);
   with_heartbeat_.store(false, std::memory_order_release);
   disconnect_flag_.store(true, std::memory_order_release);
+}
+
+void Channel::MarkUnavailable() {
+  unavailable_.store(true, std::memory_order_release);
+}
+
+bool Channel::IsUnavailable() const {
+  return unavailable_.load(std::memory_order_acquire);
 }
 
 Status Channel::CommWithFd(const std::function<Status(int32_t)> &func) {

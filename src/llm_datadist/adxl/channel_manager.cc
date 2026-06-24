@@ -415,6 +415,7 @@ Status ChannelManager::CreateChannel(const ChannelInfo &channel_info, ChannelPtr
   ADXL_CHECK_NOTNULL(channel);
   ADXL_CHK_STATUS_RET(channel->Initialize(enable_use_fabric_mem), "Failed to init channel");
   channel->SetStreamPool(stream_pool_);
+  channel->SetFailFastEnabled(fail_fast_enabled_);
   LLM_DISMISSABLE_GUARD(failed_guard, ([channel]() { (void) channel->Finalize(); }));
   std::lock_guard<std::mutex> lock(mutex_);
   auto key = std::make_pair(channel_info.channel_type, channel_info.channel_id);
@@ -532,5 +533,9 @@ void ChannelManager::SetStreamPool(StreamPool *stream_pool) {
 
 void ChannelManager::SetAutoConnect(bool auto_connect) {
   auto_connect_ = auto_connect;
+}
+
+void ChannelManager::SetFailFastEnabled(bool enabled) {
+  fail_fast_enabled_ = enabled;
 }
 }  // namespace adxl

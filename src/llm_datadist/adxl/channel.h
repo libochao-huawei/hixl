@@ -134,6 +134,11 @@ class Channel {
   void SetDisconnecting(bool value) {
     disconnect_flag_.store(value, std::memory_order_release);
   }
+  void SetFailFastEnabled(bool enabled) {
+    fail_fast_enabled_ = enabled;
+  }
+  void MarkUnavailable();
+  bool IsUnavailable() const;
   Status TransferAsyncWithTimeout(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
                                   aclrtStream stream, uint64_t timeout);
 
@@ -154,6 +159,8 @@ class Channel {
   std::atomic<int32_t> transfer_count_{0};
   std::atomic<bool> disconnect_flag_{false};
   std::atomic<bool> has_transfered_{false};
+  std::atomic<bool> unavailable_{false};
+  bool fail_fast_enabled_{true};
 
   int32_t fd_ = -1;
   RecvState recv_state_ = RecvState::WAITING_FOR_HEADER;
