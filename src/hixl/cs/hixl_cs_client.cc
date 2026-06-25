@@ -1180,7 +1180,9 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
   Status ret = ConnMsgHandler::SendMatchEndpointRequest(socket_, remote_endpoint_);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendMatchEndpointRequest failed. fd=%d", socket_);
   uint32_t remote_listen_port = 0;
-  ret = ConnMsgHandler::RecvMatchEndpointResponse(socket_, remote_endpoint_handle_, remote_listen_port, timeout_ms);
+  uint64_t channel_index = 0UL;
+  ret = ConnMsgHandler::RecvMatchEndpointResponse(socket_, remote_endpoint_handle_, remote_listen_port, channel_index,
+                                                  timeout_ms);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] RecvMatchEndpointResponse failed. fd=%d, timeout=%u ms", socket_, timeout_ms);
   local_endpoint_->SetPort(remote_listen_port);
   CommMem *prefetch_mems = nullptr;
@@ -1195,22 +1197,22 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannelLocked(uint32_t timeout_ms)
   create_body.dst_ep_handle = remote_endpoint_handle_;
   create_body.tc = tc_;
   create_body.sl = sl_;
+  create_body.channel_index = channel_index;
   create_body.qos = global_config_.Qos().value_or(kQosDefault);
   ret = ConnMsgHandler::SendCreateChannelRequest(socket_, create_body);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] SendCreateChannelRequest failed. fd=%d", socket_);
-  uint32_t recv_channel_index = 0U;
-  ret = ConnMsgHandler::RecvCreateChannelResponse(socket_, timeout_ms, recv_channel_index);
-  HIXL_CHK_STATUS_RET(ret, "[HixlClient] RecvCreateChannelResponse failed. fd=%d, timeout=%u ms", socket_, timeout_ms);
   ChannelHandle channel_handle = 0UL;
   ChannelDesc channel_desc{};
   channel_desc.remote_endpoint = remote_endpoint_;
   channel_desc.tc = tc_;
   channel_desc.sl = sl_;
   channel_desc.channel_type = ChannelType::kClient;
-  channel_desc.channel_index = recv_channel_index;
+  channel_desc.channel_index = channel_index;
   channel_desc.qos = global_config_.Qos().value_or(kQosDefault);
   ret = local_endpoint_->CreateChannel(channel_desc, channel_handle);
   HIXL_CHK_STATUS_RET(ret, "[HixlClient] Endpoint CreateChannel failed. Dst[id:0x%x]", remote_endpoint_.commAddr.id);
+  ret = ConnMsgHandler::RecvCreateChannelResponse(socket_, timeout_ms);
+  HIXL_CHK_STATUS_RET(ret, "[HixlClient] RecvCreateChannelResponse failed. fd=%d, timeout=%u ms", socket_, timeout_ms);
   HIXL_LOGI("[HixlClient] Connect: remote endpoint handle = %" PRIu64, remote_endpoint_handle_);
   client_channel_handle_ = channel_handle;
   HIXL_LOGI("[HixlClient] Channel Ready. client_channel_handle_=%p", client_channel_handle_);
