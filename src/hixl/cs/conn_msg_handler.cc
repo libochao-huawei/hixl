@@ -122,7 +122,7 @@ hixl::Status RecvMatchEndpointHandleResponse(int32_t socket, uint64_t &remote_en
   return hixl::SUCCESS;
 }
 
-hixl::Status RecvCreateChannelOnlyResponse(int32_t socket, uint32_t timeout_ms) {
+hixl::Status RecvCreateChannelOnlyResponse(int32_t socket, uint32_t timeout_ms, uint32_t &channel_index) {
   const uint64_t expect_body_size = static_cast<uint64_t>(sizeof(hixl::CtrlMsgType) + sizeof(hixl::CreateChannelResp));
 
   hixl::CtrlMsgHeader header{};
@@ -140,6 +140,7 @@ hixl::Status RecvCreateChannelOnlyResponse(int32_t socket, uint32_t timeout_ms) 
 
   HIXL_CHK_BOOL_RET_STATUS(resp.result == hixl::SUCCESS, hixl::FAILED,
                            "CreateChannelResp result not SUCCESS, result=%u", static_cast<uint32_t>(resp.result));
+  channel_index = resp.channel_index;
   return hixl::SUCCESS;
 }
 }  // namespace
@@ -188,11 +189,11 @@ Status ConnMsgHandler::SendCreateChannelRequest(int32_t socket, const CreateChan
   return ret;
 }
 
-Status ConnMsgHandler::RecvCreateChannelResponse(int32_t socket, uint32_t timeout_ms) {
+Status ConnMsgHandler::RecvCreateChannelResponse(int32_t socket, uint32_t timeout_ms, uint32_t &channel_index) {
   HIXL_EVENT("RecvCreateChannelResponse start. socket: %d", socket);
-  Status ret = RecvCreateChannelOnlyResponse(socket, timeout_ms);
+  Status ret = RecvCreateChannelOnlyResponse(socket, timeout_ms, channel_index);
   if (ret == SUCCESS) {
-    HIXL_EVENT("RecvCreateChannelResponse success.");
+    HIXL_EVENT("RecvCreateChannelResponse success. channel_index=%u", channel_index);
   } else {
     HIXL_LOGE(ret, "RecvCreateChannelResponse failed during check.");
   }

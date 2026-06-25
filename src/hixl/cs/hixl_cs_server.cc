@@ -9,6 +9,7 @@
  */
 
 #include "hixl_cs_server.h"
+#include <atomic>
 #include <memory>
 #include <sys/epoll.h>
 #include "nlohmann/json.hpp"
@@ -35,6 +36,8 @@ constexpr int32_t kMaxEventsNum = 128;              // epoll_wait并发处理事
 constexpr int32_t kEpollWaitTimeInMillis = 100;     // epoll_wait等待超时时间
 constexpr const char *kTransFlagNameHost = "_hixl_builtin_host_trans_flag";   // client用于感知收发完成的标识
 constexpr const char *kTransFlagNameDevice = "_hixl_builtin_dev_trans_flag";  // client用于感知收发完成的标识
+// server端进程级channel索引计数器，用于两端构建一致的channelName
+std::atomic<uint32_t> g_next_server_channel_index{0U};
 }  // namespace
 
 std::unique_ptr<hixl::TemporaryRtContext> HixlCSServer::GetContextGuard() const {
@@ -362,13 +365,14 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   auto ep = endpoint_store_.GetEndpoint(handle);
   HIXL_CHECK_NOTNULL(ep);
   CreateChannelResp resp{};
+  const uint32_t channel_index = g_next_server_channel_index.fetch_add(1U, std::memory_order_relaxed);
   ChannelHandle channel_handle = 0UL;
   ChannelDesc channel_desc{};
   channel_desc.remote_endpoint = req.src;
   channel_desc.tc = req.tc;
   channel_desc.sl = req.sl;
   channel_desc.channel_type = ChannelType::kServer;
-  channel_desc.channel_index = req.channel_index;
+  channel_desc.channel_index = channel_index;
   channel_desc.qos = req.qos;
   HIXL_CHK_STATUS_RET(ep->CreateChannel(channel_desc, channel_handle), "Failed to create channel");
   std::lock_guard<std::mutex> lock(chn_mutex_);
@@ -378,8 +382,9 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   channels_[fd] = std::move(info);
   HIXL_DISMISS_GUARD(failed);
   resp.result = SUCCESS;
+  resp.channel_index = channel_index;
   HIXL_CHK_STATUS_RET(SendCreateChannelResp(fd, resp), "Failed to send create channel resp");
-  HIXL_LOGI("SendCreateChannelResp success");
+  HIXL_LOGI("SendCreateChannelResp success, channel_index=%u", channel_index);
   return SUCCESS;
 }
 

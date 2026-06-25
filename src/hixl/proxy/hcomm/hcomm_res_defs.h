@@ -25,7 +25,12 @@ static const uint32_t COMM_ADDR_EID_LEN = 16U;
 static const uint32_t HCOMM_CHANNEL_MAGIC_WORD = 0x0fcf0f0fU;
 static const uint32_t HCOMM_CHANNEL_VERSION_ONE = 1U;
 /** ABI v2：在 union 之后增加与协议解耦的通信域 qos（uint32_t）等布局变更 */
-static const uint32_t HCOMM_CHANNEL_VERSION = 2u;
+static const uint32_t HCOMM_CHANNEL_VERSION_TWO = 2U;
+/** ABI v3：在 qos 之后增加 channelName（char *），作为两端channel业务匹配标识 */
+static const uint32_t HCOMM_CHANNEL_VERSION = 3u;
+
+/** channelName 最大长度（不含 '\0'），受 hccp SOCK_CONN_TAG_SIZE(192) 约束 */
+#define HCOMM_CHANNEL_NAME_MAX_LEN 128u
 
 typedef int32_t HcommResult;
 
@@ -216,6 +221,7 @@ typedef struct {
     } hccsAttr;
   };
   uint32_t qos;
+  char *channelName;  ///< channel业务匹配标识，两端建channel需标识相同
 } HcommChannelDesc;
 
 // 传输类型定义
@@ -359,6 +365,7 @@ static inline HcommResult HcommChannelDescInit(HcommChannelDesc *channelDesc, ui
     channelDesc->socket = NULL;
     channelDesc->role = HCOMM_SOCKET_ROLE_RESERVED;
     channelDesc->port = 0;
+    channelDesc->channelName = NULL;
     if (EndpointDescInit(&channelDesc->remoteEndpoint, 1) != 0) {
       return hcommEInternal;
     }

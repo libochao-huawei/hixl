@@ -27,9 +27,10 @@ class ConnMsgHandler {
   static Status SendMatchEndpointRequest(int32_t socket, const EndpointDesc &dst);
   static Status RecvMatchEndpointResponse(int32_t socket, uint64_t &remote_endpoint_handle,
                                           uint32_t &remote_listen_port, uint32_t timeout_ms);
-  // 发送 CreateChannelReq：src、dst_ep_handle、tc、sl、channel_index（role 由收发两端各自固定）
+  // 发送 CreateChannelReq：src、dst_ep_handle、tc、sl（role 由收发两端各自固定）
   static Status SendCreateChannelRequest(int32_t socket, const CreateChannelReq &body);
-  static Status RecvCreateChannelResponse(int32_t socket, uint32_t timeout_ms);
+  // 接收 CreateChannelResp，并通过 channel_index 回传 server 端生成的进程级 channel 索引
+  static Status RecvCreateChannelResponse(int32_t socket, uint32_t timeout_ms, uint32_t &channel_index);
 };
 
 }  // namespace hixl
