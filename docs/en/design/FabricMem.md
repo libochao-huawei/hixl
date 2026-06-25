@@ -219,12 +219,12 @@ sequenceDiagram
 **List of Checkpoints**
 1. **Configuration Conflict Check**: Fabric Mem mode and Buffer Pool mode cannot be enabled simultaneously; this is checked in `ParseBufferPoolParams`.
 2. **Memory Type Check**: In Fabric Mem mode, device memory registration requires special handling.
-4. **Transfer Parameter Check**: Verify that the address range in the transfer descriptor is within the registered memory range.
-5. **Stream Resource Management Check**: Ensure stream resources in the stream pool are correctly allocated and released to avoid resource leaks.
-6. **Asynchronous Request Status Check**: Correctly track request status during asynchronous transfers to ensure accurate status queries.
-7. **Memory Mapping Cleanup Check**: Correctly clean up imported memory mapping relationships when the connection is disconnected.
-8. **Concurrency Safety Check**: Ensure safe access to shared data structures in a multi-threaded environment.
-9. **Peer Abnormal Offline**: When the peer goes offline abnormally, relevant resources need to be cleaned up to avoid resource leaks.
+3. **Transfer Parameter Check**: Verify that the address range in the transfer descriptor is within the registered memory range.
+4. **Stream Resource Management Check**: Ensure stream resources in the stream pool are correctly allocated and released to avoid resource leaks.
+5. **Asynchronous Request Status Check**: Correctly track request status during asynchronous transfers to ensure accurate status queries.
+6. **Memory Mapping Cleanup Check**: Correctly clean up imported memory mapping relationships when the connection is disconnected.
+7. **Concurrency Safety Check**: Ensure safe access to shared data structures in a multi-threaded environment.
+8. **Peer Abnormal Offline**: When the peer goes offline abnormally, relevant resources need to be cleaned up to avoid resource leaks.
 
 **Performance Key Points**
 1. **Stream Pool Management**: Pre-create and manage device streams to avoid the overhead of frequent creation and destruction.
