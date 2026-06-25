@@ -29,8 +29,8 @@ static const uint32_t HCOMM_CHANNEL_VERSION_TWO = 2U;
 /** ABI v3：在 qos 之后增加 channelName（char *），作为两端channel业务匹配标识 */
 static const uint32_t HCOMM_CHANNEL_VERSION = 3u;
 
-/** channelName 最大长度（不含 '\0'），受 hccp SOCK_CONN_TAG_SIZE(192) 约束 */
-#define HCOMM_CHANNEL_NAME_MAX_LEN 128u
+/// channelName标识最大长度（字节）
+static const uint32_t HCCL_CHANNEL_NAME_MAX_LEN = 191U;
 
 typedef int32_t HcommResult;
 
