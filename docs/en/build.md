@@ -239,7 +239,7 @@ Use the test cases in the `tests` directory for local verification.
 
 ## Installation
 
-Install the `.run` file generated during [Compile Source Code](#Source Code Compilation).
+Install the `.run` file generated during [Compile Source Code](#source-code-compilation).
 - Note that the installation path (default or specified) must be the same as the path where the Toolkit package is installed.
 ```bash
 # To specify an installation path, add --install-path=${cann_install_path}

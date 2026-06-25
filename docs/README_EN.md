@@ -26,8 +26,8 @@
 ## API Documents
 
 - C/C++ API
-  - [HIXL C++ API](./cpp/HIXLAPI .md)
-  - [HIXL_CS C API](./cpp/HIXLCSAPI .md)
-  - [LLM-DataDist C++ API](./cpp/LLM-DataDistAPI .md)
+  - [HIXL C++ API]
+  - [HIXL_CS C API]
+  - [LLM-DataDist C++ API]
 - Python API
   - [LLM-DataDist Python API]
