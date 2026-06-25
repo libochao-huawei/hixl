@@ -342,9 +342,10 @@ Status HixlCSServer::MatchEndpointMsg(int32_t fd, const char *msg, uint64_t msg_
   resp.result = SUCCESS;
   resp.dst_ep_handle = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(handle));
   resp.port = ep->GetPort();
+  resp.channel_index = g_next_server_channel_index.fetch_add(1U, std::memory_order_relaxed);
   HIXL_CHK_STATUS_RET(SendMatchEndpointResp(fd, resp), "Failed to send match endpoint resp");
   HIXL_DISMISS_GUARD(failed);
-  HIXL_LOGI("SendMatchEndpointResp success");
+  HIXL_LOGI("SendMatchEndpointResp success, channel_index=%u", resp.channel_index);
   return SUCCESS;
 }
 
@@ -364,15 +365,13 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   EndpointHandle handle = reinterpret_cast<EndpointHandle>(static_cast<uintptr_t>(req.dst_ep_handle));
   auto ep = endpoint_store_.GetEndpoint(handle);
   HIXL_CHECK_NOTNULL(ep);
-  CreateChannelResp resp{};
-  const uint32_t channel_index = g_next_server_channel_index.fetch_add(1U, std::memory_order_relaxed);
   ChannelHandle channel_handle = 0UL;
   ChannelDesc channel_desc{};
   channel_desc.remote_endpoint = req.src;
   channel_desc.tc = req.tc;
   channel_desc.sl = req.sl;
   channel_desc.channel_type = ChannelType::kServer;
-  channel_desc.channel_index = channel_index;
+  channel_desc.channel_index = req.channel_index;
   channel_desc.qos = req.qos;
   HIXL_CHK_STATUS_RET(ep->CreateChannel(channel_desc, channel_handle), "Failed to create channel");
   std::lock_guard<std::mutex> lock(chn_mutex_);
@@ -381,10 +380,10 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   info.channel_handle = channel_handle;
   channels_[fd] = std::move(info);
   HIXL_DISMISS_GUARD(failed);
+  CreateChannelResp resp{};
   resp.result = SUCCESS;
-  resp.channel_index = channel_index;
   HIXL_CHK_STATUS_RET(SendCreateChannelResp(fd, resp), "Failed to send create channel resp");
-  HIXL_LOGI("SendCreateChannelResp success, channel_index=%u", channel_index);
+  HIXL_LOGI("CreateChannel success, channel_index=%u", req.channel_index);
   return SUCCESS;
 }
 
