@@ -26,11 +26,11 @@ static const uint32_t HCOMM_CHANNEL_MAGIC_WORD = 0x0fcf0f0fU;
 static const uint32_t HCOMM_CHANNEL_VERSION_ONE = 1U;
 /** ABI v2：在 union 之后增加与协议解耦的通信域 qos（uint32_t）等布局变更 */
 static const uint32_t HCOMM_CHANNEL_VERSION_TWO = 2U;
-/** ABI v3：在 qos 之后增加 channelName（char *），作为两端channel业务匹配标识 */
-static const uint32_t HCOMM_CHANNEL_VERSION = 3u;
+/** ABI v3：在 qos 之后增加 channelName（const char *），作为两端channel业务匹配标识 */
+static const uint32_t HCOMM_CHANNEL_VERSION = 3U;
 
-/** channelName 最大长度（不含 '\0'），受 hccp SOCK_CONN_TAG_SIZE(192) 约束 */
-#define HCOMM_CHANNEL_NAME_MAX_LEN 128u
+/// channelName标识最大长度（字节）
+static const uint32_t HCCL_CHANNEL_NAME_MAX_LEN = 191U;
 
 typedef int32_t HcommResult;
 
@@ -223,7 +223,7 @@ typedef struct {
     } hccsAttr;
   };
   uint32_t qos;
-  char *channelName;  ///< channel业务匹配标识，两端建channel需标识相同
+  const char *channelName;  ///< channel业务匹配标识，两端建channel需标识相同
 } HcommChannelDesc;
 
 // 传输类型定义
