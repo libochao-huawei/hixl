@@ -26,7 +26,7 @@ The FabricMem mode relies fundamentally on CANN's **Virtual Memory Manager** mec
 3. Maps the physical address to the access process's page table.
 4. Initiates SDMA access to read and write a process's on-chip memory and DRAM memory.
 
-![示意图](https://raw.gitcode.com/user-images/assets/7838749/4c57e5b8-7005-4184-be6a-8012509da066/截屏2026-02-14_16.29.00.png "截屏2026-02-14 16.29.00.png")
+![示意图](./figures/docs-FabricMem.png "截屏2026-02-14 16.29.00.png")
 
 Data flow for writing data from the local NPU on-chip memory to the remote host memory:
 
