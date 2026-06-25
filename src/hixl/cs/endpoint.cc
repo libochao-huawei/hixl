@@ -181,12 +181,13 @@ Status Endpoint::CreateChannel(const ChannelDesc &channel_desc, ChannelHandle &c
                                                                                       : channel_desc.remote_endpoint;
   const EndpointDesc &server_ep = (channel_desc.channel_type == ChannelType::kClient) ? channel_desc.remote_endpoint
                                                                                       : endpoint_;
-  std::string channel_name = EndpointToString(client_ep) + "_" + EndpointToString(server_ep) + "_" +
+  std::string channel_name = FormatCommAddr(client_ep.commAddr) + "_" + FormatCommAddr(server_ep.commAddr) + "_" +
                              std::to_string(port_) + "_" + std::to_string(channel_desc.channel_index);
   // 超长截断：保留port_index后缀，确保同ep对多channel不因截断冲突
-  if (channel_name.length() > HCOMM_CHANNEL_NAME_MAX_LEN) {
+  if (channel_name.length() > HCCL_CHANNEL_NAME_MAX_LEN) {
     const std::string suffix = "_" + std::to_string(port_) + "_" + std::to_string(channel_desc.channel_index);
-    const size_t prefix_max = (HCOMM_CHANNEL_NAME_MAX_LEN >= suffix.length()) ? (HCOMM_CHANNEL_NAME_MAX_LEN - suffix.length()) : 0U;
+    const size_t prefix_max =
+        (HCCL_CHANNEL_NAME_MAX_LEN >= suffix.length()) ? (HCCL_CHANNEL_NAME_MAX_LEN - suffix.length()) : 0U;
     channel_name = channel_name.substr(0U, prefix_max) + suffix;
   }
   ch_desc.channelName = const_cast<char *>(channel_name.c_str());
