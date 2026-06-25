@@ -364,8 +364,15 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   EndpointHandle handle = reinterpret_cast<EndpointHandle>(static_cast<uintptr_t>(req.dst_ep_handle));
   auto ep = endpoint_store_.GetEndpoint(handle);
   HIXL_CHECK_NOTNULL(ep);
-  CreateChannelResp resp{};
   const uint32_t channel_index = g_next_server_channel_index.fetch_add(1U, std::memory_order_relaxed);
+  // CreateChannel 为阻塞式双向会合，client 须先拿到 channel_index 才能进入会合，
+  // 因此 server 在会合前先回 resp，避免与 client RecvCreateChannelResponse 循环等待死锁
+  HIXL_DISMISS_GUARD(failed);
+  CreateChannelResp resp{};
+  resp.result = SUCCESS;
+  resp.channel_index = channel_index;
+  HIXL_CHK_STATUS_RET(SendCreateChannelResp(fd, resp), "Failed to send create channel resp");
+  HIXL_LOGI("SendCreateChannelResp success, channel_index=%u", channel_index);
   ChannelHandle channel_handle = 0UL;
   ChannelDesc channel_desc{};
   channel_desc.remote_endpoint = req.src;
@@ -380,11 +387,7 @@ Status HixlCSServer::CreateChannel(int32_t fd, const char *msg, uint64_t msg_len
   info.endpoint_handle = handle;
   info.channel_handle = channel_handle;
   channels_[fd] = std::move(info);
-  HIXL_DISMISS_GUARD(failed);
-  resp.result = SUCCESS;
-  resp.channel_index = channel_index;
-  HIXL_CHK_STATUS_RET(SendCreateChannelResp(fd, resp), "Failed to send create channel resp");
-  HIXL_LOGI("SendCreateChannelResp success, channel_index=%u", channel_index);
+  HIXL_LOGI("CreateChannel success, channel_index=%u", channel_index);
   return SUCCESS;
 }
 
