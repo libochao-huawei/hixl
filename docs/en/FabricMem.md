@@ -67,7 +67,7 @@ graph LR
 | CANN                             | **Later than 9.0**                                                                                                           |
 
 Note: HDK 25.5 does not support the `aclrtMemRetainAllocationHandle` API. You must use ADXL‑provided `MallocMem` and `FreeMem` APIs to manage the host memory. HDK 26.0 or later allows direct calls to ACL APIs for host memory management. 
-- **Enabling method**: During engine initialization, configure `OPTION_ENABLE_USE_FABRIC_MEM` in `options`. The value `1` enables FabricMem while `0` disables it. See [HIXL API · options].
+- **Enabling method**: During engine initialization, configure `OPTION_ENABLE_USE_FABRIC_MEM` in `options`. The value `1` enables FabricMem while `0` disables it. See HIXL API · options.
 - **Optional global configuration**: Use `OPTION_GLOBAL_RESOURCE_CONFIG` to configure the capacity, start address, and per-task stream counts of the Fabric virtual memory pool. See the `fabric_memory.*` field in [HIXL API]. 
 
 **Hardware scope**: Only **Atlas A3 training products** and **Atlas A3 inference products** are supported.
