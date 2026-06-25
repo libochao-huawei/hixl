@@ -161,7 +161,6 @@ Status Endpoint::CreateChannel(const ChannelDesc &channel_desc, ChannelHandle &c
   HcommChannelDesc ch_desc{};
   HIXL_CHK_HCCL_RET(static_cast<HcclResult>(HcommChannelDescInit(&ch_desc, 1)));
   ch_desc.role = static_cast<HcommSocketRole>(channel_desc.channel_type);
-  *reinterpret_cast<uint32_t *>(ch_desc.raws + sizeof(ch_desc.raws) - sizeof(uint32_t)) = channel_desc.channel_index;
   ch_desc.remoteEndpoint = channel_desc.remote_endpoint;
   ch_desc.notifyNum = 1U;
   ch_desc.exchangeAllMems = true;
@@ -179,6 +178,23 @@ Status Endpoint::CreateChannel(const ChannelDesc &channel_desc, ChannelHandle &c
 
   ChannelPtr channel = MakeShared<Channel>();
   HIXL_CHECK_NOTNULL(channel);
+  // channelName作为两端channel业务匹配标识，两端需一致：
+  // client_ep + server_ep + server_port + server_channel_index(进程级自增)
+  const EndpointDesc &client_ep = (channel_desc.channel_type == ChannelType::kClient) ? endpoint_
+                                                                                      : channel_desc.remote_endpoint;
+  const EndpointDesc &server_ep = (channel_desc.channel_type == ChannelType::kClient) ? channel_desc.remote_endpoint
+                                                                                      : endpoint_;
+  std::string channel_name = EndpointToString(client_ep) + "_" + EndpointToString(server_ep) + "_" +
+                             std::to_string(port_) + "_" + std::to_string(channel_desc.channel_index);
+  // 超长截断：保留port_index后缀，确保同ep对多channel不因截断冲突
+  if (channel_name.length() > HCOMM_CHANNEL_NAME_MAX_LEN) {
+    const std::string suffix = "_" + std::to_string(port_) + "_" + std::to_string(channel_desc.channel_index);
+    const size_t prefix_max = (HCOMM_CHANNEL_NAME_MAX_LEN >= suffix.length()) ? (HCOMM_CHANNEL_NAME_MAX_LEN - suffix.length()) : 0U;
+    channel_name = channel_name.substr(0U, prefix_max) + suffix;
+  }
+  ch_desc.channelName = const_cast<char *>(channel_name.c_str());
+  HIXL_LOGI("[channel] channelName=%s", ch_desc.channelName);
+
   Status ret = channel->Create(handle_, ch_desc, engine);
   HIXL_CHK_STATUS_RET(ret, "[Channel] Create failed, local=[%s], remote=[%s], type=%d, index=%u",
                       EndpointToString(endpoint_).c_str(), EndpointToString(channel_desc.remote_endpoint).c_str(),

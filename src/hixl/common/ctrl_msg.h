@@ -64,12 +64,12 @@ struct CreateChannelReq {
   uint64_t dst_ep_handle = 0UL;
   uint8_t tc;
   uint8_t sl;
-  uint32_t channel_index = 0U;
   uint8_t qos = 0U;
 };
 
 struct CreateChannelResp {
   Status result;
+  uint32_t channel_index = 0U;  ///< server端生成的进程级channel索引，用于两端构建一致的channelName
 };
 
 struct GetRemoteMemReq {
