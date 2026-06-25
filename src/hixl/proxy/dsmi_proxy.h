@@ -13,6 +13,24 @@
 #include <cstdint>
 #include "hixl/hixl_types.h"
 
+struct DsmiBoardInfoStru {
+  uint32_t board_id;
+  uint32_t pcb_id;
+  uint32_t bom_id;
+  uint32_t slot_id;
+};
+
+struct DsmiSpodInfo {
+  uint32_t sdid;
+  uint32_t scale_type;
+  uint32_t super_pod_id;
+  uint32_t server_id;
+  uint32_t chassis_id;
+  uint32_t super_pod_type;
+  uint32_t super_pod_intercon_type;
+  uint32_t reserve[5];
+};
+
 namespace hixl {
 
 /**

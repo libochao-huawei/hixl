@@ -24,10 +24,6 @@ namespace {
 constexpr uint32_t kRoceQueueNum = 1U;  // ROCE QP数量默认值
 }  // namespace
 
-bool IsHostRegisterMappedProtocol(CommProtocol protocol) {
-  return protocol == COMM_PROTOCOL_UBOE || protocol == COMM_PROTOCOL_UBG;
-}
-
 Status Endpoint::Initialize() {
   std::lock_guard<std::mutex> lock(mutex_);
   HIXL_LOGI("HcommEndpointCreate start, %s", EndpointToString(endpoint_).c_str());

@@ -36,6 +36,10 @@
 
 namespace hixl {
 
+namespace {
+
+enum class ProtocolDescMode { kNone, kUboe, kUbg, kConflict };
+
 ProtocolDescMode ParseProtocolDescMode(const std::vector<std::string> &protocol_desc) {
   if (protocol_desc.empty()) {
     return ProtocolDescMode::kNone;
@@ -54,7 +58,6 @@ ProtocolDescMode ParseProtocolDescMode(const std::vector<std::string> &protocol_
   return ProtocolDescMode::kNone;
 }
 
-namespace {
 constexpr const char kConfigVersion[] = "1.3";
 constexpr uint32_t kInterconTypeUboeOverSwitch = 0U;  // SWITCH David -> UBG -> 5808 UBoE superplane.
 constexpr uint32_t kInterconTypeRoceOverNpu = 1U;     // NPU 1825 RoCE, also the driver default.
@@ -596,8 +599,8 @@ Status EndpointGenerator::BuildEndpointList(const HixlOptions &options, const st
   return SUCCESS;
 }
 
-Status EndpointGenerator::AutoGenScaleOutEndpointList(const HixlOptions &options,
-                                                      std::vector<EndpointConfig> &endpoint_list) {
+Status EndpointGenerator::AutoGenA5EndpointList(const HixlOptions &options,
+                                                std::vector<EndpointConfig> &endpoint_list) {
   int32_t device_id = 0;
   HIXL_CHK_ACL_RET(aclrtGetDevice(&device_id));
   int32_t phy_id = 0;
@@ -637,7 +640,7 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options, const 
   endpoint_list.clear();
 
   if (soc_type == SocType::kV5) {
-    HIXL_CHK_STATUS_RET(AutoGenScaleOutEndpointList(options, endpoint_list), "AutoGenScaleOutEndpointList failed");
+    HIXL_CHK_STATUS_RET(AutoGenA5EndpointList(options, endpoint_list), "AutoGenA5EndpointList failed");
     HIXL_EVENT("[AutoGenEndpointList] ScaleOut generated %zu endpoints", endpoint_list.size());
   } else if (soc_type == SocType::kV2 || soc_type == SocType::kV3) {
     int32_t device_id = 0;

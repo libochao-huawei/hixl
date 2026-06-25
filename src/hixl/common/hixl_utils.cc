@@ -337,4 +337,14 @@ TemporaryRtContext::~TemporaryRtContext() {
     HIXL_CHK_STATUS(aclrtSetCurrentContext(prev_context_));
   }
 }
+
+bool IsIntraRoceEnabled() {
+  const char *env = std::getenv("HCCL_INTRA_ROCE_ENABLE");
+  return env != nullptr && std::string(env) == "1";
+}
+
+bool IsHostRegisterMappedProtocol(CommProtocol protocol) {
+  return protocol == COMM_PROTOCOL_UBOE || protocol == COMM_PROTOCOL_UBG;
+}
+
 }  // namespace hixl

@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include "dsmi_internal_types.h"
 #include "dsmi_proxy.h"
 #include <cstddef>
 #include <mutex>

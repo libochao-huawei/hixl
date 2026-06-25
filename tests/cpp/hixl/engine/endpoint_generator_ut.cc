@@ -1475,7 +1475,7 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListFiltersExplicitEndpointsToRoceWh
   EXPECT_EQ(endpoint_list[0].protocol, kProtocolRoce);
 }
 
-TEST_F(EndpointGeneratorUTest, AutoGenScaleOutSkipsWhenIntraRoceEnabled) {
+TEST_F(EndpointGeneratorUTest, AutoGenA5SkipsWhenIntraRoceEnabled) {
   acl_stub_->soc_name_ = "Ascend950A";
   acl_stub_->device_id_ = 0;
   acl_stub_->phy_device_id_ = 3;

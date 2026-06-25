@@ -13,8 +13,6 @@
 
 #include <string>
 #include <sstream>
-#include <cstdlib>
-#include <vector>
 #include "hixl/hixl_types.h"
 #include "adxl/adxl_types.h"
 #include "hcomm/hcomm_res_defs.h"
@@ -44,17 +42,6 @@ constexpr const char *kPlacementDevice = "device";
 constexpr const char *kPlacementHost = "host";
 constexpr uint8_t kRdmaTrafficClass = 132;  // RDMA网卡的traffic class 默认值
 constexpr uint8_t kRdmaServiceLevel = 4;    // RDMA网卡的service level 默认值
-
-enum class ProtocolDescMode { kNone, kUboe, kUbg, kConflict };
-
-ProtocolDescMode ParseProtocolDescMode(const std::vector<std::string> &protocol_desc);
-
-bool IsHostRegisterMappedProtocol(CommProtocol protocol);
-
-inline bool IsIntraRoceEnabled() {
-  const char *env = std::getenv("HCCL_INTRA_ROCE_ENABLE");
-  return env != nullptr && std::string(env) == "1";
-}
 
 constexpr const char *kQosName = "comm_resource_config.qos";
 constexpr uint8_t kQosDefault = 0U;
