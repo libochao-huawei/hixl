@@ -31,6 +31,7 @@ struct ClientConfig {
   uint8_t rdma_tc;
   uint8_t rdma_sl;
   uint32_t timeout_ms;
+  bool auto_connect = false;
   std::optional<uint8_t> qos;
 };
 
@@ -47,6 +48,7 @@ class HixlClient {
         remote_engine_(config.remote_engine),
         rdma_tc_(config.rdma_tc),
         rdma_sl_(config.rdma_sl),
+        auto_connect_(config.auto_connect),
         qos_(config.qos) {}
   ~HixlClient() = default;
 
@@ -63,7 +65,8 @@ class HixlClient {
    * @param [in] timeout_ms          超时时间（ms）
    * @return 操作结果状态码
    */
-  Status Initialize(const std::vector<EndpointConfig> &local_endpoint_list, uint32_t timeout_ms);
+  Status Initialize(const std::vector<EndpointConfig> &local_endpoint_list,
+                    const std::vector<MemInfo> &local_mem_info_list, uint32_t timeout_ms);
 
   /**
    * @brief 建链
@@ -120,6 +123,8 @@ class HixlClient {
  private:
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list, uint32_t timeout_ms) const;
+  Status SendMemInfoReq(int32_t fd, CtrlMsgType msg_type) const;
+  Status RecvMemInfoResp(int32_t fd, std::vector<MemInfoEntry> &remote_mem_info, uint32_t timeout_ms) const;
   void WaitBatchCsSyncInflightDrain();
   Status RecvNotifyAck(int32_t fd, int32_t timeout_ms) const;
   void CloseCtrlSocketLocked();
@@ -141,6 +146,7 @@ class HixlClient {
                              // inflight 配对
   std::mutex req_map_mutex_;
   std::map<TransferReq, TransferInfo> req_map_;
+  bool auto_connect_{false};
   std::optional<uint8_t> qos_;
 };
 

@@ -55,7 +55,7 @@ class ClientManager {
   };
 
   Status StartHeartbeat();
-  Status CreateClient(const ClientConfig &config, ClientPtr &client_ptr);
+  Status CreateClient(const ClientConfig &config, const std::vector<MemInfo> &mem_info_list, ClientPtr &client_ptr);
   std::shared_ptr<std::mutex> GetClientMutex(const std::string &remote_engine);
   void DestroyClientMutex(const std::string &remote_engine);
   void SendHeartbeat();

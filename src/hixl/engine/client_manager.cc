@@ -44,7 +44,8 @@ Status ClientManager::StartHeartbeat() {
   return SUCCESS;
 }
 
-Status ClientManager::CreateClient(const ClientConfig &config, ClientPtr &client_ptr) {
+Status ClientManager::CreateClient(const ClientConfig &config, const std::vector<MemInfo> &mem_info_list,
+                                   ClientPtr &client_ptr) {
   std::string ip;
   int32_t port = 0;
   HIXL_CHK_STATUS_RET(ParseListenInfo(config.remote_engine, ip, port), "Failed to parse ip, remote_engine:%s",
@@ -58,7 +59,7 @@ Status ClientManager::CreateClient(const ClientConfig &config, ClientPtr &client
   }
   client_ptr = MakeShared<HixlClient>(ip, static_cast<uint32_t>(port), config);
   HIXL_CHECK_NOTNULL(client_ptr, "Failed to create HixlClient, ip:%s, port:%u", ip.c_str(), port);
-  HIXL_CHK_STATUS_RET(client_ptr->Initialize(config.endpoint_list, config.timeout_ms),
+  HIXL_CHK_STATUS_RET(client_ptr->Initialize(config.endpoint_list, mem_info_list, config.timeout_ms),
                       "Failed to initialize HixlClient, ip:%s, port:%u", ip.c_str(), port);
   return SUCCESS;
 }
@@ -77,7 +78,7 @@ Status ClientManager::GetOrCreateClient(const ClientConfig &config, const std::v
   }
 
   ClientPtr new_client = nullptr;
-  HIXL_CHK_STATUS_RET(CreateClient(config, new_client), "Failed to create HixlClient, remote_engine:%s",
+  HIXL_CHK_STATUS_RET(CreateClient(config, mem_info_list, new_client), "Failed to create HixlClient, remote_engine:%s",
                       config.remote_engine.c_str());
   HIXL_CHECK_NOTNULL(new_client, "Created client is null, remote_engine:%s", config.remote_engine.c_str());
 

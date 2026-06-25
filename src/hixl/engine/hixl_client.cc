@@ -43,9 +43,11 @@ Status ParseNotifyAckResult(const std::string &json_str) {
   }
   return result;
 }
+
 }  // namespace
 
-Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_list, uint32_t timeout_ms) {
+Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_list,
+                              const std::vector<MemInfo> &local_mem_info_list, uint32_t timeout_ms) {
   if (local_endpoint_list.empty()) {
     HIXL_LOGE(PARAM_INVALID, "The input local_endpoint_list is empty");
     return PARAM_INVALID;
@@ -66,12 +68,33 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
     HIXL_LOGE(FAILED, "HixlClient received empty remote_endpoint_list");
     return FAILED;
   }
+  // 获取对端内存信息
+  std::vector<MemInfoEntry> remote_mem_info_list;
+  HIXL_CHK_STATUS_RET(SendMemInfoReq(ctrl_socket_, CtrlMsgType::kGetMemInfoReq),
+                      "HixlClient send GetMemInfoReq failed, socket:%d", ctrl_socket_);
+  HIXL_CHK_STATUS_RET(RecvMemInfoResp(ctrl_socket_, remote_mem_info_list, timeout_ms),
+                      "HixlClient receive GetMemInfoResp failed, socket:%d", ctrl_socket_);
+
+  MemAvailability mem_avail;
+  if (auto_connect_) {
+    // AutoConnect模式：要求必须已注册内存，按内存类型过滤UB匹配对
+    HIXL_CHK_BOOL_RET_STATUS(!remote_mem_info_list.empty(), FAILED,
+                             "Need to register memory before auto_connect");
+    HIXL_CHK_BOOL_RET_STATUS(!local_mem_info_list.empty(), FAILED,
+                             "Need to register memory before auto_connect");                         
+    mem_avail = EndpointMatcher::BuildMemAvailability(local_mem_info_list, remote_mem_info_list);
+  } else {
+    // 手动Connect模式：不进行内存过滤，能匹配几条链路就建几条
+    mem_avail = {true, true, true, true};
+  }
+
   std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
   HandlerCreateArgs::HandlerType handler_type;
   HIXL_CHK_STATUS_RET(
-      EndpointMatcher::MatchEndpoints(local_endpoint_list, remote_endpoint_list, matched_pairs, handler_type),
+      EndpointMatcher::MatchEndpoints(local_endpoint_list, remote_endpoint_list, mem_avail, matched_pairs, handler_type),
       "EndpointMatcher::MatchEndpoints failed");
-  HandlerCreateArgs args{server_ip_, server_port_, rdma_tc_, rdma_sl_, handler_type, std::move(matched_pairs), qos_};
+  HandlerCreateArgs args{server_ip_, server_port_, rdma_tc_, rdma_sl_, handler_type,
+                         std::move(matched_pairs), std::move(remote_mem_info_list), qos_};
   client_handler_ = ClientHandlerFactory::Create(args);
   HIXL_CHECK_NOTNULL(client_handler_, "ClientHandlerFactory create handler failed");
   HIXL_DISMISS_GUARD(close_ctrl_socket);
@@ -123,6 +146,68 @@ Status HixlClient::RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> 
   const size_t json_len = static_cast<size_t>(body_size - sizeof(CtrlMsgType));
   std::string json_str(reinterpret_cast<const char *>(body.data() + sizeof(msg_type)), json_len);
   return EndpointGenerator::DeserializeEndpointConfigList(json_str, remote_endpoint_list);
+}
+
+Status HixlClient::SendMemInfoReq(int32_t fd, CtrlMsgType msg_type) const {
+  CtrlMsgHeader header{};
+  header.magic = kMagicNumber;
+  header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType));
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &header, static_cast<uint64_t>(sizeof(header))),
+                      "HixlClient send mem info header failed, fd:%d", fd);
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))),
+                      "HixlClient send mem info msg_type failed, fd:%d", fd);
+  return SUCCESS;
+}
+
+Status HixlClient::RecvMemInfoResp(int32_t fd, std::vector<MemInfoEntry> &remote_mem_info, uint32_t timeout_ms) const {
+  CtrlMsgHeader header{};
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, &header, static_cast<uint32_t>(sizeof(header)), timeout_ms),
+                      "HixlClient receive mem info header failed, fd:%d", fd);
+  HIXL_CHK_BOOL_RET_STATUS(header.magic == kMagicNumber, PARAM_INVALID,
+                           "Invalid magic for RecvMemInfoResp, expect:0x%X, actual:0x%X", kMagicNumber,
+                           header.magic);
+  HIXL_CHK_BOOL_RET_STATUS(
+      header.body_size > sizeof(CtrlMsgType) && header.body_size <= kMaxRecvRespBodySize, PARAM_INVALID,
+      "Invalid body_size in RecvMemInfoResp, body_size=%" PRIu64 ", must be in (%zu, %" PRIu64 "]",
+      header.body_size, sizeof(CtrlMsgType), kMaxRecvRespBodySize);
+
+  const uint64_t body_size = header.body_size;
+  std::vector<uint8_t> body(body_size);
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(fd, body.data(), static_cast<uint32_t>(body_size), timeout_ms));
+
+  CtrlMsgType msg_type{};
+  const void *src = static_cast<const void *>(body.data());
+  errno_t rc = memcpy_s(&msg_type, sizeof(msg_type), src, sizeof(msg_type));
+  HIXL_CHK_BOOL_RET_STATUS(rc == EOK, FAILED, "memcpy_s msg_type failed, rc=%d", static_cast<int32_t>(rc));
+  HIXL_CHK_BOOL_RET_STATUS(msg_type == CtrlMsgType::kGetMemInfoResp, PARAM_INVALID,
+                           "Unexpected msg_type=%d in RecvMemInfoResp, expect=%d", static_cast<int32_t>(msg_type),
+                           static_cast<int32_t>(CtrlMsgType::kGetMemInfoResp));
+
+  const size_t json_len = static_cast<size_t>(body_size - sizeof(CtrlMsgType));
+  std::string json_str(reinterpret_cast<const char *>(body.data() + sizeof(msg_type)), json_len);
+
+  nlohmann::json j;
+  try {
+    j = nlohmann::json::parse(json_str);
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "Failed to parse mem info json, exception:%s", e.what());
+    return PARAM_INVALID;
+  }
+  if (!j.is_array()) {
+    HIXL_LOGE(PARAM_INVALID, "Invalid mem info json format, expect array");
+    return PARAM_INVALID;
+  }
+  remote_mem_info.clear();
+  for (const auto &item : j) {
+    MemInfoEntry entry{};
+    int32_t mem_type_val = 0;
+    HIXL_CHK_STATUS_RET(ParseJsonField<uintptr_t>(item, "start_addr", entry.start_addr), "Failed to parse start_addr");
+    HIXL_CHK_STATUS_RET(ParseJsonField<uintptr_t>(item, "end_addr", entry.end_addr), "Failed to parse end_addr");
+    HIXL_CHK_STATUS_RET(ParseJsonField<int32_t>(item, "mem_type", mem_type_val), "Failed to parse mem_type");
+    entry.mem_type = static_cast<MemType>(mem_type_val);
+    remote_mem_info.push_back(entry);
+  }
+  return SUCCESS;
 }
 
 Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {

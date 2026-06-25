@@ -133,8 +133,7 @@ Status EndpointMatcher::TryMatchSingle(const std::vector<EndpointConfig> &local,
 }
 
 Status EndpointMatcher::TryMatchUb(const EndpointConfig &local, const std::map<MatchKey, EndpointConfig> &peers,
-                                   std::map<CommType, bool> &expected, uint32_t &count,
-                                   std::vector<HandlerCreateArgs::EndpointPair> &pairs) {
+                                   const MemAvailability &mem_avail, UbMatchAccum &accum) {
   if (!IsUbProtocol(local.protocol)) {
     return SUCCESS;
   }
@@ -143,11 +142,34 @@ Status EndpointMatcher::TryMatchUb(const EndpointConfig &local, const std::map<M
     auto it = FindMatchingKey(peers, key);
     if (it != peers.end()) {
       CommType type = ParseCommType(local.placement, it->second.placement);
-      if (!expected[type]) {
-        pairs.push_back({local, it->second, type});
-        expected[type] = true;
-        count++;
+      if (accum.expected[type]) {
+        continue;
       }
+      // 检查该CommType对应的内存类型在两端是否都已注册
+      bool mem_ok = false;
+      switch (type) {
+        case CommType::COMM_TYPE_UB_D2D:
+          mem_ok = mem_avail.local_has_device && mem_avail.remote_has_device;
+          break;
+        case CommType::COMM_TYPE_UB_D2H:
+          mem_ok = mem_avail.local_has_device && mem_avail.remote_has_host;
+          break;
+        case CommType::COMM_TYPE_UB_H2D:
+          mem_ok = mem_avail.local_has_host && mem_avail.remote_has_device;
+          break;
+        case CommType::COMM_TYPE_UB_H2H:
+          mem_ok = mem_avail.local_has_host && mem_avail.remote_has_host;
+          break;
+        default:
+          mem_ok = true;
+          break;
+      }
+      if (!mem_ok) {
+        continue;
+      }
+      accum.pairs.push_back({local, it->second, type});
+      accum.expected[type] = true;
+      accum.count++;
     }
   }
   return SUCCESS;
@@ -155,30 +177,34 @@ Status EndpointMatcher::TryMatchUb(const EndpointConfig &local, const std::map<M
 
 Status EndpointMatcher::TryMatchGroup(const std::vector<EndpointConfig> &local,
                                       const std::vector<EndpointConfig> &remote,
+                                      const MemAvailability &mem_avail,
                                       std::vector<HandlerCreateArgs::EndpointPair> &pairs) {
-  std::map<CommType, bool> expected = {{CommType::COMM_TYPE_UB_D2D, false},
-                                       {CommType::COMM_TYPE_UB_H2D, false},
-                                       {CommType::COMM_TYPE_UB_D2H, false},
-                                       {CommType::COMM_TYPE_UB_H2H, false}};
-  uint32_t count = 0;
+  UbMatchAccum accum{{{{CommType::COMM_TYPE_UB_D2D, false},
+                       {CommType::COMM_TYPE_UB_H2D, false},
+                       {CommType::COMM_TYPE_UB_D2H, false},
+                       {CommType::COMM_TYPE_UB_H2H, false}}},
+                      0,
+                      pairs};
   std::map<MatchKey, EndpointConfig> peers;
   BuildMatchMap(remote, peers);
   auto sorted_local = local;
   std::sort(sorted_local.begin(), sorted_local.end(),
             [](const EndpointConfig &a, const EndpointConfig &b) { return !a.dst_eid.empty() && b.dst_eid.empty(); });
   for (const auto &ep : sorted_local) {
-    HIXL_CHK_STATUS_RET(TryMatchUb(ep, peers, expected, count, pairs));
-    if (count == kMaxUbCsClientNum) {
+    HIXL_CHK_STATUS_RET(TryMatchUb(ep, peers, mem_avail, accum));
+    if (accum.count == kMaxUbCsClientNum) {
       return SUCCESS;
     }
   }
-  return count > 0 ? SUCCESS : FAILED;
+  return accum.count > 0 ? SUCCESS : FAILED;
 }
 
 Status EndpointMatcher::TryMatchByPriority(const std::vector<EndpointConfig> &local,
-                                           const std::vector<EndpointConfig> &remote, bool cross_instance,
+                                           const std::vector<EndpointConfig> &remote,
+                                           const MemAvailability &mem_avail,
                                            std::vector<HandlerCreateArgs::EndpointPair> &pairs,
                                            HandlerCreateArgs::HandlerType &handler_type) {
+  bool cross_instance = IsCrossInstance(local, remote);
   const MatchRule *rules = cross_instance ? kCrossInstanceRules : kSameInstanceRules;
   const size_t rule_count = cross_instance ? sizeof(kCrossInstanceRules) / sizeof(kCrossInstanceRules[0])
                                            : sizeof(kSameInstanceRules) / sizeof(kSameInstanceRules[0]);
@@ -187,7 +213,7 @@ Status EndpointMatcher::TryMatchByPriority(const std::vector<EndpointConfig> &lo
     Status status = FAILED;
     switch (rule.rule_type) {
       case MatchRuleType::GROUP:
-        status = TryMatchGroup(local, remote, pairs);
+        status = TryMatchGroup(local, remote, mem_avail, pairs);
         break;
       case MatchRuleType::SINGLE:
         status = TryMatchSingle(local, remote, rule.protocol, rule.placement, rule.type, pairs);
@@ -217,9 +243,30 @@ void EndpointMatcher::LogMatchedEndpoints(const std::vector<HandlerCreateArgs::E
 
 Status EndpointMatcher::MatchEndpoints(const std::vector<EndpointConfig> &local,
                                        const std::vector<EndpointConfig> &remote,
+                                       const MemAvailability &mem_avail,
                                        std::vector<HandlerCreateArgs::EndpointPair> &matched_pairs,
                                        HandlerCreateArgs::HandlerType &handler_type) {
-  return TryMatchByPriority(local, remote, IsCrossInstance(local, remote), matched_pairs, handler_type);
+  return TryMatchByPriority(local, remote, mem_avail, matched_pairs, handler_type);
+}
+
+MemAvailability EndpointMatcher::BuildMemAvailability(const std::vector<MemInfo> &local_mem_info,
+                                                      const std::vector<MemInfoEntry> &remote_mem_info) {
+  MemAvailability mem_avail{};
+  for (const auto &m : local_mem_info) {
+    if (m.type == MemType::MEM_DEVICE) {
+      mem_avail.local_has_device = true;
+    } else if (m.type == MemType::MEM_HOST) {
+      mem_avail.local_has_host = true;
+    }
+  }
+  for (const auto &m : remote_mem_info) {
+    if (m.mem_type == MemType::MEM_DEVICE) {
+      mem_avail.remote_has_device = true;
+    } else if (m.mem_type == MemType::MEM_HOST) {
+      mem_avail.remote_has_host = true;
+    }
+  }
+  return mem_avail;
 }
 
 }  // namespace hixl

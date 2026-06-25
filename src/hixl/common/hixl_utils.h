@@ -20,6 +20,8 @@
 #include "adxl/adxl_types.h"
 #include "hixl_checker.h"
 #include "hixl_inner_types.h"
+#include "hixl_log.h"
+#include "nlohmann/json.hpp"
 #include "acl/acl_rt.h"
 
 namespace hixl {
@@ -105,6 +107,25 @@ class TemporaryRtContext {
  private:
   aclrtContext prev_context_ = nullptr;
 };
+
+template <typename T>
+Status ParseJsonField(const nlohmann::json &json_obj, const std::string &field_name, T &field_value,
+                      bool required = true) {
+  if (!json_obj.contains(field_name)) {
+    if (required) {
+      HIXL_LOGE(PARAM_INVALID, "Missing required field '%s'", field_name.c_str());
+      return PARAM_INVALID;
+    }
+    return SUCCESS;
+  }
+  try {
+    field_value = json_obj[field_name].get<T>();
+    return SUCCESS;
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "Failed to parse field '%s', exception: %s", field_name.c_str(), e.what());
+    return PARAM_INVALID;
+  }
+}
 
 }  // namespace hixl
 

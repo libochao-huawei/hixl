@@ -49,10 +49,19 @@ struct MatchKey {
   }
 };
 
+// 封装本地/远端内存可用性，用于UB匹配时判断哪些CommType通道有实际内存支持
+struct MemAvailability {
+  bool local_has_device = false;
+  bool local_has_host = false;
+  bool remote_has_device = false;
+  bool remote_has_host = false;
+};
+
 class EndpointMatcher {
  public:
   // ---------- Primary matching API ----------
   static Status MatchEndpoints(const std::vector<EndpointConfig> &local, const std::vector<EndpointConfig> &remote,
+                               const MemAvailability &mem_avail,
                                std::vector<HandlerCreateArgs::EndpointPair> &matched_pairs,
                                HandlerCreateArgs::HandlerType &handler_type);
 
@@ -62,6 +71,10 @@ class EndpointMatcher {
   static bool IsDirectProtocol(const std::string &protocol);
   static const char *HandlerTypeToString(HandlerCreateArgs::HandlerType type);
 
+  // ---------- Memory availability helper ----------
+  static MemAvailability BuildMemAvailability(const std::vector<MemInfo> &local_mem_info,
+                                              const std::vector<MemInfoEntry> &remote_mem_info);
+
   // ---------- Endpoint lookup tools ----------
   static const EndpointConfig *FindByProtocol(const std::vector<EndpointConfig> &endpoints,
                                               const std::string &protocol);
@@ -69,6 +82,12 @@ class EndpointMatcher {
 
  private:
   EndpointMatcher() = delete;
+
+  struct UbMatchAccum {
+    std::map<CommType, bool> expected;
+    uint32_t count = 0;
+    std::vector<HandlerCreateArgs::EndpointPair> &pairs;
+  };
 
   static bool IsCrossInstance(const std::vector<EndpointConfig> &local, const std::vector<EndpointConfig> &remote);
 
@@ -80,18 +99,18 @@ class EndpointMatcher {
                                std::vector<HandlerCreateArgs::EndpointPair> &pairs);
 
   static Status TryMatchGroup(const std::vector<EndpointConfig> &local, const std::vector<EndpointConfig> &remote,
-                              std::vector<HandlerCreateArgs::EndpointPair> &pairs);
+                              const MemAvailability &mem_avail, std::vector<HandlerCreateArgs::EndpointPair> &pairs);
 
   static Status TryMatchByPriority(const std::vector<EndpointConfig> &local, const std::vector<EndpointConfig> &remote,
-                                   bool cross_instance, std::vector<HandlerCreateArgs::EndpointPair> &pairs,
+                                   const MemAvailability &mem_avail,
+                                   std::vector<HandlerCreateArgs::EndpointPair> &pairs,
                                    HandlerCreateArgs::HandlerType &handler_type);
 
   static void LogMatchedEndpoints(const std::vector<HandlerCreateArgs::EndpointPair> &pairs,
                                   HandlerCreateArgs::HandlerType handler_type);
 
   static Status TryMatchUb(const EndpointConfig &local, const std::map<MatchKey, EndpointConfig> &peers,
-                           std::map<CommType, bool> &expected, uint32_t &count,
-                           std::vector<HandlerCreateArgs::EndpointPair> &pairs);
+                           const MemAvailability &mem_avail, UbMatchAccum &accum);
 };
 }  // namespace hixl
 

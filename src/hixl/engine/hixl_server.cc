@@ -233,6 +233,35 @@ Status HixlServer::RegisterProcessors() {
   };
   HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetEndpointInfoReq, send_endpoint_cb),
                       "Failed to register send endpoint info processor.");
+
+  MsgProcessor send_mem_info_cb = [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
+    (void)msg;
+    (void)msg_len;
+    std::string msg_str;
+    {
+      std::lock_guard<std::mutex> lk(mtx_);
+      nlohmann::json j = nlohmann::json::array();
+      for (const auto &pair : handle_to_addr_) {
+        nlohmann::json item;
+        item["start_addr"] = pair.second.start_addr;
+        item["end_addr"] = pair.second.end_addr;
+        item["mem_type"] = static_cast<int32_t>(pair.second.mem_type);
+        j.push_back(item);
+      }
+      msg_str = j.dump();
+    }
+    CtrlMsgHeader header{};
+    header.magic = kMagicNumber;
+    header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + msg_str.size());
+    CtrlMsgType msg_type = CtrlMsgType::kGetMemInfoResp;
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &header, static_cast<uint64_t>(sizeof(header))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, msg_str.c_str(), static_cast<uint64_t>(msg_str.size())));
+    return SUCCESS;
+  };
+  HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetMemInfoReq, send_mem_info_cb),
+                      "Failed to register send mem info processor.");
+
   MsgProcessor heartbeat_cb = [](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
     (void)fd;
     (void)msg;

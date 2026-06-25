@@ -65,6 +65,24 @@ Status UbClientHandler::Create(const HandlerCreateArgs &args, std::unique_ptr<Ub
   }
   out = MakeUnique<UbClientHandler>(std::move(handles));
   HIXL_CHECK_NOTNULL(out, "UbClientHandler create failed");
+
+  {
+    std::lock_guard<std::mutex> seg_lock(out->remote_seg_mutex_);
+    for (const auto &entry : args.remote_mem_info) {
+      MemType type = entry.mem_type;
+      auto it = std::find_if(out->remote_segments_.begin(), out->remote_segments_.end(),
+                             [type](const SegmentPtr &seg) { return seg->GetMemType() == type; });
+      if (it != out->remote_segments_.end()) {
+        HIXL_CHK_STATUS_RET((*it)->AddRange(entry.start_addr, entry.end_addr - entry.start_addr));
+      } else {
+        auto seg = MakeShared<Segment>(type);
+        HIXL_CHK_BOOL_RET_STATUS(seg != nullptr, FAILED, "Failed to create segment");
+        HIXL_CHK_STATUS_RET(seg->AddRange(entry.start_addr, entry.end_addr - entry.start_addr));
+        out->remote_segments_.push_back(seg);
+      }
+    }
+  }
+
   return SUCCESS;
 }
 
@@ -91,31 +109,6 @@ Status UbClientHandler::Connect(uint32_t timeout_ms) {
     HIXL_CHK_STATUS_RET(f.get(), "UbClientHandler Connect failed");
   }
 
-  // 获取远端内存
-  for (const auto &pair : handles_) {
-    auto handle = pair.second;
-    CommMem *remote_mem_list = nullptr;
-    char **mem_tag_list = nullptr;
-    uint32_t list_num = 0;
-    HIXL_CHK_STATUS_RET(HixlCSClientGetRemoteMem(handle, &remote_mem_list, &mem_tag_list, &list_num, timeout_ms));
-
-    std::lock_guard<std::mutex> seg_lock(remote_seg_mutex_);
-    for (uint32_t i = 0; i < list_num; i++) {
-      MemType type = (remote_mem_list[i].type == COMM_MEM_TYPE_DEVICE) ? MEM_DEVICE : MEM_HOST;
-      auto it = std::find_if(remote_segments_.begin(), remote_segments_.end(),
-                             [type](const SegmentPtr &seg) { return seg->GetMemType() == type; });
-      if (it != remote_segments_.end()) {
-        HIXL_CHK_STATUS_RET(
-            (*it)->AddRange(reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size));
-      } else {
-        auto seg = MakeShared<Segment>(type);
-        HIXL_CHK_BOOL_RET_STATUS(seg != nullptr, FAILED, "Failed to create segment");
-        HIXL_CHK_STATUS_RET(
-            seg->AddRange(reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size));
-        remote_segments_.push_back(seg);
-      }
-    }
-  }
   return SUCCESS;
 }
 
