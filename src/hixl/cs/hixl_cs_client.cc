@@ -51,7 +51,7 @@ constexpr uint64_t kFlagDoneValue = 1ULL;
 constexpr uint64_t kFlagResetValue = 0ULL;
 constexpr uint32_t kCustomTimeoutS = 1800;
 constexpr uint32_t kMaxKernelBatchSize = 128U;
-// notifywait默认1836ms等待时长，通过异步接口提供给用户使用，由用户感知超时主动退出，不使用notify的超时时间
+// notifywait默认1836s等待时长，通过异步接口提供给用户使用，由用户感知超时主动退出，不使用notify的超时时间
 constexpr uint16_t kNotifyDefaultWaitTimeS = 27 * 68;
 void FreeExportDesc(std::vector<hixl::HixlMemDesc> &desc_list) {
   for (auto &d : desc_list) {
