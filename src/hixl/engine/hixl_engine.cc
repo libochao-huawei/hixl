@@ -142,6 +142,7 @@ Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in
   ClientConfig config{};
   std::vector<MemInfo> mem_info_list;
   BuildClientConfig(remote_engine, config, mem_info_list, timeout_in_millis);
+  config.auto_connect = false;
   ClientPtr client_ptr = nullptr;
   Status ret = client_manager_.GetOrCreateClient(config, mem_info_list, timeout_in_millis, client_ptr);
   if (ret == ALREADY_CONNECTED) {
@@ -356,6 +357,7 @@ Status HixlEngine::AutoConnect(const AscendString &remote_engine, int32_t timeou
   ClientConfig config{};
   std::vector<MemInfo> mem_info_list;
   BuildClientConfig(remote_engine, config, mem_info_list, timeout_in_millis);
+  config.auto_connect = true;  // AutoConnect模式：要求对端已注册内存，按内存类型过滤
 
   HIXL_LOGI("[HixlEngine] Auto connect started, local_engine:%s, remote_engine:%s, timeout:%d ms.",
             local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);

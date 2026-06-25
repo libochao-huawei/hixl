@@ -35,6 +35,7 @@
 #include "depends/runtime/src/runtime_stub.h"
 #include "engine/test_mmpa_utils.h"
 #include "common/hixl_utils.h"
+#include "nlohmann/json.hpp"
 #include "common/ctrl_msg_plugin.h"
 #include "common/segment.h"
 
@@ -64,11 +65,19 @@ enum class MockHixlServerMode : uint32_t {
   // GetEndpointInfoResp 相关异常
   kGetEndpointInfoResp_BadMagic,
   kGetEndpointInfoResp_BadMsgType,
-  kGetEndpointInfoResp_BadBodySizeTooSmall,  // body_size <= sizeof(CtrlMsgType)
+  kGetEndpointInfoResp_BadBodySizeTooSmall,
   kGetEndpointInfoResp_BadJson,
   kGetEndpointInfoResp_JsonIsNotArray,
   kGetEndpointInfoResp_MissingField,
+  // GetMemInfoResp 相关异常
+  kGetMemInfoResp_BadMagic,
+  kGetMemInfoResp_BadMsgType,
+  kGetMemInfoResp_BadBodySizeTooSmall,
+  kGetMemInfoResp_BadJson,
+  kGetMemInfoResp_JsonIsNotArray,
 };
+// 用于现有测试的“无过滤”默认MemAvailability
+static const MemAvailability kAllMemAvail{true, true, true, true};
 // server 内存信息
 static CommMem default_remote_mem_list[] = {{COMM_MEM_TYPE_HOST, &kRemoteMems[0], sizeof(uint32_t)},
                                             {COMM_MEM_TYPE_DEVICE, &kRemoteMems[2], sizeof(uint32_t)}};
@@ -125,6 +134,7 @@ class MockHixlServer {
         return;
       }
       mem_handles_.emplace_back(mem_handle);
+      registered_mems_.push_back(&mem_list[i]);
     }
   }
 
@@ -139,6 +149,17 @@ class MockHixlServer {
     HixlStatus ret = HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetEndpointInfoReq, send_endpoint_cb);
     if (ret != HIXL_SUCCESS) {
       std::cerr << "Failed to reg proc CsServer" << std::endl;
+      return;
+    }
+    MsgProcessor send_mem_info_cb = [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
+      (void)msg;
+      (void)msg_len;
+      SendMemInfoResponse(fd);
+      return SUCCESS;
+    };
+    ret = HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetMemInfoReq, send_mem_info_cb);
+    if (ret != HIXL_SUCCESS) {
+      std::cerr << "Failed to reg proc kGetMemInfoReq" << std::endl;
       return;
     }
 
@@ -177,6 +198,7 @@ class MockHixlServer {
  private:
   HixlServerHandle server_handle_ = nullptr;
   std::vector<MemHandle> mem_handles_{};
+  std::vector<CommMem *> registered_mems_{};
   int32_t conn_fd_ = -1;
   MockHixlServerMode mode_;
 
@@ -191,6 +213,42 @@ class MockHixlServer {
   static const std::string k4UbJson;
   static const std::string kNotArrayJson;
   static const std::string kMissingFieldJson;
+
+  void SendMemInfoResponse(int32_t fd) {
+    if (mode_ == MockHixlServerMode::kGetMemInfoResp_BadMagic) {
+      CtrlMsgHeader hdr{kMagicNumber + 1, 0};
+      CtrlMsgPlugin::Send(fd, &hdr, sizeof(hdr));
+      return;
+    }
+    std::string json = BuildMemInfoJson();
+    CtrlMsgHeader header{kMagicNumber, static_cast<uint64_t>(sizeof(CtrlMsgType) + json.size())};
+    CtrlMsgType msg_type = CtrlMsgType::kGetMemInfoResp;
+    if (mode_ == MockHixlServerMode::kGetMemInfoResp_BadMsgType) {
+      msg_type = CtrlMsgType::kCreateChannelReq;
+    } else if (mode_ == MockHixlServerMode::kGetMemInfoResp_BadBodySizeTooSmall) {
+      header.body_size = sizeof(CtrlMsgType) - 1;
+    } else if (mode_ == MockHixlServerMode::kGetMemInfoResp_BadJson) {
+      json = "{ invalid )";
+    } else if (mode_ == MockHixlServerMode::kGetMemInfoResp_JsonIsNotArray) {
+      json = "{\"start_addr\":0}";
+    }
+    CtrlMsgPlugin::Send(fd, &header, sizeof(header));
+    CtrlMsgPlugin::Send(fd, &msg_type, sizeof(msg_type));
+    CtrlMsgPlugin::Send(fd, json.data(), json.size());
+  }
+
+  std::string BuildMemInfoJson() const {
+    nlohmann::json j = nlohmann::json::array();
+    for (const auto *mem : registered_mems_) {
+      nlohmann::json item;
+      item["start_addr"] = reinterpret_cast<uintptr_t>(mem->addr);
+      item["end_addr"] = reinterpret_cast<uintptr_t>(mem->addr) + mem->size;
+      item["mem_type"] = (mem->type == COMM_MEM_TYPE_DEVICE) ? static_cast<int32_t>(MEM_DEVICE) : static_cast<int32_t>(MEM_HOST);
+      j.push_back(item);
+    }
+    return j.dump();
+  }
+
 
   // 通用响应发送方法
   void SendResponseImpl(uint32_t magic, CtrlMsgType msg_type, size_t body_size, const std::string &json_content) {
@@ -567,7 +625,7 @@ class HixlClientUTest : public ::testing::Test {
     StartServer(bad_json_mode);
     std::vector<EndpointConfig> local_endpoint_list;
     local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
-    Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+    Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
     EXPECT_EQ(st, PARAM_INVALID);
     st = client_->Finalize();
     EXPECT_EQ(st, SUCCESS);
@@ -606,7 +664,7 @@ class HixlClientUTest : public ::testing::Test {
       local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
     }
 
-    Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+    Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
     EXPECT_EQ(st, SUCCESS);
 
     st = client_->SetLocalMemInfo(use_4ub ? Make4UbMemInfoList() : MakeMemInfoList());
@@ -727,7 +785,7 @@ class HixlClientUTest : public ::testing::Test {
                       size_t expected_pair_count, HandlerCreateArgs::HandlerType expected_type) {
     std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
     HandlerCreateArgs::HandlerType handler_type;
-    Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
+    Status st = EndpointMatcher::MatchEndpoints(local, remote, kAllMemAvail, matched_pairs, handler_type);
     EXPECT_EQ(st, SUCCESS);
     EXPECT_EQ(handler_type, expected_type);
     ASSERT_EQ(matched_pairs.size(), expected_pair_count);
@@ -738,7 +796,7 @@ class HixlClientUTest : public ::testing::Test {
                                                              CommType expected_type) {
     std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
     HandlerCreateArgs::HandlerType handler_type;
-    Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
+    Status st = EndpointMatcher::MatchEndpoints(local, remote, kAllMemAvail, matched_pairs, handler_type);
     EXPECT_EQ(st, SUCCESS);
     EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::DIRECT);
     EXPECT_EQ(matched_pairs.size(), 1U);
@@ -760,7 +818,7 @@ TEST_F(HixlClientUTest, Initialize4UBTest) {
   local_endpoint_list.push_back(MakeUbHostLocalEp2());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
-  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+  Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
   EXPECT_GE(client_->ctrl_socket_, 0);
   EXPECT_EQ(client_->Finalize(), SUCCESS);
@@ -779,7 +837,7 @@ TEST_F(HixlClientUTest, InitializeKeepsControlSocket) {
   local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
 
-  Status st = client.Initialize(local_endpoint_list, kDefaultTimeoutMs);
+  Status st = client.Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
 
   EXPECT_EQ(st, SUCCESS);
   EXPECT_GE(client.ctrl_socket_, 0);
@@ -794,7 +852,7 @@ TEST_F(HixlClientUTest, Initialize2UBTest) {
   local_endpoint_list.push_back(MakeRoceHostLocalEp());
   local_endpoint_list.push_back(MakeUbHostLocalEp1());
   local_endpoint_list.push_back(MakeUbHostLocalEp2());
-  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+  Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
 }
 
@@ -806,7 +864,7 @@ TEST_F(HixlClientUTest, Initialize1UBTest) {
   local_endpoint_list.push_back(MakeRoceHostLocalEp());
   local_endpoint_list.push_back(MakeUbHostLocalEp1());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
-  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+  Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
 }
 
@@ -819,7 +877,7 @@ TEST_F(HixlClientUTest, InitializeEnvTest) {
   local_endpoint_list.push_back(MakeUbHostLocalEp2());
   {
     EnvGuard env_guard("HCCL_INTRA_ROCE_ENABLE", "1");
-    Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+    Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
     EXPECT_EQ(st, SUCCESS);
     st = client_->Finalize();
     EXPECT_EQ(st, SUCCESS);
@@ -834,7 +892,7 @@ TEST_F(HixlClientUTest, InitializeDiffNetTest) {
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
   local_endpoint_list.push_back(MakeUbDiffNetLocalEp1());
   local_endpoint_list.push_back(MakeUbDiffNetLocalEp2());
-  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+  Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
   st = client_->Finalize();
   EXPECT_EQ(st, SUCCESS);
@@ -847,7 +905,7 @@ TEST_F(HixlClientUTest, InitializeNoRoceTest) {
   std::vector<EndpointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeUbDiffNetLocalEp1());
   local_endpoint_list.push_back(MakeUbDiffNetLocalEp2());
-  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+  Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
   EXPECT_EQ(st, PARAM_INVALID);  // 重构后 handler 创建失败返回 PARAM_INVALID
   st = client_->Finalize();
   EXPECT_EQ(st, SUCCESS);
@@ -861,7 +919,7 @@ TEST_F(HixlClientUTest, InitializeNoPairTest) {
   local_endpoint_list.push_back(MakeDirectEp(kProtocolRoce, kPlacementDevice));
   local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
-  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+  Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
   EXPECT_EQ(st, PARAM_INVALID);  // 重构后 handler 创建失败返回 PARAM_INVALID
   st = client_->Finalize();
   EXPECT_EQ(st, SUCCESS);
@@ -904,7 +962,7 @@ TEST_F(HixlClientUTest, SetLocalMemInfoTest) {
   // 初始化 roce 链路
   std::vector<EndpointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
-  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+  Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
   std::vector<MemInfo> mem_info_list = MakeMemInfoList();
   st = client_->SetLocalMemInfo(mem_info_list);
@@ -920,7 +978,7 @@ TEST_F(HixlClientUTest, ConnectSuccessTest) {
   // 初始化 roce 链路
   std::vector<EndpointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
-  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+  Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
   // 调用 Connect 方法
   st = client_->Connect(kDefaultTimeoutMs);
@@ -980,7 +1038,7 @@ TEST_F(HixlClientUTest, TransferSyncNoConnectTest) {
   StartServer(MockHixlServerMode::k4UbNormal);
   std::vector<EndpointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
-  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+  Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
 
   st = client_->SetLocalMemInfo(MakeMemInfoList());
@@ -996,7 +1054,7 @@ TEST_F(HixlClientUTest, TransferSyncNoSetLocalMemInfoTest) {
   StartServer(MockHixlServerMode::k4UbNormal);
   std::vector<EndpointConfig> local_endpoint_list;
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
-  Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+  Status st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
 
   st = client_->Connect(kDefaultTimeoutMs);
@@ -1319,7 +1377,7 @@ TEST_F(HixlClientUTest, EndpointMatcherDstEidPriorityTest) {
 
   std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
   HandlerCreateArgs::HandlerType handler_type;
-  Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
+  Status st = EndpointMatcher::MatchEndpoints(local, remote, kAllMemAvail, matched_pairs, handler_type);
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::UB);
   // L1(dst_eid非空)匹配R1, D2D槽位被占用后L2无法再匹配; 若排序失效L2会先抢占导致L1落空
@@ -1359,7 +1417,7 @@ TEST_F(HixlClientUTest, EndpointMatcherCrossInstancePrefersDeviceUboe) {
 
   std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
   HandlerCreateArgs::HandlerType handler_type;
-  Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
+  Status st = EndpointMatcher::MatchEndpoints(local, remote, kAllMemAvail, matched_pairs, handler_type);
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::DIRECT);
   ASSERT_EQ(matched_pairs.size(), 1U);
@@ -1396,7 +1454,7 @@ TEST_F(HixlClientUTest, EndpointMatcherSameInstanceUbPreemptsDirectPriority) {
 
   std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
   HandlerCreateArgs::HandlerType handler_type;
-  Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
+  Status st = EndpointMatcher::MatchEndpoints(local, remote, kAllMemAvail, matched_pairs, handler_type);
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::UB);
   ASSERT_EQ(matched_pairs.size(), 4U);
@@ -1446,7 +1504,7 @@ TEST_F(HixlClientUTest, EndpointMatcherDirectMatchRequiresSamePlacement) {
 
   std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
   HandlerCreateArgs::HandlerType handler_type;
-  Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
+  Status st = EndpointMatcher::MatchEndpoints(local, remote, kAllMemAvail, matched_pairs, handler_type);
   EXPECT_EQ(st, PARAM_INVALID);
   EXPECT_TRUE(matched_pairs.empty());
 }
@@ -1460,7 +1518,7 @@ TEST_F(HixlClientUTest, EndpointMatcherIgnoresIntraRoceEnv) {
   EnvGuard env_guard("HCCL_INTRA_ROCE_ENABLE", "1");
   std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
   HandlerCreateArgs::HandlerType handler_type;
-  Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
+  Status st = EndpointMatcher::MatchEndpoints(local, remote, kAllMemAvail, matched_pairs, handler_type);
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::UB);
   ASSERT_EQ(matched_pairs.size(), 1U);
@@ -1512,6 +1570,121 @@ TEST_F(HixlClientUTest, CheckAliveInvalidControlSocketFails) {
 
   Status ret = client.CheckAlive();
   EXPECT_EQ(ret, FAILED);
+}
+
+TEST_F(HixlClientUTest, BuildMemAvailabilityBothTypes) {
+  std::vector<MemInfo> local_mem = MakeMemInfoList();
+  std::vector<MemInfoEntry> remote_mem = {
+      {reinterpret_cast<uintptr_t>(&kRemoteMems[0]),
+       reinterpret_cast<uintptr_t>(&kRemoteMems[0]) + sizeof(uint32_t), MEM_HOST},
+      {reinterpret_cast<uintptr_t>(&kRemoteMems[2]),
+       reinterpret_cast<uintptr_t>(&kRemoteMems[2]) + sizeof(uint32_t), MEM_DEVICE}};
+
+  MemAvailability mem_avail = EndpointMatcher::BuildMemAvailability(local_mem, remote_mem);
+  EXPECT_TRUE(mem_avail.local_has_device);
+  EXPECT_TRUE(mem_avail.local_has_host);
+  EXPECT_TRUE(mem_avail.remote_has_device);
+  EXPECT_TRUE(mem_avail.remote_has_host);
+}
+
+TEST_F(HixlClientUTest, BuildMemAvailabilityDeviceOnly) {
+  std::vector<MemInfo> local_mem;
+  local_mem.push_back({nullptr, {reinterpret_cast<uintptr_t>(&kLocalMems[0]), sizeof(uint32_t)}, MEM_DEVICE});
+  std::vector<MemInfoEntry> remote_mem;
+  remote_mem.push_back({reinterpret_cast<uintptr_t>(&kRemoteMems[0]),
+                        reinterpret_cast<uintptr_t>(&kRemoteMems[0]) + sizeof(uint32_t), MEM_DEVICE});
+
+  MemAvailability mem_avail = EndpointMatcher::BuildMemAvailability(local_mem, remote_mem);
+  EXPECT_TRUE(mem_avail.local_has_device);
+  EXPECT_FALSE(mem_avail.local_has_host);
+  EXPECT_TRUE(mem_avail.remote_has_device);
+  EXPECT_FALSE(mem_avail.remote_has_host);
+}
+
+TEST_F(HixlClientUTest, BuildMemAvailabilityEmpty) {
+  std::vector<MemInfo> local_mem;
+  std::vector<MemInfoEntry> remote_mem;
+
+  MemAvailability mem_avail = EndpointMatcher::BuildMemAvailability(local_mem, remote_mem);
+  EXPECT_FALSE(mem_avail.local_has_device);
+  EXPECT_FALSE(mem_avail.local_has_host);
+  EXPECT_FALSE(mem_avail.remote_has_device);
+  EXPECT_FALSE(mem_avail.remote_has_host);
+}
+
+TEST_F(HixlClientUTest, EndpointMatcherUbWithAllMemory) {
+  std::vector<EndpointConfig> remote = {MakeUbEp("remote_1", "", "device", "default"),
+                                        MakeUbEp("remote_2", "", "host", "default")};
+  std::vector<EndpointConfig> local = {MakeUbEp("local_1", "", "device", "default"),
+                                       MakeUbEp("local_2", "", "host", "default")};
+  MatchAndVerify(local, remote, 4U, HandlerCreateArgs::HandlerType::UB);
+}
+
+TEST_F(HixlClientUTest, EndpointMatcherUbDeviceMemoryOnly) {
+  std::vector<EndpointConfig> remote = {MakeUbEp("remote_1", "", "device", "default"),
+                                        MakeUbEp("remote_2", "", "host", "default")};
+  std::vector<EndpointConfig> local = {MakeUbEp("local_1", "", "device", "default"),
+                                       MakeUbEp("local_2", "", "host", "default")};
+
+  MemAvailability device_only{true, false, true, false};
+  std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
+  HandlerCreateArgs::HandlerType handler_type;
+  Status st = EndpointMatcher::MatchEndpoints(local, remote, device_only, matched_pairs, handler_type);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::UB);
+  ASSERT_EQ(matched_pairs.size(), 1U);
+  EXPECT_EQ(matched_pairs[0].type, CommType::COMM_TYPE_UB_D2D);
+}
+
+TEST_F(HixlClientUTest, EndpointMatcherUbNoMemoryFallsBack) {
+  std::vector<EndpointConfig> remote = {MakeUbEp("remote_1", "", "device", "default"),
+                                        MakeUbEp("remote_2", "", "host", "default"),
+                                        MakeDirectEp(kProtocolRoce, kPlacementDevice)};
+  std::vector<EndpointConfig> local = {MakeUbEp("local_1", "", "device", "default"),
+                                       MakeUbEp("local_2", "", "host", "default"),
+                                       MakeDirectEp(kProtocolRoce, kPlacementDevice)};
+
+  MemAvailability no_mem{false, false, false, false};
+  std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
+  HandlerCreateArgs::HandlerType handler_type;
+  Status st = EndpointMatcher::MatchEndpoints(local, remote, no_mem, matched_pairs, handler_type);
+  EXPECT_EQ(st, SUCCESS);
+  // UB匹配无可用内存 → 跳过，回退到DIRECT
+  EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::DIRECT);
+  ASSERT_EQ(matched_pairs.size(), 1U);
+  EXPECT_EQ(matched_pairs[0].type, CommType::COMM_TYPE_ROCE);
+}
+
+TEST_F(HixlClientUTest, GetMemInfoRespBadMagic) {
+  server_->SetMode(MockHixlServerMode::kGetMemInfoResp_BadMagic);
+  auto st = server_->CreateServer(Make4UbRemoteEpList());
+  ASSERT_EQ(st, SUCCESS);
+  server_->RegMem(default_remote_mem_list, default_list_num);
+  server_->ListenServer();
+
+  std::vector<EndpointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
+  EXPECT_EQ(st, PARAM_INVALID);
+  st = client_->Finalize();
+  EXPECT_EQ(st, SUCCESS);
+  server_->DestroyServerAndUnreg();
+}
+
+TEST_F(HixlClientUTest, GetMemInfoRespBadMsgType) {
+  server_->SetMode(MockHixlServerMode::kGetMemInfoResp_BadMsgType);
+  auto st = server_->CreateServer(Make4UbRemoteEpList());
+  ASSERT_EQ(st, SUCCESS);
+  server_->RegMem(default_remote_mem_list, default_list_num);
+  server_->ListenServer();
+
+  std::vector<EndpointConfig> local_endpoint_list;
+  local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
+  st = client_->Initialize(local_endpoint_list, MakeMemInfoList(), kDefaultTimeoutMs);
+  EXPECT_EQ(st, PARAM_INVALID);
+  st = client_->Finalize();
+  EXPECT_EQ(st, SUCCESS);
+  server_->DestroyServerAndUnreg();
 }
 
 }  // namespace hixl

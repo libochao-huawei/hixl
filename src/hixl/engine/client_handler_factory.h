@@ -37,6 +37,7 @@ struct HandlerCreateArgs {
     CommType type;
   };
   std::vector<EndpointPair> matched_pairs;
+  std::vector<MemInfoEntry> remote_mem_info;
   std::optional<uint8_t> qos;
 };
 

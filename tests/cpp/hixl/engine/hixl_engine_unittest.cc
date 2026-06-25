@@ -1290,4 +1290,70 @@ TEST(HixlEngineBatchStatusTest, SkipWaitingAndMaxQueryCountFilterResults) {
   EXPECT_EQ(engine.client_manager_.GetClientByReq(completed_req2), client);
   EXPECT_EQ(engine.client_manager_.Finalize(), SUCCESS);
 }
+
+TEST_F(HixlEngineTest, TestManualConnectWithoutServerMem) {
+  HixlEngine engine1("127.0.0.1");
+  CreateAndInitEngine(engine1, options1);
+  HixlEngine engine2("127.0.0.1:26300");
+  CreateAndInitEngine(engine2, options2);
+  // 不注册内存，server端 handle_to_addr_ 为空
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
+
+  engine1.Disconnect("127.0.0.1:26300", kTimeOut);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestAutoConnectFailsWithoutServerMem) {
+  std::map<AscendString, AscendString> auto_opts = options1;
+  auto_opts[hixl::OPTION_AUTO_CONNECT] = "1";
+  HixlEngine engine1("127.0.0.1");
+  {
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(auto_opts, parsed), SUCCESS);
+    ASSERT_EQ(engine1.Initialize(parsed), SUCCESS);
+  }
+  HixlEngine engine2("127.0.0.1:26300");
+  CreateAndInitEngine(engine2, options2);
+  // 不注册内存，server端 handle_to_addr_ 为空
+  int32_t src = 1;
+  int32_t dst = 2;
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  // AutoConnect 由 TransferSync 触发，server 无内存注册时应失败
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), FAILED);
+
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+TEST_F(HixlEngineTest, TestAutoConnectSucceedsWithServerMem) {
+
+  std::map<AscendString, AscendString> auto_opts = options1;
+  auto_opts[hixl::OPTION_AUTO_CONNECT] = "1";
+  HixlEngine engine1("127.0.0.1");
+  {
+    HixlOptions parsed;
+    ASSERT_EQ(HixlOptions::Parse(auto_opts, parsed), SUCCESS);
+    ASSERT_EQ(engine1.Initialize(parsed), SUCCESS);
+  }
+  HixlEngine engine2("127.0.0.1:26300");
+  CreateAndInitEngine(engine2, options2);
+
+  int32_t src = 1;
+  int32_t dst = 2;
+  MemHandle handle1 = nullptr;
+  MemHandle handle2 = nullptr;
+  Register(engine1, &src, handle1);
+  Register(engine2, &dst, handle2);
+
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), SUCCESS);
+  EXPECT_EQ(src, 2);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26300", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
 }  // namespace hixl

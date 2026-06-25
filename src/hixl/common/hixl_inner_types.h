@@ -97,6 +97,12 @@ struct MemInfo {
   MemType type;
 };
 
+struct MemInfoEntry {
+  uintptr_t start_addr;
+  uintptr_t end_addr;
+  MemType mem_type;
+};
+
 struct TransferInfo {
   uint64_t start_time;
   TransferOp op_type;
