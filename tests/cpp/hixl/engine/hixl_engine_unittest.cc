@@ -34,8 +34,6 @@
 #include "slog_stub.h"
 #include "test_mmpa_utils.h"
 #include "depends/mmpa/src/mmpa_stub.h"
-#include "depends/dsmi/src/dsmi_stub.h"
-#include "depends/dcmi/src/dcmi_stub.h"
 #include "hixl_test_helpers.h"
 
 namespace hixl {
