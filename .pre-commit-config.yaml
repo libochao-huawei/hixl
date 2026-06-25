@@ -43,7 +43,7 @@ repos:
         exclude: '^(.agents/)'
       - id: ruff-format
         types: [python]
-        exclude: '^(.agents/)'
+        exclude: '^(.agents/|benchmarks/)'
 
   # 拼写检查
   - repo: https://gitcode.com/gh_mirrors/co/codespell
