@@ -215,6 +215,20 @@ Status HixlServer::ProcessNotifyMsg(int32_t fd, const char *msg, uint64_t msg_le
   return result;
 }
 
+std::vector<RemoteMemInfo> HixlServer::GetRegisteredMemInfo() {
+  std::lock_guard<std::mutex> lk(mtx_);
+  std::vector<RemoteMemInfo> result;
+  for (const auto &kv : handle_to_addr_) {
+    const auto &info = kv.second;
+    RemoteMemInfo rmi;
+    rmi.type = info.mem_type;
+    rmi.addr = info.start_addr;
+    rmi.size = info.end_addr - info.start_addr;
+    result.push_back(rmi);
+  }
+  return result;
+}
+
 Status HixlServer::RegisterProcessors() {
   MsgProcessor send_endpoint_cb = [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
     (void)msg;
@@ -233,6 +247,25 @@ Status HixlServer::RegisterProcessors() {
   };
   HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetEndpointInfoReq, send_endpoint_cb),
                       "Failed to register send endpoint info processor.");
+
+  MsgProcessor send_mem_info_cb = [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
+    (void)msg;
+    (void)msg_len;
+    std::vector<RemoteMemInfo> mem_info = GetRegisteredMemInfo();
+    std::string msg_str;
+    HIXL_CHK_STATUS_RET(EndpointGenerator::SerializeMemInfoList(mem_info, msg_str),
+                        "Failed to serialize mem info list.");
+    CtrlMsgHeader header{};
+    header.magic = kMagicNumber;
+    header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + msg_str.size());
+    CtrlMsgType msg_type = CtrlMsgType::kGetMemInfoResp;
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &header, static_cast<uint64_t>(sizeof(header))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, msg_str.c_str(), static_cast<uint64_t>(msg_str.size())));
+    return SUCCESS;
+  };
+  HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetMemInfoReq, send_mem_info_cb),
+                      "Failed to register send mem info processor.");
   MsgProcessor heartbeat_cb = [](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
     (void)fd;
     (void)msg;
