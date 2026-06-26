@@ -31,6 +31,8 @@ class EndpointGenerator {
   static Status ConvertToEndpointDesc(const EndpointConfig &endpoint_config, EndpointDesc &endpoint);
   static Status SerializeEndpointConfigList(const std::vector<EndpointConfig> &list, std::string &msg_str);
   static Status DeserializeEndpointConfigList(const std::string &json_str, std::vector<EndpointConfig> &endpoint_list);
+  static Status SerializeMemInfoList(const std::vector<RemoteMemInfo> &list, std::string &msg_str);
+  static Status DeserializeMemInfoList(const std::string &json_str, std::vector<RemoteMemInfo> &mem_info_list);
 
  private:
   struct EndpointInfo {

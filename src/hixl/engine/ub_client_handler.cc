@@ -13,16 +13,66 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <unistd.h>
+#include "securec.h"
+#include "common/ctrl_msg.h"
+#include "common/ctrl_msg_plugin.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
 #include "common/optional_aclrt_context.h"
+#include "common/scope_guard.h"
 #include "common/thread_pool.h"
 #include "engine/client_handler_config_helper.h"
 #include "engine/endpoint_generator.h"
 
 namespace hixl {
 namespace {
+Status FetchRemoteMemInfo(const std::string &server_ip, uint32_t server_port, uint32_t timeout_ms,
+                          std::vector<RemoteMemInfo> &mem_info) {
+  int32_t sock = -1;
+  CtrlMsgPlugin::Initialize();
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Connect(server_ip, server_port, sock, timeout_ms),
+                      "[UbClientHandler] Failed to connect %s:%u for mem info", server_ip.c_str(), server_port);
+  HIXL_MAKE_GUARD(close_guard, ([&sock]() {
+                    if (sock != -1) {
+                      close(sock);
+                    }
+                  }));
+  CtrlMsgHeader header{};
+  header.magic = kMagicNumber;
+  header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType));
+  CtrlMsgType req_type = CtrlMsgType::kGetMemInfoReq;
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(sock, &header, sizeof(header)),
+                      "[UbClientHandler] Failed to send mem info header to %s:%u", server_ip.c_str(), server_port);
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(sock, &req_type, sizeof(req_type)),
+                      "[UbClientHandler] Failed to send GetMemInfoReq to %s:%u", server_ip.c_str(), server_port);
+
+  CtrlMsgHeader resp_header{};
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(sock, &resp_header, sizeof(resp_header), timeout_ms),
+                      "[UbClientHandler] Failed to recv mem info header from %s:%u", server_ip.c_str(), server_port);
+  HIXL_CHK_BOOL_RET_STATUS(resp_header.magic == kMagicNumber, PARAM_INVALID,
+                           "[UbClientHandler] Invalid magic in mem info resp from %s:%u: 0x%X", server_ip.c_str(),
+                           server_port, resp_header.magic);
+  HIXL_CHK_BOOL_RET_STATUS(resp_header.body_size > sizeof(CtrlMsgType), PARAM_INVALID,
+                           "[UbClientHandler] Invalid body_size=%" PRIu64 " in mem info resp from %s:%u",
+                           resp_header.body_size, server_ip.c_str(), server_port);
+
+  std::vector<uint8_t> body(resp_header.body_size);
+  HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Recv(sock, body.data(), resp_header.body_size, timeout_ms),
+                      "[UbClientHandler] Failed to recv mem info body from %s:%u", server_ip.c_str(), server_port);
+
+  CtrlMsgType resp_type{};
+  errno_t rc = memcpy_s(&resp_type, sizeof(resp_type), body.data(), sizeof(resp_type));
+  HIXL_CHK_BOOL_RET_STATUS(rc == EOK, FAILED, "[UbClientHandler] memcpy_s failed, rc=%d", static_cast<int32_t>(rc));
+  HIXL_CHK_BOOL_RET_STATUS(resp_type == CtrlMsgType::kGetMemInfoResp, PARAM_INVALID,
+                           "[UbClientHandler] Unexpected msg_type=%d in mem info resp, expect=%d",
+                           static_cast<int32_t>(resp_type), static_cast<int32_t>(CtrlMsgType::kGetMemInfoResp));
+
+  std::string json_str(reinterpret_cast<const char *>(body.data() + sizeof(resp_type)),
+                       resp_header.body_size - sizeof(CtrlMsgType));
+  return EndpointGenerator::DeserializeMemInfoList(json_str, mem_info);
+}
 
 Status ComputeRemainingMs(const std::chrono::steady_clock::time_point &start, uint32_t timeout_ms,
                           uint32_t &remaining_ms) {
@@ -65,6 +115,12 @@ Status UbClientHandler::Create(const HandlerCreateArgs &args, std::unique_ptr<Ub
   }
   out = MakeUnique<UbClientHandler>(std::move(handles));
   HIXL_CHECK_NOTNULL(out, "UbClientHandler create failed");
+
+  // 自建临时连接向 server 获取对端内存信息，提前构建 remote_segments_
+  out->lazy_mode_ = args.is_lazy;
+  std::vector<RemoteMemInfo> remote_mem_info;
+  HIXL_CHK_STATUS_RET(FetchRemoteMemInfo(args.server_ip, args.server_port, args.timeout_ms, remote_mem_info));
+  HIXL_CHK_STATUS_RET(out->BuildRemoteSegmentsFromMemInfo(remote_mem_info));
   return SUCCESS;
 }
 
@@ -73,49 +129,75 @@ Status UbClientHandler::Connect(uint32_t timeout_ms) {
   if (handles_.empty()) {
     return FAILED;
   }
+  if (lazy_mode_) {
+    connect_timeout_ms_ = timeout_ms;
+    HIXL_LOGI("[UbClientHandler] Lazy mode enabled, deferring link connection to transfer time");
+    return SUCCESS;
+  }
+  return ConnectHandles(handles_, timeout_ms);
+}
 
-  ThreadPool thread_pool("ub_connect", handles_.size());
+Status UbClientHandler::EnsureLinksConnected(const std::vector<CommType> &types, uint32_t timeout_ms) {
+  std::lock_guard<std::mutex> lock(handle_mutex_);
+
+  std::map<CommType, HixlClientHandle> pending;
+  for (auto type : types) {
+    if (connected_types_.count(type) != 0U) {
+      continue;
+    }
+    auto it = handles_.find(type);
+    if (it == handles_.end()) {
+      HIXL_LOGE(FAILED, "[UbClientHandler] No handle for type:%s", CommTypeToString(type));
+      return FAILED;
+    }
+    pending.emplace(type, it->second);
+  }
+  if (pending.empty()) {
+    return SUCCESS;
+  }
+  return ConnectHandles(pending, timeout_ms);
+}
+
+Status UbClientHandler::ConnectHandles(const std::map<CommType, HixlClientHandle> &handles, uint32_t timeout_ms) {
+  ThreadPool thread_pool("ub_connect", handles.size());
   std::vector<std::future<Status>> futures;
   OptionalAclrtContext context;
   HIXL_CHK_STATUS_RET(context.GetCurrentContext(), "GetCurrentContext failed");
 
-  for (const auto &[type, handle] : handles_) {
+  for (const auto &[type, handle] : handles) {
     futures.emplace_back(thread_pool.commit([handle, timeout_ms, type, &context]() -> Status {
       HIXL_CHK_STATUS_RET(context.SetCurrentContext(), "SetCurrentContext failed");
       HIXL_CHK_STATUS_RET(HixlCSClientConnect(handle, timeout_ms), "UbClientHandler Connect failed for type:%s",
                           CommTypeToString(type));
+      HIXL_LOGI("[UbClientHandler] Connected type:%s successfully", CommTypeToString(type));
       return SUCCESS;
     }));
   }
   for (auto &f : futures) {
-    HIXL_CHK_STATUS_RET(f.get(), "UbClientHandler Connect failed");
+    HIXL_CHK_STATUS_RET(f.get(), "[UbClientHandler] ConnectHandles failed");
   }
 
-  // 获取远端内存
-  for (const auto &pair : handles_) {
-    auto handle = pair.second;
-    CommMem *remote_mem_list = nullptr;
-    char **mem_tag_list = nullptr;
-    uint32_t list_num = 0;
-    HIXL_CHK_STATUS_RET(HixlCSClientGetRemoteMem(handle, &remote_mem_list, &mem_tag_list, &list_num, timeout_ms));
+  for (const auto &pair : handles) {
+    connected_types_.insert(pair.first);
+  }
+  return SUCCESS;
+}
 
-    std::lock_guard<std::mutex> seg_lock(remote_seg_mutex_);
-    for (uint32_t i = 0; i < list_num; i++) {
-      MemType type = (remote_mem_list[i].type == COMM_MEM_TYPE_DEVICE) ? MEM_DEVICE : MEM_HOST;
-      auto it = std::find_if(remote_segments_.begin(), remote_segments_.end(),
-                             [type](const SegmentPtr &seg) { return seg->GetMemType() == type; });
-      if (it != remote_segments_.end()) {
-        HIXL_CHK_STATUS_RET(
-            (*it)->AddRange(reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size));
-      } else {
-        auto seg = MakeShared<Segment>(type);
-        HIXL_CHK_BOOL_RET_STATUS(seg != nullptr, FAILED, "Failed to create segment");
-        HIXL_CHK_STATUS_RET(
-            seg->AddRange(reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size));
-        remote_segments_.push_back(seg);
-      }
+Status UbClientHandler::BuildRemoteSegmentsFromMemInfo(const std::vector<RemoteMemInfo> &mem_info_list) {
+  std::lock_guard<std::mutex> seg_lock(remote_seg_mutex_);
+  for (const auto &info : mem_info_list) {
+    auto it = std::find_if(remote_segments_.begin(), remote_segments_.end(),
+                           [&info](const SegmentPtr &seg) { return seg->GetMemType() == info.type; });
+    if (it != remote_segments_.end()) {
+      HIXL_CHK_STATUS_RET((*it)->AddRange(info.addr, info.size), "AddRange failed");
+    } else {
+      auto seg = MakeShared<Segment>(info.type);
+      HIXL_CHK_BOOL_RET_STATUS(seg != nullptr, FAILED, "Failed to create segment");
+      HIXL_CHK_STATUS_RET(seg->AddRange(info.addr, info.size), "AddRange failed");
+      remote_segments_.push_back(seg);
     }
   }
+  HIXL_LOGI("[UbClientHandler] Built remote segments from %zu exchanged mem info entries", mem_info_list.size());
   return SUCCESS;
 }
 
@@ -167,6 +249,14 @@ Status UbClientHandler::TransferAsync(const std::vector<TransferOpDesc> &op_desc
   std::map<CommType, std::vector<TransferOpDesc>> table;
   HIXL_CHK_STATUS_RET(ClassifyTransfers(op_descs, table));
 
+  if (lazy_mode_) {
+    std::vector<CommType> needed_types;
+    for (const auto &[type, descs] : table) {
+      needed_types.push_back(type);
+    }
+    HIXL_CHK_STATUS_RET(EnsureLinksConnected(needed_types, connect_timeout_ms_));
+  }
+
   std::vector<BatchHandle> batch_handles;
   std::lock_guard<std::mutex> lock(handle_mutex_);
   for (const auto &[type, descs] : table) {
@@ -203,6 +293,17 @@ Status UbClientHandler::TransferSync(const std::vector<TransferOpDesc> &op_descs
   HIXL_CHK_STATUS_RET(ClassifyTransfers(op_descs, table));
 
   const auto sync_start = std::chrono::steady_clock::now();
+
+  if (lazy_mode_) {
+    std::vector<CommType> needed_types;
+    for (const auto &[type, descs] : table) {
+      needed_types.push_back(type);
+    }
+    uint32_t remaining_ms = 0;
+    HIXL_CHK_STATUS_RET(ComputeRemainingMs(sync_start, timeout_ms, remaining_ms));
+    HIXL_CHK_STATUS_RET(EnsureLinksConnected(needed_types, remaining_ms));
+  }
+
   for (const auto &[type, descs] : table) {
     uint32_t remaining_ms = 0;
     HIXL_CHK_STATUS_RET(ComputeRemainingMs(sync_start, timeout_ms, remaining_ms));

@@ -110,6 +110,10 @@ Status HixlEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_
 }
 
 Status HixlEngine::DeregisterMem(MemHandle mem_handle) {
+  if (auto_connect_) {
+    HIXL_EVENT(
+        "In auto-connect mode, DeregisterMem does not need to be called manually; all cleanup is handled internally.");
+  }
   HIXL_LOGI("[HixlEngine] Deregistration started, mem_handle: %p", mem_handle);
   auto with_context = aclrt_context_.GetContextGuard();
   std::lock_guard<std::mutex> lock(mutex_);
@@ -377,6 +381,7 @@ void HixlEngine::BuildClientConfig(const AscendString &remote_engine, ClientConf
   config.rdma_sl = rdma_service_level_;
   config.timeout_ms = static_cast<uint32_t>(timeout_in_millis);
   config.qos = qos_;
+  config.is_lazy = auto_connect_;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto &pair : mem_map_) {
