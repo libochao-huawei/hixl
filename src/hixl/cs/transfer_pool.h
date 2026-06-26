@@ -19,6 +19,7 @@
 #include "cs/hixl_cs.h"
 #include "hcomm/hcomm_res_defs.h"
 #include "common/hixl_utils.h"
+#include "load_kernel.h"
 #include "rt_external.h"
 
 namespace hixl {
@@ -49,6 +50,7 @@ class TransferPool {
   void Abort(const SlotHandle &handle);
   Status GetAllSlots(std::vector<SlotHandle> &out) const;
   aclrtContext GetContext() const;
+  aclrtFuncHandle GetDeviceKernelFunc(bool is_get) const;
 
   explicit TransferPool(int32_t device_id);
   ~TransferPool();
@@ -69,17 +71,23 @@ class TransferPool {
   static void ResetNotifyResourcesLocked(Slot &slot);
   static Status CreateNotifyLocked(Slot &slot);
   Status InitAllSlotsLocked();
-  void RollbackInitLocked(uint32_t failed_index);
   void DeinitAllSlotsLocked();
   Status EnsureContextLocked(Slot &slot) const;
   Status EnsureDefaultStreamLocked(Slot &slot) const;
   Status EnsureThreadLocked(Slot &slot) const;
-  void DestroySlotLocked(Slot &slot) const;
+  Status DestroySlotLocked(Slot &slot, bool sync_context = true) const;
 
   void AbortSlotByIndexLocked(uint32_t slot_index);
 
   static void FillHandleFromSlot(int32_t device_id, uint32_t index, const Slot &slot, SlotHandle *handle);
   Status EnsureDevConstOneLocked();
+  Status EnsureDeviceKernelsLocked();
+  Status SyncContextsLocked(const std::vector<ThreadHandle> &threads, uint32_t op, uint32_t expect_state) const;
+  Status AddTransferContextsLocked() const;
+  Status DestroyTransferContextsLocked(const std::vector<ThreadHandle> &threads) const;
+  Status SyncOneTransferContextLocked(ThreadHandle thread, uint32_t op, uint32_t expect_state) const;
+  Status LaunchSyncContextKernelLocked(std::vector<TransferContextSyncEntry> &entries) const;
+  static std::vector<ThreadHandle> CollectLiveThreads(const std::vector<Slot> &slots);
 
   mutable std::mutex mu_{};
   const int32_t device_id_;
@@ -90,6 +98,8 @@ class TransferPool {
   std::vector<Slot> slots_;
   void *dev_const_one_{nullptr};
   aclrtContext rts_context_{nullptr};
+  aclrtBinHandle kernel_bin_handle_{nullptr};
+  DeviceFuncHandles device_func_handles_{};
 };
 
 }  // namespace hixl
