@@ -32,6 +32,7 @@ struct ClientConfig {
   uint8_t rdma_sl;
   uint32_t timeout_ms;
   std::optional<uint8_t> qos;
+  bool is_lazy = false;
 };
 
 class HixlClient {
@@ -61,9 +62,10 @@ class HixlClient {
    * @brief client初始化
    * @param [in] local_endpoint_list 客户端本地 endpoint_list
    * @param [in] timeout_ms          超时时间（ms）
+   * @param [in] is_lazy             是否懒惰建链模式
    * @return 操作结果状态码
    */
-  Status Initialize(const std::vector<EndpointConfig> &local_endpoint_list, uint32_t timeout_ms);
+  Status Initialize(const std::vector<EndpointConfig> &local_endpoint_list, uint32_t timeout_ms, bool is_lazy = false);
 
   /**
    * @brief 建链
@@ -120,6 +122,8 @@ class HixlClient {
  private:
   Status SendEndpointInfoReq(int32_t fd, CtrlMsgType msg_type) const;
   Status RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> &remote_endpoint_list, uint32_t timeout_ms) const;
+  Status SendMemInfoReq(int32_t fd) const;
+  Status RecvMemInfoResp(int32_t fd, std::vector<RemoteMemInfo> &remote_mem_info, uint32_t timeout_ms) const;
   void WaitBatchCsSyncInflightDrain();
   Status RecvNotifyAck(int32_t fd, int32_t timeout_ms) const;
   void CloseCtrlSocketLocked();

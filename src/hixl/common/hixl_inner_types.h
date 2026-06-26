@@ -100,6 +100,12 @@ struct MemInfo {
   MemType type;
 };
 
+struct RemoteMemInfo {
+  MemType type;
+  uintptr_t addr;
+  size_t size;
+};
+
 struct TransferInfo {
   uint64_t start_time;
   TransferOp op_type;

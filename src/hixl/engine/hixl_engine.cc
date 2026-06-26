@@ -377,6 +377,7 @@ void HixlEngine::BuildClientConfig(const AscendString &remote_engine, ClientConf
   config.rdma_sl = rdma_service_level_;
   config.timeout_ms = static_cast<uint32_t>(timeout_in_millis);
   config.qos = qos_;
+  config.is_lazy = auto_connect_;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto &pair : mem_map_) {

@@ -65,6 +65,13 @@ Status UbClientHandler::Create(const HandlerCreateArgs &args, std::unique_ptr<Ub
   }
   out = MakeUnique<UbClientHandler>(std::move(handles));
   HIXL_CHECK_NOTNULL(out, "UbClientHandler create failed");
+
+  // 从控制面Socket交换获得的对端内存信息构建remote_segments_
+  // 无论是否懒惰模式，都在此处统一构建，Connect/EnsureLinkConnected中不再重复获取
+  out->lazy_mode_ = args.is_lazy;
+  if (!args.remote_mem_info.empty()) {
+    HIXL_CHK_STATUS_RET(out->BuildRemoteSegmentsFromMemInfo(args.remote_mem_info));
+  }
   return SUCCESS;
 }
 
@@ -73,49 +80,75 @@ Status UbClientHandler::Connect(uint32_t timeout_ms) {
   if (handles_.empty()) {
     return FAILED;
   }
+  if (lazy_mode_) {
+    connect_timeout_ms_ = timeout_ms;
+    HIXL_LOGI("[UbClientHandler] Lazy mode enabled, deferring link connection to transfer time");
+    return SUCCESS;
+  }
+  return ConnectHandles(handles_, timeout_ms);
+}
 
-  ThreadPool thread_pool("ub_connect", handles_.size());
+Status UbClientHandler::EnsureLinksConnected(const std::vector<CommType> &types, uint32_t timeout_ms) {
+  std::lock_guard<std::mutex> lock(handle_mutex_);
+
+  std::map<CommType, HixlClientHandle> pending;
+  for (auto type : types) {
+    if (connected_types_.count(type) != 0U) {
+      continue;
+    }
+    auto it = handles_.find(type);
+    if (it == handles_.end()) {
+      HIXL_LOGE(FAILED, "[UbClientHandler] No handle for type:%s", CommTypeToString(type));
+      return FAILED;
+    }
+    pending.emplace(type, it->second);
+  }
+  if (pending.empty()) {
+    return SUCCESS;
+  }
+  return ConnectHandles(pending, timeout_ms);
+}
+
+Status UbClientHandler::ConnectHandles(const std::map<CommType, HixlClientHandle> &handles, uint32_t timeout_ms) {
+  ThreadPool thread_pool("ub_connect", handles.size());
   std::vector<std::future<Status>> futures;
   OptionalAclrtContext context;
   HIXL_CHK_STATUS_RET(context.GetCurrentContext(), "GetCurrentContext failed");
 
-  for (const auto &[type, handle] : handles_) {
+  for (const auto &[type, handle] : handles) {
     futures.emplace_back(thread_pool.commit([handle, timeout_ms, type, &context]() -> Status {
       HIXL_CHK_STATUS_RET(context.SetCurrentContext(), "SetCurrentContext failed");
       HIXL_CHK_STATUS_RET(HixlCSClientConnect(handle, timeout_ms), "UbClientHandler Connect failed for type:%s",
                           CommTypeToString(type));
+      HIXL_LOGI("[UbClientHandler] Connected type:%s successfully", CommTypeToString(type));
       return SUCCESS;
     }));
   }
   for (auto &f : futures) {
-    HIXL_CHK_STATUS_RET(f.get(), "UbClientHandler Connect failed");
+    HIXL_CHK_STATUS_RET(f.get(), "[UbClientHandler] ConnectHandles failed");
   }
 
-  // 获取远端内存
-  for (const auto &pair : handles_) {
-    auto handle = pair.second;
-    CommMem *remote_mem_list = nullptr;
-    char **mem_tag_list = nullptr;
-    uint32_t list_num = 0;
-    HIXL_CHK_STATUS_RET(HixlCSClientGetRemoteMem(handle, &remote_mem_list, &mem_tag_list, &list_num, timeout_ms));
+  for (const auto &pair : handles) {
+    connected_types_.insert(pair.first);
+  }
+  return SUCCESS;
+}
 
-    std::lock_guard<std::mutex> seg_lock(remote_seg_mutex_);
-    for (uint32_t i = 0; i < list_num; i++) {
-      MemType type = (remote_mem_list[i].type == COMM_MEM_TYPE_DEVICE) ? MEM_DEVICE : MEM_HOST;
-      auto it = std::find_if(remote_segments_.begin(), remote_segments_.end(),
-                             [type](const SegmentPtr &seg) { return seg->GetMemType() == type; });
-      if (it != remote_segments_.end()) {
-        HIXL_CHK_STATUS_RET(
-            (*it)->AddRange(reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size));
-      } else {
-        auto seg = MakeShared<Segment>(type);
-        HIXL_CHK_BOOL_RET_STATUS(seg != nullptr, FAILED, "Failed to create segment");
-        HIXL_CHK_STATUS_RET(
-            seg->AddRange(reinterpret_cast<uintptr_t>(remote_mem_list[i].addr), remote_mem_list[i].size));
-        remote_segments_.push_back(seg);
-      }
+Status UbClientHandler::BuildRemoteSegmentsFromMemInfo(const std::vector<RemoteMemInfo> &mem_info_list) {
+  std::lock_guard<std::mutex> seg_lock(remote_seg_mutex_);
+  for (const auto &info : mem_info_list) {
+    auto it = std::find_if(remote_segments_.begin(), remote_segments_.end(),
+                           [&info](const SegmentPtr &seg) { return seg->GetMemType() == info.type; });
+    if (it != remote_segments_.end()) {
+      HIXL_CHK_STATUS_RET((*it)->AddRange(info.addr, info.size), "AddRange failed");
+    } else {
+      auto seg = MakeShared<Segment>(info.type);
+      HIXL_CHK_BOOL_RET_STATUS(seg != nullptr, FAILED, "Failed to create segment");
+      HIXL_CHK_STATUS_RET(seg->AddRange(info.addr, info.size), "AddRange failed");
+      remote_segments_.push_back(seg);
     }
   }
+  HIXL_LOGI("[UbClientHandler] Built remote segments from %zu exchanged mem info entries", mem_info_list.size());
   return SUCCESS;
 }
 
@@ -167,6 +200,14 @@ Status UbClientHandler::TransferAsync(const std::vector<TransferOpDesc> &op_desc
   std::map<CommType, std::vector<TransferOpDesc>> table;
   HIXL_CHK_STATUS_RET(ClassifyTransfers(op_descs, table));
 
+  if (lazy_mode_) {
+    std::vector<CommType> needed_types;
+    for (const auto &[type, descs] : table) {
+      needed_types.push_back(type);
+    }
+    HIXL_CHK_STATUS_RET(EnsureLinksConnected(needed_types, connect_timeout_ms_));
+  }
+
   std::vector<BatchHandle> batch_handles;
   std::lock_guard<std::mutex> lock(handle_mutex_);
   for (const auto &[type, descs] : table) {
@@ -203,6 +244,17 @@ Status UbClientHandler::TransferSync(const std::vector<TransferOpDesc> &op_descs
   HIXL_CHK_STATUS_RET(ClassifyTransfers(op_descs, table));
 
   const auto sync_start = std::chrono::steady_clock::now();
+
+  if (lazy_mode_) {
+    std::vector<CommType> needed_types;
+    for (const auto &[type, descs] : table) {
+      needed_types.push_back(type);
+    }
+    uint32_t remaining_ms = 0;
+    HIXL_CHK_STATUS_RET(ComputeRemainingMs(sync_start, timeout_ms, remaining_ms));
+    HIXL_CHK_STATUS_RET(EnsureLinksConnected(needed_types, remaining_ms));
+  }
+
   for (const auto &[type, descs] : table) {
     uint32_t remaining_ms = 0;
     HIXL_CHK_STATUS_RET(ComputeRemainingMs(sync_start, timeout_ms, remaining_ms));
