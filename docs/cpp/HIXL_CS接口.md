@@ -88,21 +88,21 @@ Server侧`global_resource_config`当前支持的配置项如下。
 | 配置项 | 类型 | 是否必选 | 描述 |
 |---|---|---|---|
 | comm_resource_config.listen_port | 整数 | 可选 | 配置CS建链时Server侧通信资源监听端口，取值范围为[1, 65535]。Server配置该字段后，会在Client建链匹配Endpoint阶段通过响应返回该端口；未配置时，Server保持原有自动查询监听端口逻辑；取值不在范围内时，Server创建失败并返回参数错误。 |
-| comm_resource_config.max_channel_concurrency | 整数 | 可选 | 配置单设备最大并发传输链路上限，取值范围为[1, 4096]；未配置时默认128，取值不在范围内时Server创建失败并返回参数错误。 |
+| comm_resource_config.max_active_channels | 整数 | 可选 | 配置单设备最大活跃传输链路上限，取值范围为[1, 4096]；未配置时默认128，取值不在范围内时Server创建失败并返回参数错误。 |
 
 Client侧`global_resource_config`当前支持的配置项如下。
 
 | 配置项 | 类型 | 是否必选 | 描述 |
 |---|---|---|---|
 | comm_resource_config.qos | 数字 | 可选 | 配置通信协议qos，当前仅支持[0-7]，当未配置的时候，默认为0。 |
-| comm_resource_config.max_channel_concurrency | 整数 | 可选 | 配置单设备最大并发传输链路上限，取值范围为[1, 4096]；未配置时默认128，取值不在范围内时Client创建失败并返回参数错误。 |
+| comm_resource_config.max_active_channels | 整数 | 可选 | 配置单设备最大活跃传输链路上限，取值范围为[1, 4096]；未配置时默认128，取值不在范围内时Client创建失败并返回参数错误。 |
 
 Server配置示例：
 
 ```
 {
   "comm_resource_config.listen_port": 26666,
-  "comm_resource_config.max_channel_concurrency": 128
+  "comm_resource_config.max_active_channels": 128
 }
 ```
 
@@ -111,7 +111,7 @@ Client配置示例：
 ```
 {
   "comm_resource_config.qos": 7,
-  "comm_resource_config.max_channel_concurrency": 128
+  "comm_resource_config.max_active_channels": 128
 }
 ```
 
@@ -232,7 +232,7 @@ HixlStatus HixlCSServerCreate(const HixlServerDesc *server_desc,
 | 参数名 | 输入/输出 | 描述 |
 | --- | --- | --- |
 | server_desc | 输入 | Server 描述信息，包含侦听 IP/端口与端点列表。 |
-| config | 输入 | Server配置，不支持传入NULL；如需配置通信资源监听端口，填写 `HixlServerConfig.global_resource_config`。 |
+| config | 输入 | Server配置，不支持传入NULL；如需配置通信资源监听端口或单设备最大活跃传输链路上限，填写 `HixlServerConfig.global_resource_config`。 |
 | server_handle | 输出 | 返回创建的 HixlServerHandle。 |
 
 **返回值**
@@ -749,7 +749,7 @@ HixlStatus HixlCSClientDestroy(HixlClientHandle client_handle);
 2. 准备 Endpoint 描述（`EndpointDesc`）。
 3. Server 流程：
 
-- 构造 `HixlServerDesc` 与 `HixlServerConfig`，如需指定通信资源监听端口或单设备最大并发传输链路上限，在 `HixlServerConfig.global_resource_config` 中配置 `comm_resource_config.listen_port` 或 `comm_resource_config.max_channel_concurrency`。
+- 构造 `HixlServerDesc` 与 `HixlServerConfig`，如需指定通信资源监听端口或单设备最大活跃传输链路上限，在 `HixlServerConfig.global_resource_config` 中配置 `comm_resource_config.listen_port` 或 `comm_resource_config.max_active_channels`。
 - 调用 `HixlCSServerCreate` 创建 `HixlServerHandle`。
 - 为要被远端访问的内存分配并准备 `CommMem`（Host/Device 内存），调用 `HixlCSServerRegMem` 注册并保存返回的 `MemHandle`。
 - 调用 `HixlCSServerListen` 开始侦听连接。
@@ -758,7 +758,7 @@ HixlStatus HixlCSClientDestroy(HixlClientHandle client_handle);
 
 4. Client 流程：
 
-- 构造 `HixlClientDesc` 与 `HixlClientConfig`，如需指定QoS或单设备最大并发传输链路上限，在 `HixlClientConfig.global_resource_config` 中配置 `comm_resource_config.qos` 或 `comm_resource_config.max_channel_concurrency`。
+- 构造 `HixlClientDesc` 与 `HixlClientConfig`，如需指定QoS或单设备最大活跃传输链路上限，在 `HixlClientConfig.global_resource_config` 中配置 `comm_resource_config.qos` 或 `comm_resource_config.max_active_channels`。
 - 调用 `HixlCSClientCreate` 创建 `HixlClientHandle`。
 - 准备本端 `CommMem` 并通过 `HixlCSClientRegMem` 注册（保存 `MemHandle`）。
 - 调用 `HixlCSClientConnect` 建链（阻塞或等待超时），确保Server处于侦听状态。
@@ -777,7 +777,7 @@ HixlStatus HixlCSClientDestroy(HixlClientHandle client_handle);
 HixlServerHandle server = NULL;
 HixlServerDesc sdesc = {};
 HixlServerConfig sconfig = {};
-sconfig.global_resource_config = "{\"comm_resource_config.listen_port\":26666,\"comm_resource_config.max_channel_concurrency\":128}";
+sconfig.global_resource_config = "{\"comm_resource_config.listen_port\":26666,\"comm_resource_config.max_active_channels\":128}";
 sdesc.endpoint_list = &endpoint;
 sdesc.server_ip = "0.0.0.0";
 sdesc.server_port = 12345;
@@ -805,7 +805,7 @@ cdesc.remote_endpoint = &remote_ep;
 cdesc.server_ip = "server.ip";
 cdesc.server_port = 12345;
 HixlClientConfig cconfig = {};
-cconfig.global_resource_config = "{\"comm_resource_config.qos\":7,\"comm_resource_config.max_channel_concurrency\":128}";
+cconfig.global_resource_config = "{\"comm_resource_config.qos\":7,\"comm_resource_config.max_active_channels\":128}";
 HixlCSClientCreate(&cdesc, &cconfig, &client);
 
 // 分配并注册本地内存

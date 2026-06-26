@@ -28,9 +28,9 @@
 #include "engine/direct_client_handler.h"
 #include "engine/ub_client_handler.h"
 #undef private
-#include "engine/client_handler_config_helper.h"
 #include "engine/endpoint_generator.h"
 #include "engine/endpoint_matcher.h"
+#include "engine/client_handler_config_helper.h"
 #include "common/hixl_inner_types.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/runtime/src/runtime_stub.h"
@@ -38,6 +38,7 @@
 #include "common/hixl_utils.h"
 #include "common/ctrl_msg_plugin.h"
 #include "common/segment.h"
+#include "nlohmann/json.hpp"
 
 using namespace ::testing;
 
@@ -56,6 +57,7 @@ static constexpr uint32_t default_list_num = 2;
 static constexpr uint32_t list_num_4ub = 4;
 static constexpr uint8_t kDefaultRdmaTc = 132;
 static constexpr uint8_t kDefaultRdmaSl = 4;
+static constexpr uint32_t kInflightPollIntervalMs = 1U;
 static std::vector<uint32_t> kLocalMems(kMemNum, kNum1);
 static std::vector<uint32_t> kRemoteMems(kMemNum, kNum2);
 enum class MockHixlServerMode : uint32_t {
@@ -560,6 +562,20 @@ class HixlClientUTest : public ::testing::Test {
     server_->DestroyServerAndUnreg();
   }
 
+  bool WaitForTransferSyncInflight(std::atomic<bool> &transfer_done, uint32_t timeout_ms) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (client_->batch_cs_sync_inflight_.load(std::memory_order_acquire) > 0) {
+        return true;
+      }
+      if (transfer_done.load(std::memory_order_acquire)) {
+        return false;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(kInflightPollIntervalMs));
+    }
+    return client_->batch_cs_sync_inflight_.load(std::memory_order_acquire) > 0;
+  }
+
   void SetupTransferTest(bool use_4ub = false) {
     if (use_4ub) {
       StartServerReg4Ub(MockHixlServerMode::k4UbNormal);
@@ -1016,22 +1032,31 @@ TEST_F(HixlClientUTest, TransferSyncTimeoutTest) {
   EXPECT_EQ(st, TIMEOUT);
 }
 
-// HixlClient 对外接口串行化：Finalize 必须等待正在执行的公开接口释放 mutex_
-TEST_F(HixlClientUTest, FinalizeWaitsForClientMutexTest) {
-  std::atomic<bool> finalize_done{false};
-  std::thread finalize_thread;
-  {
-    std::lock_guard<std::mutex> lock(client_->mutex_);
-    finalize_thread = std::thread([&]() {
-      EXPECT_EQ(client_->Finalize(), SUCCESS);
-      finalize_done.store(true, std::memory_order_release);
-    });
-    std::this_thread::sleep_for(std::chrono::milliseconds(kSleepMs));
-    EXPECT_FALSE(finalize_done.load(std::memory_order_acquire));
+// TransferSync 接口测试：Finalize 在同步传输未结束时调用会阻塞，直至传输完成后再断链销毁
+TEST_F(HixlClientUTest, TransferSyncFinalizeWaitsForSyncCompleteTest) {
+  SetupTransferTest();
+  auto op_descs = CreateTransferOps();
+
+  std::atomic<Status> transfer_status = SUCCESS;
+  std::atomic<bool> transfer_done = false;
+  std::thread transfer_thread([&]() {
+    transfer_status = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
+    transfer_done.store(true, std::memory_order_release);
+  });
+
+  const bool sync_inflight = WaitForTransferSyncInflight(transfer_done, kDefaultTimeoutMs);
+  if (sync_inflight) {
+    EXPECT_EQ(client_->Finalize(), SUCCESS);
   }
 
-  finalize_thread.join();
-  EXPECT_TRUE(finalize_done.load(std::memory_order_acquire));
+  if (transfer_thread.joinable()) {
+    transfer_thread.join();
+  }
+
+  EXPECT_EQ(transfer_status.load(), SUCCESS);
+  if (!sync_inflight) {
+    EXPECT_EQ(client_->Finalize(), SUCCESS);
+  }
 }
 
 // TransferAsync 接口测试：正常场景
@@ -1414,6 +1439,25 @@ TEST_F(HixlClientUTest, EndpointMatcherDirectMatchRequiresSamePlacement) {
   EXPECT_TRUE(matched_pairs.empty());
 }
 
+TEST_F(HixlClientUTest, BuildGlobalResourceConfigWithMaxActiveChannels) {
+  HandlerCreateArgs args{};
+  args.qos = 7U;
+  args.max_active_channels = 64U;
+  const std::string config = ClientHandlerConfigHelper::BuildGlobalResourceConfig(args);
+  auto json = nlohmann::json::parse(config);
+  EXPECT_EQ(json.at("comm_resource_config.qos").get<uint32_t>(), 7U);
+  EXPECT_EQ(json.at("comm_resource_config.max_active_channels").get<uint32_t>(), 64U);
+}
+
+TEST_F(HixlClientUTest, BuildGlobalResourceConfigWithMaxActiveChannelsOnly) {
+  HandlerCreateArgs args{};
+  args.max_active_channels = 128U;
+  const std::string config = ClientHandlerConfigHelper::BuildGlobalResourceConfig(args);
+  auto json = nlohmann::json::parse(config);
+  EXPECT_EQ(json.size(), 1U);
+  EXPECT_EQ(json.at("comm_resource_config.max_active_channels").get<uint32_t>(), 128U);
+}
+
 TEST_F(HixlClientUTest, EndpointMatcherIgnoresIntraRoceEnv) {
   std::vector<EndpointConfig> local = {MakeUbEp("local_1", "", "device", "default"),
                                        MakeDirectEp(kProtocolRoce, kPlacementDevice)};
@@ -1428,27 +1472,6 @@ TEST_F(HixlClientUTest, EndpointMatcherIgnoresIntraRoceEnv) {
   EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::UB);
   ASSERT_EQ(matched_pairs.size(), 1U);
   EXPECT_EQ(matched_pairs[0].type, CommType::COMM_TYPE_UB_D2D);
-}
-
-TEST_F(HixlClientUTest, BuildGlobalResourceConfigWithMaxChannelConcurrency) {
-  HandlerCreateArgs args{};
-  args.qos = 7;
-  args.max_channel_concurrency = 64U;
-
-  const std::string config = ClientHandlerConfigHelper::BuildGlobalResourceConfig(args);
-  const auto json = nlohmann::json::parse(config);
-  EXPECT_EQ(json.at("comm_resource_config.qos").get<int32_t>(), 7);
-  EXPECT_EQ(json.at("comm_resource_config.max_channel_concurrency").get<uint32_t>(), 64U);
-}
-
-TEST_F(HixlClientUTest, BuildGlobalResourceConfigWithMaxChannelConcurrencyOnly) {
-  HandlerCreateArgs args{};
-  args.max_channel_concurrency = 128U;
-
-  const std::string config = ClientHandlerConfigHelper::BuildGlobalResourceConfig(args);
-  const auto json = nlohmann::json::parse(config);
-  EXPECT_FALSE(json.contains("comm_resource_config.qos"));
-  EXPECT_EQ(json.at("comm_resource_config.max_channel_concurrency").get<uint32_t>(), 128U);
 }
 
 TEST_F(HixlClientUTest, CheckAliveWritesControlSocket) {

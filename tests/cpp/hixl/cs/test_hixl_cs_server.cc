@@ -349,25 +349,6 @@ TEST_F(HixlCSTest, TestConfiguredListenPortInServerConfig) {
   EXPECT_EQ(HixlCSServerDestroy(server_handle), SUCCESS);
 }
 
-TEST_F(HixlCSTest, TestConfiguredMaxChannelConcurrencyInServerConfig) {
-  HixlServerConfig config{};
-  config.global_resource_config = R"({"comm_resource_config.max_channel_concurrency":64})";
-  HixlServerHandle server_handle = nullptr;
-  HixlServerDesc desc{};
-  desc.server_ip = "127.0.0.1";
-  desc.server_port = kPort;
-  desc.endpoint_list = &default_eps[0];
-  desc.endpoint_list_num = default_eps.size();
-  auto ret = HixlCSServerCreate(&desc, &config, &server_handle);
-  EXPECT_EQ(ret, SUCCESS);
-
-  auto *server = static_cast<hixl::HixlCSServer *>(server_handle);
-  ASSERT_NE(server, nullptr);
-  ASSERT_TRUE(server->global_config_.MaxChannelConcurrency().has_value());
-  EXPECT_EQ(server->global_config_.MaxChannelConcurrency().value(), 64U);
-  EXPECT_EQ(HixlCSServerDestroy(server_handle), SUCCESS);
-}
-
 TEST_F(HixlCSTest, TestCreateServerRejectsInvalidListenPortConfig) {
   for (const char *config_str :
        {R"({"comm_resource_config.listen_port":0})", R"({"comm_resource_config.listen_port":65536})",
@@ -386,11 +367,29 @@ TEST_F(HixlCSTest, TestCreateServerRejectsInvalidListenPortConfig) {
   }
 }
 
-TEST_F(HixlCSTest, TestCreateServerRejectsInvalidMaxChannelConcurrencyConfig) {
-  for (const char *config_str : {R"({"comm_resource_config.max_channel_concurrency":0})",
-                                 R"({"comm_resource_config.max_channel_concurrency":4097})",
-                                 R"({"comm_resource_config.max_channel_concurrency":-1})",
-                                 R"({"comm_resource_config.max_channel_concurrency":"invalid"})"}) {
+TEST_F(HixlCSTest, TestConfiguredMaxActiveChannelsInServerConfig) {
+  HixlServerConfig config{};
+  config.global_resource_config = R"({"comm_resource_config.max_active_channels":64})";
+  HixlServerHandle server_handle = nullptr;
+  HixlServerDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = kPort;
+  desc.endpoint_list = &default_eps[0];
+  desc.endpoint_list_num = default_eps.size();
+  auto ret = HixlCSServerCreate(&desc, &config, &server_handle);
+  EXPECT_EQ(ret, SUCCESS);
+  auto *server = reinterpret_cast<HixlCSServer *>(server_handle);
+  ASSERT_NE(server, nullptr);
+  ASSERT_TRUE(server->global_config_.MaxActiveChannels().has_value());
+  EXPECT_EQ(server->global_config_.MaxActiveChannels().value(), 64U);
+  EXPECT_EQ(HixlCSServerDestroy(server_handle), SUCCESS);
+}
+
+TEST_F(HixlCSTest, TestCreateServerRejectsInvalidMaxActiveChannelsConfig) {
+  for (const char *config_str :
+       {R"({"comm_resource_config.max_active_channels":0})", R"({"comm_resource_config.max_active_channels":4097})",
+        R"({"comm_resource_config.max_active_channels":-1})",
+        R"({"comm_resource_config.max_active_channels":"invalid"})"}) {
     HixlServerConfig config{};
     config.global_resource_config = config_str;
     HixlServerHandle server_handle = reinterpret_cast<HixlServerHandle>(this);

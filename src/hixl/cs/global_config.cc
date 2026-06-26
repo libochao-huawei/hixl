@@ -20,10 +20,10 @@
 namespace hixl {
 namespace {
 constexpr const char *kListenPort = "comm_resource_config.listen_port";
-constexpr const char *kMaxChannelConcurrency = "comm_resource_config.max_channel_concurrency";
+constexpr const char *kMaxActiveChannels = "comm_resource_config.max_active_channels";
 constexpr int64_t kMinListenPort = 1;
 constexpr int64_t kMaxListenPort = 65535;
-constexpr int64_t kMinChannelConcurrency = 1;
+constexpr int64_t kMinActiveChannels = 1;
 
 Status ParseListenPort(const nlohmann::json &json, CommResourceConfig &config) {
   const auto it = json.find(kListenPort);
@@ -60,35 +60,42 @@ Status ParseQos(const nlohmann::json &json, CommResourceConfig &config) {
   return SUCCESS;
 }
 
-Status ParseMaxChannelConcurrency(const nlohmann::json &json, CommResourceConfig &config) {
-  const auto it = json.find(kMaxChannelConcurrency);
+Status ParseMaxActiveChannels(const nlohmann::json &json, CommResourceConfig &config) {
+  const auto it = json.find(kMaxActiveChannels);
   if (it == json.end()) {
     return SUCCESS;
   }
 
   const auto val = JsonToNumber<int64_t>(*it);
-  if (val < kMinChannelConcurrency || val > static_cast<int64_t>(TransferPool::kMaxPoolSize)) {
-    HIXL_LOGE(PARAM_INVALID, "[GlobalConfig] max_channel_concurrency out of range: %ld, must be in [%ld, %u]", val,
-              kMinChannelConcurrency, TransferPool::kMaxPoolSize);
+  if (val < kMinActiveChannels || val > static_cast<int64_t>(TransferPool::kMaxPoolSize)) {
+    HIXL_LOGE(PARAM_INVALID, "[GlobalConfig] max_active_channels out of range: %ld, must be in [%ld, %u]", val,
+              kMinActiveChannels, TransferPool::kMaxPoolSize);
     return PARAM_INVALID;
   }
 
-  config.max_channel_concurrency = static_cast<uint32_t>(val);
-  HIXL_LOGI("[GlobalConfig] max_channel_concurrency=%u", *config.max_channel_concurrency);
+  config.max_active_channels = static_cast<uint32_t>(val);
+  HIXL_LOGI("[GlobalConfig] max_active_channels=%u", *config.max_active_channels);
   return SUCCESS;
 }
 
 Status ParseCommResourceConfig(const nlohmann::json &json, CommResourceConfig &config,
                                GlobalConfig::ParseTarget target) {
   if (target == GlobalConfig::ParseTarget::kAll || target == GlobalConfig::ParseTarget::kServer) {
-    HIXL_CHK_STATUS_RET(ParseListenPort(json, config), "[GlobalConfig] Failed to parse listen_port");
+    Status ret = ParseListenPort(json, config);
+    if (ret != SUCCESS) {
+      HIXL_LOGE(ret, "[GlobalConfig] Failed to parse listen_port");
+      return ret;
+    }
   }
 
   if (target == GlobalConfig::ParseTarget::kAll || target == GlobalConfig::ParseTarget::kClient) {
-    HIXL_CHK_STATUS_RET(ParseQos(json, config), "[GlobalConfig] Failed to parse qos");
+    Status ret = ParseQos(json, config);
+    if (ret != SUCCESS) {
+      HIXL_LOGE(ret, "[GlobalConfig] Failed to parse qos");
+      return ret;
+    }
   }
-  HIXL_CHK_STATUS_RET(ParseMaxChannelConcurrency(json, config),
-                      "[GlobalConfig] Failed to parse max_channel_concurrency");
+  HIXL_CHK_STATUS_RET(ParseMaxActiveChannels(json, config), "[GlobalConfig] Failed to parse max_active_channels");
   return SUCCESS;
 }
 }  // namespace
@@ -109,8 +116,11 @@ Status GlobalConfig::Parse(const char *config_str, GlobalConfig &result, ParseTa
       return PARAM_INVALID;
     }
 
-    HIXL_CHK_STATUS_RET(ParseCommResourceConfig(json, result.comm_resource_config_, target),
-                        "[GlobalConfig] Failed to parse comm_resource_config");
+    Status ret = ParseCommResourceConfig(json, result.comm_resource_config_, target);
+    if (ret != SUCCESS) {
+      HIXL_LOGE(ret, "[GlobalConfig] Failed to parse comm_resource_config");
+      return ret;
+    }
     return SUCCESS;
   } catch (const nlohmann::json::exception &e) {
     HIXL_LOGE(PARAM_INVALID, "[GlobalConfig] Failed to parse config: %s", e.what());
@@ -126,7 +136,7 @@ std::optional<uint8_t> GlobalConfig::Qos() const {
   return comm_resource_config_.qos;
 }
 
-std::optional<uint32_t> GlobalConfig::MaxChannelConcurrency() const {
-  return comm_resource_config_.max_channel_concurrency;
+std::optional<uint32_t> GlobalConfig::MaxActiveChannels() const {
+  return comm_resource_config_.max_active_channels;
 }
 }  // namespace hixl

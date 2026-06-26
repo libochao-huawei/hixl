@@ -10,23 +10,11 @@
 
 #include <gtest/gtest.h>
 
-#include <array>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstring>
-#include <deque>
-#include <functional>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <optional>
-#include <queue>
-#include <sstream>
 #include <string>
 #include <thread>
-#include <unordered_set>
-#include <utility>
 #include <vector>
 
 #include <arpa/inet.h>
@@ -37,9 +25,7 @@
 #include <unistd.h>
 
 #include "hixl/hixl_types.h"
-#define private public
 #include "hixl_cs_client.h"
-#undef private
 #include "common/ctrl_msg.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "engine/test_mmpa_utils.h"
@@ -589,21 +575,6 @@ static EndpointDesc MakeIdEpEx(uint32_t id, CommProtocol protocol) {
   ep.commAddr.type = COMM_ADDR_TYPE_ID;
   ep.commAddr.id = id;
   return ep;
-}
-
-static EndpointDesc MakeHostEp(uint32_t id) {
-  EndpointDesc ep = MakeIdEp(id);
-  ep.loc.locType = ENDPOINT_LOC_TYPE_HOST;
-  return ep;
-}
-
-static HixlClientDesc MakeClientDesc(uint16_t port, EndpointDesc *src, EndpointDesc *dst) {
-  HixlClientDesc desc{};
-  desc.server_ip = "127.0.0.1";
-  desc.server_port = port;
-  desc.local_endpoint = src;
-  desc.remote_endpoint = dst;
-  return desc;
 }
 
 class HixlCSClientUT : public ::testing::Test {
@@ -1277,7 +1248,11 @@ TEST_F(HixlCSClientUT, ParseConfigQosInValidMax) {
 
 TEST_F(HixlCSClientUT, ParseConfigQosInValidPartString) {
   port_ = kPort;
-  HixlClientDesc desc = MakeClientDesc(port_, &src_, &dst_);
+  HixlClientDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = port_;
+  desc.local_endpoint = &src_;
+  desc.remote_endpoint = &dst_;
   HixlClientConfig config{};
   config.global_resource_config = R"({"comm_resource_config.qos": "invalid"})";
   HixlClientHandle handle = reinterpret_cast<HixlClientHandle>(&client_);
@@ -1285,52 +1260,60 @@ TEST_F(HixlCSClientUT, ParseConfigQosInValidPartString) {
   EXPECT_EQ(handle, nullptr);
 }
 
-TEST_F(HixlCSClientUT, ParseConfigMaxChannelConcurrencyDefault) {
+TEST_F(HixlCSClientUT, ParseConfigMaxActiveChannelsDefault) {
   port_ = kPort;
-  EndpointDesc host_src = MakeHostEp(kSrcEpId);
-  EndpointDesc host_dst = MakeHostEp(kDstEpId);
-  HixlClientDesc desc = MakeClientDesc(port_, &host_src, &host_dst);
   HixlClientConfig config{};
+  HixlClientDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = port_;
+  desc.local_endpoint = &src_;
+  desc.remote_endpoint = &dst_;
   EXPECT_EQ(client_.Create(&desc, &config), SUCCESS);
-  EXPECT_FALSE(client_.global_config_.MaxChannelConcurrency().has_value());
+  EXPECT_FALSE(client_.global_config_.MaxActiveChannels().has_value());
   client_.Destroy();
 }
 
-TEST_F(HixlCSClientUT, ParseConfigMaxChannelConcurrencyMin) {
+TEST_F(HixlCSClientUT, ParseConfigMaxActiveChannelsMin) {
   port_ = kPort;
-  EndpointDesc host_src = MakeHostEp(kSrcEpId);
-  EndpointDesc host_dst = MakeHostEp(kDstEpId);
-  HixlClientDesc desc = MakeClientDesc(port_, &host_src, &host_dst);
+  HixlClientDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = port_;
+  desc.local_endpoint = &src_;
+  desc.remote_endpoint = &dst_;
   HixlClientConfig config{};
-  config.global_resource_config = R"({"comm_resource_config.max_channel_concurrency": 1})";
+  config.global_resource_config = R"({"comm_resource_config.max_active_channels": 1})";
   EXPECT_EQ(client_.Create(&desc, &config), SUCCESS);
-  EXPECT_TRUE(client_.global_config_.MaxChannelConcurrency().has_value());
-  EXPECT_EQ(client_.global_config_.MaxChannelConcurrency().value(), 1U);
+  EXPECT_TRUE(client_.global_config_.MaxActiveChannels().has_value());
+  EXPECT_EQ(client_.global_config_.MaxActiveChannels().value(), 1U);
   client_.Destroy();
 }
 
-TEST_F(HixlCSClientUT, ParseConfigMaxChannelConcurrencyMax) {
+TEST_F(HixlCSClientUT, ParseConfigMaxActiveChannelsMax) {
   port_ = kPort;
-  EndpointDesc host_src = MakeHostEp(kSrcEpId);
-  EndpointDesc host_dst = MakeHostEp(kDstEpId);
-  HixlClientDesc desc = MakeClientDesc(port_, &host_src, &host_dst);
+  HixlClientDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = port_;
+  desc.local_endpoint = &src_;
+  desc.remote_endpoint = &dst_;
   HixlClientConfig config{};
-  config.global_resource_config = R"({"comm_resource_config.max_channel_concurrency": 4096})";
+  config.global_resource_config = R"({"comm_resource_config.max_active_channels": 4096})";
   EXPECT_EQ(client_.Create(&desc, &config), SUCCESS);
-  EXPECT_TRUE(client_.global_config_.MaxChannelConcurrency().has_value());
-  EXPECT_EQ(client_.global_config_.MaxChannelConcurrency().value(), 4096U);
+  EXPECT_TRUE(client_.global_config_.MaxActiveChannels().has_value());
+  EXPECT_EQ(client_.global_config_.MaxActiveChannels().value(), 4096U);
   client_.Destroy();
 }
 
-TEST_F(HixlCSClientUT, ParseConfigMaxChannelConcurrencyInvalid) {
+TEST_F(HixlCSClientUT, ParseConfigMaxActiveChannelsInvalid) {
   port_ = kPort;
-  EndpointDesc host_src = MakeHostEp(kSrcEpId);
-  EndpointDesc host_dst = MakeHostEp(kDstEpId);
-  HixlClientDesc desc = MakeClientDesc(port_, &host_src, &host_dst);
-  for (const char *config_str : {R"({"comm_resource_config.max_channel_concurrency":0})",
-                                 R"({"comm_resource_config.max_channel_concurrency":4097})",
-                                 R"({"comm_resource_config.max_channel_concurrency":-1})",
-                                 R"({"comm_resource_config.max_channel_concurrency":"invalid"})"}) {
+  HixlClientDesc desc{};
+  desc.server_ip = "127.0.0.1";
+  desc.server_port = port_;
+  desc.local_endpoint = &src_;
+  desc.remote_endpoint = &dst_;
+  for (const char *config_str :
+       {R"({"comm_resource_config.max_active_channels":0})", R"({"comm_resource_config.max_active_channels":4097})",
+        R"({"comm_resource_config.max_active_channels":-1})",
+        R"({"comm_resource_config.max_active_channels":"invalid"})"}) {
     HixlClientConfig config{};
     config.global_resource_config = config_str;
     HixlClientHandle handle = reinterpret_cast<HixlClientHandle>(&client_);

@@ -103,7 +103,7 @@ Status HixlCSServer::RegisterDeviceTransFinishedFlag() {
   hixl::TemporaryRtContext with_context(nullptr);  // 创建context会切换当前context, 因此需要在析构时恢复原用户context
   auto *pool = TransferPool::GetInstance(dev_id);
   HIXL_CHECK_NOTNULL(pool);
-  HIXL_CHK_STATUS_RET(pool->Initialize(global_config_.MaxChannelConcurrency().value_or(kDefaultTransferPoolSize)),
+  HIXL_CHK_STATUS_RET(pool->Initialize(global_config_.MaxActiveChannels().value_or(kDefaultTransferPoolSize)),
                       "Failed to init TransferPool for CS server, dev_id:%d", dev_id);
   HIXL_DISMISSABLE_GUARD(pool_rollback, ([dev_id]() {
                            auto *p = TransferPool::GetInstance(dev_id);

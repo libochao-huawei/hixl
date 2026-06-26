@@ -34,7 +34,7 @@ class HixlServer {
    */
   Status Initialize(const std::string &ip, int32_t port, const std::vector<EndpointConfig> &data_endpoint_config_list,
                     std::optional<uint32_t> listen_port = std::nullopt,
-                    std::optional<uint32_t> max_channel_concurrency = std::nullopt);
+                    std::optional<uint32_t> max_active_channels = std::nullopt);
 
   /**
    * @brief 注册内存

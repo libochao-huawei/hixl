@@ -23,15 +23,15 @@ class ClientHandlerConfigHelper {
  public:
   static std::string BuildGlobalResourceConfig(const HandlerCreateArgs &args) {
     // force return "", default json construction will dump to "null" which not as expect
-    if (!args.qos.has_value() && !args.max_channel_concurrency.has_value()) {
+    if (!args.qos.has_value() && !args.max_active_channels.has_value()) {
       return "";
     }
     nlohmann::json json;
     if (args.qos.has_value()) {
       json["comm_resource_config.qos"] = args.qos.value();
     }
-    if (args.max_channel_concurrency.has_value()) {
-      json["comm_resource_config.max_channel_concurrency"] = args.max_channel_concurrency.value();
+    if (args.max_active_channels.has_value()) {
+      json["comm_resource_config.max_active_channels"] = args.max_active_channels.value();
     }
     return json.dump();
   }
