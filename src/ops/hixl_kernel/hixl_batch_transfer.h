@@ -20,6 +20,8 @@ extern "C" {
 uint32_t HixlBatchPut(HixlOneSideOpParam *param);
 
 uint32_t HixlBatchGet(HixlOneSideOpParam *param);
+
+uint32_t SyncTransferContext(TransferContextSyncParam *param);
 #ifdef __cplusplus
 }
 #endif
