@@ -32,6 +32,7 @@ struct ClientConfig {
   uint8_t rdma_sl;
   uint32_t timeout_ms;
   std::optional<uint8_t> qos;
+  bool is_lazy = false;
 };
 
 class HixlClient {
@@ -61,9 +62,10 @@ class HixlClient {
    * @brief client初始化
    * @param [in] local_endpoint_list 客户端本地 endpoint_list
    * @param [in] timeout_ms          超时时间（ms）
+   * @param [in] is_lazy             是否懒惰建链模式
    * @return 操作结果状态码
    */
-  Status Initialize(const std::vector<EndpointConfig> &local_endpoint_list, uint32_t timeout_ms);
+  Status Initialize(const std::vector<EndpointConfig> &local_endpoint_list, uint32_t timeout_ms, bool is_lazy = false);
 
   /**
    * @brief 建链

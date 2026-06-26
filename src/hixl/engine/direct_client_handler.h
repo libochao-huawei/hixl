@@ -36,6 +36,7 @@ class DirectClientHandler : public IClientHandler {
 
  private:
   HixlClientHandle handle_;
+  bool is_connected_{false};
   std::vector<MemHandle> mem_handles_;
   std::map<TransferReq, CompleteHandle> complete_handles_;
   std::mutex mutex_;

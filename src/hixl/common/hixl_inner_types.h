@@ -117,10 +117,14 @@ struct EndpointConfig {
   }
 };
 
+struct MemRegion {
+  MemDesc mem{};
+  MemType type = MEM_DEVICE;
+};
+
 struct MemInfo {
   MemHandle mem_handle;
-  MemDesc mem;
-  MemType type;
+  MemRegion region;
 };
 
 struct TransferInfo {

@@ -111,6 +111,10 @@ class HixlEngineTest : public ::testing::Test {
  protected:
   std::map<AscendString, AscendString> options1;
   std::map<AscendString, AscendString> options2;
+  std::map<AscendString, AscendString>
+      options1_ub_pair;  // 与 options1 互补的 UB endpoint，用于同实例 UB 匹配（1条链路）
+  std::map<AscendString, AscendString> options_4ub;       // 4条 UB 链路（D2D/D2H/H2D/H2H）
+  std::map<AscendString, AscendString> options_4ub_pair;  // 与 options_4ub 互补的 UB endpoint
   void SetUp() override {
     SetSocStub("Ascend910B1", 0, 0, 9, 8);
     mmpa_stub_ = std::make_shared<MockEngineMmpaStub>();
@@ -155,6 +159,105 @@ class HixlEngineTest : public ::testing::Test {
                 "protocol": "roce",
                 "comm_id": "127.0.0.1",
                 "placement": "host"
+            }
+        ],
+        "version": "1.3"
+    }
+    )";
+
+    // 与 options1 同 net_instance_id，UB endpoint 的 comm_id/dst_eid 互换，用于 UB 成对匹配（1条链路）
+    options1_ub_pair[hixl::OPTION_LOCAL_COMM_RES] = R"(
+    {
+        "net_instance_id": "superpod1_1",
+        "endpoint_list": [
+            {
+                "protocol": "roce",
+                "comm_id": "127.0.0.1",
+                "placement": "host"
+            },
+            {
+                "protocol": "ub_ctp",
+                "comm_id": "000000000000000000000000c0a80563",
+                "placement": "device",
+                "dst_eid": "000000000000000000000000c0a80463"
+            }
+        ],
+        "version": "1.3"
+    }
+    )";
+
+    // 4 条 UB 链路（D2D/D2H/H2D/H2H）：2 device + 2 host placement
+    options_4ub[hixl::OPTION_LOCAL_COMM_RES] = R"(
+    {
+        "net_instance_id": "superpod1_1",
+        "endpoint_list": [
+            {
+                "protocol": "roce",
+                "comm_id": "127.0.0.1",
+                "placement": "host"
+            },
+            {
+                "protocol": "ub_ctp",
+                "comm_id": "000000000000000000000000c0a81001",
+                "placement": "device",
+                "dst_eid": "000000000000000000000000c0a81002"
+            },
+            {
+                "protocol": "ub_ctp",
+                "comm_id": "000000000000000000000000c0a81003",
+                "placement": "device",
+                "dst_eid": "000000000000000000000000c0a81004"
+            },
+            {
+                "protocol": "ub_ctp",
+                "comm_id": "000000000000000000000000c0a81005",
+                "placement": "host",
+                "dst_eid": "000000000000000000000000c0a81006"
+            },
+            {
+                "protocol": "ub_ctp",
+                "comm_id": "000000000000000000000000c0a81007",
+                "placement": "host",
+                "dst_eid": "000000000000000000000000c0a81008"
+            }
+        ],
+        "version": "1.3"
+    }
+    )";
+
+    // 与 options_4ub 互补：comm_id/dst_eid 互换，placement 对应 D2D/D2H/H2D/H2H
+    options_4ub_pair[hixl::OPTION_LOCAL_COMM_RES] = R"(
+    {
+        "net_instance_id": "superpod1_1",
+        "endpoint_list": [
+            {
+                "protocol": "roce",
+                "comm_id": "127.0.0.1",
+                "placement": "host"
+            },
+            {
+                "protocol": "ub_ctp",
+                "comm_id": "000000000000000000000000c0a81002",
+                "placement": "device",
+                "dst_eid": "000000000000000000000000c0a81001"
+            },
+            {
+                "protocol": "ub_ctp",
+                "comm_id": "000000000000000000000000c0a81004",
+                "placement": "host",
+                "dst_eid": "000000000000000000000000c0a81003"
+            },
+            {
+                "protocol": "ub_ctp",
+                "comm_id": "000000000000000000000000c0a81006",
+                "placement": "device",
+                "dst_eid": "000000000000000000000000c0a81005"
+            },
+            {
+                "protocol": "ub_ctp",
+                "comm_id": "000000000000000000000000c0a81008",
+                "placement": "host",
+                "dst_eid": "000000000000000000000000c0a81007"
             }
         ],
         "version": "1.3"
@@ -216,8 +319,9 @@ class HixlEngineTest : public ::testing::Test {
     EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
   }
 
+  // same_instance: true → 同 net_instance_id → UB handler; false → 不同 → Direct handler
   void InitAutoConnectEngines(HixlEngine &engine1, HixlEngine &engine2, int32_t &src, int32_t &dst, MemHandle &handle1,
-                              MemHandle &handle2) {
+                              MemHandle &handle2, bool same_instance = false) {
     std::map<AscendString, AscendString> auto_connect_options = options1;
     auto_connect_options[hixl::OPTION_AUTO_CONNECT] = "1";
     HixlOptions parsed1;
@@ -225,7 +329,7 @@ class HixlEngineTest : public ::testing::Test {
     EXPECT_EQ(engine1.Initialize(parsed1), SUCCESS);
 
     HixlOptions parsed2;
-    ASSERT_EQ(HixlOptions::Parse(options2, parsed2), SUCCESS);
+    ASSERT_EQ(HixlOptions::Parse(same_instance ? options1_ub_pair : options2, parsed2), SUCCESS);
     EXPECT_EQ(engine2.Initialize(parsed2), SUCCESS);
 
     Register(engine1, &src, handle1);
@@ -1290,4 +1394,186 @@ TEST(HixlEngineBatchStatusTest, SkipWaitingAndMaxQueryCountFilterResults) {
   EXPECT_EQ(engine.client_manager_.GetClientByReq(completed_req2), client);
   EXPECT_EQ(engine.client_manager_.Finalize(), SUCCESS);
 }
+// auto_connect=1，显式 Connect 后再 transfer — 验证用户主动建链后传输正常
+TEST_F(HixlEngineTest, TestAutoConnectExplicitConnectBeforeTransfer) {
+  HixlEngine engine1("127.0.0.1");
+  HixlEngine engine2("127.0.0.1:26300");
+  int32_t src = 1;
+  int32_t dst = 2;
+  MemHandle handle1 = nullptr;
+  MemHandle handle2 = nullptr;
+  InitAutoConnectEngines(engine1, engine2, src, dst, handle1, handle2);
+
+  // 用户显式 Connect
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
+
+  // 传输正常
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), SUCCESS);
+  EXPECT_EQ(src, 2);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26300", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+// auto_connect=1 + Direct handler：先 transfer 再显式 Connect
+// Direct handler 在内部 AutoConnect 时已全量建链，显式 Connect 返回 ALREADY_CONNECTED
+TEST_F(HixlEngineTest, TestAutoConnectTransferThenExplicitConnect) {
+  HixlEngine engine1("127.0.0.1");
+  HixlEngine engine2("127.0.0.1:26300");
+  int32_t src = 1;
+  int32_t dst = 2;
+  MemHandle handle1 = nullptr;
+  MemHandle handle2 = nullptr;
+  InitAutoConnectEngines(engine1, engine2, src, dst, handle1, handle2);
+
+  // 首次 transfer：内部 AutoConnect 建链
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), SUCCESS);
+  EXPECT_EQ(src, 2);
+
+  // 显式 Connect：client 已存在且已全量建链，返回 ALREADY_CONNECTED
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), ALREADY_CONNECTED);
+
+  // 传输仍正常（链路已连接）
+  src = 1;
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", WRITE, {desc}, kTimeOut), SUCCESS);
+  EXPECT_EQ(dst, 1);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26300", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+// auto_connect=1 显式 Connect 后再次 Connect — 验证返回 ALREADY_CONNECTED
+TEST_F(HixlEngineTest, TestAutoConnectDoubleConnectReturnsAlreadyConnected) {
+  HixlEngine engine1("127.0.0.1");
+  HixlEngine engine2("127.0.0.1:26300");
+  int32_t src = 1;
+  int32_t dst = 2;
+  MemHandle handle1 = nullptr;
+  MemHandle handle2 = nullptr;
+  InitAutoConnectEngines(engine1, engine2, src, dst, handle1, handle2);
+
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
+  // 显式 Connect 强制 is_lazy=false → SupportsReconnect=false → ALREADY_CONNECTED
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), ALREADY_CONNECTED);
+
+  // 传输仍然正常
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), SUCCESS);
+  EXPECT_EQ(src, 2);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26300", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+// auto_connect=1 + 同实例（UB handler）：显式 Connect 后再 transfer
+TEST_F(HixlEngineTest, TestAutoConnectUbExplicitConnectBeforeTransfer) {
+  HixlEngine engine1("127.0.0.1");
+  HixlEngine engine2("127.0.0.1:26300");
+  int32_t src = 1, dst = 2;
+  MemHandle handle1 = nullptr, handle2 = nullptr;
+  InitAutoConnectEngines(engine1, engine2, src, dst, handle1, handle2, true);
+
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
+
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), SUCCESS);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26300", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+// auto_connect=1 + 同实例（UB handler 1条链路）：先 transfer 再显式 Connect 再 transfer
+// 仅 D2D 一条链路，transfer 已建完，显式 Connect 无链路可补 → ALREADY_CONNECTED
+TEST_F(HixlEngineTest, TestAutoConnectUbTransferThenExplicitConnect) {
+  HixlEngine engine1("127.0.0.1");
+  HixlEngine engine2("127.0.0.1:26300");
+  int32_t src = 1, dst = 2;
+  MemHandle handle1 = nullptr, handle2 = nullptr;
+  InitAutoConnectEngines(engine1, engine2, src, dst, handle1, handle2, true);
+
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), SUCCESS);
+
+  // 仅 1 条 D2D 链路，transfer 已建完，显式 Connect 返回 ALREADY_CONNECTED
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), ALREADY_CONNECTED);
+
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", WRITE, {desc}, kTimeOut), SUCCESS);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26300", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+// auto_connect=1 + 同实例（UB handler 4条链路）：先 transfer 再显式 Connect 再 transfer
+// transfer 按需建 D2D 后，显式 Connect 补齐剩余 3 条链路 → SUCCESS
+TEST_F(HixlEngineTest, TestAutoConnectUb4LinksTransferThenExplicitConnect) {
+  HixlEngine engine1("127.0.0.1");
+  HixlEngine engine2("127.0.0.1:26300");
+  int32_t src = 1, dst = 2;
+  MemHandle handle1 = nullptr, handle2 = nullptr;
+  // 使用 4 条 UB 链路配置
+  std::map<AscendString, AscendString> auto_connect_opts = options_4ub;
+  auto_connect_opts[hixl::OPTION_AUTO_CONNECT] = "1";
+  HixlOptions parsed1;
+  ASSERT_EQ(HixlOptions::Parse(auto_connect_opts, parsed1), SUCCESS);
+  EXPECT_EQ(engine1.Initialize(parsed1), SUCCESS);
+  HixlOptions parsed2;
+  ASSERT_EQ(HixlOptions::Parse(options_4ub_pair, parsed2), SUCCESS);
+  EXPECT_EQ(engine2.Initialize(parsed2), SUCCESS);
+  Register(engine1, &src, handle1);
+  Register(engine2, &dst, handle2);
+
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), SUCCESS);
+
+  // 4 条链路中 transfer 仅按需建了 D2D，显式 Connect 补齐剩余 3 条
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
+
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", WRITE, {desc}, kTimeOut), SUCCESS);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26300", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
+// auto_connect=1 + 同实例（UB handler）：显式 Connect 两次
+// 二次 Connect 返回 ALREADY_CONNECTED
+TEST_F(HixlEngineTest, TestAutoConnectUbDoubleConnect) {
+  HixlEngine engine1("127.0.0.1");
+  HixlEngine engine2("127.0.0.1:26300");
+  int32_t src = 1, dst = 2;
+  MemHandle handle1 = nullptr, handle2 = nullptr;
+  InitAutoConnectEngines(engine1, engine2, src, dst, handle1, handle2, true);
+
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), ALREADY_CONNECTED);
+
+  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), SUCCESS);
+
+  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26300", kTimeOut), SUCCESS);
+  EXPECT_EQ(engine1.DeregisterMem(handle1), SUCCESS);
+  EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
+  engine1.Finalize();
+  engine2.Finalize();
+}
+
 }  // namespace hixl
