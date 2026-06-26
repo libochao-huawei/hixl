@@ -242,28 +242,18 @@ Status GenerateScaleOutEndpointByInterconType(int32_t logic_dev_id, int32_t phy_
   return FAILED;
 }
 
-Status ParseRequiredJsonField(const nlohmann::json &json_obj, const std::string &field_name, std::string &field_value) {
+template <typename T>
+Status ParseJsonField(const nlohmann::json &json_obj, const std::string &field_name, T &field_value,
+                      bool required = true) {
   if (!json_obj.contains(field_name)) {
-    HIXL_LOGE(PARAM_INVALID, "Missing required field '%s' in EndpointConfig", field_name.c_str());
+    if (!required) {
+      return SUCCESS;
+    }
+    HIXL_LOGE(PARAM_INVALID, "Missing required field '%s'", field_name.c_str());
     return PARAM_INVALID;
   }
-
   try {
-    field_value = json_obj[field_name].get<std::string>();
-    return SUCCESS;
-  } catch (const nlohmann::json::exception &e) {
-    HIXL_LOGE(PARAM_INVALID, "Failed to parse field '%s', exception: %s", field_name.c_str(), e.what());
-    return PARAM_INVALID;
-  }
-}
-
-Status ParseOptionalJsonField(const nlohmann::json &json_obj, const std::string &field_name, std::string &field_value) {
-  if (!json_obj.contains(field_name)) {
-    return SUCCESS;
-  }
-
-  try {
-    field_value = json_obj[field_name].get<std::string>();
+    field_value = json_obj[field_name].get<T>();
     return SUCCESS;
   } catch (const nlohmann::json::exception &e) {
     HIXL_LOGE(PARAM_INVALID, "Failed to parse field '%s', exception: %s", field_name.c_str(), e.what());
@@ -730,13 +720,13 @@ Status EndpointGenerator::DeserializeEndpointConfigList(const std::string &json_
   endpoint_list.clear();
   for (const auto &item : j) {
     EndpointConfig endpoint{};
-    HIXL_CHK_STATUS_RET(ParseRequiredJsonField(item, "protocol", endpoint.protocol), "Failed to parse protocol");
-    HIXL_CHK_STATUS_RET(ParseRequiredJsonField(item, "comm_id", endpoint.comm_id), "Failed to parse comm_id");
-    HIXL_CHK_STATUS_RET(ParseRequiredJsonField(item, "net_instance_id", endpoint.net_instance_id),
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "protocol", endpoint.protocol), "Failed to parse protocol");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "comm_id", endpoint.comm_id), "Failed to parse comm_id");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "net_instance_id", endpoint.net_instance_id),
                         "Failed to parse net_instance_id");
-    HIXL_CHK_STATUS_RET(ParseRequiredJsonField(item, "placement", endpoint.placement), "Failed to parse placement");
-    HIXL_CHK_STATUS_RET(ParseRequiredJsonField(item, "plane", endpoint.plane), "Failed to parse plane");
-    HIXL_CHK_STATUS_RET(ParseRequiredJsonField(item, "dst_eid", endpoint.dst_eid), "Failed to parse dst_eid");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "placement", endpoint.placement), "Failed to parse placement");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "plane", endpoint.plane), "Failed to parse plane");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "dst_eid", endpoint.dst_eid), "Failed to parse dst_eid");
     ParseDeviceInfo(item, endpoint);
     endpoint_list.emplace_back(std::move(endpoint));
   }
@@ -836,9 +826,9 @@ Status EndpointGenerator::ParseLocalCommRes(const nlohmann::json &config, std::v
   bool has_uboe = false;
   for (const auto &item : config["endpoint_list"]) {
     EndpointConfig endpoint{};
-    HIXL_CHK_STATUS_RET(ParseRequiredJsonField(item, "protocol", endpoint.protocol), "Failed to parse protocol");
-    HIXL_CHK_STATUS_RET(ParseRequiredJsonField(item, "comm_id", endpoint.comm_id), "Failed to parse comm_id");
-    HIXL_CHK_STATUS_RET(ParseRequiredJsonField(item, "placement", endpoint.placement), "Failed to parse placement");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "protocol", endpoint.protocol), "Failed to parse protocol");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "comm_id", endpoint.comm_id), "Failed to parse comm_id");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "placement", endpoint.placement), "Failed to parse placement");
     HIXL_CHK_BOOL_RET_STATUS(!((endpoint.protocol == kProtocolUboe || endpoint.protocol == kProtocolUbg) &&
                                endpoint.placement != kPlacementDevice),
                              PARAM_INVALID, "ScaleOut protocol %s only supports device placement",
@@ -848,8 +838,8 @@ Status EndpointGenerator::ParseLocalCommRes(const nlohmann::json &config, std::v
     } else if (endpoint.protocol == kProtocolUboe) {
       has_uboe = true;
     }
-    HIXL_CHK_STATUS_RET(ParseOptionalJsonField(item, "plane", endpoint.plane), "Failed to parse plane");
-    HIXL_CHK_STATUS_RET(ParseOptionalJsonField(item, "dst_eid", endpoint.dst_eid), "Failed to parse dst_eid");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "plane", endpoint.plane, false), "Failed to parse plane");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "dst_eid", endpoint.dst_eid, false), "Failed to parse dst_eid");
     endpoint.net_instance_id = net_instance_id;
     ParseDeviceInfo(item, endpoint);
     endpoint_list.emplace_back(std::move(endpoint));
@@ -940,6 +930,55 @@ Status EndpointGenerator::BuildHccsEndpoint(int32_t phy_device_id, EndpointGener
   endpoint.protocol = kProtocolHccs;
   endpoint.comm_id = std::to_string(phy_device_id);
   endpoint.placement = kPlacementDevice;
+  return SUCCESS;
+}
+
+Status EndpointGenerator::SerializeMemInfoList(const std::vector<RemoteMemInfo> &list, std::string &msg_str) {
+  nlohmann::json j = nlohmann::json::array();
+  try {
+    for (const auto &mi : list) {
+      nlohmann::json item;
+      item["type"] = (mi.type == MEM_DEVICE) ? "device" : "host";
+      item["addr"] = mi.addr;
+      item["size"] = mi.size;
+      j.push_back(item);
+    }
+    msg_str = j.dump();
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "Failed to dump mem info list, exception:%s", e.what());
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
+
+Status EndpointGenerator::DeserializeMemInfoList(const std::string &json_str,
+                                                 std::vector<RemoteMemInfo> &mem_info_list) {
+  nlohmann::json j;
+  try {
+    j = nlohmann::json::parse(json_str);
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "Failed to parse mem info json, exception:%s", e.what());
+    return PARAM_INVALID;
+  }
+  if (!j.is_array()) {
+    HIXL_LOGE(PARAM_INVALID, "Invalid mem info json format, expect array");
+    return PARAM_INVALID;
+  }
+
+  mem_info_list.clear();
+  for (const auto &item : j) {
+    RemoteMemInfo info{};
+    std::string type_str;
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "type", type_str), "Failed to parse mem type");
+    if (type_str == "device") {
+      info.type = MEM_DEVICE;
+    } else {
+      info.type = MEM_HOST;
+    }
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "addr", info.addr), "Failed to parse mem addr");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "size", info.size), "Failed to parse mem size");
+    mem_info_list.push_back(info);
+  }
   return SUCCESS;
 }
 
