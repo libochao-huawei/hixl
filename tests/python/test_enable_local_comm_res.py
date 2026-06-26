@@ -10,14 +10,34 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 
+# ruff: noqa: F821
+
 import unittest
 import time
 import llm_datadist as ld
 from llm_datadist import v2_list
+
 for item in v2_list:
     globals()[item] = getattr(ld, item)
 
+
 class LlmLocalCommResSt(unittest.TestCase):
+    _LOCAL_IP = "127.0.0.1"
+    _LISTEN_PORT = 26008
+    _REMOTE_CLUSTER_ID = 1
+
+    def _make_cluster_info(self):
+        cluster = LLMClusterInfo()
+        cluster.remote_cluster_id = self._REMOTE_CLUSTER_ID
+        cluster.append_local_ip_info(self._LOCAL_IP, self._LISTEN_PORT)
+        cluster.append_remote_ip_info(self._LOCAL_IP, self._LISTEN_PORT)
+        return cluster
+
+    def _cleanup_cluster_link(self):
+        try:
+            self.llm_datadist.unlink_clusters([self._make_cluster_info()], 5000)
+        except Exception:
+            pass
 
     def setUp(self) -> None:
         print(f"Begin {self.__class__.__name__}.{self._testMethodName}")
@@ -25,8 +45,8 @@ class LlmLocalCommResSt(unittest.TestCase):
         config.device_id = 0
         config.rdma_service_level = 100
         config.rdma_traffic_class = 100
-        config.listen_ip_info = "127.0.0.1:26008"
-        config.local_comm_res = '''
+        config.listen_ip_info = f"{self._LOCAL_IP}:{self._LISTEN_PORT}"
+        config.local_comm_res = """
         {
             "server_count": "1",
             "server_list": [{
@@ -39,32 +59,26 @@ class LlmLocalCommResSt(unittest.TestCase):
             "status": "completed",
             "version": "1.0"
         }
-        '''
+        """
         engine_options = config.generate_options()
         self.llm_datadist = LLMDataDist(LLMRole.PROMPT, 1)
         self.llm_datadist.init(engine_options)
-        time.sleep(1) # wait listen
+        time.sleep(1)  # wait listen
+        self._cleanup_cluster_link()
         self.has_exception = False
 
     def tearDown(self) -> None:
         print(f"End {self.__class__.__name__}.{self._testMethodName}")
+        self._cleanup_cluster_link()
         self.llm_datadist.finalize()
 
     def create_link_cluster(self):
-        cluster = LLMClusterInfo()
-        cluster.remote_cluster_id = 1
-        cluster.append_local_ip_info("127.0.0.1", 26008)
-        cluster.append_remote_ip_info("127.0.0.1", 26008)
-        ret, rets = self.llm_datadist.link_clusters([cluster], 5000)
+        ret, rets = self.llm_datadist.link_clusters([self._make_cluster_info()], 5000)
         self.assertEqual(ret, LLMStatusCode.LLM_SUCCESS)
 
     def test_unlink_cluster(self):
         self.create_link_cluster()
-        cluster = LLMClusterInfo()
-        cluster.remote_cluster_id = 1
-        cluster.append_local_ip_info("127.0.0.1", 26008)
-        cluster.append_remote_ip_info("127.0.0.1", 26008)
-        ret, rets = self.llm_datadist.unlink_clusters([cluster], 5000)
+        ret, rets = self.llm_datadist.unlink_clusters([self._make_cluster_info()], 5000)
         self.assertEqual(ret, LLMStatusCode.LLM_SUCCESS)
 
     def test_remap_registered_memory(self):
@@ -79,6 +93,7 @@ class LlmLocalCommResSt(unittest.TestCase):
         except Exception as e:
             print(f"{type(e).__name__} - {str(e)}")
             import traceback
+
             print(traceback.format_exc())
             self.has_exception = True
         self.assertEqual(self.has_exception, False)
@@ -86,13 +101,14 @@ class LlmLocalCommResSt(unittest.TestCase):
     def test_local_comm_res_switch_role(self):
         try:
             self.llm_datadist.switch_role(LLMRole.DECODER)
-            options = { 'llm.listenIpInfo': '127.0.0.1:26008'}
+            options = {"llm.listenIpInfo": "127.0.0.1:26008"}
             self.llm_datadist.switch_role(LLMRole.PROMPT, options)
-            options = { 'llm.listenIpInfo': '127.0.0.1:26009'}
+            options = {"llm.listenIpInfo": "127.0.0.1:26009"}
             self.llm_datadist.switch_role(LLMRole.PROMPT, options)
         except Exception as e:
             print(f"{type(e).__name__} - {str(e)}")
             import traceback
+
             print(traceback.format_exc())
             self.has_exception = True
         self.assertEqual(self.has_exception, False)
@@ -110,21 +126,20 @@ class LlmLocalCommResSt(unittest.TestCase):
         except Exception as e:
             print(f"{type(e).__name__} - {str(e)}")
             import traceback
+
             print(traceback.format_exc())
             self.has_exception = True
         self.assertEqual(self.has_exception, False)
 
     def test_local_comm_res_not_init(self):
-        cluster = LLMClusterInfo()
-        cluster.remote_cluster_id = 1
-        cluster.append_local_ip_info("127.0.0.1", 26008)
-        cluster.append_remote_ip_info("127.0.0.1", 26008)
+        cluster = self._make_cluster_info()
         llm_datadist = LLMDataDist(LLMRole.PROMPT, 2)
         try:
             ret, rets = llm_datadist.link_clusters([cluster], 5000)
         except Exception as e:
             print(f"{type(e).__name__} - {str(e)}")
             import traceback
+
             print(traceback.format_exc())
             self.has_exception = True
         self.assertEqual(self.has_exception, True)
