@@ -101,7 +101,7 @@ Status HixlEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_
   HIXL_CHK_STATUS_RET(server_.RegisterMem(mem, type, mem_handle),
                       "[HixlEngine] Failed to register mem, type:%s, addr:%p, size:%lu", MemTypeToString(type).c_str(),
                       reinterpret_cast<void *>(mem.addr), mem.len);
-  MemInfo mem_info = {mem_handle, mem, type};
+  MemInfo mem_info = {mem_handle, {mem, type}};
   std::lock_guard<std::mutex> lock(mutex_);
   mem_map_.emplace(mem_handle, mem_info);
   HIXL_LOGI("[HixlEngine] Registration succeeded, type:%s, addr:%p, size:%lu", MemTypeToString(type).c_str(),
@@ -142,14 +142,19 @@ Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in
   ClientConfig config{};
   std::vector<MemInfo> mem_info_list;
   BuildClientConfig(remote_engine, config, mem_info_list, timeout_in_millis);
+  config.is_lazy = false;
   ClientPtr client_ptr = nullptr;
   Status ret = client_manager_.GetOrCreateClient(config, mem_info_list, timeout_in_millis, client_ptr);
   if (ret == ALREADY_CONNECTED) {
-    HIXL_LOGE(ALREADY_CONNECTED, "[HixlEngine] remote_engine:%s is already connected to local_engine:%s",
-              remote_engine.GetString(), local_engine_.c_str());
-    return ALREADY_CONNECTED;
+    HIXL_CHK_STATUS_RET(client_ptr->Connect(timeout_in_millis),
+                        "[HixlEngine] Failed to connect remaining links for existing client, "
+                        "local_engine:%s, remote_engine:%s, timeout:%d ms",
+                        local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
+    HIXL_LOGI("[HixlEngine] Remaining links connection succeeded for existing client, remote_engine:%s",
+              remote_engine.GetString());
+    return SUCCESS;
   }
-  HIXL_CHK_STATUS_RET(ret, "[HixlEngine] Failed to connect, local_engine:%s, remote_engine:%s, timeout:%d ms",
+  HIXL_CHK_STATUS_RET(ret, "[HixlEngine] Failed to create client, local_engine:%s, remote_engine:%s, timeout:%d ms",
                       local_engine_.c_str(), remote_engine.GetString(), timeout_in_millis);
   HIXL_LOGI("[HixlEngine] Connection succeeded, local_engine:%s, remote_engine:%s", local_engine_.c_str(),
             remote_engine.GetString());
@@ -377,6 +382,7 @@ void HixlEngine::BuildClientConfig(const AscendString &remote_engine, ClientConf
   config.rdma_sl = rdma_service_level_;
   config.timeout_ms = static_cast<uint32_t>(timeout_in_millis);
   config.qos = qos_;
+  config.is_lazy = auto_connect_;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto &pair : mem_map_) {
