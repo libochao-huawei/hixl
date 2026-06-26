@@ -357,6 +357,7 @@ TEST_F(HixlUTest, TestHeartbeat) {
 }
 
 TEST_F(HixlUTest, TestHixlH2HWithBuffer) {
+  constexpr char kPeer[] = "127.0.0.1:26210";
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
   std::map<AscendString, AscendString> options1;
@@ -369,19 +370,19 @@ TEST_F(HixlUTest, TestHixlH2HWithBuffer) {
   Hixl engine2;
   std::map<AscendString, AscendString> options2;
   options2["BufferPool"] = "4:8";
-  EXPECT_EQ(engine2.Initialize("127.0.0.1:26201", options2), SUCCESS);
+  EXPECT_EQ(engine2.Initialize(kPeer, options2), SUCCESS);
 
   size_t size = 16 * 1024 * 1024;
   std::vector<int8_t> src(size, 1);
   std::vector<int8_t> dst(size, 2);
-  EXPECT_EQ(engine1.Connect("127.0.0.1:26201"), SUCCESS);
+  EXPECT_EQ(engine1.Connect(kPeer), SUCCESS);
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(src.data()), reinterpret_cast<uintptr_t>(dst.data()), size};
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26201", READ, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, READ, {desc}), SUCCESS);
   for (size_t i = 0; i < size; ++i) {
     EXPECT_EQ(src[i], 2);
   }
   src.assign(size, 1);
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26201", WRITE, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, WRITE, {desc}), SUCCESS);
   for (size_t i = 0; i < size; ++i) {
     EXPECT_EQ(dst[i], 1);
   }
@@ -395,22 +396,23 @@ TEST_F(HixlUTest, TestHixlH2HWithBuffer) {
     descs.emplace_back(TransferOpDesc{reinterpret_cast<uintptr_t>(src.data()) + i * block_size,
                                       reinterpret_cast<uintptr_t>(dst.data()) + i * block_size, block_size});
   }
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26201", READ, descs), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, READ, descs), SUCCESS);
   for (size_t i = 0; i < size; ++i) {
     EXPECT_EQ(src[i], 2);
   }
   src.assign(size, 1);
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26201", WRITE, descs), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, WRITE, descs), SUCCESS);
   for (size_t i = 0; i < size; ++i) {
     EXPECT_EQ(dst[i], 1);
   }
 
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26201"), SUCCESS);
+  EXPECT_EQ(engine1.Disconnect(kPeer), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
 }
 
 TEST_F(HixlUTest, TestHixlRD2HWithBuffer) {
+  constexpr char kPeer[] = "127.0.0.1:26210";
   llm::AutoCommResRuntimeMock::SetDevice(0);
   Hixl engine1;
   std::map<AscendString, AscendString> options1;
@@ -423,7 +425,7 @@ TEST_F(HixlUTest, TestHixlRD2HWithBuffer) {
   Hixl engine2;
   std::map<AscendString, AscendString> options2;
   options2["BufferPool"] = "4:8";
-  EXPECT_EQ(engine2.Initialize("127.0.0.1:26201", options2), SUCCESS);
+  EXPECT_EQ(engine2.Initialize(kPeer, options2), SUCCESS);
 
   size_t size = 16 * 1024 * 1024;
   std::vector<int8_t> src(size, 1);
@@ -434,10 +436,10 @@ TEST_F(HixlUTest, TestHixlRD2HWithBuffer) {
   MemHandle handle2 = nullptr;
   EXPECT_EQ(engine2.RegisterMem(dst_mem, MEM_DEVICE, handle2), SUCCESS);
 
-  EXPECT_EQ(engine1.Connect("127.0.0.1:26201"), SUCCESS);
+  EXPECT_EQ(engine1.Connect(kPeer), SUCCESS);
 
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(src.data()), reinterpret_cast<uintptr_t>(dst.data()), size};
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26201", READ, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, READ, {desc}), SUCCESS);
   for (size_t i = 0; i < size; ++i) {
     EXPECT_EQ(src[i], 2);
   }
@@ -451,12 +453,12 @@ TEST_F(HixlUTest, TestHixlRD2HWithBuffer) {
     descs.emplace_back(TransferOpDesc{reinterpret_cast<uintptr_t>(src.data()) + i * block_size,
                                       reinterpret_cast<uintptr_t>(dst.data()) + i * block_size, block_size});
   }
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26201", READ, descs), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, READ, descs), SUCCESS);
   for (size_t i = 0; i < size; ++i) {
     EXPECT_EQ(src[i], 2);
   }
 
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:26201"), SUCCESS);
+  EXPECT_EQ(engine1.Disconnect(kPeer), SUCCESS);
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();

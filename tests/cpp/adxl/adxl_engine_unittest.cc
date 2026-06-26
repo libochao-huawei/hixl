@@ -129,7 +129,8 @@ class AdxlEngineUTest : public ::testing::Test {
     EXPECT_EQ(engine2.Initialize("127.0.0.1:28101", options2), SUCCESS);
   }
 
-  void SetupBufferPoolEngines(AdxlEngine &engine1, AdxlEngine &engine2) {
+  void SetupBufferPoolEngines(AdxlEngine &engine1, AdxlEngine &engine2,
+                              const std::string &peer_port = "127.0.0.1:28101") {
     llm::AutoCommResRuntimeMock::SetDevice(0);
     std::map<AscendString, AscendString> options1;
     options1[OPTION_RDMA_TRAFFIC_CLASS] = "4";
@@ -139,7 +140,7 @@ class AdxlEngineUTest : public ::testing::Test {
     llm::AutoCommResRuntimeMock::SetDevice(1);
     std::map<AscendString, AscendString> options2;
     options2["adxl.BufferPool"] = "4:8";
-    EXPECT_EQ(engine2.Initialize("127.0.0.1:28101", options2), SUCCESS);
+    EXPECT_EQ(engine2.Initialize(peer_port.c_str(), options2), SUCCESS);
   }
 
   Int32MemPair SetupInt32ConnectedEngines(AdxlEngine &engine1, AdxlEngine &engine2) {
@@ -482,19 +483,20 @@ TEST_F(AdxlEngineUTest, TestHeartbeat) {
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineH2HWithBuffer) {
+  constexpr char kPeer[] = "127.0.0.1:28110";
   AdxlEngine engine1;
   AdxlEngine engine2;
-  SetupBufferPoolEngines(engine1, engine2);
+  SetupBufferPoolEngines(engine1, engine2, kPeer);
 
   size_t size = 16 * 1024 * 1024;
   std::vector<int8_t> src(size, 1);
   std::vector<int8_t> dst(size, 2);
-  EXPECT_EQ(engine1.Connect("127.0.0.1:28101"), SUCCESS);
+  EXPECT_EQ(engine1.Connect(kPeer), SUCCESS);
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(src.data()), reinterpret_cast<uintptr_t>(dst.data()), size};
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", READ, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, READ, {desc}), SUCCESS);
   ExpectAllElementsEq(src, 2);
   src.assign(size, 1);
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", WRITE, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, WRITE, {desc}), SUCCESS);
   ExpectAllElementsEq(dst, 1);
 
   dst.assign(size, 2);
@@ -502,21 +504,22 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineH2HWithBuffer) {
   size_t block_num = 4 * 16;
   auto descs = BuildBlockTransferDescs(reinterpret_cast<uintptr_t>(src.data()), reinterpret_cast<uintptr_t>(dst.data()),
                                        block_size, block_num);
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", READ, descs), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, READ, descs), SUCCESS);
   ExpectAllElementsEq(src, 2);
   src.assign(size, 1);
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", WRITE, descs), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, WRITE, descs), SUCCESS);
   ExpectAllElementsEq(dst, 1);
 
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:28101"), SUCCESS);
+  EXPECT_EQ(engine1.Disconnect(kPeer), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineRD2HWithBuffer) {
+  constexpr char kPeer[] = "127.0.0.1:28110";
   AdxlEngine engine1;
   AdxlEngine engine2;
-  SetupBufferPoolEngines(engine1, engine2);
+  SetupBufferPoolEngines(engine1, engine2, kPeer);
 
   size_t size = 16 * 1024 * 1024;
   std::vector<int8_t> src(size, 1);
@@ -524,10 +527,10 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineRD2HWithBuffer) {
   MemHandle handle2 = nullptr;
   test_helpers::RegisterDeviceBufferMem(engine2, dst, handle2);
 
-  EXPECT_EQ(engine1.Connect("127.0.0.1:28101"), SUCCESS);
+  EXPECT_EQ(engine1.Connect(kPeer), SUCCESS);
 
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(src.data()), reinterpret_cast<uintptr_t>(dst.data()), size};
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", READ, {desc}), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, READ, {desc}), SUCCESS);
   ExpectAllElementsEq(src, 2);
 
   dst.assign(size, 2);
@@ -535,10 +538,10 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineRD2HWithBuffer) {
   size_t block_num = 4 * 16;
   auto descs = BuildBlockTransferDescs(reinterpret_cast<uintptr_t>(src.data()), reinterpret_cast<uintptr_t>(dst.data()),
                                        block_size, block_num);
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:28101", READ, descs), SUCCESS);
+  EXPECT_EQ(engine1.TransferSync(kPeer, READ, descs), SUCCESS);
   ExpectAllElementsEq(src, 2);
 
-  EXPECT_EQ(engine1.Disconnect("127.0.0.1:28101"), SUCCESS);
+  EXPECT_EQ(engine1.Disconnect(kPeer), SUCCESS);
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
