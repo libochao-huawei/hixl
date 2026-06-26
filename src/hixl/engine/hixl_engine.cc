@@ -110,6 +110,10 @@ Status HixlEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_
 }
 
 Status HixlEngine::DeregisterMem(MemHandle mem_handle) {
+  if (auto_connect_) {
+    HIXL_EVENT(
+        "In auto-connect mode, DeregisterMem does not need to be called manually; all cleanup is handled internally.");
+  }
   HIXL_LOGI("[HixlEngine] Deregistration started, mem_handle: %p", mem_handle);
   auto with_context = aclrt_context_.GetContextGuard();
   std::lock_guard<std::mutex> lock(mutex_);
@@ -142,9 +146,20 @@ Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in
   ClientConfig config{};
   std::vector<MemInfo> mem_info_list;
   BuildClientConfig(remote_engine, config, mem_info_list, timeout_in_millis);
+  config.is_lazy = false;
   ClientPtr client_ptr = nullptr;
   Status ret = client_manager_.GetOrCreateClient(config, mem_info_list, timeout_in_millis, client_ptr);
   if (ret == ALREADY_CONNECTED) {
+    if (auto_connect_) {
+      HIXL_CHK_STATUS_RET(
+          client_ptr->Connect(timeout_in_millis),
+          "[HixlEngine] Failed to connect remaining links for existing auto-connect client, remote_engine:%s",
+          remote_engine.GetString());
+      HIXL_LOGI(
+          "[HixlEngine] Remaining links connection succeeded for existing auto-connect ub client, remote_engine:%s",
+          remote_engine.GetString());
+      return SUCCESS;
+    }
     HIXL_LOGE(ALREADY_CONNECTED, "[HixlEngine] remote_engine:%s is already connected to local_engine:%s",
               remote_engine.GetString(), local_engine_.c_str());
     return ALREADY_CONNECTED;
@@ -377,6 +392,7 @@ void HixlEngine::BuildClientConfig(const AscendString &remote_engine, ClientConf
   config.rdma_sl = rdma_service_level_;
   config.timeout_ms = static_cast<uint32_t>(timeout_in_millis);
   config.qos = qos_;
+  config.is_lazy = auto_connect_;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     for (const auto &pair : mem_map_) {

@@ -67,6 +67,9 @@ class IClientHandler {
                               uint32_t timeout_ms) = 0;
   virtual Status GetTransferStatus(const TransferReq &req, TransferStatus &status) = 0;
   virtual Status Finalize() = 0;
+  virtual bool SupportsReconnect() const {
+    return false;
+  }
 };
 
 }  // namespace hixl
