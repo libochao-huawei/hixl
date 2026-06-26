@@ -38,6 +38,8 @@ struct HandlerCreateArgs {
   };
   std::vector<EndpointPair> matched_pairs;
   std::optional<uint8_t> qos;
+  bool is_lazy = false;
+  std::vector<RemoteMemInfo> remote_mem_info;
 };
 
 class ClientHandlerFactory {
