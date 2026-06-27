@@ -21,6 +21,7 @@
 #include "adxl/channel_manager.h"
 #include "dlog_pub.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
+#include "heartbeat_test_utils.h"
 #include "hixl_test_helpers.h"
 
 using namespace std;
@@ -61,6 +62,8 @@ class HixlSTest : public ::testing::Test {
     llm::AutoCommResRuntimeMock::Install();
   }
   void TearDown() override {
+    // 恢复全局心跳默认值，避免 TestHeartbeat 的 10ms/50ms 污染同进程后续用例。
+    llm::test::ResetHeartbeatConfig();
     llm::HcclAdapter::GetInstance().Finalize();
     llm::AutoCommResRuntimeMock::Reset();
     llm::MockMmpaForHcclApi::Reset();

@@ -90,6 +90,7 @@ function(add_adxl_family_test target_name test_files)
           ${HIXL_CODE_DIR}/src/hixl/profiling
           ${HIXL_CODE_DIR}/src/hixl/proxy
           ${HIXL_CODE_DIR}/tests
+          ${HIXL_CODE_DIR}/tests/cpp/llm_datadist
           ${HIXL_CODE_DIR}/tests/depends/ascendcl/src
           ${HIXL_CODE_DIR}/tests/depends/hccl/src
           ${HIXL_CODE_DIR}/tests/depends/llm_datadist/src
