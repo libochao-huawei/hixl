@@ -82,7 +82,7 @@ uint32_t SyncContext(ThreadHandle thread, uint32_t op, uint32_t *state) {
   param.entry_list_addr = reinterpret_cast<uint64_t>(&entry);
   param.state_list_addr = reinterpret_cast<uint64_t>(&result_state);
   param.entry_num = 1U;
-  uint32_t ret = SyncTransferContext(&param);
+  uint32_t ret = HixlSyncTransferContext(&param);
   if (state != nullptr) {
     *state = result_state;
   }
