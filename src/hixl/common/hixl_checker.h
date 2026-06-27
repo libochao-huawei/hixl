@@ -16,6 +16,17 @@
 #include "acl/acl.h"
 #include "hixl_log.h"
 
+namespace hixl {
+namespace checker {
+
+Status ChkAclRet(aclError acl_ret, const char *expr_str);
+Status ChkAclRet(aclError acl_ret, const char *expr_str, const char *fmt, ...);
+void ChkAcl(aclError acl_ret, const char *expr_str);
+void ChkAcl(aclError acl_ret, const char *expr_str, const char *fmt, ...);
+
+}  // namespace checker
+}  // namespace hixl
+
 #ifdef PRODUCT_SIDE_DEVICE
 #define HIXL_REPORT_ERR_MSG(...)
 #else
@@ -96,27 +107,20 @@
     }                                                                                                 \
   } while (false)
 
-#define HIXL_CHK_ACL_RET(expr, ...)                                                                             \
-  do {                                                                                                          \
-    const aclError _acl_ret = (expr);                                                                           \
-    if (_acl_ret != ACL_SUCCESS) {                                                                              \
-      HIXL_REPORT_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_acl_ret));         \
-      const hixl::Status _acl_hixl_status =                                                                     \
-          (_acl_ret == ACL_ERROR_RT_STREAM_SYNC_TIMEOUT) ? hixl::TIMEOUT : static_cast<hixl::Status>(_acl_ret); \
-      HIXL_LOGE(_acl_hixl_status, "Call acl api:%s failed, ret: 0x%X. " __VA_ARGS__, #expr,                     \
-                static_cast<uint32_t>(_acl_ret));                                                               \
-      return _acl_hixl_status;                                                                                  \
-    }                                                                                                           \
+#define HIXL_CHK_ACL_RET(expr, ...)                                      \
+  do {                                                                   \
+    const aclError _acl_ret = (expr);                                    \
+    if (_acl_ret != ACL_SUCCESS) {                                       \
+      return ::hixl::checker::ChkAclRet(_acl_ret, #expr, ##__VA_ARGS__); \
+    }                                                                    \
   } while (false)
 
-// If expr != ACL_SUCCESS, print the log and do not return
-#define HIXL_CHK_ACL(expr, ...)                                                                       \
-  do {                                                                                                \
-    const aclError _ret = (expr);                                                                     \
-    if (_ret != ACL_SUCCESS) {                                                                        \
-      HIXL_REPORT_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_ret));   \
-      HIXL_LOGE(FAILED, "Call acl api failed, ret: 0x%X. " __VA_ARGS__, static_cast<uint32_t>(_ret)); \
-    }                                                                                                 \
+#define HIXL_CHK_ACL(expr, ...)                            \
+  do {                                                     \
+    const aclError _ret = (expr);                          \
+    if (_ret != ACL_SUCCESS) {                             \
+      ::hixl::checker::ChkAcl(_ret, #expr, ##__VA_ARGS__); \
+    }                                                      \
   } while (false)
 
 #endif  // CANN_HIXL_SRC_HIXL_COMMON_HIXL_CHECKER_H_
