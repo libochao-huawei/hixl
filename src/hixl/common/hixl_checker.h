@@ -96,27 +96,54 @@
     }                                                                                                 \
   } while (false)
 
-#define HIXL_CHK_ACL_RET(expr, ...)                                                                             \
-  do {                                                                                                          \
-    const aclError _acl_ret = (expr);                                                                           \
-    if (_acl_ret != ACL_SUCCESS) {                                                                              \
-      HIXL_REPORT_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_acl_ret));         \
-      const hixl::Status _acl_hixl_status =                                                                     \
-          (_acl_ret == ACL_ERROR_RT_STREAM_SYNC_TIMEOUT) ? hixl::TIMEOUT : static_cast<hixl::Status>(_acl_ret); \
-      HIXL_LOGE(_acl_hixl_status, "Call acl api:%s failed, ret: 0x%X. " __VA_ARGS__, #expr,                     \
-                static_cast<uint32_t>(_acl_ret));                                                               \
-      return _acl_hixl_status;                                                                                  \
-    }                                                                                                           \
+#define HIXL_CHK_ACL_RET_BODY(expr, fmt, ...)                                                                        \
+  do {                                                                                                               \
+    const aclError _acl_ret = (expr);                                                                                \
+    if (_acl_ret != ACL_SUCCESS) {                                                                                   \
+      HIXL_REPORT_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_acl_ret));              \
+      const hixl::Status _acl_hixl_status =                                                                          \
+          (_acl_ret == ACL_ERROR_RT_STREAM_SYNC_TIMEOUT) ? hixl::TIMEOUT : static_cast<hixl::Status>(_acl_ret);      \
+      HIXL_LOGE(_acl_hixl_status, "Call acl api:%s failed, ret: 0x%X. " fmt, #expr, static_cast<uint32_t>(_acl_ret), \
+                ##__VA_ARGS__);                                                                                      \
+      return _acl_hixl_status;                                                                                       \
+    }                                                                                                                \
   } while (false)
 
-// If expr != ACL_SUCCESS, print the log and do not return
-#define HIXL_CHK_ACL(expr, ...)                                                                       \
-  do {                                                                                                \
-    const aclError _ret = (expr);                                                                     \
-    if (_ret != ACL_SUCCESS) {                                                                        \
-      HIXL_REPORT_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_ret));   \
-      HIXL_LOGE(FAILED, "Call acl api failed, ret: 0x%X. " __VA_ARGS__, static_cast<uint32_t>(_ret)); \
-    }                                                                                                 \
+#define HIXL_CHK_ACL_RET1(expr) HIXL_CHK_ACL_RET_BODY(expr, "")
+#define HIXL_CHK_ACL_RET2(expr, fmt) HIXL_CHK_ACL_RET_BODY(expr, fmt)
+#define HIXL_CHK_ACL_RET3(expr, fmt, a) HIXL_CHK_ACL_RET_BODY(expr, fmt, a)
+#define HIXL_CHK_ACL_RET4(expr, fmt, a, b) HIXL_CHK_ACL_RET_BODY(expr, fmt, a, b)
+#define HIXL_CHK_ACL_RET5(expr, fmt, a, b, c) HIXL_CHK_ACL_RET_BODY(expr, fmt, a, b, c)
+#define HIXL_CHK_ACL_RET6(expr, fmt, a, b, c, d) HIXL_CHK_ACL_RET_BODY(expr, fmt, a, b, c, d)
+#define HIXL_CHK_ACL_RET7(expr, fmt, a, b, c, d, e) HIXL_CHK_ACL_RET_BODY(expr, fmt, a, b, c, d, e)
+#define HIXL_CHK_ACL_RET8(expr, fmt, a, b, c, d, e, f) HIXL_CHK_ACL_RET_BODY(expr, fmt, a, b, c, d, e, f)
+#define HIXL_CHK_ACL_RET_GET_MACRO(_1, _2, _3, _4, _5, _6, _7, _8, NAME, ...) NAME
+#define HIXL_CHK_ACL_RET(...)                                                                                         \
+  HIXL_CHK_ACL_RET_GET_MACRO(__VA_ARGS__, HIXL_CHK_ACL_RET8, HIXL_CHK_ACL_RET7, HIXL_CHK_ACL_RET6, HIXL_CHK_ACL_RET5, \
+                             HIXL_CHK_ACL_RET4, HIXL_CHK_ACL_RET3, HIXL_CHK_ACL_RET2, HIXL_CHK_ACL_RET1)              \
+  (__VA_ARGS__)
+
+#define HIXL_CHK_ACL_BODY(expr, fmt, ...)                                                                              \
+  do {                                                                                                                 \
+    const aclError _ret = (expr);                                                                                      \
+    if (_ret != ACL_SUCCESS) {                                                                                         \
+      HIXL_REPORT_ERR_MSG("E19999", "Call %s fail, ret: 0x%X", #expr, static_cast<uint32_t>(_ret));                    \
+      HIXL_LOGE(FAILED, "Call acl api:%s failed, ret: 0x%X. " fmt, #expr, static_cast<uint32_t>(_ret), ##__VA_ARGS__); \
+    }                                                                                                                  \
   } while (false)
+
+#define HIXL_CHK_ACL1(expr) HIXL_CHK_ACL_BODY(expr, "")
+#define HIXL_CHK_ACL2(expr, fmt) HIXL_CHK_ACL_BODY(expr, fmt)
+#define HIXL_CHK_ACL3(expr, fmt, a) HIXL_CHK_ACL_BODY(expr, fmt, a)
+#define HIXL_CHK_ACL4(expr, fmt, a, b) HIXL_CHK_ACL_BODY(expr, fmt, a, b)
+#define HIXL_CHK_ACL5(expr, fmt, a, b, c) HIXL_CHK_ACL_BODY(expr, fmt, a, b, c)
+#define HIXL_CHK_ACL6(expr, fmt, a, b, c, d) HIXL_CHK_ACL_BODY(expr, fmt, a, b, c, d)
+#define HIXL_CHK_ACL7(expr, fmt, a, b, c, d, e) HIXL_CHK_ACL_BODY(expr, fmt, a, b, c, d, e)
+#define HIXL_CHK_ACL8(expr, fmt, a, b, c, d, e, f) HIXL_CHK_ACL_BODY(expr, fmt, a, b, c, d, e, f)
+#define HIXL_CHK_ACL_GET_MACRO(_1, _2, _3, _4, _5, _6, _7, _8, NAME, ...) NAME
+#define HIXL_CHK_ACL(...)                                                                                        \
+  HIXL_CHK_ACL_GET_MACRO(__VA_ARGS__, HIXL_CHK_ACL8, HIXL_CHK_ACL7, HIXL_CHK_ACL6, HIXL_CHK_ACL5, HIXL_CHK_ACL4, \
+                         HIXL_CHK_ACL3, HIXL_CHK_ACL2, HIXL_CHK_ACL1)                                            \
+  (__VA_ARGS__)
 
 #endif  // CANN_HIXL_SRC_HIXL_COMMON_HIXL_CHECKER_H_
