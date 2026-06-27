@@ -125,6 +125,10 @@ void ParseDeviceInfo(const nlohmann::json &item, EndpointConfig &endpoint) {
 }
 
 Status ParseEidList(const nlohmann::json &item, EndpointConfig &endpoint) {
+  if (endpoint.protocol != kProtocolUboe || endpoint.placement != kPlacementHost) {
+    return SUCCESS;
+  }
+
   if (!item.contains("eid_list") || !item["eid_list"].is_array()) {
     HIXL_LOGE(PARAM_INVALID, "Missing or invalid 'eid_list' in EndpointConfig");
     return PARAM_INVALID;
