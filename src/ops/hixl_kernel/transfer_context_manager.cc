@@ -17,19 +17,19 @@ namespace {
 
 Status ValidateSyncTransferContextParam(const TransferContextSyncParam *param) {
   if (param == nullptr) {
-    HIXL_LOGE(PARAM_INVALID, "[SyncTransferContext] param is nullptr");
+    HIXL_LOGE(PARAM_INVALID, "[HixlSyncTransferContext] param is nullptr");
     return PARAM_INVALID;
   }
   if (param->entry_num == 0U) {
-    HIXL_LOGE(PARAM_INVALID, "[SyncTransferContext] entry_num is 0");
+    HIXL_LOGE(PARAM_INVALID, "[HixlSyncTransferContext] entry_num is 0");
     return PARAM_INVALID;
   }
   if (param->entry_list_addr == 0U) {
-    HIXL_LOGE(PARAM_INVALID, "[SyncTransferContext] entry_list_addr is 0");
+    HIXL_LOGE(PARAM_INVALID, "[HixlSyncTransferContext] entry_list_addr is 0");
     return PARAM_INVALID;
   }
   if (param->state_list_addr == 0U) {
-    HIXL_LOGE(PARAM_INVALID, "[SyncTransferContext] state_list_addr is 0");
+    HIXL_LOGE(PARAM_INVALID, "[HixlSyncTransferContext] state_list_addr is 0");
     return PARAM_INVALID;
   }
   return SUCCESS;
@@ -80,8 +80,8 @@ TransferThreadState TransferContextManager::Delete(ThreadHandle thread) {
 }
 
 uint32_t DoSyncTransferContext(TransferContextSyncParam *param) {
-  HIXL_CHK_STATUS_RET(ValidateSyncTransferContextParam(param), "[SyncTransferContext] validate param failed");
-  HIXL_LOGI("[SyncTransferContext] device execute start. entry_num=%u", param->entry_num);
+  HIXL_CHK_STATUS_RET(ValidateSyncTransferContextParam(param), "[HixlSyncTransferContext] validate param failed");
+  HIXL_LOGI("[HixlSyncTransferContext] device execute start. entry_num=%u", param->entry_num);
   auto *entries = reinterpret_cast<TransferContextSyncEntry *>(static_cast<uintptr_t>(param->entry_list_addr));
   auto *states = reinterpret_cast<uint32_t *>(static_cast<uintptr_t>(param->state_list_addr));
   TransferThreadState state = TRANSFER_THREAD_STATE_DELETED;
@@ -91,12 +91,12 @@ uint32_t DoSyncTransferContext(TransferContextSyncParam *param) {
     } else if (entries[i].op == TRANSFER_CONTEXT_OP_DELETE) {
       state = TransferContextManager::Instance().Delete(entries[i].thread);
     } else {
-      HIXL_LOGE(PARAM_INVALID, "[SyncTransferContext] invalid op=%u, index=%u", entries[i].op, i);
+      HIXL_LOGE(PARAM_INVALID, "[HixlSyncTransferContext] invalid op=%u, index=%u", entries[i].op, i);
       return PARAM_INVALID;
     }
     states[i] = static_cast<uint32_t>(state);
   }
-  HIXL_LOGI("[SyncTransferContext] device execute end. entry_num=%u last_state=%u", param->entry_num,
+  HIXL_LOGI("[HixlSyncTransferContext] device execute end. entry_num=%u last_state=%u", param->entry_num,
             static_cast<uint32_t>(state));
   return SUCCESS;
 }

@@ -17,7 +17,7 @@
 #include "common/hixl_inner_types.h"
 #include "mmpa/mmpa_api.h"
 
-extern "C" __attribute__((weak)) uint32_t SyncTransferContext(TransferContextSyncParam *param);
+extern "C" __attribute__((weak)) uint32_t HixlSyncTransferContext(TransferContextSyncParam *param);
 
 static std::string g_acl_stub_mock = "";
 static char g_soc_version[50] = {0};
@@ -677,15 +677,15 @@ aclError AclRuntimeStub::aclrtLaunchKernelWithConfig(aclrtFuncHandle funcHandle,
       arg_data = arg_it->second;
     }
   }
-  if (func_name == "SyncTransferContext") {
-    if (SyncTransferContext == nullptr) {
+  if (func_name == "HixlSyncTransferContext") {
+    if (HixlSyncTransferContext == nullptr) {
       return ACL_ERROR_RT_INTERNAL_ERROR;
     }
     if (arg_data.size() != sizeof(TransferContextSyncParam)) {
       return ACL_ERROR_INVALID_PARAM;
     }
     auto *param = reinterpret_cast<TransferContextSyncParam *>(arg_data.data());
-    uint32_t ret = SyncTransferContext(param);
+    uint32_t ret = HixlSyncTransferContext(param);
     return (ret == hixl::SUCCESS) ? ACL_SUCCESS : ACL_ERROR_RT_INTERNAL_ERROR;
   }
   return ACL_SUCCESS;

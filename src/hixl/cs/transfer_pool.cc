@@ -34,7 +34,7 @@ constexpr uint32_t kSyncContextRetryTimeoutMs = 30U * 1000U;
 constexpr uint32_t kSyncContextRetryIntervalMs = 100U;
 constexpr const char *kDeviceFuncGet = "HixlBatchGet";
 constexpr const char *kDeviceFuncPut = "HixlBatchPut";
-constexpr const char *kDeviceFuncSyncContext = "SyncTransferContext";
+constexpr const char *kDeviceFuncSyncContext = "HixlSyncTransferContext";
 }  // namespace
 
 namespace hixl {
@@ -500,30 +500,30 @@ Status TransferPool::LaunchSyncContextKernelLocked(const std::vector<TransferCon
   param.entry_num = static_cast<uint32_t>(entries.size());
   aclrtArgsHandle args_handle = nullptr;
   HIXL_CHK_ACL_RET(aclrtKernelArgsInit(device_func_handles_.sync_transfer_context, &args_handle),
-                   "[TransferPool] aclrtKernelArgsInit SyncTransferContext failed");
+                   "[TransferPool] aclrtKernelArgsInit HixlSyncTransferContext failed");
   HIXL_DISMISSABLE_GUARD(finalize_args, ([args_handle]() {
                            HIXL_CHK_ACL(aclrtKernelArgsFinalize(args_handle),
                                         "[TransferPool] aclrtKernelArgsFinalize failed");
                          }));
   aclrtParamHandle para_handle = nullptr;
   HIXL_CHK_ACL_RET(aclrtKernelArgsAppend(args_handle, &param, sizeof(TransferContextSyncParam), &para_handle),
-                   "[TransferPool] aclrtKernelArgsAppend SyncTransferContext failed");
+                   "[TransferPool] aclrtKernelArgsAppend HixlSyncTransferContext failed");
   HIXL_CHK_ACL_RET(aclrtKernelArgsFinalize(args_handle), "[TransferPool] aclrtKernelArgsFinalize failed");
   HIXL_DISMISS_GUARD(finalize_args);
   aclrtStream stream = nullptr;
   HIXL_CHK_ACL_RET(aclrtCtxGetCurrentDefaultStream(&stream),
-                   "[TransferPool] aclrtCtxGetCurrentDefaultStream for SyncTransferContext failed");
+                   "[TransferPool] aclrtCtxGetCurrentDefaultStream for HixlSyncTransferContext failed");
   constexpr uint32_t kBlockDim = 1U;
-  HIXL_LOGI("[TransferPool] Launch SyncTransferContext start. entries=%zu stream=%p device_id=%d", entries.size(),
+  HIXL_LOGI("[TransferPool] Launch HixlSyncTransferContext start. entries=%zu stream=%p device_id=%d", entries.size(),
             stream, device_id_);
   HIXL_CHK_ACL_RET(aclrtLaunchKernelWithConfig(device_func_handles_.sync_transfer_context, kBlockDim, stream, nullptr,
                                                args_handle, nullptr),
-                   "[TransferPool] aclrtLaunchKernelWithConfig SyncTransferContext failed");
+                   "[TransferPool] aclrtLaunchKernelWithConfig HixlSyncTransferContext failed");
   HIXL_CHK_ACL_RET(aclrtSynchronizeStreamWithTimeout(stream, static_cast<int32_t>(kSyncContextKernelTimeoutMs)),
-                   "[TransferPool] aclrtSynchronizeStreamWithTimeout SyncTransferContext failed");
+                   "[TransferPool] aclrtSynchronizeStreamWithTimeout HixlSyncTransferContext failed");
   HIXL_CHK_ACL_RET(aclrtMemcpy(states.data(), state_bytes, dev_states, state_bytes, ACL_MEMCPY_DEVICE_TO_HOST),
                    "[TransferPool] aclrtMemcpy sync context states D2H failed");
-  HIXL_LOGI("[TransferPool] Launch SyncTransferContext end. entries=%zu device_id=%d", entries.size(), device_id_);
+  HIXL_LOGI("[TransferPool] Launch HixlSyncTransferContext end. entries=%zu device_id=%d", entries.size(), device_id_);
   return SUCCESS;
 }
 
