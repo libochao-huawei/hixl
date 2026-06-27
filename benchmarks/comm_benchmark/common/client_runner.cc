@@ -77,8 +77,10 @@ std::string FormatBlockSizeHuman(uint64_t bytes) {
   return std::to_string(bytes) + " B";
 }
 
-int32_t InitializeHixl(const std::string &local_engine, const BenchmarkConfig &cfg, Hixl *hixl) {
-  const std::map<AscendString, AscendString> init_options = BenchmarkConfigParser::BuildInitializeOptions(cfg);
+int32_t InitializeHixl(const std::string &local_engine, const BenchmarkConfig &cfg, Hixl *hixl,
+                       size_t lane_index = 0U) {
+  const std::map<AscendString, AscendString> init_options =
+      BenchmarkConfigParser::BuildInitializeOptions(cfg, lane_index);
   const auto ret = hixl->Initialize(AscendString(local_engine.c_str()), init_options);
   if (ret != SUCCESS) {
     std::printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, RecentErrMsg());
@@ -109,6 +111,8 @@ void FreeHostBuffers(const std::vector<void *> &buffers, const std::string &tran
     }
     if (transport == "fabric_mem") {
       (void)FabricMemTransferService::FreeMem(element);
+    } else if (transport == "roce") {
+      std::free(element);
     } else {
       (void)aclrtFreeHost(element);
     }
@@ -149,6 +153,12 @@ int32_t AllocLocalBuffer(const BenchmarkConfig &cfg, bool *is_host, void **out_s
     auto status = FabricMemTransferService::MallocMem(MemType::MEM_HOST, alloc_size, &tmp);
     if (status != SUCCESS) {
       std::fprintf(stderr, "[ERROR] client fabric_mem host alloc failed status=%d\n", static_cast<int>(status));
+      return -1;
+    }
+  } else if (*is_host && cfg.transport == "roce") {
+    tmp = std::malloc(alloc_size);
+    if (tmp == nullptr) {
+      std::fprintf(stderr, "[ERROR] client alloc host failed: malloc returned null\n");
       return -1;
     }
   } else if (*is_host) {

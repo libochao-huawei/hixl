@@ -34,9 +34,10 @@ const char *RecentErrMsg() {
   return errmsg;
 }
 
-int32_t InitializeHixl(const std::string &local_engine, const hixl_benchmark::BenchmarkConfig &cfg, Hixl *hixl) {
+int32_t InitializeHixl(const std::string &local_engine, const hixl_benchmark::BenchmarkConfig &cfg, Hixl *hixl,
+                       size_t lane_index = 0U) {
   const std::map<AscendString, AscendString> init_options =
-      hixl_benchmark::BenchmarkConfigParser::BuildInitializeOptions(cfg);
+      hixl_benchmark::BenchmarkConfigParser::BuildInitializeOptions(cfg, lane_index);
   const auto ret = hixl->Initialize(AscendString(local_engine.c_str()), init_options);
   if (ret != SUCCESS) {
     std::printf("[ERROR] Initialize failed, ret = %u, errmsg: %s\n", ret, RecentErrMsg());
@@ -134,6 +135,8 @@ void ServerRunner::ReleaseServerResources() {
     if (is_host_) {
       if (cfg_.transport == "fabric_mem") {
         (void)FabricMemTransferService::FreeMem(buffer_);
+      } else if (cfg_.transport == "roce") {
+        std::free(buffer_);
       } else {
         (void)aclrtFreeHost(buffer_);
       }
@@ -171,6 +174,12 @@ bool ServerRunner::AllocServerBufferForRun() {
     auto status = FabricMemTransferService::MallocMem(MemType::MEM_HOST, alloc_size, &buffer_);
     if (status != SUCCESS) {
       std::printf("[ERROR] server fabric_mem alloc failed status=%d\n", static_cast<int>(status));
+      return false;
+    }
+  } else if (is_host_ && cfg_.transport == "roce") {
+    buffer_ = std::malloc(alloc_size);
+    if (buffer_ == nullptr) {
+      std::printf("[ERROR] server alloc host failed: malloc returned null\n");
       return false;
     }
   } else if (is_host_) {
