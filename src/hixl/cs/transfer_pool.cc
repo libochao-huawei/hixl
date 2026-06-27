@@ -501,15 +501,10 @@ Status TransferPool::LaunchSyncContextKernelLocked(const std::vector<TransferCon
   aclrtArgsHandle args_handle = nullptr;
   HIXL_CHK_ACL_RET(aclrtKernelArgsInit(device_func_handles_.sync_transfer_context, &args_handle),
                    "[TransferPool] aclrtKernelArgsInit HixlSyncTransferContext failed");
-  HIXL_DISMISSABLE_GUARD(finalize_args, ([args_handle]() {
-                           HIXL_CHK_ACL(aclrtKernelArgsFinalize(args_handle),
-                                        "[TransferPool] aclrtKernelArgsFinalize failed");
-                         }));
   aclrtParamHandle para_handle = nullptr;
   HIXL_CHK_ACL_RET(aclrtKernelArgsAppend(args_handle, &param, sizeof(TransferContextSyncParam), &para_handle),
                    "[TransferPool] aclrtKernelArgsAppend HixlSyncTransferContext failed");
   HIXL_CHK_ACL_RET(aclrtKernelArgsFinalize(args_handle), "[TransferPool] aclrtKernelArgsFinalize failed");
-  HIXL_DISMISS_GUARD(finalize_args);
   aclrtStream stream = nullptr;
   HIXL_CHK_ACL_RET(aclrtCtxGetCurrentDefaultStream(&stream),
                    "[TransferPool] aclrtCtxGetCurrentDefaultStream for HixlSyncTransferContext failed");
