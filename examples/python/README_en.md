@@ -51,7 +51,7 @@ Replace `${HOME}/Ascend` with the actual software installation path.
   - Change `DECODER_HOST_IP` to the host IP address of the Decoder host.
   - Ensure that the scripts are identical on both hosts.
 
-- Some samples support RDMA links in A5 environments and must be executed on dual hosts. These samples will be noted explicitly in the corresponding sample descriptions. Before execution, manually configure `local_comm_res`. The configuration format reference is available at: [Communication Device Configuration](https://gitcode.com/cann/hixl/issues/37). You can obtain the host NIC IP information using the following commands: 
+- Some samples support RDMA links in A5 environments and must be executed on dual hosts. These samples will be noted explicitly in the corresponding sample descriptions. Before execution, manually configure `local_comm_res`. The configuration format reference is available at: [Communication Device Configuration](https://gitcode.com/cann/hixl/issues/37). You can obtain the host NIC IP information using the following commands:
   ```shell
   # Query the mapping between RoCE devices and network ports, and identify the ports in Up state
   ibdev2netdev
@@ -63,7 +63,7 @@ Replace `${HOME}/Ascend` with the actual software installation path.
 ## Sample Running
 - Run the `pull_cache` sample. This sample demonstrates how to allocate cache memory, establish bidirectional connections, and pull cache from a remote node in a configured memory pool scenario.
   - Note:
-    This example requires two hosts. See [Sample Configuration](#Sample Configuration).
+    This example requires two hosts. See [Sample Configuration](#sample-configuration).
 
   Run the sample program on both the Prompt and Decoder hosts. In the command, `device_id` specifies the device ID to be used, and `cluster_id` specifies the cluster ID that must be unique across all nodes involved in link establishment.
     ```
@@ -74,7 +74,7 @@ Replace `${HOME}/Ascend` with the actual software installation path.
     ```
 - Run the `pull_blocks` sample. This sample uses Torch to allocate memory, establishes bidirectional connections, and pulls cache from a remote node.
   - Note:
-    This example requires two hosts. See [Sample Configuration](#Sample Configuration).
+    This example requires two hosts. See [Sample Configuration](#sample-configuration).
 
   Run the sample program on both the Prompt and Decoder hosts. In the command, `device_id` specifies the device ID to be used, and `cluster_id` specifies the cluster ID that must be unique across all nodes involved in link establishment.
     ```
@@ -85,7 +85,7 @@ Replace `${HOME}/Ascend` with the actual software installation path.
     ```
 - Run the `pull_from_cache_to_blocks` sample:
   - Note:
-    This example requires two hosts. See [Sample Configuration](#Sample Configuration).
+    This example requires two hosts. See [Sample Configuration](#sample-configuration).
 
   Run the sample program on both the Prompt and Decoder hosts. In the command, `device_id` specifies the device ID to be used, and `cluster_id` specifies the cluster ID that must be unique across all nodes involved in link establishment.
     ```
@@ -135,14 +135,14 @@ Replace `${HOME}/Ascend` with the actual software installation path.
 - Run the `pull_blocks_xpyd` sample. This sample supports the xPyD test scenario and uses a single-side connection method. Each process allocates memory and registers blocks. Each decoder initiates connections to all Prompts and pulls blocks locally. `local_ip_port` specifies the local host IP address and port.
   - Note:
     This sample can run on any number of hosts. Regardless of how many processes are started on the Prompt side, `prompt_ip_list` on the Decoder side consists of all `${local_ip:port}` entries from the Prompt side.
-  ```  
-  #Prompt side:  
-  GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1 python pull_blocks_xpyd_sample.py --device_id 0 --role p --local_ip_port ${local_ip_0:port_0}  
+  ```
+  #Prompt side:
+  GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1 python pull_blocks_xpyd_sample.py --device_id 0 --role p --local_ip_port ${local_ip_0:port_0}
   GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1 python pull_blocks_xpyd_sample.py --device_id 1 --role p --local_ip_port ${local_ip_1:port_1}
   GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1 python pull_blocks_xpyd_sample.py --device_id n --role p --local_ip_port ${local_ip_n:port_n}
-  #Decoder side: 
-  GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1 python pull_blocks_xpyd_sample.py --device_id n + 1 --role d --local_ip_port ${local_ip_n+1:port_n+1} --remote_ip_port ${prompt_ip_list}  
-  GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1 python pull_blocks_xpyd_sample.py --device_id n + 2 --role d --local_ip_port ${local_ip_n+2:port_n+2} --remote_ip_port ${prompt_ip_list}  
+  #Decoder side:
+  GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1 python pull_blocks_xpyd_sample.py --device_id n + 1 --role d --local_ip_port ${local_ip_n+1:port_n+1} --remote_ip_port ${prompt_ip_list}
+  GLOO_SOCKET_IFNAME=enp67s0f5 HCCL_INTRA_ROCE_ENABLE=1 python pull_blocks_xpyd_sample.py --device_id n + 2 --role d --local_ip_port ${local_ip_n+2:port_n+2} --remote_ip_port ${prompt_ip_list}
   ```
 
   Here, `${prompt_ip_list}` consists of **all `${local_ip:port}` entries from the Prompt side**, separated by **;**. Run the sample program on both the Prompt and Decoder hosts. `device_id` specifies the device ID to be used, `role` specifies the cluster role, `local_ip_port` specifies the local host IP and port, and `remote_ip_port` specifies the peer host IP and port:
