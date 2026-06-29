@@ -126,11 +126,11 @@ class MockHixlServer {
       }
       mem_handles_.emplace_back(mem_handle);
       // 跟踪已注册内存信息，用于构建端点响应中的 mem_info 字段
-      MemRegion region;
-      region.type = (mem_list[i].type == COMM_MEM_TYPE_DEVICE) ? MEM_DEVICE : MEM_HOST;
-      region.mem.addr = reinterpret_cast<uintptr_t>(mem_list[i].addr);
-      region.mem.len = mem_list[i].size;
-      registered_mem_.push_back(region);
+      MemInfo info;
+      info.type = (mem_list[i].type == COMM_MEM_TYPE_DEVICE) ? MEM_DEVICE : MEM_HOST;
+      info.addr = reinterpret_cast<uintptr_t>(mem_list[i].addr);
+      info.size = mem_list[i].size;
+      registered_mem_.push_back(info);
     }
   }
 
@@ -196,7 +196,7 @@ class MockHixlServer {
  private:
   HixlServerHandle server_handle_ = nullptr;
   std::vector<MemHandle> mem_handles_{};
-  std::vector<MemRegion> registered_mem_{};
+  std::vector<MemInfo> registered_mem_{};
   int32_t conn_fd_ = -1;
   MockHixlServerMode mode_;
 
@@ -270,10 +270,9 @@ class MockHixlServer {
     std::string mem_info_json = "[";
     for (size_t i = 0; i < registered_mem_.size(); ++i) {
       if (i > 0) mem_info_json += ",";
-      mem_info_json += R"({"type":")";
-      mem_info_json += (registered_mem_[i].type == MEM_DEVICE) ? "device" : "host";
-      mem_info_json += R"(","addr":)" + std::to_string(registered_mem_[i].mem.addr);
-      mem_info_json += R"(,"size":)" + std::to_string(registered_mem_[i].mem.len) + "}";
+      mem_info_json += R"({"type":)" + std::to_string(static_cast<int>(registered_mem_[i].type));
+      mem_info_json += R"(,"addr":)" + std::to_string(registered_mem_[i].addr);
+      mem_info_json += R"(,"size":)" + std::to_string(registered_mem_[i].size) + "}";
     }
     mem_info_json += "]";
     SendResponseImpl(kMagicNumber, CtrlMsgType::kGetMemInfoResp, sizeof(CtrlMsgType) + mem_info_json.size(),
@@ -545,54 +544,54 @@ class HixlClientUTest : public ::testing::Test {
     return ep_list;
   }
 
-  std::vector<MemInfo> MakeMemInfoList() {
-    std::vector<MemInfo> mem_info_list;
+  std::vector<MemHandleInfo> MakeMemInfoList() {
+    std::vector<MemHandleInfo> mem_info_list;
     // 添加DEVICE类型内存
-    MemInfo device_mem;
+    MemHandleInfo device_mem;
     device_mem.mem_handle = nullptr;
-    device_mem.region.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
-    device_mem.region.mem.len = sizeof(uint32_t);
-    device_mem.region.type = MEM_DEVICE;
+    device_mem.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
+    device_mem.mem.len = sizeof(uint32_t);
+    device_mem.type = MEM_DEVICE;
     mem_info_list.push_back(device_mem);
 
     // 添加HOST类型内存
-    MemInfo host_mem;
+    MemHandleInfo host_mem;
     host_mem.mem_handle = nullptr;
-    host_mem.region.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[2]);
-    host_mem.region.mem.len = sizeof(uint32_t);
-    host_mem.region.type = MEM_HOST;
+    host_mem.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[2]);
+    host_mem.mem.len = sizeof(uint32_t);
+    host_mem.type = MEM_HOST;
     mem_info_list.push_back(host_mem);
     return mem_info_list;
   }
 
-  std::vector<MemInfo> Make4UbMemInfoList() {
-    std::vector<MemInfo> mem_info_list;
-    MemInfo mem1;
+  std::vector<MemHandleInfo> Make4UbMemInfoList() {
+    std::vector<MemHandleInfo> mem_info_list;
+    MemHandleInfo mem1;
     mem1.mem_handle = nullptr;
-    mem1.region.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
-    mem1.region.mem.len = sizeof(uint32_t);
-    mem1.region.type = MEM_DEVICE;
+    mem1.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
+    mem1.mem.len = sizeof(uint32_t);
+    mem1.type = MEM_DEVICE;
     mem_info_list.push_back(mem1);
 
-    MemInfo mem2;
+    MemHandleInfo mem2;
     mem2.mem_handle = nullptr;
-    mem2.region.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[2]);
-    mem2.region.mem.len = sizeof(uint32_t);
-    mem2.region.type = MEM_DEVICE;
+    mem2.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[2]);
+    mem2.mem.len = sizeof(uint32_t);
+    mem2.type = MEM_DEVICE;
     mem_info_list.push_back(mem2);
 
-    MemInfo mem3;
+    MemHandleInfo mem3;
     mem3.mem_handle = nullptr;
-    mem3.region.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[4]);
-    mem3.region.mem.len = sizeof(uint32_t);
-    mem3.region.type = MEM_HOST;
+    mem3.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[4]);
+    mem3.mem.len = sizeof(uint32_t);
+    mem3.type = MEM_HOST;
     mem_info_list.push_back(mem3);
 
-    MemInfo mem4;
+    MemHandleInfo mem4;
     mem4.mem_handle = nullptr;
-    mem4.region.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[6]);
-    mem4.region.mem.len = sizeof(uint32_t);
-    mem4.region.type = MEM_HOST;
+    mem4.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[6]);
+    mem4.mem.len = sizeof(uint32_t);
+    mem4.type = MEM_HOST;
     mem_info_list.push_back(mem4);
     return mem_info_list;
   }
@@ -938,7 +937,7 @@ TEST_F(HixlClientUTest, SetLocalMemInfoTest) {
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
   Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
-  std::vector<MemInfo> mem_info_list = MakeMemInfoList();
+  std::vector<MemHandleInfo> mem_info_list = MakeMemInfoList();
   st = client_->SetLocalMemInfo(mem_info_list);
   EXPECT_EQ(st, SUCCESS);
   st = client_->Finalize();

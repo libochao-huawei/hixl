@@ -32,7 +32,7 @@ namespace hixl {
 namespace {
 constexpr uint64_t kMaxRecvMemInfoBodySize = static_cast<uint64_t>(4ULL * 1024ULL * 1024ULL);  // 4MB
 
-Status DeserializeMemInfoList(const std::string &json_str, std::vector<MemRegion> &mem_info_list) {
+Status DeserializeMemInfoList(const std::string &json_str, std::vector<MemInfo> &mem_info_list) {
   nlohmann::json j;
   try {
     j = nlohmann::json::parse(json_str);
@@ -47,22 +47,16 @@ Status DeserializeMemInfoList(const std::string &json_str, std::vector<MemRegion
 
   mem_info_list.clear();
   for (const auto &item : j) {
-    MemRegion info{};
-    std::string type_str;
-    HIXL_CHK_STATUS_RET(ParseJsonField(item, "type", type_str), "Failed to parse mem type");
-    if (type_str == "device") {
-      info.type = MEM_DEVICE;
-    } else {
-      info.type = MEM_HOST;
-    }
-    HIXL_CHK_STATUS_RET(ParseJsonField(item, "addr", info.mem.addr), "Failed to parse mem addr");
-    HIXL_CHK_STATUS_RET(ParseJsonField(item, "size", info.mem.len), "Failed to parse mem size");
+    MemInfo info{};
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "type", info.type), "Failed to parse mem type");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "addr", info.addr), "Failed to parse mem addr");
+    HIXL_CHK_STATUS_RET(ParseJsonField(item, "size", info.size), "Failed to parse mem size");
     mem_info_list.push_back(info);
   }
   return SUCCESS;
 }
 
-Status FetchRemoteMemInfo(int32_t sock, uint32_t timeout_ms, std::vector<MemRegion> &mem_info) {
+Status FetchRemoteMemInfo(int32_t sock, uint32_t timeout_ms, std::vector<MemInfo> &mem_info) {
   CtrlMsgHeader header{};
   header.magic = kMagicNumber;
   header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType));
@@ -144,7 +138,7 @@ Status UbClientHandler::Create(const HandlerCreateArgs &args, std::unique_ptr<Ub
   if (args.is_lazy) {
     out->connect_timeout_ms_ = args.timeout_ms;
   }
-  std::vector<MemRegion> remote_mem_info;
+  std::vector<MemInfo> remote_mem_info;
   HIXL_CHK_STATUS_RET(FetchRemoteMemInfo(args.ctrl_socket, args.timeout_ms, remote_mem_info),
                       "Failed to fetch remote mem info");
   HIXL_CHK_STATUS_RET(out->BuildRemoteSegmentsFromMemInfo(remote_mem_info), "Failed to build remote segments");
@@ -232,32 +226,32 @@ Status UbClientHandler::ConnectHandles(const std::map<CommType, HixlClientHandle
   return SUCCESS;
 }
 
-Status UbClientHandler::BuildRemoteSegmentsFromMemInfo(const std::vector<MemRegion> &mem_info_list) {
+Status UbClientHandler::BuildRemoteSegmentsFromMemInfo(const std::vector<MemInfo> &mem_info_list) {
   std::lock_guard<std::mutex> seg_lock(remote_seg_mutex_);
   remote_segments_.clear();
   SegmentPtr device_seg;
   SegmentPtr host_seg;
   for (const auto &info : mem_info_list) {
     auto &seg = (info.type == MEM_DEVICE) ? device_seg : host_seg;
-    if (!seg) {
+    if (seg == nullptr) {
       seg = MakeShared<Segment>(info.type);
       HIXL_CHK_BOOL_RET_STATUS(seg != nullptr, FAILED, "Failed to create segment");
     }
-    HIXL_CHK_STATUS_RET(seg->AddRange(info.mem.addr, info.mem.len), "AddRange failed");
+    HIXL_CHK_STATUS_RET(seg->AddRange(info.addr, info.size), "AddRange failed");
   }
-  if (device_seg) {
+  if (device_seg != nullptr) {
     remote_segments_.push_back(device_seg);
   }
-  if (host_seg) {
+  if (host_seg != nullptr) {
     remote_segments_.push_back(host_seg);
   }
   HIXL_LOGI("[UbClientHandler] Built remote segments from %zu exchanged mem info entries", mem_info_list.size());
   return SUCCESS;
 }
 
-Status UbClientHandler::RegisterMem(const MemInfo &mem_info) {
-  const auto &mem = mem_info.region.mem;
-  const auto type = mem_info.region.type;
+Status UbClientHandler::RegisterMem(const MemHandleInfo &mem_info) {
+  const auto &mem = mem_info.mem;
+  const auto type = mem_info.type;
 
   {
     std::lock_guard<std::mutex> lock(local_seg_mutex_);
