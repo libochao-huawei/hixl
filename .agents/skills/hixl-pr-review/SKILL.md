@@ -70,7 +70,7 @@ curl -H "Authorization: Bearer $GITCODE_API_TOKEN" \
 
 **当变更涉及信任边界入口函数（`extern "C"` 导出函数、公开 C API、Python 绑定、跨进程回调）时，必须执行此检查。如果修改不包含信任边界入口，则跳过。**
 
-不可信入参参数校验检查（参考文件 [cpp-param-validation.md](../../../docs/guidelines/coding_standards/cpp-param-validation.md)）
+不可信入参参数校验检查（参考文件 [cpp-param-validation.md](../../../docs/zh/contributions/coding_standards/cpp-param-validation.md)）
 
 ---
 
@@ -146,7 +146,7 @@ Python 安全编码规范检查（参考文件 [python-secure.md](../../../docs/
 
 #### 1. 不可信入参参数校验检查 <✅/⚠️/❌>
 
-> 依据 [cpp-param-validation.md](../../../docs/guidelines/coding_standards/cpp-param-validation.md) 中的"校验检查清单"
+> 依据 [cpp-param-validation.md](../../../docs/zh/contributions/coding_standards/cpp-param-validation.md) 中的"校验检查清单"
 
 | 编号 | 检查项 | 结果 | 说明 |
 |------|--------|------|------|
