@@ -633,14 +633,15 @@ void BenchmarkConfigParser::PrintUsage(FILE *out) {
       "  --role|-r            target|initiator|client|server\n"
       "  --benchmark_group    result grouping name (default default)\n"
       "  --soc_variant        auto|a2|a3|a5 — HCCS rules & SOC class (default auto: ACL SOC probe; a5 forbids HCCS)\n"
-      "  --transport          hccs|rdma|roce|fabric_mem|uboe|ubg|ub "
+      "  --transport          hccs|roce|fabric_mem|uboe|ubg|ub "
       "(hccs: D2D everywhere; extra H2rD|rD2H on A3-class SOC only; fabric_mem adds EnableUseFabricMem=1; "
       "uboe/ubg add GlobalResourceConfig with uboe:device/ubg:device, only on A5; "
       "ub adds LocalCommRes with version:1.3, only on A5; "
-      "roce uses HixlCS LocalCommRes with protocol:roce placement:host, requires --roce_ip, only on A5)\n"
+      "roce: RDMA over Converged Ethernet, supported on A2, A3 and A5; on A5 uses HixlCS LocalCommRes with "
+      "protocol:roce placement:host and requires --roce_ip)\n"
       "  --roce_ip            RoCE NIC IP address for LocalCommRes endpoint (data plane; required for transport=roce\n"
-      " unless -H LocalCommRes is used). Note: this is separate from host IP used by --remote_engine/--target_id for\n"
-      " TCP coordination (control plane).\n"
+      " on A5 unless -H LocalCommRes is used; ignored on A2/A3). Note: this is separate from host IP used by\n"
+      " --remote_engine/--target_id for TCP coordination (control plane).\n"
       "  --initiator_memory   host|device (default device) — initiator-side buffer\n"
       "  --target_memory      host|device (default device) — target-side buffer\n"
       "  --op_type            read|write|mix (alias of --transfer_op)\n"
@@ -711,21 +712,24 @@ std::map<AscendString, AscendString> BenchmarkConfigParser::BuildInitializeOptio
     options[AscendString(OPTION_LOCAL_COMM_RES)] = AscendString("{\"version\":\"1.3\"}");
   }
   if (cfg.transport == "roce") {
-    const std::string &lane_roce_ip =
-        (lane_index < cfg.expanded_roce_ips.size()) ? cfg.expanded_roce_ips[lane_index] : cfg.roce_ip;
-    if (cfg.hixl_init_options.find(OPTION_LOCAL_COMM_RES) == cfg.hixl_init_options.cend()) {
-      std::string local_comm_res =
-          "{\"version\":\"1.3\",\"net_instance_id\":\"default\",\"endpoint_list\":["
-          "{\"protocol\":\"roce\",\"comm_id\":\"" +
-          lane_roce_ip + "\",\"placement\":\"host\"}]}";
-      options[AscendString(OPTION_LOCAL_COMM_RES)] = AscendString(local_comm_res.c_str());
+    const BenchSocKind soc_kind = ResolveSocKindForHccs(&cfg);
+    if (soc_kind == BenchSocKind::kA5) {
+      const std::string &lane_roce_ip =
+          (lane_index < cfg.expanded_roce_ips.size()) ? cfg.expanded_roce_ips[lane_index] : cfg.roce_ip;
+      if (cfg.hixl_init_options.find(OPTION_LOCAL_COMM_RES) == cfg.hixl_init_options.cend()) {
+        std::string local_comm_res =
+            "{\"version\":\"1.3\",\"net_instance_id\":\"default\",\"endpoint_list\":["
+            "{\"protocol\":\"roce\",\"comm_id\":\"" +
+            lane_roce_ip + "\",\"placement\":\"host\"}]}";
+        options[AscendString(OPTION_LOCAL_COMM_RES)] = AscendString(local_comm_res.c_str());
+      }
     }
   }
   return options;
 }
 
 bool BenchmarkConfigParser::ApplyTransportEnvironment(const BenchmarkConfig &cfg) {
-  if (cfg.transport == "rdma" || cfg.transport == "roce") {
+  if (cfg.transport == "roce") {
     if (setenv("HCCL_INTRA_ROCE_ENABLE", "1", 1) != 0) {
       std::fprintf(stderr, "[ERROR] setenv HCCL_INTRA_ROCE_ENABLE=1 failed: %s\n", std::strerror(errno));
       return false;
@@ -913,10 +917,9 @@ bool ValidateTransferOp(const std::string &op) {
 }
 
 bool ValidateTransport(const std::string &transport) {
-  if (transport != "hccs" && transport != "rdma" && transport != "roce" && transport != "fabric_mem" &&
-      transport != "uboe" && transport != "ubg" && transport != "ub") {
-    fprintf(stderr, "[ERROR] Invalid transport: %s (expect hccs|rdma|roce|fabric_mem|uboe|ubg|ub)\n",
-            transport.c_str());
+  if (transport != "hccs" && transport != "roce" && transport != "fabric_mem" && transport != "uboe" &&
+      transport != "ubg" && transport != "ub") {
+    fprintf(stderr, "[ERROR] Invalid transport: %s (expect hccs|roce|fabric_mem|uboe|ubg|ub)\n", transport.c_str());
     return false;
   }
   return true;
@@ -997,7 +1000,7 @@ bool ValidateHccsMemoryCombination(const BenchmarkConfig *cfg) {
   }
   const BenchSocKind kind = ResolveSocKindForHccs(cfg);
   if (kind == BenchSocKind::kA5) {
-    fprintf(stderr, "[ERROR] transport=hccs is not supported on Ascend950-class (A5) SOC; use rdma or fabric_mem\n");
+    fprintf(stderr, "[ERROR] transport=hccs is not supported on Ascend950-class (A5) SOC; use roce or fabric_mem\n");
     return false;
   }
   const std::string &im = cfg->initiator_memory_type;
@@ -1024,7 +1027,7 @@ bool ValidateHccsMemoryCombination(const BenchmarkConfig *cfg) {
   }
   fprintf(stderr,
           "[ERROR] HCCS: A2 allows D2D only; A3 adds H2rD|rD2H on host→device; "
-          "got initiator_memory=%s target_memory=%s (use rdma or fabric_mem for other directions)\n",
+          "got initiator_memory=%s target_memory=%s (use roce or fabric_mem for other directions)\n",
           im.c_str(), tm.c_str());
   return false;
 }
@@ -1127,6 +1130,20 @@ bool ValidateBenchmarkTopology(BenchmarkConfig *cfg) {
 }
 
 bool ValidateBenchmarkWorkload(BenchmarkConfig *cfg) {
+  if (cfg->soc_variant == "auto") {
+    const BenchSocKind kind = ResolveSocKindForHccs(cfg);
+    switch (kind) {
+      case BenchSocKind::kA2:
+        cfg->soc_variant = "a2";
+        break;
+      case BenchSocKind::kA3:
+        cfg->soc_variant = "a3";
+        break;
+      case BenchSocKind::kA5:
+        cfg->soc_variant = "a5";
+        break;
+    }
+  }
   if (!ValidateTransferOp(cfg->transfer_op)) {
     return false;
   }
@@ -1137,15 +1154,15 @@ bool ValidateBenchmarkWorkload(BenchmarkConfig *cfg) {
   if (!ValidateHccsMemoryCombination(cfg)) {
     return false;
   }
-  // RoCE: requires --roce_ip unless LocalCommRes is explicitly set via -H
   if (cfg->transport == "roce") {
-    if (cfg->hixl_init_options.find("LocalCommRes") == cfg->hixl_init_options.cend() && cfg->roce_ip.empty()) {
-      fprintf(stderr, "[ERROR] transport=roce requires --roce_ip=<ROCE_NIC_IP> or -H LocalCommRes=...\n");
-      return false;
-    }
     const BenchSocKind soc_kind = ResolveSocKindForHccs(cfg);
-    if (soc_kind != BenchSocKind::kA5) {
-      fprintf(stderr, "[ERROR] transport=roce is only supported on Ascend950 (A5) platforms\n");
+    if (soc_kind == BenchSocKind::kA5) {
+      if (cfg->hixl_init_options.find("LocalCommRes") == cfg->hixl_init_options.cend() && cfg->roce_ip.empty()) {
+        fprintf(stderr, "[ERROR] transport=roce on A5 requires --roce_ip=<ROCE_NIC_IP> or -H LocalCommRes=...\n");
+        return false;
+      }
+    } else if (soc_kind != BenchSocKind::kA3 && soc_kind != BenchSocKind::kA2) {
+      fprintf(stderr, "[ERROR] transport=roce is only supported on A2, A3 and A5 platforms\n");
       return false;
     }
   }

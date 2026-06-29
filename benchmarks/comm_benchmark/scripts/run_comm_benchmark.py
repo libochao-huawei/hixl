@@ -13,8 +13,8 @@
 
 Examples (single machine — default):
   python3 run_comm_benchmark.py --type=D2rD --transport=hccs
-  python3 run_comm_benchmark.py --transport=rdma --device_ids=0,1   # all rdma directions
-  python3 run_comm_benchmark.py --type=D2rH --transport=rdma --device_ids=0,1
+  python3 run_comm_benchmark.py --transport=roce --device_ids=0,1   # all roce directions
+  python3 run_comm_benchmark.py --type=D2rH --transport=roce --device_ids=0,1
   python3 run_comm_benchmark.py --pattern=one_to_many --device_ids=0,1,2,3,4 --type=D2rD
   python3 run_comm_benchmark.py --pattern=many_to_one --device_ids=0,1,2,3,4 --type=D2rD
   python3 run_comm_benchmark.py --pattern=pairwise --device_ids=0,1,2,3 --type=D2rD
@@ -65,9 +65,9 @@ TYPE_MAP = {
     'rD2H': ('host', 'device', 'read'),
 }
 ALL_TYPES = list(TYPE_MAP.keys())
-TRANSPORTS_A2 = ['hccs', 'rdma']
-TRANSPORTS_A3 = ['hccs', 'rdma', 'fabric_mem']
-TRANSPORTS_A5 = ['rdma', 'roce', 'fabric_mem', 'uboe', 'ubg', 'ub']
+TRANSPORTS_A2 = ['hccs', 'roce']
+TRANSPORTS_A3 = ['hccs', 'roce', 'fabric_mem']
+TRANSPORTS_A5 = ['roce', 'fabric_mem', 'uboe', 'ubg', 'ub']
 DEFAULT_START_BLOCK = 16384
 DEFAULT_MAX_BLOCK = 2097152
 BLOCK_SORT_ORDER = ['16K', '32K', '64K', '128K', '256K', '512K', '1M', '2M', '4M', '8M']
@@ -210,7 +210,7 @@ def supported_transports_for_soc(gate_soc: str | None, dual: bool = False) -> li
     if gate_soc == 'a5':
         return list(TRANSPORTS_A5)
     if dual:
-        return ['rdma']
+        return ['roce']
     return list(TRANSPORTS_A2)
 
 
@@ -540,7 +540,7 @@ def _add_transfer_args(parser) -> None:
     )
     parser.add_argument(
         '--transport',
-        choices=['hccs', 'rdma', 'roce', 'fabric_mem', 'uboe', 'ubg', 'ub', 'all'],
+        choices=['hccs', 'roce', 'fabric_mem', 'uboe', 'ubg', 'ub', 'all'],
         default=None,
         help='Transport path. Dual-machine default: all platform-supported transports.',
     )
