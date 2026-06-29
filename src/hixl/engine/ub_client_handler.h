@@ -26,7 +26,7 @@ class UbClientHandler : public IClientHandler {
   ~UbClientHandler() override = default;
 
   Status Connect(uint32_t timeout_ms) override;
-  Status RegisterMem(const MemInfo &mem_info) override;
+  Status RegisterMem(const MemHandleInfo &mem_info) override;
   Status TransferAsync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation, TransferReq &req) override;
   Status TransferSync(const std::vector<TransferOpDesc> &op_descs, TransferOp operation, uint32_t timeout_ms) override;
   Status GetTransferStatus(const TransferReq &req, TransferStatus &status) override;
@@ -48,10 +48,10 @@ class UbClientHandler : public IClientHandler {
   Status ConnectHandles(const std::map<CommType, HixlClientHandle> &handles, uint32_t timeout_ms);
 
   /**
-   * @brief 从MemRegion列表构建remote_segments_
+   * @brief 从MemInfo列表构建remote_segments_
    * @param [in] mem_info_list 对端内存信息列表
    */
-  Status BuildRemoteSegmentsFromMemInfo(const std::vector<MemRegion> &mem_info_list);
+  Status BuildRemoteSegmentsFromMemInfo(const std::vector<MemInfo> &mem_info_list);
 
   struct BatchHandle {
     CommType type;

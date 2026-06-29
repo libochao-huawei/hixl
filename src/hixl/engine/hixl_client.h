@@ -56,7 +56,7 @@ class HixlClient {
    * @param [in] mem_info_list 本端注册内存信息
    * @return 操作结果状态码
    */
-  Status SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list);
+  Status SetLocalMemInfo(const std::vector<MemHandleInfo> &mem_info_list);
 
   /**
    * @brief client初始化

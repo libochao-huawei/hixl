@@ -26,14 +26,14 @@ namespace hixl {
 namespace {
 constexpr uint32_t kDefaultBackLog = 1024U;
 
-Status SerializeMemInfoList(const std::vector<MemRegion> &list, std::string &msg_str) {
+Status SerializeMemInfoList(const std::vector<MemInfo> &list, std::string &msg_str) {
   nlohmann::json j = nlohmann::json::array();
   try {
     for (const auto &mi : list) {
       nlohmann::json item;
-      item["type"] = (mi.type == MEM_DEVICE) ? "device" : "host";
-      item["addr"] = mi.mem.addr;
-      item["size"] = mi.mem.len;
+      item["type"] = mi.type;
+      item["addr"] = mi.addr;
+      item["size"] = mi.size;
       j.push_back(item);
     }
     msg_str = j.dump();
@@ -233,16 +233,16 @@ Status HixlServer::ProcessNotifyMsg(int32_t fd, const char *msg, uint64_t msg_le
   return result;
 }
 
-std::vector<MemRegion> HixlServer::GetRegisteredMemInfo() {
+std::vector<MemInfo> HixlServer::GetRegisteredMemInfo() {
   std::lock_guard<std::mutex> lk(mtx_);
-  std::vector<MemRegion> result;
+  std::vector<MemInfo> result;
   for (const auto &kv : handle_to_addr_) {
-    const auto &info = kv.second;
-    MemRegion region;
-    region.type = info.mem_type;
-    region.mem.addr = info.start_addr;
-    region.mem.len = info.end_addr - info.start_addr;
-    result.push_back(region);
+    const auto &addr_info = kv.second;
+    MemInfo mi;
+    mi.type = addr_info.mem_type;
+    mi.addr = addr_info.start_addr;
+    mi.size = addr_info.end_addr - addr_info.start_addr;
+    result.push_back(mi);
   }
   return result;
 }
@@ -269,7 +269,7 @@ Status HixlServer::RegisterProcessors() {
   MsgProcessor send_mem_info_cb = [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
     (void)msg;
     (void)msg_len;
-    std::vector<MemRegion> mem_info = GetRegisteredMemInfo();
+    std::vector<MemInfo> mem_info = GetRegisteredMemInfo();
     std::string msg_str;
     HIXL_CHK_STATUS_RET(SerializeMemInfoList(mem_info, msg_str), "Failed to serialize mem info list.");
     CtrlMsgHeader header{};

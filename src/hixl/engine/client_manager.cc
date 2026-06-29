@@ -63,7 +63,7 @@ Status ClientManager::CreateClient(const ClientConfig &config, ClientPtr &client
   return SUCCESS;
 }
 
-Status ClientManager::GetOrCreateClient(const ClientConfig &config, const std::vector<MemInfo> &mem_info_list,
+Status ClientManager::GetOrCreateClient(const ClientConfig &config, const std::vector<MemHandleInfo> &mem_info_list,
                                         int32_t timeout_in_millis, ClientPtr &client_ptr) {
   auto client_mutex = GetClientMutex(config.remote_engine);
   std::lock_guard<std::mutex> client_lock(*client_mutex);

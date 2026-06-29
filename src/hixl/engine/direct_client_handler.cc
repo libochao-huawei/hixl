@@ -59,16 +59,16 @@ Status DirectClientHandler::Connect(uint32_t timeout_ms) {
   return ret;
 }
 
-Status DirectClientHandler::RegisterMem(const MemInfo &mem_info) {
+Status DirectClientHandler::RegisterMem(const MemHandleInfo &mem_info) {
   CommMem hccl_mem{};
-  hccl_mem.type = (mem_info.region.type == MemType::MEM_DEVICE) ? COMM_MEM_TYPE_DEVICE : COMM_MEM_TYPE_HOST;
-  hccl_mem.addr = reinterpret_cast<void *>(mem_info.region.mem.addr);
-  hccl_mem.size = mem_info.region.mem.len;
+  hccl_mem.type = (mem_info.type == MemType::MEM_DEVICE) ? COMM_MEM_TYPE_DEVICE : COMM_MEM_TYPE_HOST;
+  hccl_mem.addr = reinterpret_cast<void *>(mem_info.mem.addr);
+  hccl_mem.size = mem_info.mem.len;
 
   std::lock_guard<std::mutex> lock(mutex_);
   MemHandle mem_handle = nullptr;
   HIXL_CHK_STATUS_RET(HixlCSClientRegMem(handle_, nullptr, &hccl_mem, &mem_handle),
-                      "DirectClientHandler register memory failed, addr: 0x%lx", mem_info.region.mem.addr);
+                      "DirectClientHandler register memory failed, addr: 0x%lx", mem_info.mem.addr);
   mem_handles_.push_back(mem_handle);
   return SUCCESS;
 }
