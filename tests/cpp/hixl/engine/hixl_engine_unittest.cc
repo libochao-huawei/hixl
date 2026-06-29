@@ -76,6 +76,17 @@ std::string BuildHostRoceEndpoint(const std::string &comm_id) {
   return oss.str();
 }
 
+std::string BuildUbCtpEndpoint(const std::string &comm_id, const std::string &placement, const std::string &dst_eid) {
+  std::ostringstream oss;
+  oss << "      {\n";
+  oss << "        \"protocol\": \"ub_ctp\",\n";
+  oss << "        \"comm_id\": \"" << comm_id << "\",\n";
+  oss << "        \"placement\": \"" << placement << "\",\n";
+  oss << "        \"dst_eid\": \"" << dst_eid << "\"\n";
+  oss << "      }";
+  return oss.str();
+}
+
 std::string BuildLocalCommRes(const std::string &net_instance_id, const std::string &version,
                               const std::vector<std::string> &endpoint_items) {
   std::ostringstream oss;
@@ -125,144 +136,52 @@ class HixlEngineTest : public ::testing::Test {
     const char *old_intra_roce_enable = std::getenv("HCCL_INTRA_ROCE_ENABLE");
     old_intra_roce_enable_ = (old_intra_roce_enable == nullptr) ? "" : old_intra_roce_enable;
     unsetenv("HCCL_INTRA_ROCE_ENABLE");
-    options1[hixl::OPTION_LOCAL_COMM_RES] = R"(
-    {
-        "net_instance_id": "superpod1_1",
-        "endpoint_list": [
-            {
-                "protocol": "roce",
-                "comm_id": "127.0.0.1",
-                "placement": "host"
-            },
-            {
-                "protocol": "ub_ctp",
-                "comm_id": "000000000000000000000000c0a80463",
-                "placement": "device",
-                "dst_eid": "000000000000000000000000c0a80563"
-            }
-        ],
-        "version": "1.3"
-    }
-    )";
 
-    options2[hixl::OPTION_LOCAL_COMM_RES] = R"(
-    {
-        "net_instance_id": "superpod2_2",
-        "endpoint_list": [
-            {
-                "protocol": "ub_ctp",
-                "comm_id": "000000000000000000000000c0a80463",
-                "placement": "device",
-                "dst_eid": "000000000000000000000000c0a80563"
-            },
-            {
-                "protocol": "roce",
-                "comm_id": "127.0.0.1",
-                "placement": "host"
-            }
-        ],
-        "version": "1.3"
-    }
-    )";
+    const std::string kRoceHost = BuildHostRoceEndpoint("127.0.0.1");
+
+    // options1: 1条 UB 链路 + RoCE
+    options1[hixl::OPTION_LOCAL_COMM_RES] =
+        AscendString(BuildLocalCommRes("superpod1_1", "1.3",
+                                       {kRoceHost, BuildUbCtpEndpoint("000000000000000000000000c0a80463", "device",
+                                                                      "000000000000000000000000c0a80563")})
+                         .c_str());
+
+    // options2: 不同 net_instance_id，UB + RoCE 顺序不同
+    options2[hixl::OPTION_LOCAL_COMM_RES] = AscendString(
+        BuildLocalCommRes(
+            "superpod2_2", "1.3",
+            {BuildUbCtpEndpoint("000000000000000000000000c0a80463", "device", "000000000000000000000000c0a80563"),
+             kRoceHost})
+            .c_str());
 
     // 与 options1 同 net_instance_id，UB endpoint 的 comm_id/dst_eid 互换，用于 UB 成对匹配（1条链路）
-    options1_ub_pair[hixl::OPTION_LOCAL_COMM_RES] = R"(
-    {
-        "net_instance_id": "superpod1_1",
-        "endpoint_list": [
-            {
-                "protocol": "roce",
-                "comm_id": "127.0.0.1",
-                "placement": "host"
-            },
-            {
-                "protocol": "ub_ctp",
-                "comm_id": "000000000000000000000000c0a80563",
-                "placement": "device",
-                "dst_eid": "000000000000000000000000c0a80463"
-            }
-        ],
-        "version": "1.3"
-    }
-    )";
+    options1_ub_pair[hixl::OPTION_LOCAL_COMM_RES] =
+        AscendString(BuildLocalCommRes("superpod1_1", "1.3",
+                                       {kRoceHost, BuildUbCtpEndpoint("000000000000000000000000c0a80563", "device",
+                                                                      "000000000000000000000000c0a80463")})
+                         .c_str());
 
     // 4 条 UB 链路（D2D/D2H/H2D/H2H）：2 device + 2 host placement
-    options_4ub[hixl::OPTION_LOCAL_COMM_RES] = R"(
-    {
-        "net_instance_id": "superpod1_1",
-        "endpoint_list": [
-            {
-                "protocol": "roce",
-                "comm_id": "127.0.0.1",
-                "placement": "host"
-            },
-            {
-                "protocol": "ub_ctp",
-                "comm_id": "000000000000000000000000c0a81001",
-                "placement": "device",
-                "dst_eid": "000000000000000000000000c0a81002"
-            },
-            {
-                "protocol": "ub_ctp",
-                "comm_id": "000000000000000000000000c0a81003",
-                "placement": "device",
-                "dst_eid": "000000000000000000000000c0a81004"
-            },
-            {
-                "protocol": "ub_ctp",
-                "comm_id": "000000000000000000000000c0a81005",
-                "placement": "host",
-                "dst_eid": "000000000000000000000000c0a81006"
-            },
-            {
-                "protocol": "ub_ctp",
-                "comm_id": "000000000000000000000000c0a81007",
-                "placement": "host",
-                "dst_eid": "000000000000000000000000c0a81008"
-            }
-        ],
-        "version": "1.3"
-    }
-    )";
+    options_4ub[hixl::OPTION_LOCAL_COMM_RES] = AscendString(
+        BuildLocalCommRes(
+            "superpod1_1", "1.3",
+            {kRoceHost,
+             BuildUbCtpEndpoint("000000000000000000000000c0a81001", "device", "000000000000000000000000c0a81002"),
+             BuildUbCtpEndpoint("000000000000000000000000c0a81003", "device", "000000000000000000000000c0a81004"),
+             BuildUbCtpEndpoint("000000000000000000000000c0a81005", "host", "000000000000000000000000c0a81006"),
+             BuildUbCtpEndpoint("000000000000000000000000c0a81007", "host", "000000000000000000000000c0a81008")})
+            .c_str());
 
     // 与 options_4ub 互补：comm_id/dst_eid 互换，placement 对应 D2D/D2H/H2D/H2H
-    options_4ub_pair[hixl::OPTION_LOCAL_COMM_RES] = R"(
-    {
-        "net_instance_id": "superpod1_1",
-        "endpoint_list": [
-            {
-                "protocol": "roce",
-                "comm_id": "127.0.0.1",
-                "placement": "host"
-            },
-            {
-                "protocol": "ub_ctp",
-                "comm_id": "000000000000000000000000c0a81002",
-                "placement": "device",
-                "dst_eid": "000000000000000000000000c0a81001"
-            },
-            {
-                "protocol": "ub_ctp",
-                "comm_id": "000000000000000000000000c0a81004",
-                "placement": "host",
-                "dst_eid": "000000000000000000000000c0a81003"
-            },
-            {
-                "protocol": "ub_ctp",
-                "comm_id": "000000000000000000000000c0a81006",
-                "placement": "device",
-                "dst_eid": "000000000000000000000000c0a81005"
-            },
-            {
-                "protocol": "ub_ctp",
-                "comm_id": "000000000000000000000000c0a81008",
-                "placement": "host",
-                "dst_eid": "000000000000000000000000c0a81007"
-            }
-        ],
-        "version": "1.3"
-    }
-    )";
+    options_4ub_pair[hixl::OPTION_LOCAL_COMM_RES] = AscendString(
+        BuildLocalCommRes(
+            "superpod1_1", "1.3",
+            {kRoceHost,
+             BuildUbCtpEndpoint("000000000000000000000000c0a81002", "device", "000000000000000000000000c0a81001"),
+             BuildUbCtpEndpoint("000000000000000000000000c0a81004", "host", "000000000000000000000000c0a81003"),
+             BuildUbCtpEndpoint("000000000000000000000000c0a81006", "device", "000000000000000000000000c0a81005"),
+             BuildUbCtpEndpoint("000000000000000000000000c0a81008", "host", "000000000000000000000000c0a81007")})
+            .c_str());
   }
 
   void TearDown() override {
@@ -306,16 +225,8 @@ class HixlEngineTest : public ::testing::Test {
 
   void InitializeAndConnectEngines(HixlEngine &engine1, const std::map<AscendString, AscendString> &opts1,
                                    HixlEngine &engine2, const std::map<AscendString, AscendString> &opts2) {
-    {
-      HixlOptions parsed;
-      ASSERT_EQ(HixlOptions::Parse(opts1, parsed), SUCCESS);
-      EXPECT_EQ(engine1.Initialize(parsed), SUCCESS);
-    }
-    {
-      HixlOptions parsed;
-      ASSERT_EQ(HixlOptions::Parse(opts2, parsed), SUCCESS);
-      EXPECT_EQ(engine2.Initialize(parsed), SUCCESS);
-    }
+    CreateAndInitEngine(engine1, opts1);
+    CreateAndInitEngine(engine2, opts2);
     EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), SUCCESS);
   }
 
@@ -324,16 +235,19 @@ class HixlEngineTest : public ::testing::Test {
                               MemHandle &handle2, bool same_instance = false) {
     std::map<AscendString, AscendString> auto_connect_options = options1;
     auto_connect_options[hixl::OPTION_AUTO_CONNECT] = "1";
-    HixlOptions parsed1;
-    ASSERT_EQ(HixlOptions::Parse(auto_connect_options, parsed1), SUCCESS);
-    EXPECT_EQ(engine1.Initialize(parsed1), SUCCESS);
-
-    HixlOptions parsed2;
-    ASSERT_EQ(HixlOptions::Parse(same_instance ? options1_ub_pair : options2, parsed2), SUCCESS);
-    EXPECT_EQ(engine2.Initialize(parsed2), SUCCESS);
+    CreateAndInitEngine(engine1, auto_connect_options);
+    CreateAndInitEngine(engine2, same_instance ? options1_ub_pair : options2);
 
     Register(engine1, &src, handle1);
     Register(engine2, &dst, handle2);
+  }
+
+  // 触发首次 READ 传输以完成 auto-connect 内部建链，并验证传输结果
+  TransferOpDesc TriggerAutoConnectReadTransfer(HixlEngine &engine, int32_t &src, const int32_t &dst) {
+    TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
+    EXPECT_EQ(engine.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), SUCCESS);
+    EXPECT_EQ(src, 2);
+    return desc;
   }
 
   void CreateAndInitEngine(HixlEngine &engine, const std::map<AscendString, AscendString> &opts) {
@@ -389,10 +303,7 @@ class HixlEngineTest : public ::testing::Test {
   }
 
   std::vector<EndpointConfig> InitEngineAndGetEndpoints(HixlEngine &engine, const std::string &local_comm_res) {
-    auto options = BuildOptions(local_comm_res);
-    HixlOptions parsed;
-    EXPECT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-    EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
+    CreateAndInitEngine(engine, BuildOptions(local_comm_res));
     return engine.endpoint_list_;
   }
 
@@ -437,11 +348,8 @@ TEST_F(HixlEngineTest, EngineFactoryUsesHixlEngineWhenProtocolDescConfigured) {
 TEST_F(HixlEngineTest, InitializeSetsServerListenPortFromGlobalResourceConfig) {
   std::map<AscendString, AscendString> options = options1;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.listen_port":26301})";
-  HixlOptions parsed;
-  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-
   HixlEngine engine("127.0.0.1");
-  EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
+  CreateAndInitEngine(engine, options);
 
   auto *cs_server = static_cast<hixl::HixlCSServer *>(engine.server_.server_handle_);
   ASSERT_NE(cs_server, nullptr);
@@ -449,18 +357,15 @@ TEST_F(HixlEngineTest, InitializeSetsServerListenPortFromGlobalResourceConfig) {
   EXPECT_EQ(*cs_server->global_config_.ListenPort(), 26301U);
 
   ClientConfig config{};
-  std::vector<MemInfo> mem_info_list;
+  std::vector<MemHandleInfo> mem_info_list;
   engine.BuildClientConfig(AscendString("127.0.0.1:26300"), config, mem_info_list, kTimeOut);
   EXPECT_FALSE(config.qos.has_value());
   engine.Finalize();
 }
 
 TEST_F(HixlEngineTest, InitializeWithoutListenPortDoesNotSetServerListenPort) {
-  HixlOptions parsed;
-  ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
-
   HixlEngine engine("127.0.0.1");
-  EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
+  CreateAndInitEngine(engine, options1);
 
   auto *cs_server = static_cast<hixl::HixlCSServer *>(engine.server_.server_handle_);
   ASSERT_NE(cs_server, nullptr);
@@ -471,14 +376,11 @@ TEST_F(HixlEngineTest, InitializeWithoutListenPortDoesNotSetServerListenPort) {
 TEST_F(HixlEngineTest, InitializeSetsClientQosFromGlobalResourceConfig) {
   std::map<AscendString, AscendString> options = options1;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.qos": 7})";
-  HixlOptions parsed;
-  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
-
   HixlEngine engine("127.0.0.1");
-  EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
+  CreateAndInitEngine(engine, options);
 
   ClientConfig config{};
-  std::vector<MemInfo> mem_info_list;
+  std::vector<MemHandleInfo> mem_info_list;
   engine.BuildClientConfig(AscendString("127.0.0.1:26300"), config, mem_info_list, kTimeOut);
   ASSERT_TRUE(config.qos.has_value());
   EXPECT_EQ(static_cast<uint32_t>(config.qos.value()), 7U);
@@ -486,14 +388,11 @@ TEST_F(HixlEngineTest, InitializeSetsClientQosFromGlobalResourceConfig) {
 }
 
 TEST_F(HixlEngineTest, InitializeWithoutQosDoesNotSetClientQos) {
-  HixlOptions parsed;
-  ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
-
   HixlEngine engine("127.0.0.1");
-  EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
+  CreateAndInitEngine(engine, options1);
 
   ClientConfig config{};
-  std::vector<MemInfo> mem_info_list;
+  std::vector<MemHandleInfo> mem_info_list;
   engine.BuildClientConfig(AscendString("127.0.0.1:26300"), config, mem_info_list, kTimeOut);
   EXPECT_FALSE(config.qos.has_value());
   engine.Finalize();
@@ -614,11 +513,7 @@ TEST_F(HixlEngineTest, TestNotListenFailed) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
   std::string local_engine = "127.0.0.1:26300";
   HixlEngine engine(AscendString(local_engine.c_str()));
-  {
-    HixlOptions parsed;
-    ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
-    EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
-  }
+  CreateAndInitEngine(engine, options1);
   // not listen
   EXPECT_EQ(engine.Connect("127.0.0.1:26301", kTimeOut), FAILED);
   engine.Finalize();
@@ -640,11 +535,7 @@ TEST_F(HixlEngineTest, TestDeregisterUnregisteredMem) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
   std::string local_engine = "127.0.0.1";
   HixlEngine engine(AscendString(local_engine.c_str()));
-  {
-    HixlOptions parsed;
-    ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
-    EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
-  }
+  CreateAndInitEngine(engine, options1);
   MemHandle handle = (MemHandle)0x100;
   // deregister unregister mem
   EXPECT_EQ(engine.DeregisterMem(handle), SUCCESS);
@@ -706,9 +597,7 @@ TEST_F(HixlEngineTest, TestSendAndGetNotifies) {
 
 TEST_F(HixlEngineTest, TestSendNotifyWithoutConnection) {
   HixlEngine engine1("127.0.0.1");
-  HixlOptions parsed;
-  ASSERT_EQ(HixlOptions::Parse(options1, parsed), SUCCESS);
-  EXPECT_EQ(engine1.Initialize(parsed), SUCCESS);
+  CreateAndInitEngine(engine1, options1);
 
   NotifyDesc notify;
   notify.name = AscendString("test_notify");
@@ -804,9 +693,7 @@ TEST_F(HixlEngineTest, TestAutoConnectSync) {
   MemHandle handle2 = nullptr;
   InitAutoConnectEngines(engine1, engine2, src, dst, handle1, handle2);
 
-  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), SUCCESS);
-  EXPECT_EQ(src, 2);
+  TransferOpDesc desc = TriggerAutoConnectReadTransfer(engine1, src, dst);
   src = 3;
   EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", WRITE, {desc}, kTimeOut), SUCCESS);
   EXPECT_EQ(dst, 3);
@@ -821,11 +708,8 @@ TEST_F(HixlEngineTest, TestAutoConnectSync) {
 TEST_F(HixlEngineTest, TestInitializeUsesParsedAutoConnectOption) {
   std::map<AscendString, AscendString> auto_connect_options = options1;
   auto_connect_options[hixl::OPTION_AUTO_CONNECT] = "1";
-  HixlOptions parsed;
-  ASSERT_EQ(HixlOptions::Parse(auto_connect_options, parsed), SUCCESS);
-
   HixlEngine engine("127.0.0.1");
-  EXPECT_EQ(engine.Initialize(parsed), SUCCESS);
+  CreateAndInitEngine(engine, auto_connect_options);
   EXPECT_TRUE(engine.auto_connect_);
   engine.Finalize();
 }
@@ -833,13 +717,9 @@ TEST_F(HixlEngineTest, TestInitializeUsesParsedAutoConnectOption) {
 TEST_F(HixlEngineTest, TestConcurrentConnectReturnsSingleSuccess) {
   SetSocStub("Ascend910B1", 0, 12, 99, 88);
   HixlEngine engine1("127.0.0.1");
-  HixlOptions parsed1;
-  ASSERT_EQ(HixlOptions::Parse(options1, parsed1), SUCCESS);
-  EXPECT_EQ(engine1.Initialize(parsed1), SUCCESS);
+  CreateAndInitEngine(engine1, options1);
   HixlEngine engine2("127.0.0.1:26300");
-  HixlOptions parsed2;
-  ASSERT_EQ(HixlOptions::Parse(options2, parsed2), SUCCESS);
-  EXPECT_EQ(engine2.Initialize(parsed2), SUCCESS);
+  CreateAndInitEngine(engine2, options2);
   Status first_ret = FAILED;
   Status second_ret = FAILED;
   std::thread first_thread([&engine1, &first_ret]() { first_ret = engine1.Connect("127.0.0.1:26300", kTimeOut); });
@@ -1147,7 +1027,7 @@ class MockClientHandler : public IClientHandler {
   Status Connect(uint32_t) override {
     return SUCCESS;
   }
-  Status RegisterMem(const MemInfo &) override {
+  Status RegisterMem(const MemHandleInfo &) override {
     return SUCCESS;
   }
   Status TransferAsync(const std::vector<TransferOpDesc> &, TransferOp, TransferReq &) override {
@@ -1233,7 +1113,7 @@ TEST(ClientManagerTest, GetOrCreateClientReturnsExistingClient) {
   ClientConfig config{};
   config.remote_engine = "127.0.0.1:26300";
   ClientPtr returned_client = nullptr;
-  EXPECT_EQ(manager.GetOrCreateClient(config, {}, kTimeOut, returned_client), ALREADY_CONNECTED);
+  EXPECT_EQ(manager.GetOrCreateClient(config, {}, returned_client), ALREADY_CONNECTED);
   EXPECT_EQ(returned_client, client);
   EXPECT_EQ(manager.Finalize(), SUCCESS);
 }
@@ -1431,9 +1311,7 @@ TEST_F(HixlEngineTest, TestAutoConnectTransferThenExplicitConnect) {
   InitAutoConnectEngines(engine1, engine2, src, dst, handle1, handle2);
 
   // 首次 transfer：内部 AutoConnect 建链
-  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
-  EXPECT_EQ(engine1.TransferSync("127.0.0.1:26300", READ, {desc}, kTimeOut), SUCCESS);
-  EXPECT_EQ(src, 2);
+  TransferOpDesc desc = TriggerAutoConnectReadTransfer(engine1, src, dst);
 
   // 显式 Connect：client 已存在且已全量建链，返回 ALREADY_CONNECTED
   EXPECT_EQ(engine1.Connect("127.0.0.1:26300", kTimeOut), ALREADY_CONNECTED);
@@ -1530,12 +1408,8 @@ TEST_F(HixlEngineTest, TestAutoConnectUb4LinksTransferThenExplicitConnect) {
   // 使用 4 条 UB 链路配置
   std::map<AscendString, AscendString> auto_connect_opts = options_4ub;
   auto_connect_opts[hixl::OPTION_AUTO_CONNECT] = "1";
-  HixlOptions parsed1;
-  ASSERT_EQ(HixlOptions::Parse(auto_connect_opts, parsed1), SUCCESS);
-  EXPECT_EQ(engine1.Initialize(parsed1), SUCCESS);
-  HixlOptions parsed2;
-  ASSERT_EQ(HixlOptions::Parse(options_4ub_pair, parsed2), SUCCESS);
-  EXPECT_EQ(engine2.Initialize(parsed2), SUCCESS);
+  CreateAndInitEngine(engine1, auto_connect_opts);
+  CreateAndInitEngine(engine2, options_4ub_pair);
   Register(engine1, &src, handle1);
   Register(engine2, &dst, handle2);
 

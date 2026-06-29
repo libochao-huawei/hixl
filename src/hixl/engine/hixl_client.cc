@@ -127,7 +127,7 @@ Status HixlClient::RecvEndpointInfoResp(int32_t fd, std::vector<EndpointConfig> 
   return EndpointGenerator::DeserializeEndpointConfigList(json_str, remote_endpoint_list);
 }
 
-Status HixlClient::SetLocalMemInfo(const std::vector<MemInfo> &mem_info_list) {
+Status HixlClient::SetLocalMemInfo(const std::vector<MemHandleInfo> &mem_info_list) {
   for (const auto &mi : mem_info_list) {
     HIXL_CHK_STATUS_RET(client_handler_->RegisterMem(mi));
   }
