@@ -682,6 +682,79 @@ void BenchmarkConfigParser::PrintUsage(FILE *out) {
       kTcpClientCountMax, kDefaultTotalSize, kDefaultBufferSize, kDefaultBlockSteps, kDefaultLoops);
 }
 
+namespace {
+
+enum class BenchSocKind { kA2, kA3, kA5 };
+
+BenchSocKind ClassifySocNameForBenchRules(const std::string &soc_name) {
+  // Ascend950* → A5 (no HCCS in comm benchmarks).
+  if (soc_name.find("Ascend950") != std::string::npos) {
+    return BenchSocKind::kA5;
+  }
+  // Ascend910B* / *910B* → A2-class.
+  if (soc_name.find("910B") != std::string::npos) {
+    return BenchSocKind::kA2;
+  }
+  // Ascend910_* / Ascend910 without B → A3-class.
+  if (soc_name.find("Ascend910") != std::string::npos) {
+    return BenchSocKind::kA3;
+  }
+  return BenchSocKind::kA2;
+}
+
+BenchSocKind ProbeSocKindViaAcl(int32_t device_id) {
+  aclError er = aclInit(nullptr);
+  if (er != ACL_ERROR_NONE) {
+    // CANN returns ACL_ERROR_REPEAT_INITIALIZE when ACL was already initialized (often by peer tooling).
+    constexpr aclError kAclRepeatInitialize = static_cast<aclError>(100002);
+    if (er != kAclRepeatInitialize) {
+      fprintf(stderr,
+              "[WARN] aclInit failed for --soc_variant=auto probe (ret=%d); assuming A2-class HCCS rules "
+              "(override with --soc_variant=a3|a5 on Ascend910 / Ascend950 silicon)\n",
+              static_cast<int>(er));
+      return BenchSocKind::kA2;
+    }
+  }
+  er = aclrtSetDevice(device_id);
+  if (er != ACL_ERROR_NONE) {
+    fprintf(stderr,
+            "[WARN] aclrtSetDevice(%d) failed for SOC probe (ret=%d); assuming A2-class HCCS rules "
+            "(override with --soc_variant=a3|a5)\n",
+            static_cast<int>(device_id), static_cast<int>(er));
+    return BenchSocKind::kA2;
+  }
+  const char *soc_cstr = aclrtGetSocName();
+  if (soc_cstr == nullptr || soc_cstr[0] == '\0') {
+    fprintf(stderr,
+            "[WARN] aclrtGetSocName() empty; assuming A2-class HCCS rules "
+            "(override with --soc_variant=a3|a5)\n");
+    return BenchSocKind::kA2;
+  }
+  const std::string soc(soc_cstr);
+  fprintf(stdout, "[INFO] SOC probe for HCCS rules: aclrtGetSocName()=%s\n", soc_cstr);
+  return ClassifySocNameForBenchRules(soc);
+}
+
+BenchSocKind ResolveSocKindForHccs(const BenchmarkConfig *cfg) {
+  const std::string &sv = cfg->soc_variant;
+  if (sv == "a2") {
+    return BenchSocKind::kA2;
+  }
+  if (sv == "a3") {
+    return BenchSocKind::kA3;
+  }
+  if (sv == "a5") {
+    return BenchSocKind::kA5;
+  }
+  int32_t dev_id = cfg->device_id;
+  if (!cfg->expanded_device_ids.empty()) {
+    dev_id = cfg->expanded_device_ids[0];
+  }
+  return ProbeSocKindViaAcl(dev_id);
+}
+
+}  // namespace
+
 std::map<AscendString, AscendString> BenchmarkConfigParser::BuildInitializeOptions(const BenchmarkConfig &cfg,
                                                                                    size_t lane_index) {
   std::map<AscendString, AscendString> options;
@@ -923,75 +996,6 @@ bool ValidateTransport(const std::string &transport) {
     return false;
   }
   return true;
-}
-
-enum class BenchSocKind { kA2, kA3, kA5 };
-
-BenchSocKind ClassifySocNameForBenchRules(const std::string &soc_name) {
-  // Ascend950* → A5 (no HCCS in comm benchmarks).
-  if (soc_name.find("Ascend950") != std::string::npos) {
-    return BenchSocKind::kA5;
-  }
-  // Ascend910B* / *910B* → A2-class.
-  if (soc_name.find("910B") != std::string::npos) {
-    return BenchSocKind::kA2;
-  }
-  // Ascend910_* / Ascend910 without B → A3-class.
-  if (soc_name.find("Ascend910") != std::string::npos) {
-    return BenchSocKind::kA3;
-  }
-  return BenchSocKind::kA2;
-}
-
-BenchSocKind ProbeSocKindViaAcl(int32_t device_id) {
-  aclError er = aclInit(nullptr);
-  if (er != ACL_ERROR_NONE) {
-    // CANN returns ACL_ERROR_REPEAT_INITIALIZE when ACL was already initialized (often by peer tooling).
-    constexpr aclError kAclRepeatInitialize = static_cast<aclError>(100002);
-    if (er != kAclRepeatInitialize) {
-      fprintf(stderr,
-              "[WARN] aclInit failed for --soc_variant=auto probe (ret=%d); assuming A2-class HCCS rules "
-              "(override with --soc_variant=a3|a5 on Ascend910 / Ascend950 silicon)\n",
-              static_cast<int>(er));
-      return BenchSocKind::kA2;
-    }
-  }
-  er = aclrtSetDevice(device_id);
-  if (er != ACL_ERROR_NONE) {
-    fprintf(stderr,
-            "[WARN] aclrtSetDevice(%d) failed for SOC probe (ret=%d); assuming A2-class HCCS rules "
-            "(override with --soc_variant=a3|a5)\n",
-            static_cast<int>(device_id), static_cast<int>(er));
-    return BenchSocKind::kA2;
-  }
-  const char *soc_cstr = aclrtGetSocName();
-  if (soc_cstr == nullptr || soc_cstr[0] == '\0') {
-    fprintf(stderr,
-            "[WARN] aclrtGetSocName() empty; assuming A2-class HCCS rules "
-            "(override with --soc_variant=a3|a5)\n");
-    return BenchSocKind::kA2;
-  }
-  const std::string soc(soc_cstr);
-  fprintf(stdout, "[INFO] SOC probe for HCCS rules: aclrtGetSocName()=%s\n", soc_cstr);
-  return ClassifySocNameForBenchRules(soc);
-}
-
-BenchSocKind ResolveSocKindForHccs(const BenchmarkConfig *cfg) {
-  const std::string &sv = cfg->soc_variant;
-  if (sv == "a2") {
-    return BenchSocKind::kA2;
-  }
-  if (sv == "a3") {
-    return BenchSocKind::kA3;
-  }
-  if (sv == "a5") {
-    return BenchSocKind::kA5;
-  }
-  int32_t dev_id = cfg->device_id;
-  if (!cfg->expanded_device_ids.empty()) {
-    dev_id = cfg->expanded_device_ids[0];
-  }
-  return ProbeSocKindViaAcl(dev_id);
 }
 
 bool ValidateHccsMemoryCombination(const BenchmarkConfig *cfg) {

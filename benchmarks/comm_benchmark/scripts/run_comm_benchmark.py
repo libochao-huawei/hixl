@@ -1362,7 +1362,8 @@ def _run_single_direction(args, bench_bin: str, devices: list[int], bench_type: 
         procs.append(
             start_process(
                 _single_target_cmd(
-                    SingleTargetCommandSpec(args, bench_bin, bench_type, devices[idx], target, tcp_ports[idx], lane_index=idx)
+                    SingleTargetCommandSpec(args, bench_bin, bench_type, devices[idx], target, tcp_ports[idx],
+                                            lane_index=idx)
                 )
             )
         )
