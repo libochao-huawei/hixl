@@ -75,7 +75,7 @@ class HixlServer {
    * @brief 获取已注册内存信息列表，用于通过控制面Socket交换给对端
    * @return 已注册内存信息列表
    */
-  std::vector<MemRegion> GetRegisteredMemInfo();
+  std::vector<MemInfo> GetRegisteredMemInfo();
 
  private:
   Status RegisterNotifyHandlers();
