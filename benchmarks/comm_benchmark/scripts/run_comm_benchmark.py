@@ -312,6 +312,7 @@ class SingleTargetCommandSpec:
     device_id: int
     target: str
     tcp_port: int
+    lane_index: int = 0
 
 
 @dataclass
@@ -323,6 +324,7 @@ class SingleInitiatorCommandSpec:
     local_port: int
     remotes: str
     ports: str
+    lane_index: int = 0
 
 
 @dataclass
@@ -995,6 +997,7 @@ def _dual_target_lanes(topology: DualTopology, local_ip: str, base_hixl_port: in
                     'hixl_port': base_hixl_port + idx,
                     'tcp_port': base_tcp_port + idx,
                     'tcp_client_count': 1,
+                    'lane_index': idx,
                 }
             )
         return lanes
@@ -1031,6 +1034,7 @@ def _dual_initiator_lanes(topology: DualTopology, target_host: str, base_hixl_po
                     'remote_engines': remote,
                     'tcp_port': str(base_tcp_port),
                     'local_hixl_port': base_hixl_port + 1 + idx,
+                    'lane_index': idx,
                 }
             )
         return lanes
@@ -1358,7 +1362,7 @@ def _run_single_direction(args, bench_bin: str, devices: list[int], bench_type: 
         procs.append(
             start_process(
                 _single_target_cmd(
-                    SingleTargetCommandSpec(args, bench_bin, bench_type, devices[idx], target, tcp_ports[idx])
+                    SingleTargetCommandSpec(args, bench_bin, bench_type, devices[idx], target, tcp_ports[idx], lane_index=idx)
                 )
             )
         )
@@ -1377,6 +1381,7 @@ def _run_single_direction(args, bench_bin: str, devices: list[int], bench_type: 
                         local_port,
                         remotes,
                         ports,
+                        lane_index=idx,
                     )
                 )
             )

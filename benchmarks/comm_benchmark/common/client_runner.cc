@@ -710,9 +710,9 @@ bool LaneWorkerSetDevice(size_t idx, int32_t dev, std::atomic<int> *first_fail, 
   return true;
 }
 
-bool LaneWorkerInitHixlEngine(LaneState *p, const BenchmarkConfig &cfg, const std::string &local,
+bool LaneWorkerInitHixlEngine(LaneState *p, const BenchmarkConfig &cfg, const std::string &local, size_t lane_idx,
                               std::atomic<int> *first_fail, std::mutex *fail_mu) {
-  if (InitializeHixl(local, cfg, &p->hixl) != 0) {
+  if (InitializeHixl(local, cfg, &p->hixl, lane_idx) != 0) {
     p->hixl.Finalize();
     MarkFirstFail(first_fail, fail_mu);
     return false;
@@ -777,7 +777,7 @@ void LaneWorkerEntry(size_t idx, LaneState *p, const BenchmarkConfig &cfg, std::
     (void)aclrtResetDevice(dev);
     return;
   }
-  if (!LaneWorkerInitHixlEngine(p, cfg, local, first_fail, fail_mu)) {
+  if (!LaneWorkerInitHixlEngine(p, cfg, local, idx, first_fail, fail_mu)) {
     FinalizeLaneState(p, remote);
     (void)aclrtResetDevice(dev);
     return;
