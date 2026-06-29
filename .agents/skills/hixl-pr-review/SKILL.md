@@ -70,7 +70,7 @@ curl -H "Authorization: Bearer $GITCODE_API_TOKEN" \
 
 **当变更涉及信任边界入口函数（`extern "C"` 导出函数、公开 C API、Python 绑定、跨进程回调）时，必须执行此检查。如果修改不包含信任边界入口，则跳过。**
 
-不可信入参参数校验检查（参考文件 [cpp-param-validation.md](../../../docs/guidelines/coding_standards/cpp-param-validation.md)）
+不可信入参参数校验检查（参考文件 [cpp-param-validation.md](../../../docs/zh/contributions/coding_standards/cpp-param-validation.md)）
 
 ---
 
@@ -78,11 +78,11 @@ curl -H "Authorization: Bearer $GITCODE_API_TOKEN" \
 
 **所有的 C++ 文件必须经过以下三个 C++ 规范检查。如果修改不包含 C++ 文件，则跳过下面文件加载和 C++ 检视流程。**
 
-C++ 通用编码规范检查（参考文件 [cpp-general.md](../../../docs/guidelines/coding_standards/cpp-general.md)）
+C++ 通用编码规范检查（参考文件 [cpp-general.md](../../../docs/zh/contributions/coding_standards/cpp-general.md)）
 
-C++ 安全编码规范检查（参考文件 [cpp-secure.md](../../../docs/guidelines/coding_standards/cpp-secure.md)）
+C++ 安全编码规范检查（参考文件 [cpp-secure.md](../../../docs/zh/contributions/coding_standards/cpp-secure.md)）
 
-C++ 代码风格规范检查（参考文件 [cpp-style.md](../../../docs/guidelines/coding_standards/cpp-style.md)）
+C++ 代码风格规范检查（参考文件 [cpp-style.md](../../../docs/zh/contributions/coding_standards/cpp-style.md)）
 
 ---
 
@@ -90,7 +90,7 @@ C++ 代码风格规范检查（参考文件 [cpp-style.md](../../../docs/guideli
 
 **所有的 Python 文件必须经过 Python 安全编码规范检查。如果修改不包含 Python 文件，则跳过下面文件加载和 Python 检视流程。**
 
-Python 安全编码规范检查（参考文件 [python-secure.md](../../../docs/guidelines/coding_standards/python-secure.md)）
+Python 安全编码规范检查（参考文件 [python-secure.md](../../../docs/zh/contributions/coding_standards/python-secure.md)）
 
 ### 步骤 4: 生成检视报告
 
@@ -137,16 +137,12 @@ Python 安全编码规范检查（参考文件 [python-secure.md](../../../docs/
 
 #### 0. 🎯 HIXL 重点检查项 <✅/⚠️/❌>
 
-> 依据 [hixl-review-focus.md](./references/hixl-review-focus.md) 中的“重点检查清单”
-
 | 规范编号 | 检查维度 | 结果 | 说明 |
 |------|----------|------|------|
 | <从重点检查清单读取的编号> | <从重点检查清单读取的检查维度> | <✅/⚠️/❌> | <发现、风险说明或 N/A 原因> |
 | ... | ... | ... | ... |
 
 #### 1. 不可信入参参数校验检查 <✅/⚠️/❌>
-
-> 依据 [cpp-param-validation.md](../../../docs/guidelines/coding_standards/cpp-param-validation.md) 中的"校验检查清单"
 
 | 编号 | 检查项 | 结果 | 说明 |
 |------|--------|------|------|
@@ -155,16 +151,12 @@ Python 安全编码规范检查（参考文件 [python-secure.md](../../../docs/
 
 #### 2. C++ 通用编码规范检查 <✅/⚠️/❌>
 
-> 依据 [cpp-general.md](../../../docs/guidelines/coding_standards/cpp-general.md) 中的“规范列表”
-
 | 规范编号 | 规范名称 | 结果 | 说明 |
 |------|----------|------|------|
 | <从规范列表读取的编号> | <从规范列表读取的规范名称> | <✅/⚠️/❌> | <发现、风险说明或 N/A 原因> |
 | ... | ... | ... | ... |
 
 #### 3. C++ 安全编码规范检查 <✅/⚠️/❌>
-
-> 依据 [cpp-secure.md](../../../docs/guidelines/coding_standards/cpp-secure.md) 中的“规范列表”
 
 | 规范编号 | 规范名称 | 结果 | 说明 |
 |------|----------|------|------|
@@ -173,16 +165,12 @@ Python 安全编码规范检查（参考文件 [python-secure.md](../../../docs/
 
 #### 4. C++ 代码风格规范检查 <✅/⚠️/❌>
 
-> 依据 [cpp-style.md](../../../docs/guidelines/coding_standards/cpp-style.md) 中的“规范列表”
-
 | 规范编号 | 规范名称 | 结果 | 说明 |
 |------|----------|------|------|
 | <从规范列表读取的编号> | <从规范列表读取的规范名称> | <✅/⚠️/❌> | <发现、风险说明或 N/A 原因> |
 | ... | ... | ... | ... |
 
 #### 5. Python 安全编码规范检查 <✅/⚠️/❌>
-
-> 依据 [python-secure.md](../../../docs/guidelines/coding_standards/python-secure.md) 中的“规范列表”
 
 | 规范编号 | 规范名称 | 结果 | 说明 |
 |------|----------|------|------|
