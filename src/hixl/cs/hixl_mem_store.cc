@@ -316,7 +316,8 @@ Status HixlMemStore::ConvertHostAddr(HixlOneSideOpDesc &desc, uint32_t &local_ho
     uintptr_t offset = reinterpret_cast<uintptr_t>(desc.remote_buf) - reinterpret_cast<uintptr_t>(remote_region.addr);
     void *host_addr = desc.remote_buf;
     desc.remote_buf = static_cast<void *>(static_cast<char *>(remote_region.register_dev_addr) + offset);
-    HIXL_LOGD("[HixlMemStore] Convert remote addr: %p -> %p", host_addr, desc.remote_buf);
+    HIXL_LOGD("[HixlMemStore] Convert remote addr: %p -> %p, region_size=%zu, desc_len=%lu", host_addr, desc.remote_buf,
+              remote_region.size, desc.len);
     remote_host_cnt++;
   }
 
@@ -331,7 +332,8 @@ Status HixlMemStore::ConvertHostAddr(HixlOneSideOpDesc &desc, uint32_t &local_ho
     uintptr_t offset = reinterpret_cast<uintptr_t>(desc.local_buf) - reinterpret_cast<uintptr_t>(local_region.addr);
     void *host_addr = desc.local_buf;
     desc.local_buf = static_cast<void *>(static_cast<char *>(local_region.register_dev_addr) + offset);
-    HIXL_LOGD("[HixlMemStore] Convert local addr: %p -> %p", host_addr, desc.local_buf);
+    HIXL_LOGD("[HixlMemStore] Convert local addr: %p -> %p, region_size=%zu, desc_len=%lu", host_addr, desc.local_buf,
+              local_region.size, desc.len);
     local_host_cnt++;
   }
   return SUCCESS;
