@@ -29,12 +29,38 @@ struct HixlOneSideOpParam {
   uint32_t use_notify_record;
 };
 
+enum TransferThreadState : uint32_t {
+  TRANSFER_THREAD_STATE_INITIALIZED = 0U,
+  TRANSFER_THREAD_STATE_DELETING = 1U,
+  TRANSFER_THREAD_STATE_DELETED = 2U,
+};
+
+enum TransferContextOp : uint32_t {
+  TRANSFER_CONTEXT_OP_ADD = 0U,
+  TRANSFER_CONTEXT_OP_DELETE = 1U,
+};
+
+struct TransferContextSyncEntry {
+  ThreadHandle thread;
+  uint32_t op;
+};
+
+struct TransferContextSyncParam {
+  uint64_t entry_list_addr;
+  uint64_t state_list_addr;
+  uint32_t entry_num;
+  uint32_t reserved;
+};
+
 namespace hixl {
 constexpr const char *kProtocolRoce = "roce";
 constexpr const char *kProtocolUbCtp = "ub_ctp";
 constexpr const char *kProtocolUbTp = "ub_tp";
 constexpr const char *kProtocolHccs = "hccs";
 constexpr const char *kProtocolUboe = "uboe";
+constexpr const char *kProtocolUbg = "ubg";
+constexpr const char *kUboeProtocolDesc = "uboe:device";
+constexpr const char *kUbgProtocolDesc = "ubg:device";
 constexpr const char *kPlacementDevice = "device";
 constexpr const char *kPlacementHost = "host";
 constexpr uint8_t kRdmaTrafficClass = 132;  // RDMA网卡的traffic class 默认值
@@ -92,9 +118,15 @@ struct EndpointConfig {
 };
 
 struct MemInfo {
+  uintptr_t addr;  // 内存地址
+  size_t size;     // 内存大小
+  MemType type;    // 内存类型
+};
+
+struct MemHandleInfo {
   MemHandle mem_handle;
-  MemDesc mem;
-  MemType type;
+  MemDesc mem{};
+  MemType type = MEM_DEVICE;
 };
 
 struct TransferInfo {

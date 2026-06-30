@@ -16,19 +16,13 @@
 #include "engine/endpoint_generator.h"
 
 namespace hixl {
-
 DirectClientHandler::DirectClientHandler(HixlClientHandle handle) : handle_(handle) {}
 
 Status DirectClientHandler::Create(const HandlerCreateArgs &args, std::unique_ptr<DirectClientHandler> &out) {
   const auto &pair = args.matched_pairs[0];
-  int32_t dev_logic_id = 0;
-  int32_t dev_phy_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
-  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
   EndpointDesc local_endpoint{};
   EndpointDesc remote_endpoint{};
-  HIXL_CHK_STATUS_RET(
-      EndpointGenerator::ConvertToEndpointDesc(pair.local, local_endpoint, static_cast<uint32_t>(dev_phy_id)));
+  HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(pair.local, local_endpoint));
   HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(pair.remote, remote_endpoint));
   HixlClientDesc desc{};
   desc.server_ip = args.server_ip.c_str();
@@ -52,10 +46,20 @@ Status DirectClientHandler::Create(const HandlerCreateArgs &args, std::unique_pt
 
 Status DirectClientHandler::Connect(uint32_t timeout_ms) {
   std::lock_guard<std::mutex> lock(mutex_);
-  return static_cast<Status>(HixlCSClientConnect(handle_, timeout_ms));
+  if (is_connected_) {
+    HIXL_LOGE(ALREADY_CONNECTED, "DirectClientHandler already connected");
+    return ALREADY_CONNECTED;
+  }
+  Status ret = static_cast<Status>(HixlCSClientConnect(handle_, timeout_ms));
+  if (ret == SUCCESS) {
+    is_connected_ = true;
+  } else {
+    HIXL_LOGE(ret, "DirectClientHandler connect failed, ret: %d", ret);
+  }
+  return ret;
 }
 
-Status DirectClientHandler::RegisterMem(const MemInfo &mem_info) {
+Status DirectClientHandler::RegisterMem(const MemHandleInfo &mem_info) {
   CommMem hccl_mem{};
   hccl_mem.type = (mem_info.type == MemType::MEM_DEVICE) ? COMM_MEM_TYPE_DEVICE : COMM_MEM_TYPE_HOST;
   hccl_mem.addr = reinterpret_cast<void *>(mem_info.mem.addr);
@@ -153,6 +157,7 @@ Status DirectClientHandler::Finalize() {
     HixlCSClientDestroy(handle_);
     handle_ = nullptr;
   }
+  is_connected_ = false;
   return SUCCESS;
 }
 

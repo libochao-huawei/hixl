@@ -59,13 +59,6 @@ EndpointDesc MakeDeviceEp(CommProtocol protocol, uint32_t dev_id) {
   return ep;
 }
 
-void PrepareKernelReadyForUt(HixlCSClient &cli) {
-  cli.device_kernel_loaded_ = true;
-  static uint8_t kNonNullStub = 0U;
-  cli.device_func_get_ = static_cast<void *>(&kNonNullStub);
-  cli.device_func_put_ = static_cast<void *>(&kNonNullStub);
-}
-
 void RecordMemForBatchTransfer(HixlCSClient &cli, void *remote_addr, size_t remote_size, void *local_addr,
                                size_t local_size) {
   (void)cli.mem_store_.RecordMemory(true, remote_addr, remote_size);
@@ -105,7 +98,7 @@ using MockMmpaStub = hixl::test::TestMmpaStub;
 class HixlCSClientDeviceFixture : public ::testing::Test {
  protected:
   void SetUp() override {
-    // EnsureDeviceKernelLoadedLocked 现在在初始化阶段调用，需要提前设置 MmpaStub
+    // TransferPool initialization loads device kernels, so MmpaStub must be ready before Create.
     auto kernel_stub = std::make_shared<MockMmpaStub>();
     kernel_stub->real_path_ok_ = true;
     kernel_stub->access_ok_ = true;
@@ -126,8 +119,6 @@ class HixlCSClientDeviceFixture : public ::testing::Test {
     cli_.device_remote_flag_inited_ = false;
     remote_flag_dev_ = 0ULL;
     FillTagMem(cli_, kTransFlagNameDevice, static_cast<void *>(&remote_flag_dev_), sizeof(uint64_t));
-
-    PrepareKernelReadyForUt(cli_);
 
     // 手动初始化 remote flag，模拟 GetRemoteMemLocked 的行为
     ASSERT_EQ(cli_.EnsureDeviceRemoteFlagInitedLocked(), SUCCESS);
@@ -232,7 +223,8 @@ TEST_F(HixlCSClientDeviceFixture, BatchPutDeviceSyncStreamSyncTimeoutAbortsSlot)
   MockAclRuntimeStub mock_acl;
   llm::AclRuntimeStub::Install(&mock_acl);
   EXPECT_CALL(mock_acl, aclrtSynchronizeStreamWithTimeout(testing::_, testing::_))
-      .WillOnce(testing::Return(ACL_ERROR_RT_STREAM_SYNC_TIMEOUT));
+      .WillOnce(testing::Return(ACL_ERROR_RT_STREAM_SYNC_TIMEOUT))
+      .WillRepeatedly(testing::Return(ACL_SUCCESS));
   EXPECT_CALL(mock_acl, aclrtNotifyBatchReset(testing::NotNull(), testing::Eq(static_cast<size_t>(1U))))
       .WillOnce(testing::Return(ACL_SUCCESS));
   const Status ret = cli_.BatchTransferSync(false, 1, &desc, 100U);
@@ -417,6 +409,17 @@ TEST_F(LoadKernelFixture, GetFuncHandleAclGetFuncFailed) {
   EXPECT_EQ(ret, FAILED);
 }
 
+TEST_F(LoadKernelFixture, LoadSyncTransferContextHandleWhenRequested) {
+  setenv("ASCEND_HOME_PATH", "./test_opp", 1);
+  aclrtBinHandle dummy_bin_handle = reinterpret_cast<aclrtBinHandle>(0xDEADBEEF);
+  DeviceFuncHandles func_handles{};
+  Status ret = LoadDeviceKernelAndGetHandles("GetFunc", "PutFunc", dummy_bin_handle, func_handles, "SyncFunc");
+  EXPECT_EQ(ret, SUCCESS);
+  EXPECT_NE(func_handles.batch_get, nullptr);
+  EXPECT_NE(func_handles.batch_put, nullptr);
+  EXPECT_NE(func_handles.sync_transfer_context, nullptr);
+}
+
 // Slot reuse tests - unit tests for shared slot management logic
 class HixlCSClientSlotReuseFixture : public HixlCSClientDeviceFixture {
  protected:
@@ -543,11 +546,11 @@ TEST_F(HixlCSClientSlotReuseFixture, SyncTransferUsesStreamSync) {
 }
 
 // ============================================================================
-// ConvertUboeDescs 地址转换测试
+// ConvertHostMappedDescs 地址转换测试
 // ============================================================================
 
 // 测试场景：remote_buf 错误地注册到 client_regions_（应该在 server_regions_），地址转换应失败
-TEST_F(HixlCSClientDeviceFixture, ConvertUboeDescsFailsIfRemoteRegisteredInWrongRegion) {
+TEST_F(HixlCSClientDeviceFixture, ConvertHostMappedDescsFailsIfRemoteRegisteredInWrongRegion) {
   // 错误：remote_buf 注册到 client_regions_（应该是 server_regions_）
   // local_buf 也注册到 client_regions_（正确）
   cli_.mem_store_.RecordMemory(false, remote_buf_.data(), remote_buf_.size());
@@ -558,14 +561,14 @@ TEST_F(HixlCSClientDeviceFixture, ConvertUboeDescsFailsIfRemoteRegisteredInWrong
   desc.local_buf = local_buf_.data();
   desc.len = kLen8;
 
-  // 直接调用 ConvertUboeDescs，绕过 ValidateAddress
+  // 直接调用 ConvertHostMappedDescs，绕过 ValidateAddress
   std::vector<HixlOneSideOpDesc> mutable_descs(1, desc);
-  const Status ret = cli_.ConvertUboeDescs(1, mutable_descs.data());
-  EXPECT_EQ(ret, FAILED);  // remote_buf 在错误的 regions，ConvertUboeDescs 会失败
+  const Status ret = cli_.ConvertHostMappedDescs(1, mutable_descs.data());
+  EXPECT_EQ(ret, FAILED);  // remote_buf 在错误的 regions，ConvertHostMappedDescs 会失败
 }
 
 // 测试场景：local_buf 错误地注册到 server_regions_（应该在 client_regions_），地址转换应失败
-TEST_F(HixlCSClientDeviceFixture, ConvertUboeDescsFailsIfLocalRegisteredInWrongRegion) {
+TEST_F(HixlCSClientDeviceFixture, ConvertHostMappedDescsFailsIfLocalRegisteredInWrongRegion) {
   // remote_buf 注册到 server_regions_（正确）
   // 错误：local_buf 也注册到 server_regions_（应该是 client_regions_）
   cli_.mem_store_.RecordMemory(true, remote_buf_.data(), remote_buf_.size());
@@ -576,10 +579,10 @@ TEST_F(HixlCSClientDeviceFixture, ConvertUboeDescsFailsIfLocalRegisteredInWrongR
   desc.local_buf = local_buf_.data();
   desc.len = kLen8;
 
-  // 直接调用 ConvertUboeDescs，绕过 ValidateAddress
+  // 直接调用 ConvertHostMappedDescs，绕过 ValidateAddress
   std::vector<HixlOneSideOpDesc> mutable_descs(1, desc);
-  const Status ret = cli_.ConvertUboeDescs(1, mutable_descs.data());
-  EXPECT_EQ(ret, FAILED);  // local_buf 在错误的 regions，ConvertUboeDescs 会失败
+  const Status ret = cli_.ConvertHostMappedDescs(1, mutable_descs.data());
+  EXPECT_EQ(ret, FAILED);  // local_buf 在错误的 regions，ConvertHostMappedDescs 会失败
 }
 
 }  // namespace hixl

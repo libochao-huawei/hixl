@@ -88,6 +88,10 @@ class AdxlEngineUTest : public ::testing::Test {
   // 在测试类中进行清理工作，如果需要的话
   void TearDown() override {
     ClearStatisticChannels();
+    // TestHeartbeat 等用例会把全局心跳设置为 10ms/50ms（远低于默认 10s/120s），
+    // 不恢复会导致后续 16MB 大块传输用例因心跳超时被断开（Connection reset by peer），
+    // 进而触发逐字节 EXPECT_EQ 刷千万行日志。这里统一恢复默认值。
+    llm::test::ResetHeartbeatConfig();
     llm::HcclAdapter::GetInstance().Finalize();
     llm::AutoCommResRuntimeMock::Reset();
     llm::MockMmpaForHcclApi::Reset();
@@ -639,23 +643,6 @@ TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithInterrupt) {
   engine2.Finalize();
 }
 
-TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithQueryEventFailed) {
-  AdxlEngine engine1;
-  AdxlEngine engine2;
-  auto mem = SetupInt32ConnectedEngines(engine1, engine2);
-  TransferOpDesc desc = MakeInt32TransferDesc(mem.src, mem.dst);
-  TransferReq req = nullptr;
-  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:28101", WRITE, {desc}, {}, req), SUCCESS);
-  TransferStatus status = TransferStatus::WAITING;
-  TransferAsyncRuntimeMock instance;
-  ;
-  llm::AclRuntimeStub::Install(&instance);
-  EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
-  llm::AclRuntimeStub::UnInstall(&instance);
-  engine1.Finalize();
-  engine2.Finalize();
-}
-
 TEST_F(AdxlEngineUTest, TestAdxlEngineSendGetNotifies) {
   AdxlEngine engine1;
   AdxlEngine engine2;
@@ -768,23 +755,6 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyNameTooLong) {
   engine1.Finalize();
   engine2.Finalize();
 }
-TEST_F(AdxlEngineUTest, TestAdxlGetTransferStatusWithStreamSyncFailed) {
-  AdxlEngine engine1;
-  AdxlEngine engine2;
-  auto mem = SetupInt32ConnectedEngines(engine1, engine2);
-  TransferOpDesc desc = MakeInt32TransferDesc(mem.src, mem.dst);
-  TransferReq req = nullptr;
-  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:28101", WRITE, {desc}, {}, req), SUCCESS);
-  TransferStatus status = TransferStatus::WAITING;
-  TransferAsyncSteamRuntimeMocak instance;
-  ;
-  llm::AclRuntimeStub::Install(&instance);
-  EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
-  llm::AclRuntimeStub::UnInstall(&instance);
-  engine1.Finalize();
-  engine2.Finalize();
-}
-
 TEST_F(AdxlEngineUTest, TestAdxlEngineSendNotifyMsgTooLong) {
   AdxlEngine engine1;
   AdxlEngine engine2;

@@ -127,6 +127,12 @@ class MockHixlServer {
         return;
       }
       mem_handles_.emplace_back(mem_handle);
+      // 跟踪已注册内存信息，用于构建端点响应中的 mem_info 字段
+      MemInfo info;
+      info.type = (mem_list[i].type == COMM_MEM_TYPE_DEVICE) ? MEM_DEVICE : MEM_HOST;
+      info.addr = reinterpret_cast<uintptr_t>(mem_list[i].addr);
+      info.size = mem_list[i].size;
+      registered_mem_.push_back(info);
     }
   }
 
@@ -140,7 +146,20 @@ class MockHixlServer {
     };
     HixlStatus ret = HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetEndpointInfoReq, send_endpoint_cb);
     if (ret != HIXL_SUCCESS) {
-      std::cerr << "Failed to reg proc CsServer" << std::endl;
+      std::cerr << "Failed to reg endpoint proc CsServer" << std::endl;
+      return;
+    }
+
+    MsgProcessor send_mem_info_cb = [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
+      (void)msg;
+      (void)msg_len;
+      conn_fd_ = fd;
+      SendMemInfoResponse();
+      return SUCCESS;
+    };
+    ret = HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetMemInfoReq, send_mem_info_cb);
+    if (ret != HIXL_SUCCESS) {
+      std::cerr << "Failed to reg mem info proc CsServer" << std::endl;
       return;
     }
 
@@ -179,6 +198,7 @@ class MockHixlServer {
  private:
   HixlServerHandle server_handle_ = nullptr;
   std::vector<MemHandle> mem_handles_{};
+  std::vector<MemInfo> registered_mem_{};
   int32_t conn_fd_ = -1;
   MockHixlServerMode mode_;
 
@@ -247,6 +267,19 @@ class MockHixlServer {
         break;
     }
   }
+
+  void SendMemInfoResponse() {
+    std::string mem_info_json = "[";
+    for (size_t i = 0; i < registered_mem_.size(); ++i) {
+      if (i > 0) mem_info_json += ",";
+      mem_info_json += R"({"type":)" + std::to_string(static_cast<int>(registered_mem_[i].type));
+      mem_info_json += R"(,"addr":)" + std::to_string(registered_mem_[i].addr);
+      mem_info_json += R"(,"size":)" + std::to_string(registered_mem_[i].size) + "}";
+    }
+    mem_info_json += "]";
+    SendResponseImpl(kMagicNumber, CtrlMsgType::kGetMemInfoResp, sizeof(CtrlMsgType) + mem_info_json.size(),
+                     mem_info_json);
+  }
 };
 
 const std::string MockHixlServer::kErrorJson = R"({ invalid json )";
@@ -274,7 +307,12 @@ const std::string MockHixlServer::kUbCtpDeviceEndpointJson = R"({
       "dst_eid" : "000000000000000000000000c0a80763",
       "plane": "",
       "placement" : "device",
-      "net_instance_id" : "superpod1-1"
+      "net_instance_id" : "superpod1-1",
+      "device_info": {
+        "phy_device_id": 12,
+        "super_device_id": -1,
+        "super_pod_id": -1
+      }
     })";
 
 const std::string MockHixlServer::kUbCtpPlaneAEndpointJson = R"({
@@ -283,7 +321,12 @@ const std::string MockHixlServer::kUbCtpPlaneAEndpointJson = R"({
       "dst_eid": "",
       "plane" : "plane-a",
       "placement" : "device",
-      "net_instance_id" : "superpod1-1"
+      "net_instance_id" : "superpod1-1",
+      "device_info": {
+        "phy_device_id": 12,
+        "super_device_id": -1,
+        "super_pod_id": -1
+      }
     })";
 
 const std::string MockHixlServer::kUbTpPlaneBEndpointJson = R"({
@@ -328,7 +371,7 @@ using ClientMmpaStub = hixl::test::KernelJsonMmpaStub;
 class HixlClientUTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    // EnsureDeviceKernelLoadedLocked 现在在初始化阶段调用，需要提前设置 MmpaStub
+    // TransferPool initialization loads device kernels, so MmpaStub must be ready before Create.
     llm::MmpaStub::GetInstance().SetImpl(std::make_shared<ClientMmpaStub>());
     ClientConfig config{};
     config.rdma_tc = kDefaultRdmaTc;
@@ -417,6 +460,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.dst_eid = "000000000000000000000000c0a80763";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -427,6 +471,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.plane = "plane-a";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -437,6 +482,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.plane = "plane-a";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -447,6 +493,7 @@ class HixlClientUTest : public ::testing::Test {
     ep.plane = "plane-b";
     ep.placement = "device";
     ep.net_instance_id = "superpod1-1";
+    ep.device_info.phy_device_id = 12;
     return ep;
   }
 
@@ -499,10 +546,10 @@ class HixlClientUTest : public ::testing::Test {
     return ep_list;
   }
 
-  std::vector<MemInfo> MakeMemInfoList() {
-    std::vector<MemInfo> mem_info_list;
+  std::vector<MemHandleInfo> MakeMemInfoList() {
+    std::vector<MemHandleInfo> mem_info_list;
     // 添加DEVICE类型内存
-    MemInfo device_mem;
+    MemHandleInfo device_mem;
     device_mem.mem_handle = nullptr;
     device_mem.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
     device_mem.mem.len = sizeof(uint32_t);
@@ -510,7 +557,7 @@ class HixlClientUTest : public ::testing::Test {
     mem_info_list.push_back(device_mem);
 
     // 添加HOST类型内存
-    MemInfo host_mem;
+    MemHandleInfo host_mem;
     host_mem.mem_handle = nullptr;
     host_mem.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[2]);
     host_mem.mem.len = sizeof(uint32_t);
@@ -519,30 +566,30 @@ class HixlClientUTest : public ::testing::Test {
     return mem_info_list;
   }
 
-  std::vector<MemInfo> Make4UbMemInfoList() {
-    std::vector<MemInfo> mem_info_list;
-    MemInfo mem1;
+  std::vector<MemHandleInfo> Make4UbMemInfoList() {
+    std::vector<MemHandleInfo> mem_info_list;
+    MemHandleInfo mem1;
     mem1.mem_handle = nullptr;
     mem1.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[0]);
     mem1.mem.len = sizeof(uint32_t);
     mem1.type = MEM_DEVICE;
     mem_info_list.push_back(mem1);
 
-    MemInfo mem2;
+    MemHandleInfo mem2;
     mem2.mem_handle = nullptr;
     mem2.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[2]);
     mem2.mem.len = sizeof(uint32_t);
     mem2.type = MEM_DEVICE;
     mem_info_list.push_back(mem2);
 
-    MemInfo mem3;
+    MemHandleInfo mem3;
     mem3.mem_handle = nullptr;
     mem3.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[4]);
     mem3.mem.len = sizeof(uint32_t);
     mem3.type = MEM_HOST;
     mem_info_list.push_back(mem3);
 
-    MemInfo mem4;
+    MemHandleInfo mem4;
     mem4.mem_handle = nullptr;
     mem4.mem.addr = reinterpret_cast<uintptr_t>(&kLocalMems[6]);
     mem4.mem.len = sizeof(uint32_t);
@@ -576,7 +623,7 @@ class HixlClientUTest : public ::testing::Test {
     return client_->batch_cs_sync_inflight_.load(std::memory_order_acquire) > 0;
   }
 
-  void SetupTransferTest(bool use_4ub = false) {
+  void SetupTransferTest(bool use_4ub = false, bool is_lazy = false) {
     if (use_4ub) {
       StartServerReg4Ub(MockHixlServerMode::k4UbNormal);
     } else {
@@ -594,7 +641,7 @@ class HixlClientUTest : public ::testing::Test {
       local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
     }
 
-    Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
+    Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs, is_lazy);
     EXPECT_EQ(st, SUCCESS);
 
     st = client_->SetLocalMemInfo(use_4ub ? Make4UbMemInfoList() : MakeMemInfoList());
@@ -602,6 +649,10 @@ class HixlClientUTest : public ::testing::Test {
 
     st = client_->Connect(kDefaultTimeoutMs);
     EXPECT_EQ(st, SUCCESS);
+  }
+
+  void SetupLazyTransferTest(bool use_4ub = true) {
+    SetupTransferTest(use_4ub, true);
   }
 
   // 创建单个传输操作
@@ -701,12 +752,11 @@ class HixlClientUTest : public ::testing::Test {
     return ep;
   }
 
-  static EndpointConfig MakeDirectEp(const std::string &protocol, const std::string &placement,
-                                     const std::string &net_instance_id = "superpod1-1") {
-    EndpointConfig ep;
+  static EndpointConfig MakeDirectEp(const std::string &protocol, const std::string &net_instance_id) {
+    EndpointConfig ep{};
     ep.protocol = protocol;
-    ep.comm_id = protocol + "-" + placement;
-    ep.placement = placement;
+    ep.comm_id = (protocol == kProtocolUbg) ? "0000000000ff0ac0000000000a140200" : "127.0.0.1";
+    ep.placement = kPlacementDevice;
     ep.net_instance_id = net_instance_id;
     return ep;
   }
@@ -721,20 +771,15 @@ class HixlClientUTest : public ::testing::Test {
     ASSERT_EQ(matched_pairs.size(), expected_pair_count);
   }
 
-  HandlerCreateArgs::EndpointPair MatchSingleDirectAndVerify(const std::vector<EndpointConfig> &local,
-                                                             const std::vector<EndpointConfig> &remote,
-                                                             CommType expected_type) {
+  void MatchAndVerifyCommType(const std::vector<EndpointConfig> &local, const std::vector<EndpointConfig> &remote,
+                              CommType expected_comm_type) {
     std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
     HandlerCreateArgs::HandlerType handler_type;
     Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
     EXPECT_EQ(st, SUCCESS);
     EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::DIRECT);
-    EXPECT_EQ(matched_pairs.size(), 1U);
-    if (matched_pairs.empty()) {
-      return {};
-    }
-    EXPECT_EQ(matched_pairs[0].type, expected_type);
-    return matched_pairs[0];
+    ASSERT_EQ(matched_pairs.size(), 1U);
+    EXPECT_EQ(matched_pairs[0].type, expected_comm_type);
   }
 };
 
@@ -846,7 +891,7 @@ TEST_F(HixlClientUTest, InitializeNoRoceTest) {
 TEST_F(HixlClientUTest, InitializeNoPairTest) {
   StartServer(MockHixlServerMode::k2UbNormal);
   std::vector<EndpointConfig> local_endpoint_list;
-  local_endpoint_list.push_back(MakeDirectEp(kProtocolRoce, kPlacementDevice));
+  local_endpoint_list.push_back(MakeDirectEp(kProtocolRoce, "superpod1-1"));
   local_endpoint_list.push_back(MakeUbDeviceLocalEp3());
   local_endpoint_list.push_back(MakeUbDeviceLocalEp4());
   Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
@@ -894,7 +939,7 @@ TEST_F(HixlClientUTest, SetLocalMemInfoTest) {
   local_endpoint_list.push_back(MakeRoceDiffNetLocalEp());
   Status st = client_->Initialize(local_endpoint_list, kDefaultTimeoutMs);
   EXPECT_EQ(st, SUCCESS);
-  std::vector<MemInfo> mem_info_list = MakeMemInfoList();
+  std::vector<MemHandleInfo> mem_info_list = MakeMemInfoList();
   st = client_->SetLocalMemInfo(mem_info_list);
   EXPECT_EQ(st, SUCCESS);
   st = client_->Finalize();
@@ -1337,41 +1382,28 @@ TEST_F(HixlClientUTest, EndpointMatcherAllDstEidNonEmptyTest) {
   MatchAndVerify(local, remote, 2U, HandlerCreateArgs::HandlerType::UB);
 }
 
-TEST_F(HixlClientUTest, EndpointMatcherCrossInstancePrefersDeviceUboe) {
-  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolRoce, kPlacementDevice, "superpod2-2"),
-                                       MakeDirectEp(kProtocolUboe, kPlacementDevice, "superpod2-2"),
-                                       MakeUbEp("local_1", "", "device", "default")};
-  std::vector<EndpointConfig> remote = {MakeDirectEp(kProtocolRoce, kPlacementDevice),
-                                        MakeUbEp("remote_1", "", "device", "default"),
-                                        MakeDirectEp(kProtocolUboe, kPlacementDevice)};
+TEST_F(HixlClientUTest, EndpointMatcherCrossInstancePrefersUboe) {
+  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolUboe, "superpod2-2"),
+                                       MakeDirectEp(kProtocolUbg, "superpod2-2"),
+                                       MakeDirectEp(kProtocolRoce, "superpod2-2")};
+  std::vector<EndpointConfig> remote = {MakeDirectEp(kProtocolUboe, "superpod1-1"),
+                                        MakeDirectEp(kProtocolUbg, "superpod1-1"),
+                                        MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_UBOE);
+}
 
-  std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
-  HandlerCreateArgs::HandlerType handler_type;
-  Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
-  EXPECT_EQ(st, SUCCESS);
-  EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::DIRECT);
-  ASSERT_EQ(matched_pairs.size(), 1U);
-  EXPECT_EQ(matched_pairs[0].type, CommType::COMM_TYPE_UBOE);
-  EXPECT_EQ(matched_pairs[0].local.protocol, kProtocolUboe);
-  EXPECT_EQ(matched_pairs[0].local.placement, kPlacementDevice);
+TEST_F(HixlClientUTest, EndpointMatcherCrossInstancePrefersUbgWhenNoUboe) {
+  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolUbg, "superpod2-2"),
+                                       MakeDirectEp(kProtocolRoce, "superpod2-2")};
+  std::vector<EndpointConfig> remote = {MakeDirectEp(kProtocolUbg, "superpod1-1"),
+                                        MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_UBG);
 }
 
 TEST_F(HixlClientUTest, EndpointMatcherCrossInstanceFallsBackToDeviceRoce) {
-  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolRoce, kPlacementDevice, "superpod2-2"),
-                                       MakeDirectEp(kProtocolRoce, kPlacementHost, "superpod2-2")};
-  std::vector<EndpointConfig> remote = {MakeDirectEp(kProtocolRoce, kPlacementDevice),
-                                        MakeDirectEp(kProtocolRoce, kPlacementHost)};
-
-  auto matched_pair = MatchSingleDirectAndVerify(local, remote, CommType::COMM_TYPE_ROCE);
-  EXPECT_EQ(matched_pair.local.placement, kPlacementDevice);
-}
-
-TEST_F(HixlClientUTest, EndpointMatcherCrossInstanceFallsBackToHostRoce) {
-  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolRoce, kPlacementHost, "superpod2-2")};
-  std::vector<EndpointConfig> remote = {MakeDirectEp(kProtocolRoce, kPlacementHost)};
-
-  auto matched_pair = MatchSingleDirectAndVerify(local, remote, CommType::COMM_TYPE_ROCE);
-  EXPECT_EQ(matched_pair.local.placement, kPlacementHost);
+  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolRoce, "superpod2-2")};
+  std::vector<EndpointConfig> remote = {MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_ROCE);
 }
 
 TEST_F(HixlClientUTest, EndpointMatcherSameInstanceUbPreemptsDirectPriority) {
@@ -1390,48 +1422,56 @@ TEST_F(HixlClientUTest, EndpointMatcherSameInstanceUbPreemptsDirectPriority) {
   ASSERT_EQ(matched_pairs.size(), 4U);
 }
 
-TEST_F(HixlClientUTest, EndpointMatcherSameInstanceDirectPriorityStartsFromDeviceHccs) {
-  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolHccs, kPlacementDevice),
-                                       MakeDirectEp(kProtocolUboe, kPlacementDevice),
-                                       MakeDirectEp(kProtocolRoce, kPlacementDevice)};
-  std::vector<EndpointConfig> remote = {MakeDirectEp(kProtocolHccs, kPlacementDevice),
-                                        MakeDirectEp(kProtocolUboe, kPlacementDevice),
-                                        MakeDirectEp(kProtocolRoce, kPlacementDevice)};
-
-  (void)MatchSingleDirectAndVerify(local, remote, CommType::COMM_TYPE_HCCS);
+TEST_F(HixlClientUTest, EndpointMatcherSameInstancePrefersHccs) {
+  std::vector<EndpointConfig> local = {
+      MakeDirectEp(kProtocolHccs, "superpod1-1"), MakeDirectEp(kProtocolUboe, "superpod1-1"),
+      MakeDirectEp(kProtocolUbg, "superpod1-1"), MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  std::vector<EndpointConfig> remote = local;
+  MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_HCCS);
 }
 
-TEST_F(HixlClientUTest, EndpointMatcherSameInstanceDirectPriorityFallsBackToDeviceUboe) {
-  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolUboe, kPlacementDevice),
-                                       MakeDirectEp(kProtocolRoce, kPlacementDevice)};
-  std::vector<EndpointConfig> remote = {MakeDirectEp(kProtocolUboe, kPlacementDevice),
-                                        MakeDirectEp(kProtocolRoce, kPlacementDevice)};
-
-  (void)MatchSingleDirectAndVerify(local, remote, CommType::COMM_TYPE_UBOE);
+TEST_F(HixlClientUTest, EndpointMatcherSameInstanceFallsBackToUboe) {
+  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolUboe, "superpod1-1"),
+                                       MakeDirectEp(kProtocolUbg, "superpod1-1"),
+                                       MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  std::vector<EndpointConfig> remote = local;
+  MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_UBOE);
 }
 
-TEST_F(HixlClientUTest, EndpointMatcherSameInstanceDirectPriorityFallsBackToDeviceRoce) {
-  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolRoce, kPlacementDevice),
-                                       MakeDirectEp(kProtocolRoce, kPlacementHost)};
-  std::vector<EndpointConfig> remote = {MakeDirectEp(kProtocolRoce, kPlacementDevice),
-                                        MakeDirectEp(kProtocolRoce, kPlacementHost)};
-
-  auto matched_pair = MatchSingleDirectAndVerify(local, remote, CommType::COMM_TYPE_ROCE);
-  EXPECT_EQ(matched_pair.local.placement, kPlacementDevice);
+TEST_F(HixlClientUTest, EndpointMatcherSameInstanceFallsBackToUbg) {
+  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolUbg, "superpod1-1"),
+                                       MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  std::vector<EndpointConfig> remote = local;
+  MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_UBG);
 }
 
-TEST_F(HixlClientUTest, EndpointMatcherSameInstanceDirectPriorityFallsBackToHostRoce) {
-  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolRoce, kPlacementHost)};
-  std::vector<EndpointConfig> remote = {MakeDirectEp(kProtocolRoce, kPlacementHost)};
+TEST_F(HixlClientUTest, EndpointMatcherSameInstanceFallsBackToDeviceRoce) {
+  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  std::vector<EndpointConfig> remote = local;
+  MatchAndVerifyCommType(local, remote, CommType::COMM_TYPE_ROCE);
+}
 
-  auto matched_pair = MatchSingleDirectAndVerify(local, remote, CommType::COMM_TYPE_ROCE);
-  EXPECT_EQ(matched_pair.local.placement, kPlacementHost);
+TEST_F(HixlClientUTest, EndpointMatcherSameInstancePrefersUbBeforeScaleOut) {
+  std::vector<EndpointConfig> local = {
+      MakeUbEp("local_1", "remote_1", "device"), MakeUbEp("local_2", "remote_2", "host"),
+      MakeDirectEp(kProtocolUbg, "superpod1-1"), MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  std::vector<EndpointConfig> remote = {
+      MakeUbEp("remote_1", "local_1", "device"), MakeUbEp("remote_2", "local_2", "host"),
+      MakeDirectEp(kProtocolUbg, "superpod1-1"), MakeDirectEp(kProtocolRoce, "superpod1-1")};
+  MatchAndVerify(local, remote, 2U, HandlerCreateArgs::HandlerType::UB);
 }
 
 TEST_F(HixlClientUTest, EndpointMatcherDirectMatchRequiresSamePlacement) {
-  std::vector<EndpointConfig> local = {MakeDirectEp(kProtocolRoce, kPlacementDevice)};
-  std::vector<EndpointConfig> remote = {MakeDirectEp(kProtocolRoce, kPlacementHost)};
-
+  auto makeEp = [](const std::string &protocol, const std::string &placement) {
+    EndpointConfig ep{};
+    ep.protocol = protocol;
+    ep.comm_id = "127.0.0.1";
+    ep.placement = placement;
+    ep.net_instance_id = "superpod1-1";
+    return ep;
+  };
+  std::vector<EndpointConfig> local = {makeEp(kProtocolRoce, kPlacementDevice)};
+  std::vector<EndpointConfig> remote = {makeEp(kProtocolRoce, kPlacementHost)};
   std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
   HandlerCreateArgs::HandlerType handler_type;
   Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
@@ -1519,6 +1559,192 @@ TEST_F(HixlClientUTest, CheckAliveInvalidControlSocketFails) {
 
   Status ret = client.CheckAlive();
   EXPECT_EQ(ret, FAILED);
+}
+
+TEST_F(HixlClientUTest, LazyConnectSkipsInConnect) {
+  SetupLazyTransferTest(true);
+
+  auto *ub_handler = dynamic_cast<UbClientHandler *>(client_->client_handler_.get());
+  ASSERT_NE(ub_handler, nullptr);
+  EXPECT_TRUE(ub_handler->lazy_mode_);
+  EXPECT_TRUE(ub_handler->connected_types_.empty());
+}
+
+TEST_F(HixlClientUTest, LazyConnectOnTransferSync) {
+  SetupLazyTransferTest(true);
+
+  auto *ub_handler = dynamic_cast<UbClientHandler *>(client_->client_handler_.get());
+  ASSERT_NE(ub_handler, nullptr);
+
+  // 传输 D2D 数据（本端 device → 对端 device）
+  auto op_descs = CreateTransferOps(1, &kLocalMems[0], &kRemoteMems[2]);
+  Status st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(ub_handler->connected_types_.size(), 1U);
+  EXPECT_NE(ub_handler->connected_types_.count(CommType::COMM_TYPE_UB_D2D), 0U);
+}
+
+TEST_F(HixlClientUTest, LazyConnectIncremental) {
+  SetupLazyTransferTest(true);
+
+  auto *ub_handler = dynamic_cast<UbClientHandler *>(client_->client_handler_.get());
+  ASSERT_NE(ub_handler, nullptr);
+
+  // 首次：D2D 传输
+  auto d2d_ops = CreateTransferOps(1, &kLocalMems[0], &kRemoteMems[2]);
+  Status st = client_->TransferSync(d2d_ops, WRITE, kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(ub_handler->connected_types_.size(), 1U);
+  EXPECT_NE(ub_handler->connected_types_.count(CommType::COMM_TYPE_UB_D2D), 0U);
+
+  // 二次：H2D 传输（本端 host → 对端 device）
+  auto h2d_ops = CreateTransferOps(1, &kLocalMems[4], &kRemoteMems[2]);
+  st = client_->TransferSync(h2d_ops, WRITE, kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(ub_handler->connected_types_.size(), 2U);
+  EXPECT_NE(ub_handler->connected_types_.count(CommType::COMM_TYPE_UB_H2D), 0U);
+}
+
+TEST_F(HixlClientUTest, LazyConnectSkipsAlreadyConnected) {
+  SetupLazyTransferTest(true);
+
+  auto *ub_handler = dynamic_cast<UbClientHandler *>(client_->client_handler_.get());
+  ASSERT_NE(ub_handler, nullptr);
+
+  // 首次 D2D 传输
+  auto op_descs = CreateTransferOps(1, &kLocalMems[0], &kRemoteMems[2]);
+  Status st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(ub_handler->connected_types_.size(), 1U);
+  EXPECT_NE(ub_handler->connected_types_.count(CommType::COMM_TYPE_UB_D2D), 0U);
+
+  // 再次 D2D 传输，不应新增连接
+  st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(ub_handler->connected_types_.size(), 1U);
+}
+
+TEST_F(HixlClientUTest, LazyConnectOnTransferAsync) {
+  SetupLazyTransferTest(true);
+
+  auto *ub_handler = dynamic_cast<UbClientHandler *>(client_->client_handler_.get());
+  ASSERT_NE(ub_handler, nullptr);
+
+  auto op_descs = CreateTransferOps(1, &kLocalMems[0], &kRemoteMems[2]);
+  auto req = CreateAsyncTransfer(op_descs, WRITE);
+  EXPECT_EQ(ub_handler->connected_types_.size(), 1U);
+  EXPECT_NE(ub_handler->connected_types_.count(CommType::COMM_TYPE_UB_D2D), 0U);
+}
+
+TEST_F(HixlClientUTest, LazyConnectNoRemoteMem) {
+  // 使用 k2UbNormal 但不在 mock server 上注册内存
+  server_->SetMode(MockHixlServerMode::k2UbNormal);
+  auto st = server_->CreateServer(Make4UbRemoteEpList());
+  ASSERT_EQ(st, SUCCESS);
+  // 不调用 RegMem，registered_mem_ 为空
+  server_->ListenServer();
+
+  std::vector<EndpointConfig> local_list;
+  local_list.push_back(MakeRoceHostLocalEp());
+  local_list.push_back(MakeUbHostLocalEp1());
+  local_list.push_back(MakeUbDeviceLocalEp3());
+
+  st = client_->Initialize(local_list, kDefaultTimeoutMs, true);
+  EXPECT_EQ(st, SUCCESS);
+
+  auto *ub_handler = dynamic_cast<UbClientHandler *>(client_->client_handler_.get());
+  ASSERT_NE(ub_handler, nullptr);
+  // remote_segments_ 应为空（对端无注册内存）
+  EXPECT_TRUE(ub_handler->remote_segments_.empty());
+
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+
+  // 传输应对端地址无法分类而失败
+  auto op_descs = CreateTransferOps(1);
+  st = client_->TransferSync(op_descs, WRITE, kDefaultTimeoutMs);
+  EXPECT_EQ(st, PARAM_INVALID);
+}
+
+TEST_F(HixlClientUTest, LazyConnectNoMatchingEndpoint) {
+  // server 端注册全部 4 种 UB remote endpoint，client 端仅提供 2 种 local endpoint
+  StartServerReg4Ub(MockHixlServerMode::k4UbNormal);
+  std::vector<EndpointConfig> local_ep_list = {MakeUbHostLocalEp1(), MakeUbDeviceLocalEp3()};
+  Status st = client_->Initialize(local_ep_list, kDefaultTimeoutMs, true);  // is_lazy=true
+  EXPECT_EQ(st, SUCCESS);
+  st = client_->SetLocalMemInfo(MakeMemInfoList());
+  EXPECT_EQ(st, SUCCESS);
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+
+  auto *ub_handler = dynamic_cast<UbClientHandler *>(client_->client_handler_.get());
+  ASSERT_NE(ub_handler, nullptr);
+  // handles_ 仅含匹配到的 2 种类型，H2D 自然缺失
+  EXPECT_LT(ub_handler->handles_.size(), 4U);
+
+  // 构造 H2D 传输（local=HOST, remote=DEVICE），因 H2D handle 缺失，TransferSync 应返回 FAILED
+  TransferOpDesc op;
+  op.local_addr = reinterpret_cast<uintptr_t>(&kLocalMems[2]);    // HOST
+  op.remote_addr = reinterpret_cast<uintptr_t>(&kRemoteMems[2]);  // DEVICE
+  op.len = sizeof(uint32_t);
+  st = client_->TransferSync({op}, WRITE, kDefaultTimeoutMs);
+  EXPECT_EQ(st, FAILED);
+}
+
+// auto_connect 模式：lazy 首次延迟建链 → transfer 按需触发 D2D → 显式 Connect 补齐剩余链路
+TEST_F(HixlClientUTest, ExplicitConnectAfterLazyConnect) {
+  SetupLazyTransferTest(true);
+
+  auto *ub_handler = dynamic_cast<UbClientHandler *>(client_->client_handler_.get());
+  ASSERT_NE(ub_handler, nullptr);
+  EXPECT_TRUE(ub_handler->lazy_mode_);
+  // 首次 Connect（SetupLazyTransferTest 内部）延迟建链
+  EXPECT_TRUE(ub_handler->connected_types_.empty());
+  EXPECT_TRUE(ub_handler->connect_triggered_);
+
+  // 首次 transfer：按需触发 D2D 建链
+  auto d2d_ops = CreateTransferOps(1, &kLocalMems[0], &kRemoteMems[2]);
+  Status st = client_->TransferSync(d2d_ops, WRITE, kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_NE(ub_handler->connected_types_.count(CommType::COMM_TYPE_UB_D2D), 0U);
+  EXPECT_EQ(ub_handler->connected_types_.size(), 1U);
+
+  // 用户显式调 Connect：补齐剩余链路
+  st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(ub_handler->connected_types_.size(), 4U);
+}
+
+// DirectHandler 已建链后再次 Connect 返回 ALREADY_CONNECTED
+TEST_F(HixlClientUTest, DirectHandlerDoubleConnectReturnsAlreadyConnected) {
+  SetupTransferTest(false);
+
+  // 首次 Connect 成功
+  auto *direct_handler = dynamic_cast<DirectClientHandler *>(client_->client_handler_.get());
+  ASSERT_NE(direct_handler, nullptr);
+  EXPECT_TRUE(client_->is_connected_);
+
+  // 二次 Connect：DirectClientHandler 不支持重复建链，返回 ALREADY_CONNECTED
+  Status st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, ALREADY_CONNECTED);
+}
+
+// 非 lazy UB handler 已建链后再次 Connect 正常返回 ALREADY_CONNECTED
+TEST_F(HixlClientUTest, UbNonLazyHandlerDoubleConnect) {
+  SetupTransferTest(true, false);
+
+  auto *ub_handler = dynamic_cast<UbClientHandler *>(client_->client_handler_.get());
+  ASSERT_NE(ub_handler, nullptr);
+  EXPECT_FALSE(ub_handler->lazy_mode_);
+  // 首次 Connect 已全量建链
+  EXPECT_EQ(ub_handler->connected_types_.size(), 4U);
+
+  // 二次 Connect：返回 ALREADY_CONNECTED
+  Status st = client_->Connect(kDefaultTimeoutMs);
+  EXPECT_EQ(st, ALREADY_CONNECTED);
+  EXPECT_EQ(ub_handler->connected_types_.size(), 4U);
 }
 
 }  // namespace hixl

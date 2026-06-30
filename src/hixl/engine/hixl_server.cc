@@ -26,6 +26,24 @@ namespace hixl {
 namespace {
 constexpr uint32_t kDefaultBackLog = 1024U;
 
+Status SerializeMemInfoList(const std::vector<MemInfo> &list, std::string &msg_str) {
+  nlohmann::json j = nlohmann::json::array();
+  try {
+    for (const auto &mi : list) {
+      nlohmann::json item;
+      item["type"] = mi.type;
+      item["addr"] = mi.addr;
+      item["size"] = mi.size;
+      j.push_back(item);
+    }
+    msg_str = j.dump();
+  } catch (const nlohmann::json::exception &e) {
+    HIXL_LOGE(PARAM_INVALID, "Failed to dump mem info list, exception:%s", e.what());
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
+
 NotifyMsg ParseNotifyMsg(const char *msg, uint64_t msg_len) {
   NotifyMsg notify_msg;
   auto j = nlohmann::json::parse(std::string(msg, msg_len));
@@ -45,13 +63,9 @@ Status HixlServer::Initialize(const std::string &ip, int32_t port,
                               std::optional<uint32_t> listen_port, std::optional<uint32_t> max_active_channels) {
   data_endpoint_config_list_ = data_endpoint_config_list;
   std::vector<EndpointDesc> data_end_point_list;
-  int32_t dev_logic_id = 0;
-  int32_t dev_phy_id = 0;
-  HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_logic_id));
-  HIXL_CHK_ACL_RET(aclrtGetPhyDevIdByLogicDevId(dev_logic_id, &dev_phy_id));
   for (const auto &it : data_endpoint_config_list) {
     EndpointDesc end_point_info{};
-    HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(it, end_point_info, static_cast<uint32_t>(dev_phy_id)),
+    HIXL_CHK_STATUS_RET(EndpointGenerator::ConvertToEndpointDesc(it, end_point_info),
                         "Failed to convert endpoint config to endpoint info.");
     data_end_point_list.emplace_back(end_point_info);
   }
@@ -224,6 +238,20 @@ Status HixlServer::ProcessNotifyMsg(int32_t fd, const char *msg, uint64_t msg_le
   return result;
 }
 
+std::vector<MemInfo> HixlServer::GetRegisteredMemInfo() {
+  std::lock_guard<std::mutex> lk(mtx_);
+  std::vector<MemInfo> result;
+  for (const auto &kv : handle_to_addr_) {
+    const auto &addr_info = kv.second;
+    MemInfo mi;
+    mi.type = addr_info.mem_type;
+    mi.addr = addr_info.start_addr;
+    mi.size = addr_info.end_addr - addr_info.start_addr;
+    result.push_back(mi);
+  }
+  return result;
+}
+
 Status HixlServer::RegisterProcessors() {
   MsgProcessor send_endpoint_cb = [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
     (void)msg;
@@ -242,6 +270,24 @@ Status HixlServer::RegisterProcessors() {
   };
   HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetEndpointInfoReq, send_endpoint_cb),
                       "Failed to register send endpoint info processor.");
+
+  MsgProcessor send_mem_info_cb = [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
+    (void)msg;
+    (void)msg_len;
+    std::vector<MemInfo> mem_info = GetRegisteredMemInfo();
+    std::string msg_str;
+    HIXL_CHK_STATUS_RET(SerializeMemInfoList(mem_info, msg_str), "Failed to serialize mem info list.");
+    CtrlMsgHeader header{};
+    header.magic = kMagicNumber;
+    header.body_size = static_cast<uint64_t>(sizeof(CtrlMsgType) + msg_str.size());
+    CtrlMsgType msg_type = CtrlMsgType::kGetMemInfoResp;
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &header, static_cast<uint64_t>(sizeof(header))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, &msg_type, static_cast<uint64_t>(sizeof(msg_type))));
+    HIXL_CHK_STATUS_RET(CtrlMsgPlugin::Send(fd, msg_str.c_str(), static_cast<uint64_t>(msg_str.size())));
+    return SUCCESS;
+  };
+  HIXL_CHK_STATUS_RET(HixlCSServerRegProc(server_handle_, CtrlMsgType::kGetMemInfoReq, send_mem_info_cb),
+                      "Failed to register send mem info processor.");
   MsgProcessor heartbeat_cb = [](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
     (void)fd;
     (void)msg;

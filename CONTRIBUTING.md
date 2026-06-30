@@ -12,9 +12,10 @@
 除此之外，开发者准备本地代码与提交PR时需要重点关注如下几点：
 
 1. 提交PR时，请按照[PR模板](.gitcode/PULL_REQUEST_TEMPLATE.zh-CN.md)仔细填写本次PR的业务背景、目的、方案等信息。
-2. 使用git进行代码提交前，可以参考[pre-commit工具使用说明](docs/guidelines/precommit_guide.md)来使您的代码提交更合规高效。
+2. 使用git进行代码提交前，可以参考[pre-commit工具使用说明](docs/zh/contributions/precommit_guide.md)来使您的代码提交更合规高效。
 3. 若您的修改不是简单的bug修复，而是涉及到新增特性、新增接口、新增配置参数或者修改代码流程等，请务必先通过Issue进行方案讨论，以避免您的代码被拒绝合入。若您不确定本次修改是否可被归为“简单的bug修复”，亦可通过提交Issue进行方案讨论。
 4. 提交pr时，请确保您的代码符合项目的代码规范，具体参考google的[开源代码规范](https://google.github.io/styleguide/)，包括但不限于：
+
   - 代码格式化
   - 注释规范
   - 变量命名规范
@@ -23,6 +24,7 @@
   - 接口命名规范
   - 配置参数命名规范
   - 代码流程规范
+
 5. 提交pr时，如果存在多个无效commit，建议您在提交pr前先进行rebase操作，合并多个commit为一个，以保持代码的简洁性和可读性，具体参考[git rebase](https://git-scm.com/docs/git-rebase)，同时，commit message也需要符合项目的代码规范，能够清晰地描述本次变更的意图和内容，格式为：<类型>: <简短描述>。 例如:
 
 | 类型 | 说明                    | 示例                     |

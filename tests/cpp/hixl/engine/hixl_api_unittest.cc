@@ -114,6 +114,10 @@ class HixlUTest : public ::testing::Test {
   }
   // 在测试类中进行清理工作，如果需要的话
   void TearDown() override {
+    // TestHeartbeat 等用例会把全局心跳设置为 10ms/50ms（远低于默认 10s/120s），
+    // 不恢复会导致后续 16MB 大块传输用例因心跳超时被断开（Connection reset by peer），
+    // 进而触发逐字节 EXPECT_EQ 刷千万行日志。这里统一恢复默认值。
+    llm::test::ResetHeartbeatConfig();
     llm::HcclAdapter::GetInstance().Finalize();
     llm::MockMmpaForHcclApi::Reset();
     llm::AutoCommResRuntimeMock::Reset();
@@ -555,7 +559,7 @@ TEST_F(HixlUTest, TestHixlGetTransferStatusWithInterrupt) {
   engine2.Finalize();
 }
 
-TEST_F(HixlUTest, TestHixlGetTransferStatusWithQueryEventFailed) {
+TEST_F(HixlUTest, TestHixlGetTransferStatusWaitsWhenHostFlagNotReady) {
   Hixl engine1;
   Hixl engine2;
   SetupEngines(engine1, engine2);
@@ -568,12 +572,13 @@ TEST_F(HixlUTest, TestHixlGetTransferStatusWithQueryEventFailed) {
   EXPECT_EQ(engine1.Connect("127.0.0.1:26201"), SUCCESS);
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
   TransferReq req = nullptr;
+  TransferStatus status = TransferStatus::FAILED;
+  llm::AsyncHostFlagNeverSetMock wait_mock;
+  llm::AclRuntimeStub::Install(&wait_mock);
   EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26201", WRITE, {desc}, {}, req), SUCCESS);
-  TransferStatus status = TransferStatus::WAITING;
-  TransferAsyncRuntimeMock instance;
-  llm::AclRuntimeStub::Install(&instance);
-  EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
-  llm::AclRuntimeStub::UnInstall(&instance);
+  EXPECT_EQ(engine1.GetTransferStatus(req, status), SUCCESS);
+  EXPECT_EQ(status, TransferStatus::WAITING);
+  llm::AclRuntimeStub::UnInstall(&wait_mock);
   engine1.Finalize();
   engine2.Finalize();
 }
@@ -685,11 +690,16 @@ TEST_F(HixlUTest, TestHixlMultiSendNotifies) {
     EXPECT_EQ(engine1.SendNotify("127.0.0.1:26201", notify), SUCCESS);
     EXPECT_EQ(engine3.SendNotify("127.0.0.1:26201", notify), SUCCESS);
   }
-  // sleep 100 ms then get notifies
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+  // 轮询等待所有 notify 到达，避免 ASAN 模式下固定 sleep 不足导致的偶发失败
+  constexpr int kMaxNotifyRetries = 50;
+  constexpr int kNotifyPollIntervalMs = 20;
   std::vector<NotifyDesc> notifies;
-  EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+  for (int retry = 0; retry < kMaxNotifyRetries; ++retry) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(kNotifyPollIntervalMs));
+    EXPECT_EQ(engine2.GetNotifies(notifies), SUCCESS);
+    if (notifies.size() >= 10) break;
+  }
   // should get 10 notifies
   EXPECT_EQ(notifies.size(), 10);
 
@@ -781,29 +791,6 @@ TEST_F(HixlUTest, TestHixlSendNotifyMsgTooLong) {
 
   EXPECT_EQ(engine1.SendNotify("127.0.0.1:26201", notify), PARAM_INVALID);
   EXPECT_EQ(engine1.Disconnect("127.0.0.1:26201"), SUCCESS);
-  engine1.Finalize();
-  engine2.Finalize();
-}
-
-TEST_F(HixlUTest, TestHixlGetTransferStatusWithStreamSyncFailed) {
-  Hixl engine1;
-  Hixl engine2;
-  SetupEngines(engine1, engine2);
-  int32_t src = 1;
-  MemHandle handle1 = nullptr;
-  RegisterInt32Mem(engine1, &src, handle1);
-  int32_t dst = 2;
-  MemHandle handle2 = nullptr;
-  RegisterInt32Mem(engine2, &dst, handle2);
-  EXPECT_EQ(engine1.Connect("127.0.0.1:26201"), SUCCESS);
-  TransferOpDesc desc{reinterpret_cast<uintptr_t>(&src), reinterpret_cast<uintptr_t>(&dst), sizeof(int32_t)};
-  TransferReq req = nullptr;
-  EXPECT_EQ(engine1.TransferAsync("127.0.0.1:26201", WRITE, {desc}, {}, req), SUCCESS);
-  TransferStatus status = TransferStatus::WAITING;
-  TransferAsyncSteamRuntimeMocak instance;
-  llm::AclRuntimeStub::Install(&instance);
-  EXPECT_EQ(engine1.GetTransferStatus(req, status), FAILED);
-  llm::AclRuntimeStub::UnInstall(&instance);
   engine1.Finalize();
   engine2.Finalize();
 }

@@ -7,6 +7,7 @@
 HIXL（Huawei Xfer Library）是面向昇腾芯片的单边通信库，用于分布式 AI 场景（LLM 推理 KV Cache 传输、PD 分离等）。支持通过 HCCS 和 RDMA 协议进行点对点 D2D/D2H/H2D 数据传输，并通过 pybind11 提供 Python 绑定。
 
 两个核心组件：
+
 - **HIXL Engine**（`src/hixl/`）：底层传输引擎，支持多种内存类型和传输协议。
 - **LLM-DataDist**（`src/llm_datadist/`）：基于 HIXL 构建的上层 KV Cache 传输接口，对接 vLLM/SGLang。
 
@@ -54,12 +55,13 @@ pre-commit run --files <changed-files>     # 只检查受影响文件
 
 ## 编码规范与代码风格
 
-- **编写代码**：务必遵守[编码规范和安全规范](docs/guidelines/coding_standards)。
+- **编写代码**：务必遵守[编码规范和安全规范](docs/zh/contributions/coding_standards)。
 - **C++**：遵循 `.clang-format`（基于 Google 风格），2 空格缩进、120 列限制、附着式大括号、`SortIncludes: false`。类型用 `PascalCase`，函数用 `camelCase`。
 - **C++ 复杂度**：单函数不超过 50 行；嵌套深度（if/for/while/switch/try 及宏展开块）不超过 4，超出时提取 helper 或 early return。
 - **Python**：使用 `ruff-check` 和 `ruff-format`，模块和测试文件用 `snake_case`。
 
 ## 测试要求
+
 - 测试文件命名：C++ 以 `_unittest.cc` 或 `_ut.cc` 结尾，Python 以 `test_*.py` 命名。
 - 行为变更必须补齐或更新测试。
 - C++ 用例按 suite 放置：`tests/cpp/llm_datadist/`、`tests/cpp/adxl/`、`tests/cpp/hixl/`（含 `fabric_mem/`）；端口规划见 `tests/cpp/TEST_PORTS.md`。
@@ -67,7 +69,7 @@ pre-commit run --files <changed-files>     # 只检查受影响文件
 
 ## 提交前检查与提交规范
 
-- 建议先阅读 `docs/precommit_guide.md`，再执行 `pre-commit install` 和 `pre-commit run --files <changed-files>`。
+- 建议先阅读 `docs/zh/contributions/precommit_guide.md`，再执行 `pre-commit install` 和 `pre-commit run --files <changed-files>`。
 - OAT（开源审计工具）会在 pre-commit 中检查二进制文件和许可证头；新增源码文件需要带正确的许可证头。
 - 禁止提交 `build_out/`、`build_test/`、手动下载的第三方压缩包或其他二进制产物。
 - 如果 pre-commit 或 OAT 因环境问题未执行成功，Agent 需要在最终说明中写明原因和影响范围。

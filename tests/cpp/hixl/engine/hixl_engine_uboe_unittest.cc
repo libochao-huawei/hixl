@@ -26,6 +26,7 @@ namespace fs = std::experimental::filesystem;
 #include "hixl/hixl.h"
 #include "slog_stub.h"
 #include "depends/mmpa/src/mmpa_stub.h"
+#include "depends/dsmi/src/dsmi_stub.h"
 #include "engine/test_mmpa_utils.h"
 
 namespace hixl {
@@ -69,8 +70,9 @@ class HixlEngineUboeTest : public ::testing::Test {
   void SetUp() override {
     acl_stub_ = endpoint_test::CreateAclRuntimeStub("Ascend910_9391", 0, 0, 9, 8);
     llm::AclRuntimeStub::SetInstance(acl_stub_);
-    // EnsureDeviceKernelLoadedLocked 现在在初始化阶段调用，需要提前设置 MmpaStub
+    // TransferPool initialization loads device kernels, so MmpaStub must be ready before Create.
     llm::MmpaStub::GetInstance().SetImpl(std::make_shared<UboeMmpaStub>());
+    DsmiStubSetInterconType(2U);  // DSMI stub 默认 UBG(4)，UBoE 测试需要设为 UBoE(2)
     temp_dir_ = fs::path("/tmp/hixl_engine_uboe_unittest");
     fs::remove_all(temp_dir_);
     fs::create_directories(temp_dir_);

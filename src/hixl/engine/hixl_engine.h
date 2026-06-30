@@ -22,6 +22,7 @@
 #include "hixl_server.h"
 #include "hixl/hixl_types.h"
 #include "common/hixl_inner_types.h"
+#include "common/optional_aclrt_context.h"
 
 namespace hixl {
 class HixlEngine : public hixl::Engine {
@@ -157,14 +158,14 @@ class HixlEngine : public hixl::Engine {
   Status InitServer(std::optional<uint32_t> listen_port, std::optional<uint32_t> max_active_channels);
   Status AutoConnect(const AscendString &remote_engine, int32_t timeout_in_millis);
   Status AutoDisconnect(const AscendString &remote_engine, int32_t timeout_in_millis);
-  void BuildClientConfig(const AscendString &remote_engine, ClientConfig &config, std::vector<MemInfo> &mem_info_list,
-                         int32_t timeout_in_millis);
+  void BuildClientConfig(const AscendString &remote_engine, ClientConfig &config,
+                         std::vector<MemHandleInfo> &mem_info_list, int32_t timeout_in_millis);
   std::mutex mutex_;
 
   std::atomic<bool> is_initialized_;
   ClientManager client_manager_;
   HixlServer server_;
-  std::map<void *, MemInfo> mem_map_;
+  std::map<void *, MemHandleInfo> mem_map_;
   std::vector<EndpointConfig> endpoint_list_;
 
   uint8_t rdma_traffic_class_{kRdmaTrafficClass};
@@ -172,7 +173,7 @@ class HixlEngine : public hixl::Engine {
   std::atomic<bool> auto_connect_{false};
   std::optional<uint8_t> qos_;
   std::optional<uint32_t> max_active_channels_;
-  aclrtContext aclrt_context_{nullptr};
+  OptionalAclrtContext aclrt_context_;
 };
 }  // namespace hixl
 

@@ -65,10 +65,11 @@ constexpr std::int32_t kDefaultTransferTimeoutMs = 600000;
 constexpr std::uint64_t kDefaultLocalBufferMinBytes = kBytesPerGiB;
 
 /// Transport type identifiers.
-constexpr const char *kTransportRdma = "rdma";
+constexpr const char *kTransportRoce = "roce";
 constexpr const char *kTransportFabricMem = "fabric_mem";
 constexpr const char *kTransportHccs = "hccs";
 constexpr const char *kTransportUboe = "uboe";
+constexpr const char *kTransportUbg = "ubg";
 constexpr const char *kTransportUb = "ub";
 constexpr const char *kPoolMemoryHost = "host";
 constexpr const char *kDefaultModel = "deepseek-r1";
@@ -110,7 +111,7 @@ struct KvBenchConfig {
   std::string model = kDefaultModel;
   std::string model_config = "kv_benchmark/config/models.json";
   std::string key_counts;
-  std::string transport = kTransportRdma;
+  std::string transport = kTransportRoce;
   std::string output_dir = "kv_benchmark/output";
   std::string run_id = "manual";
   std::string listen_host = "127.0.0.1";
@@ -331,15 +332,16 @@ KvBenchConfig ParseConfig(const std::vector<std::string> &argv) {
 
 bool ValidateConfig(const KvBenchConfig &cfg) {
   // KV workload uses host-side pool memory; HCCS comm path is restricted to D2D-only in benchmarks.
-  const bool transport_ok = cfg.transport == kTransportRdma || cfg.transport == kTransportFabricMem ||
-                            cfg.transport == kTransportUboe || cfg.transport == kTransportUb;
+  const bool transport_ok = cfg.transport == kTransportRoce || cfg.transport == kTransportFabricMem ||
+                            cfg.transport == kTransportUboe || cfg.transport == kTransportUbg ||
+                            cfg.transport == kTransportUb;
   const bool workload_ok = !cfg.key_counts.empty();
   return cfg.num_processes > 0U && cfg.rank < cfg.num_processes && cfg.transfer_threads > 0U && cfg.repeat > 0U &&
          cfg.local_buffer_min > 0U && cfg.pool_memory == kPoolMemoryHost && transport_ok && workload_ok;
 }
 
 void ApplyTransportEnvironment(const KvBenchConfig &cfg) {
-  if (cfg.transport != kTransportRdma) {
+  if (cfg.transport != kTransportRoce) {
     return;
   }
   if (setenv("HCCL_INTRA_ROCE_ENABLE", "1", 1) != 0) {
@@ -356,6 +358,10 @@ std::map<AscendString, AscendString> BuildInitializeOptions(const KvBenchConfig 
   if (cfg.transport == kTransportUboe) {
     options[AscendString(hixl::OPTION_GLOBAL_RESOURCE_CONFIG)] =
         AscendString("{\"comm_resource_config.protocol_desc\":[\"uboe:device\"]}");
+  }
+  if (cfg.transport == kTransportUbg) {
+    options[AscendString(hixl::OPTION_GLOBAL_RESOURCE_CONFIG)] =
+        AscendString("{\"comm_resource_config.protocol_desc\":[\"ubg:device\"]}");
   }
   if (cfg.transport == kTransportUb) {
     options[AscendString(hixl::OPTION_LOCAL_COMM_RES)] = AscendString("{\"version\":\"1.3\"}");
@@ -1111,8 +1117,8 @@ std::vector<KvBenchResult> ExecuteKvBenchmark(const KvBenchConfig &cfg, KvRuntim
 
 int RunKvBenchParsed(KvBenchConfig &cfg, KvRuntime *runtime, std::vector<RankMeta> *metas) {
   if (cfg.transport == kTransportHccs) {
-    std::cerr << "[ERROR] KV benchmark does not support transport=hccs (HCCS is D2D-only; use rdma, fabric_mem, uboe, "
-                 "or ub)\n";
+    std::cerr << "[ERROR] KV benchmark does not support transport=hccs (HCCS is D2D-only; use roce, fabric_mem, "
+                 "uboe, ubg, or ub)\n";
     return 1;
   }
   if (!ValidateConfig(cfg)) {

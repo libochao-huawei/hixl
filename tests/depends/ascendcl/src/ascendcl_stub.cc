@@ -11,9 +11,13 @@
 #include <map>
 #include <queue>
 #include <iostream>
+#include <unordered_map>
 #include <sys/mman.h>
 #include "ascendcl_stub.h"
+#include "common/hixl_inner_types.h"
 #include "mmpa/mmpa_api.h"
+
+extern "C" __attribute__((weak)) uint32_t HixlSyncTransferContext(TransferContextSyncParam *param);
 
 static std::string g_acl_stub_mock = "";
 static char g_soc_version[50] = {0};
@@ -24,6 +28,10 @@ static int32_t g_cnt_rtStreamSynchronize_over_flow = 0;
 static int32_t g_cnt_rtStreamSynchronize_fail = 0;
 static size_t reserve_mem_size_ = 200UL * 1024UL * 1024UL;
 static size_t reserved_total_size_ = 0;
+static std::mutex g_kernel_args_mu;
+static uintptr_t g_next_stub_handle = 0x87654321U;
+static std::unordered_map<aclrtFuncHandle, std::string> g_stub_func_names;
+static std::unordered_map<aclrtArgsHandle, std::vector<uint8_t>> g_stub_arg_data;
 
 #define EVENT_LENTH 10
 #define NOTIFY_LENTH 10
@@ -86,6 +94,17 @@ aclError AclRuntimeStub::aclrtSetDevice(int32_t deviceId) {
 }
 
 aclError AclRuntimeStub::aclrtResetDevice(int32_t deviceId) {
+  return ACL_ERROR_NONE;
+}
+
+aclError AclRuntimeStub::aclrtGetDeviceCount(uint32_t *count) {
+  if (__FUNCTION__ == g_acl_stub_mock) {
+    return ACL_ERROR_RT_INTERNAL_ERROR;
+  }
+  if (count == nullptr) {
+    return ACL_ERROR_INVALID_PARAM;
+  }
+  *count = 1U;
   return ACL_ERROR_NONE;
 }
 
@@ -572,7 +591,11 @@ aclError AclRuntimeStub::aclrtBinaryLoadFromFile(const char *modelPath, aclrtBin
 
 aclError AclRuntimeStub::aclrtBinaryGetFunction(aclrtBinHandle binHandle, const char *functionName,
                                                 aclrtFuncHandle *funcHandle) {
-  if (funcHandle) *funcHandle = reinterpret_cast<aclrtFuncHandle>(0x87654321);
+  if (funcHandle) {
+    std::lock_guard<std::mutex> lock(g_kernel_args_mu);
+    *funcHandle = reinterpret_cast<aclrtFuncHandle>(g_next_stub_handle++);
+    g_stub_func_names[*funcHandle] = (functionName == nullptr) ? "" : functionName;
+  }
   return ACL_SUCCESS;
 }
 
@@ -617,16 +640,23 @@ aclError AclRuntimeStub::aclrtSetStreamAttribute(aclrtStream stream, aclrtStream
 aclError AclRuntimeStub::aclrtKernelArgsInit(aclrtFuncHandle funcHandle, aclrtArgsHandle *argsHandle) {
   (void)funcHandle;
   if (argsHandle != nullptr) {
-    *argsHandle = reinterpret_cast<aclrtArgsHandle>(0x87654321);
+    std::lock_guard<std::mutex> lock(g_kernel_args_mu);
+    *argsHandle = reinterpret_cast<aclrtArgsHandle>(g_next_stub_handle++);
+    g_stub_arg_data[*argsHandle] = {};
   }
   return ACL_SUCCESS;
 }
 
 aclError AclRuntimeStub::aclrtKernelArgsAppend(aclrtArgsHandle argsHandle, void *data, size_t size,
                                                aclrtParamHandle *paraHandle) {
-  (void)argsHandle;
-  (void)data;
-  (void)size;
+  {
+    std::lock_guard<std::mutex> lock(g_kernel_args_mu);
+    auto &arg_data = g_stub_arg_data[argsHandle];
+    arg_data.resize(size);
+    if (data != nullptr && size > 0U) {
+      (void)memcpy_s(arg_data.data(), arg_data.size(), data, size);
+    }
+  }
   if (paraHandle != nullptr) {
     *paraHandle = reinterpret_cast<aclrtParamHandle>(0x11111111);
   }
@@ -641,12 +671,34 @@ aclError AclRuntimeStub::aclrtKernelArgsFinalize(aclrtArgsHandle argsHandle) {
 aclError AclRuntimeStub::aclrtLaunchKernelWithConfig(aclrtFuncHandle funcHandle, uint32_t blockDim, aclrtStream stream,
                                                      aclrtLaunchKernelCfg *config, aclrtArgsHandle argsHandle,
                                                      void *reserved) {
-  (void)funcHandle;
   (void)blockDim;
   (void)stream;
   (void)config;
-  (void)argsHandle;
   (void)reserved;
+  std::vector<uint8_t> arg_data;
+  std::string func_name;
+  {
+    std::lock_guard<std::mutex> lock(g_kernel_args_mu);
+    auto name_it = g_stub_func_names.find(funcHandle);
+    if (name_it != g_stub_func_names.end()) {
+      func_name = name_it->second;
+    }
+    auto arg_it = g_stub_arg_data.find(argsHandle);
+    if (arg_it != g_stub_arg_data.end()) {
+      arg_data = arg_it->second;
+    }
+  }
+  if (func_name == "HixlSyncTransferContext") {
+    if (HixlSyncTransferContext == nullptr) {
+      return ACL_ERROR_RT_INTERNAL_ERROR;
+    }
+    if (arg_data.size() != sizeof(TransferContextSyncParam)) {
+      return ACL_ERROR_INVALID_PARAM;
+    }
+    auto *param = reinterpret_cast<TransferContextSyncParam *>(arg_data.data());
+    uint32_t ret = HixlSyncTransferContext(param);
+    return (ret == hixl::SUCCESS) ? ACL_SUCCESS : ACL_ERROR_RT_INTERNAL_ERROR;
+  }
   return ACL_SUCCESS;
 }
 
@@ -688,6 +740,10 @@ aclError aclrtSetDevice(int32_t deviceId) {
 
 aclError aclrtResetDevice(int32_t deviceId) {
   return llm::AclRuntimeStub::GetInstance()->aclrtResetDevice(deviceId);
+}
+
+aclError aclrtGetDeviceCount(uint32_t *count) {
+  return llm::AclRuntimeStub::GetInstance()->aclrtGetDeviceCount(count);
 }
 
 aclError aclrtGetDevice(int32_t *deviceId) {
