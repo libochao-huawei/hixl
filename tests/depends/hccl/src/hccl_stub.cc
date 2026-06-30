@@ -34,6 +34,11 @@ static int32_t g_next_nbi_failure_ret = 0;    // 下一次NBI传输的返回值
 static int32_t g_next_fence_failure_ret = 0;  // 下一次Fence的返回值
 static int32_t g_listen_port_ret = 0;  // HcommEndpointGetListenPort的返回值, 0表示使用默认行为(返回HCCL_SUCCESS)
 
+// 基本传输（HcommReadOnThread/HcommWriteOnThread）的 HCCL_E_AGAIN 注入：
+// g_basic_again_remaining > 0 时，下一次基本传输调用直接返回 HCCL_E_AGAIN 并递减计数，用于测试代理层重试逻辑。
+static uint32_t g_basic_again_remaining = 0;
+static uint32_t g_basic_call_count = 0;
+
 // 辅助函数：执行 NBI 传输并处理重试逻辑
 static int32_t DoNbiTransferWithRetry(void *dst, const void *src, uint64_t len) {
   if (dst == nullptr || src == nullptr || len == 0) {
@@ -211,16 +216,26 @@ static int32_t DoBasicTransfer(void *dst, const void *src, uint64_t len) {
   return HCCL_SUCCESS;
 }
 
+// 处理基本传输的 HCCL_E_AGAIN 注入：若剩余注入次数大于 0 则返回 HCCL_E_AGAIN，否则执行真实传输。
+static int32_t DoBasicTransferWithAgainInjection(void *dst, const void *src, uint64_t len) {
+  g_basic_call_count++;
+  if (g_basic_again_remaining > 0) {
+    g_basic_again_remaining--;
+    return HCCL_E_AGAIN;
+  }
+  return DoBasicTransfer(dst, src, len);
+}
+
 int32_t HcommReadOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len) {
   (void)thread;
   (void)channel;
-  return DoBasicTransfer(dst, src, len);
+  return DoBasicTransferWithAgainInjection(dst, src, len);
 }
 
 int32_t HcommWriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len) {
   (void)thread;
   (void)channel;
-  return DoBasicTransfer(dst, src, len);
+  return DoBasicTransferWithAgainInjection(dst, src, len);
 }
 
 int32_t HcommChannelFenceOnThread(ThreadHandle thread, ChannelHandle channel) {
@@ -240,6 +255,22 @@ int32_t HcommChannelFenceOnThread(ThreadHandle thread, ChannelHandle channel) {
 // 设置下一次NBI传输返回指定错误码
 void SetNextNbiFailure(int32_t ret) {
   g_next_nbi_failure_ret = ret;
+}
+
+// 设置基本传输（HcommReadOnThread/HcommWriteOnThread）连续返回 HCCL_E_AGAIN 的次数
+void SetBasicTransferAgainCount(uint32_t count) {
+  g_basic_again_remaining = count;
+}
+
+// 获取基本传输累计调用次数
+uint32_t GetBasicTransferCallCount() {
+  return g_basic_call_count;
+}
+
+// 重置基本传输注入与计数状态
+void ResetBasicTransferStats() {
+  g_basic_again_remaining = 0;
+  g_basic_call_count = 0;
 }
 
 // 设置下一次Fence返回指定错误码

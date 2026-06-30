@@ -8,6 +8,8 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
+#include <chrono>
+#include <thread>
 #include "hcomm_proxy.h"
 #include "common/hixl_checker.h"
 
@@ -68,6 +70,25 @@ __attribute__((weak)) int32_t HcommAclrtNotifyRecordOnThread(ThreadHandle thread
 }
 
 namespace hixl {
+namespace {
+// 当底层传输接口返回 HCCL_E_AGAIN 时，在 timeout_ms 时间窗口内重试；超时则停止重试并返回 HCCL_E_AGAIN。
+// timeout_ms 为 0 表示不重试（仅调用一次）。重试间隔 1ms，避免持续占用 CPU。
+template <typename Fn>
+int32_t RetryTransferOnAgain(Fn &&fn, uint64_t timeout_ms) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (true) {
+    int32_t ret = fn();
+    if (ret != HCCL_E_AGAIN) {
+      return ret;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) {
+      HIXL_LOGW("Transfer returns HCCL_E_AGAIN, retry timeout(%lu ms) reached, stop retry.", timeout_ms);
+      return ret;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+}
+}  // namespace
 HcclResult HcommProxy::MemReg(EndpointHandle endpoint_handle, const char *mem_tag, const CommMem *mem,
                               HcommMemHandle *mem_handle) {
   HIXL_CHK_BOOL_RET_STATUS(HcommMemReg != nullptr, HCCL_E_NOT_SUPPORT,
@@ -179,17 +200,20 @@ int32_t HcommProxy::BatchModeEnd(const char *batch_tag) {
   return HcommBatchModeEnd(batch_tag);
 }
 
-int32_t HcommProxy::ReadOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len) {
+int32_t HcommProxy::ReadOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len,
+                                 uint64_t timeout_ms) {
   HIXL_CHK_BOOL_RET_STATUS(HcommReadOnThread != nullptr, HCCL_E_NOT_SUPPORT,
                            "function HcommReadOnThread is null, maybe unsupported.");
-  return HcommReadOnThread(thread, channel, dst, src, len);
+  return RetryTransferOnAgain(
+      [thread, channel, dst, src, len] { return HcommReadOnThread(thread, channel, dst, src, len); }, timeout_ms);
 }
 
-int32_t HcommProxy::WriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src,
-                                  uint64_t len) {
+int32_t HcommProxy::WriteOnThread(ThreadHandle thread, ChannelHandle channel, void *dst, const void *src, uint64_t len,
+                                  uint64_t timeout_ms) {
   HIXL_CHK_BOOL_RET_STATUS(HcommWriteOnThread != nullptr, HCCL_E_NOT_SUPPORT,
                            "function HcommWriteOnThread is null, maybe unsupported.");
-  return HcommWriteOnThread(thread, channel, dst, src, len);
+  return RetryTransferOnAgain(
+      [thread, channel, dst, src, len] { return HcommWriteOnThread(thread, channel, dst, src, len); }, timeout_ms);
 }
 
 int32_t HcommProxy::ChannelFenceOnThread(ThreadHandle thread, ChannelHandle channel) {
@@ -199,12 +223,17 @@ int32_t HcommProxy::ChannelFenceOnThread(ThreadHandle thread, ChannelHandle chan
 }
 
 int32_t HcommProxy::BatchTransferOnThread(ThreadHandle thread, ChannelHandle channel,
-                                          const HcommBatchTransferDesc *transfer_descs, uint32_t transfer_desc_num) {
+                                          const HcommBatchTransferDesc *transfer_descs, uint32_t transfer_desc_num,
+                                          uint64_t timeout_ms) {
   if (HcommBatchTransferOnThread == nullptr) {
     HIXL_LOGI("function HcommBatchTransferOnThread is null, maybe unsupported.");
     return HCCL_E_NOT_SUPPORT;
   }
-  return HcommBatchTransferOnThread(thread, channel, transfer_descs, transfer_desc_num);
+  return RetryTransferOnAgain(
+      [thread, channel, transfer_descs, transfer_desc_num] {
+        return HcommBatchTransferOnThread(thread, channel, transfer_descs, transfer_desc_num);
+      },
+      timeout_ms);
 }
 
 int32_t HcommProxy::aclrtNotifyRecordOnThread(ThreadHandle thread, int32_t notify_id) {
