@@ -30,6 +30,7 @@
 #undef private
 #include "engine/endpoint_generator.h"
 #include "engine/endpoint_matcher.h"
+#include "engine/client_handler_config_helper.h"
 #include "common/hixl_inner_types.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/runtime/src/runtime_stub.h"
@@ -37,6 +38,7 @@
 #include "common/hixl_utils.h"
 #include "common/ctrl_msg_plugin.h"
 #include "common/segment.h"
+#include "nlohmann/json.hpp"
 
 using namespace ::testing;
 
@@ -1474,6 +1476,42 @@ TEST_F(HixlClientUTest, EndpointMatcherDirectMatchRequiresSamePlacement) {
   HandlerCreateArgs::HandlerType handler_type;
   Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
   EXPECT_EQ(st, PARAM_INVALID);
+  EXPECT_TRUE(matched_pairs.empty());
+}
+
+TEST_F(HixlClientUTest, BuildGlobalResourceConfigWithMaxActiveChannels) {
+  HandlerCreateArgs args{};
+  args.qos = 7U;
+  args.max_active_channels = 64U;
+  const std::string config = ClientHandlerConfigHelper::BuildGlobalResourceConfig(args);
+  auto json = nlohmann::json::parse(config);
+  EXPECT_EQ(json.at("comm_resource_config.qos").get<uint32_t>(), 7U);
+  EXPECT_EQ(json.at("comm_resource_config.max_active_channels").get<uint32_t>(), 64U);
+}
+
+TEST_F(HixlClientUTest, BuildGlobalResourceConfigWithMaxActiveChannelsOnly) {
+  HandlerCreateArgs args{};
+  args.max_active_channels = 128U;
+  const std::string config = ClientHandlerConfigHelper::BuildGlobalResourceConfig(args);
+  auto json = nlohmann::json::parse(config);
+  EXPECT_EQ(json.size(), 1U);
+  EXPECT_EQ(json.at("comm_resource_config.max_active_channels").get<uint32_t>(), 128U);
+}
+
+TEST_F(HixlClientUTest, EndpointMatcherIgnoresIntraRoceEnv) {
+  std::vector<EndpointConfig> local = {MakeUbEp("local_1", "", "device", "default"),
+                                       MakeDirectEp(kProtocolRoce, kPlacementDevice)};
+  std::vector<EndpointConfig> remote = {MakeUbEp("remote_1", "", "device", "default"),
+                                        MakeDirectEp(kProtocolRoce, kPlacementDevice)};
+
+  EnvGuard env_guard("HCCL_INTRA_ROCE_ENABLE", "1");
+  std::vector<HandlerCreateArgs::EndpointPair> matched_pairs;
+  HandlerCreateArgs::HandlerType handler_type;
+  Status st = EndpointMatcher::MatchEndpoints(local, remote, matched_pairs, handler_type);
+  EXPECT_EQ(st, SUCCESS);
+  EXPECT_EQ(handler_type, HandlerCreateArgs::HandlerType::UB);
+  ASSERT_EQ(matched_pairs.size(), 1U);
+  EXPECT_EQ(matched_pairs[0].type, CommType::COMM_TYPE_UB_D2D);
 }
 
 TEST_F(HixlClientUTest, CheckAliveWritesControlSocket) {

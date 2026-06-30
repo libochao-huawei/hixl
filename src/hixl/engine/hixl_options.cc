@@ -18,6 +18,7 @@
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
 #include "common/json_utils.h"
+#include "cs/transfer_pool.h"
 
 namespace hixl {
 namespace {
@@ -28,6 +29,7 @@ constexpr size_t kMinTaskStreamNum = 1U;
 constexpr size_t kMaxTaskStreamNum = 8U;
 constexpr uint32_t kMinListenPort = 1U;
 constexpr uint32_t kMaxListenPort = 65535U;
+constexpr uint32_t kMinActiveChannels = 1U;
 constexpr int32_t kMinRdmaTrafficClass = 0;
 constexpr int32_t kMaxRdmaTrafficClass = 255;
 constexpr int32_t kRdmaTrafficClassAlign = 4;
@@ -73,6 +75,9 @@ void from_json(const nlohmann::json &j, CommResourceConfigDesc &cfg) {
       throw nlohmann::json::out_of_range::create(0, "comm_resource_config.qos out of range", nullptr);
     }
     cfg.qos = static_cast<uint8_t>(val);
+  }
+  if (j.contains("comm_resource_config.max_active_channels")) {
+    cfg.max_active_channels = JsonToNumber<uint32_t>(j.at("comm_resource_config.max_active_channels"));
   }
 }
 
@@ -261,6 +266,12 @@ Status HixlOptions::ParseGlobalResourceConfig(const std::string &config_str) {
       uint8_t val = cfg.comm_resource_config.qos.value();
       HIXL_CHK_BOOL_RET_STATUS(val <= kQosMax, PARAM_INVALID, "comm_resource_config.qos must be in [%u, %u], got %u",
                                kQosMin, kQosMax, val);
+    }
+    if (cfg.comm_resource_config.max_active_channels.has_value()) {
+      uint32_t val = *cfg.comm_resource_config.max_active_channels;
+      HIXL_CHK_BOOL_RET_STATUS(val >= kMinActiveChannels && val <= TransferPool::kMaxPoolSize, PARAM_INVALID,
+                               "comm_resource_config.max_active_channels must be in [%u, %u], got %u",
+                               kMinActiveChannels, TransferPool::kMaxPoolSize, val);
     }
     global_resource_config_ = std::move(cfg);
     return SUCCESS;

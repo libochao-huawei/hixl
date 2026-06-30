@@ -9,8 +9,11 @@
  */
 
 #include <cstdlib>
+#include <string>
+#include <vector>
 #include <gtest/gtest.h>
 #include "engine/hixl_options.h"
+#include "cs/transfer_pool.h"
 #include "hixl/hixl_types.h"
 #include "adxl/adxl_types.h"
 #include "slog_stub.h"
@@ -281,6 +284,50 @@ TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigListenPortString) {
   EXPECT_EQ(*grc.comm_resource_config.listen_port, 26300U);
 }
 
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigMaxActiveChannels) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.max_active_channels":256})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  auto grc = *result.GlobalResourceCfg();
+  ASSERT_TRUE(grc.comm_resource_config.max_active_channels.has_value());
+  EXPECT_EQ(*grc.comm_resource_config.max_active_channels, 256U);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigMaxActiveChannelsString) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.max_active_channels":"128"})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  auto grc = *result.GlobalResourceCfg();
+  ASSERT_TRUE(grc.comm_resource_config.max_active_channels.has_value());
+  EXPECT_EQ(*grc.comm_resource_config.max_active_channels, 128U);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigMaxActiveChannelsMin) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.max_active_channels":1})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  ASSERT_TRUE(result.GlobalResourceCfg()->comm_resource_config.max_active_channels.has_value());
+  EXPECT_EQ(*result.GlobalResourceCfg()->comm_resource_config.max_active_channels, 1U);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigMaxActiveChannelsMax) {
+  std::map<AscendString, AscendString> options;
+  const std::string json_str =
+      R"({"comm_resource_config.max_active_channels":)" + std::to_string(TransferPool::kMaxPoolSize) + "}";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = json_str.c_str();
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  ASSERT_TRUE(result.GlobalResourceCfg()->comm_resource_config.max_active_channels.has_value());
+  EXPECT_EQ(*result.GlobalResourceCfg()->comm_resource_config.max_active_channels, TransferPool::kMaxPoolSize);
+}
+
 TEST_F(HixlOptionsUTest, GetProtocolDescReturnsEmptyWhenNotConfigured) {
   std::map<AscendString, AscendString> options;
   HixlOptions result;
@@ -321,6 +368,20 @@ TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigListenPortTypeInvalid) {
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.listen_port":"invalid"})";
   HixlOptions result;
   EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
+}
+
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigMaxActiveChannelsInvalid) {
+  std::string too_large =
+      R"({"comm_resource_config.max_active_channels":)" + std::to_string(TransferPool::kMaxPoolSize + 1U) + "}";
+  const std::vector<std::string> invalid_configs = {R"({"comm_resource_config.max_active_channels":0})", too_large,
+                                                    R"({"comm_resource_config.max_active_channels":-1})",
+                                                    R"({"comm_resource_config.max_active_channels":"invalid"})"};
+  for (const auto &config : invalid_configs) {
+    std::map<AscendString, AscendString> options;
+    options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = config.c_str();
+    HixlOptions result;
+    EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID) << "config=" << config;
+  }
 }
 
 TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigInvalidJson) {
