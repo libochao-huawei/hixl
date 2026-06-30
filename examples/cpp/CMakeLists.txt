@@ -26,6 +26,7 @@ set(targets_list
     "fabric_mem_d2d"
     "hixl_example_d2rh"
     "hixl_example_d2rd"
+    "hixl_hccl_coexist"
 )
 
 foreach(target_name IN LISTS targets_list)
@@ -37,6 +38,7 @@ foreach(target_name IN LISTS targets_list)
         target_include_directories(${target_name} PRIVATE
             ${HIXL_INC_DIR}
             ${ASCEND_INSTALL_PATH}/include
+            ${HIXL_CODE_DIR}/src/hixl/proxy
         )
         target_compile_options(${target_name} PRIVATE
             -ftrapv

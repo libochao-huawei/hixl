@@ -14,6 +14,7 @@ set(CMAKE_SKIP_RPATH TRUE)
 set(HIXL_INC_DIR
     "${HIXL_CODE_DIR}/include"
     "${HIXL_CODE_DIR}/src/hixl"
+    "${HIXL_CODE_DIR}/src/hixl/proxy"
 )
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 
