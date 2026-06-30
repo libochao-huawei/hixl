@@ -13,6 +13,7 @@
 #include <vector>
 #include "common/hixl_log.h"
 #include "common/hixl_checker.h"
+#include "common/scope_guard.h"
 #include "proxy/hcomm_proxy.h"
 #include "transfer_context_manager.h"
 #include "hixl/hixl.h"
@@ -139,6 +140,12 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
   constexpr const char *kBatchTag = "HixlKernel";
   int32_t ret = HcommProxy::BatchModeStart(kBatchTag);
   HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommBatchModeStart failed, ret is %d", ret);
+  HIXL_MAKE_GUARD(batch_mode, ([kBatchTag]() {
+                    int32_t ret = HcommProxy::BatchModeEnd(kBatchTag);
+                    if (ret != 0) {
+                      HIXL_LOGE(FAILED, "[HixlBatchPutAndGet] HcommBatchModeEnd failed, ret is %d", ret);
+                    }
+                  }));
 
   ret = HixlBatchTransferTask(is_read, param);
   HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HixlBatchTransferTask failed, ret is %d", ret);
@@ -169,9 +176,6 @@ uint32_t HixlBatchTransfer(bool is_read, HixlOneSideOpParam *param) {
           param->thread, param->notify_id);
     }
   }
-
-  ret = HcommProxy::BatchModeEnd(kBatchTag);
-  HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED, "[HixlBatchPutAndGet] HcommBatchModeEnd failed, ret is %d", ret);
 
   return SUCCESS;
 }
