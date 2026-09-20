@@ -18,6 +18,7 @@ set(LLM_DATADIST_TEST_FILES
         comm_mem_manager_unittest.cc
         rank_table_generator_unittest.cc
         transfer_message_limits_unittest.cc
+        transfer_request_validation_unittest.cc
         msg_handler_plugin_unittest.cc
 )
 set(LLM_DATADIST_STUB_SRC_FILES
