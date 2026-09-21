@@ -31,7 +31,7 @@ HIXL相关开源仓的日志打印、Markdown文档、README、示例与脚本�
 
 ---
 
-### 1. 日志规范
+### 日志规范
 
 #### 规则 1.1 失败必须打印错误描述与关键信息
 
@@ -164,7 +164,7 @@ HIXL_CHK_ACL_RET(aclrtSetDevice(device_id), "device_id:%u", device_id);
 
 ---
 
-### 2. 文档写作规范
+### 文档写作规范
 
 文档（`.md`）写作规范直接遵循GitCode CANN社区[《文档写作规范》](https://gitcode.com/cann/community/blob/master/contributor/docs/document_writing_specs.md)。该规范涵盖文件命名、标题、字体样式、图片、代码块、列表、链接、锚点、表格、标点符号等全部文档写作要求（含“数字/单位/中英文之间不加空格、产品名称例外”“中文文档使用全角标点、数字半角”等规则）。检视文档变更时先以此为准（community规范不在此重复）。HIXL补充以下检查项：
 

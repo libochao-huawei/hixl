@@ -30,7 +30,7 @@ Review of log printing, Markdown documents, READMEs, examples, and script descri
 
 ---
 
-### 1. Logging Specifications
+### Logging Specifications
 
 #### Rule 1.1 Failures must print an error description and key information
 
@@ -79,41 +79,89 @@ if (ret != ACL_ERROR_NONE) {
 }
 ```
 
-#### Rule 1.3 Log content must use English exclusively
+#### Rule 1.3 External parameter validation and failures of non-component interfaces must use HIXL CHECK macros
+
+When external parameter validation fails, or when a call to a non-component interface fails (including system interface failures), the HIXL CHECK macros must be used to handle the return value, report the error msg, and print the error log in a unified way. The error message must contain the key information that may cause the current error, such as the parameter name, parameter value, valid range, API name, return code, `errno`, `strerror(errno)`, device ID, port, fd, and timeout, etc.
+
+Commonly used macros include `HIXL_CHECK_NOTNULL`, `HIXL_CHK_BOOL_RET_STATUS`, `HIXL_CHK_STATUS_RET`, `HIXL_CHK_ACL_RET`, and `HIXL_CHK_HCCL_RET`. Do not return only an error code, and do not use only `HIXL_LOGE` while omitting the error msg report.
+
+[Negative example]: Only a log is printed when external parameter validation fails, without reporting the error msg
+
+```cpp
+if (client_desc == nullptr) {
+  HIXL_LOGE(PARAM_INVALID, "client_desc is nullptr");
+  return PARAM_INVALID;
+}
+```
+
+[Positive example]:
+
+```cpp
+HIXL_CHECK_NOTNULL(client_desc);
+HIXL_CHK_BOOL_RET_STATUS(port >= kMinPort && port <= kMaxPort, PARAM_INVALID,
+                         "Invalid listen_port:%u, valid range is [%u, %u]", port, kMinPort, kMaxPort);
+```
+
+[Negative example]: HIXL CHECK macros are not used when a system interface fails, and the error msg report is missing
+
+```cpp
+int32_t ret = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+if (ret != 0) {
+  HIXL_LOGE(FAILED, "setsockopt failed");
+  return FAILED;
+}
+```
+
+[Positive example]:
+
+```cpp
+int32_t ret = setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+HIXL_CHK_BOOL_RET_STATUS(ret == 0, FAILED,
+                         "Call api:setsockopt failed, ret:%d, fd:%d, option:SO_RCVTIMEO, error msg:%s, errno:%d", ret,
+                         fd, strerror(errno), errno);
+```
+
+[Positive example]: Use the dedicated macros directly when ACL/HCCL already provide them
+
+```cpp
+HIXL_CHK_ACL_RET(aclrtSetDevice(device_id), "device_id:%u", device_id);
+```
+
+#### Rule 1.4 Log content must use English exclusively
 
 All log content must be described in English. Pinyin, Chinese, and Chinese punctuation must not be used.
 
-#### Rule 1.4 Content must be free of grammar and spelling errors, complete and accurate, and avoid self-invented abbreviations
+#### Rule 1.5 Content must be free of grammar and spelling errors, complete and accurate, and avoid self-invented abbreviations
 
 Log content must not contain grammar or spelling errors. The expression should be complete, accurate, and concise, and avoid self-invented abbreviations.
 
-#### Rule 1.5 Measurement information must include units
+#### Rule 1.6 Measurement information must include units
 
 Measurement information involved in logs (such as elapsed time, data volume, and bandwidth) must include units.
 
-#### Rule 1.6 Sensitive information must not be logged in plaintext
+#### Rule 1.7 Sensitive information must not be logged in plaintext
 
 Sensitive information, such as passwords, keys, and tokens, must not be recorded in plaintext.
 
-#### Rule 1.7 Logs must not contain personal information
+#### Rule 1.8 Logs must not contain personal information
 
 Log content must not contain personal information.
 
-#### Rule 1.8 Performance-sensitive flows must not log run-level logs; production environments must not continuously output DEBUG
+#### Rule 1.9 Performance-sensitive flows must not log run-level logs; production environments must not continuously output DEBUG
 
 Performance-sensitive flows must not log run-level (INFO-level) logs, for example, the HIXL data-plane interface in the KV transfer flow; production environments must not have continuous DEBUG-level output.
 
-#### Rule 1.9 Avoid printing duplicate error logs within high-frequency loops
+#### Rule 1.10 Avoid printing duplicate error logs within high-frequency loops
 
 Avoid printing duplicate error logs within high-frequency loop bodies; otherwise, useful error information may be obscured.
 
-#### Rule 1.10 A single log line must not exceed 1024 characters
+#### Rule 1.11 A single log line must not exceed 1024 characters
 
 The length of a single log line must not exceed 1024 characters.
 
 ---
 
-### 2. Documentation Writing Specifications
+### Documentation Writing Specifications
 
 The documentation (`.md`) writing specifications directly follow the GitCode CANN community ["Document Writing Specifications"](https://gitcode.com/cann/community/blob/master/contributor/docs/document_writing_specs.md). These specifications cover all documentation writing requirements including file naming, headings, font styles, images, code blocks, lists, links, anchors, tables, punctuation, and more (including rules such as "no spaces between numbers/units/Chinese and English, with product names as exceptions" and "Chinese documents use full-width punctuation, numbers use half-width"). When reviewing documentation changes, use this as the primary reference (the community specifications are not repeated here). HIXL adds the following check item:
 
