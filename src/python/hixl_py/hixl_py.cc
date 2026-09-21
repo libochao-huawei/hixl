@@ -19,7 +19,6 @@
 #include "pybind11/stl.h"
 
 #include "hixl/hixl_types.h"
-#include "common/hixl_checker.h"
 
 namespace hixl_py {
 namespace py = pybind11;
@@ -38,7 +37,6 @@ HixlPy::~HixlPy() {
 hixl::Status HixlPy::Initialize(const std::string &local_engine, const std::map<std::string, std::string> &options) {
   std::unique_lock<std::shared_mutex> lock(mutex_);
   if (initialized_) {
-    HIXL_LOGI("Initialize: already initialized, ignoring repeated call");
     return hixl::SUCCESS;
   }
   auto instance = std::make_unique<hixl::Hixl>();
@@ -49,7 +47,6 @@ hixl::Status HixlPy::Initialize(const std::string &local_engine, const std::map<
   }
   hixl::Status ret = instance->Initialize(ascend_local_engine, ascend_options);
   if (ret != hixl::SUCCESS) {
-    HIXL_LOGE(ret, "Initialize: failed for engine '%s'", local_engine.c_str());
     return ret;
   }
   hixl_engine_ = std::move(instance);

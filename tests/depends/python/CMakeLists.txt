@@ -95,18 +95,13 @@ add_library(hixl_py_stub MODULE
 target_include_directories(hixl_py_stub PRIVATE
         ${HI_PYTHON_INC}
         ${HIXL_CODE_DIR}/include
-        ${HIXL_CODE_DIR}/src/hixl
 )
 
 target_link_libraries(hixl_py_stub PRIVATE
         intf_pub
-        hccl_headers
         metadef_headers
         pybind11
         cann_hixl_base
-        -Wl,--no-as-needed
-        error_manager_stub
-        -Wl,--as-needed
         ${DT_COMMON_LINK_OPTION}
 )
 # CMake 3.16 does not propagate INTERFACE add_dependencies to consumers.

@@ -17,17 +17,12 @@ if (NOT ENABLE_TEST)
     target_include_directories(hixl PRIVATE
             ${HI_PYTHON_INC}
             ${HIXL_CODE_DIR}/include
-            ${HIXL_CODE_DIR}/src/hixl
     )
 
     target_link_libraries(hixl PRIVATE
             $<BUILD_INTERFACE:intf_pub>
-            $<BUILD_INTERFACE:hccl_headers>
-            $<BUILD_INTERFACE:slog_headers>
             $<BUILD_INTERFACE:metadef_headers>
-            $<BUILD_INTERFACE:msprof_headers>
             pybind11
-            alog
             cann_hixl
     )
     # CMake 3.16 does not propagate INTERFACE add_dependencies to consumers.
