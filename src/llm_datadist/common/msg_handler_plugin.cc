@@ -138,10 +138,18 @@ ssize_t MsgHandlerPlugin::Write(int32_t fd, const void *buf, size_t len) {
   size_t nbytes = len;
   while (nbytes > 0U) {
     auto rc = write(fd, pos, nbytes);
-    if (rc < 0 && (errno == EAGAIN || errno == EINTR)) {
-      continue;
-    } else if (rc < 0) {
-      LLMLOGE(ge::FAILED, "Socket write failed, error msg:%s, errno:%d", strerror(errno), errno);
+    if (rc < 0) {
+      const int error_no = errno;
+      if (error_no == EINTR) {
+        // A signal did not consume bytes; preserve the retry semantics of socket I/O.
+        continue;
+      } else if (error_no == EAGAIN) {
+        LLMLOGW("Socket write timed out, fd:%d, len:%zu, remaining:%zu, error msg:%s, errno:%d", fd, len, nbytes,
+                strerror(error_no), error_no);
+      } else {
+        LLMLOGE(ge::FAILED, "Socket write failed, fd:%d, len:%zu, remaining:%zu, error msg:%s, errno:%d", fd, len,
+                nbytes, strerror(error_no), error_no);
+      }
       return rc;
     } else if (rc == 0) {
       LLMLOGW("Socket write incomplete: expected %zu bytes, actual %zu bytes", len, len - nbytes);
@@ -159,10 +167,18 @@ ssize_t MsgHandlerPlugin::Read(int32_t fd, void *buf, size_t len) {
   size_t nbytes = len;
   while (nbytes > 0U) {
     auto rc = read(fd, pos, nbytes);
-    if (rc < 0 && (errno == EAGAIN || errno == EINTR)) {
-      continue;
-    } else if (rc < 0) {
-      LLMLOGE(ge::FAILED, "Socket read failed, error msg:%s, errno:%d", strerror(errno), errno);
+    if (rc < 0) {
+      const int error_no = errno;
+      if (error_no == EINTR) {
+        // A signal did not consume bytes; preserve the retry semantics of socket I/O.
+        continue;
+      } else if (error_no == EAGAIN) {
+        LLMLOGW("Socket read timed out, fd:%d, len:%zu, remaining:%zu, error msg:%s, errno:%d", fd, len, nbytes,
+                strerror(error_no), error_no);
+      } else {
+        LLMLOGE(ge::FAILED, "Socket read failed, fd:%d, len:%zu, remaining:%zu, error msg:%s, errno:%d", fd, len,
+                nbytes, strerror(error_no), error_no);
+      }
       return rc;
     } else if (rc == 0) {
       LLMLOGW("Socket read incomplete: expected %zu bytes, actual %zu bytes", len, len - nbytes);
