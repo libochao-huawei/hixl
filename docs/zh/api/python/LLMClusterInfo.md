@@ -67,6 +67,8 @@ remote_cluster_id(remote_cluster_id)
 **调用示例**
 
 ```python
+from llm_datadist import LLMClusterInfo
+
 llm_cluster = LLMClusterInfo()
 llm_cluster.remote_cluster_id = 1
 ```
@@ -103,6 +105,8 @@ append_local_ip_info(self, ip: Union[str, int], port: int)
 **调用示例**
 
 ```python
+from llm_datadist import LLMClusterInfo
+
 llm_cluster = LLMClusterInfo()
 llm_cluster.append_local_ip_info("1.1.1.1", 10000)
 ```
@@ -139,6 +143,8 @@ append_remote_ip_info(self, ip: Union[str, int], port: int)
 **调用示例**
 
 ```python
+from llm_datadist import LLMClusterInfo
+
 llm_cluster = LLMClusterInfo()
 llm_cluster.append_remote_ip_info("1.1.1.1", 10000)
 ```

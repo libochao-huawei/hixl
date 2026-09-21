@@ -37,7 +37,7 @@ __init__(mem_type: Memtype, addr: int, size: int)
 ## 调用示例
 
 ```python
-from llm_datadist import MemInfo
+from llm_datadist import MemInfo, Memtype
 mem_info = MemInfo(Memtype.MEM_TYPE_DEVICE, 1234, 10)
 ```
 

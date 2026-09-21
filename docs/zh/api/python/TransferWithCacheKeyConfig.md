@@ -38,7 +38,7 @@ __init__(cache_key: Union[BlocksCacheKey, CacheKeyByIdAndIndex], src_layer_range
 ## 调用示例
 
 ```python
-from llm_datadist import TransferWithCacheKeyConfig
+from llm_datadist import TransferWithCacheKeyConfig, BlocksCacheKey
 TransferWithCacheKeyConfig(BlocksCacheKey(1), range(0, 40), range(0, 40))
 ```
 
