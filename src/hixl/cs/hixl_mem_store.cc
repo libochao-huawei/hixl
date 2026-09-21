@@ -24,7 +24,7 @@ bool IsAddrInRegion(const MemoryRegion &region, const void *addr) {
   return addr < region_end;
 }
 
-// 检查内存区域是否连续（addr和register_dev_addr都必须连续）
+// 检查内存区域是否可合并（addr连续、内存类型与Host映射属性一致、register_dev_addr连续）
 bool CheckRegionsContiguous(const MemoryRegion &prev, const MemoryRegion &curr) {
   // 首先检查addr连续性（这是基本前提）
   const uintptr_t prev_end = reinterpret_cast<uintptr_t>(prev.addr) + prev.size;
@@ -33,8 +33,19 @@ bool CheckRegionsContiguous(const MemoryRegion &prev, const MemoryRegion &curr) 
     return false;  // addr不连续，直接返回 false
   }
 
+  // 内存类型不同（host/device）的区域不可合并，避免跨界descriptor通过校验后被错误转换
+  if (prev.is_host_mem != curr.is_host_mem) {
+    return false;
+  }
+  // Host VA映射属性不同（一方有register_dev_addr一方没有）的区域不可合并
+  const bool prev_has_dev_addr = prev.register_dev_addr != nullptr;
+  const bool curr_has_dev_addr = curr.register_dev_addr != nullptr;
+  if (prev_has_dev_addr != curr_has_dev_addr) {
+    return false;
+  }
+
   // 如果addr连续，检查register_dev_addr连续性（当有register_dev_addr地址时）
-  if (prev.register_dev_addr != nullptr && curr.register_dev_addr != nullptr) {
+  if (prev_has_dev_addr) {
     const uintptr_t prev_dev_end = reinterpret_cast<uintptr_t>(prev.register_dev_addr) + prev.size;
     const uintptr_t curr_dev_start = reinterpret_cast<uintptr_t>(curr.register_dev_addr);
     return prev_dev_end == curr_dev_start;  // register_dev_addr也必须连续

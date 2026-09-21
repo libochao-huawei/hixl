@@ -269,4 +269,69 @@ TEST(HixlMemStoreUboeTest, BatchConvertHostAddrUnregisteredLocal) {
   EXPECT_EQ(store.BatchConvertHostAddr(1, desc_list), FAILED);
 }
 
+// Host映射区与Device区相邻时，跨属性边界的descriptor应被拒绝
+TEST(HixlMemStoreUboeTest, BatchValidateMemoryAccessHostToDeviceBoundary) {
+  HixlMemStore store;
+  // Host映射区[100,200)，Device区[200,300)紧邻
+  void *host_addr = IntToPtr(100);
+  void *dev_region = IntToPtr(200);
+  void *dev_map_addr = IntToPtr(1000);
+  void *client_addr = IntToPtr(3000);
+  constexpr size_t kSize = 100;
+  EXPECT_EQ(store.RecordMemory(true, host_addr, kSize, true, dev_map_addr), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(true, dev_region, kSize, false, nullptr), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(false, client_addr, kSize * 2, false, nullptr), SUCCESS);
+
+  // descriptor跨界：remote [150, 250)，内存类型不同不可合并，应拒绝
+  HixlOneSideOpDesc cross_desc[] = {{IntToPtr(150), client_addr, kSize}};
+  EXPECT_EQ(store.BatchValidateMemoryAccess(1, cross_desc), PARAM_INVALID);
+
+  // 对照：descriptor完整落在Host映射区内应成功
+  HixlOneSideOpDesc host_desc[] = {{IntToPtr(150), client_addr, kSize / 2}};
+  EXPECT_EQ(store.BatchValidateMemoryAccess(1, host_desc), SUCCESS);
+
+  // 对照：descriptor完整落在Device区内应成功
+  HixlOneSideOpDesc dev_desc[] = {{IntToPtr(250), client_addr, kSize / 2}};
+  EXPECT_EQ(store.BatchValidateMemoryAccess(1, dev_desc), SUCCESS);
+}
+
+// Device区与Host映射区相邻（顺序反转），跨界descriptor同样应被拒绝
+TEST(HixlMemStoreUboeTest, BatchValidateMemoryAccessDeviceToHostBoundary) {
+  HixlMemStore store;
+  // Device区[100,200)，Host映射区[200,300)紧邻
+  void *dev_region = IntToPtr(100);
+  void *host_addr = IntToPtr(200);
+  void *dev_map_addr = IntToPtr(2000);
+  void *client_addr = IntToPtr(3000);
+  constexpr size_t kSize = 100;
+  EXPECT_EQ(store.RecordMemory(true, dev_region, kSize, false, nullptr), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(true, host_addr, kSize, true, dev_map_addr), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(false, client_addr, kSize * 2, false, nullptr), SUCCESS);
+
+  // descriptor跨界：remote [150, 250)，应拒绝
+  HixlOneSideOpDesc cross_desc[] = {{IntToPtr(150), client_addr, kSize}};
+  EXPECT_EQ(store.BatchValidateMemoryAccess(1, cross_desc), PARAM_INVALID);
+}
+
+// 跨两个dev地址连续Host映射区的descriptor：校验通过且转换正确（保留合法合并场景）
+TEST(HixlMemStoreUboeTest, BatchConvertHostAddrSpanContiguousHostRegions) {
+  HixlMemStore store;
+  // 两个Host映射区addr连续（100/200），dev地址也连续（1000/1100）
+  void *host_addr1 = IntToPtr(100);
+  void *host_addr2 = IntToPtr(200);
+  void *dev_map_addr1 = IntToPtr(1000);
+  void *dev_map_addr2 = IntToPtr(1100);
+  void *client_addr = IntToPtr(3000);
+  constexpr size_t kSize = 100;
+  EXPECT_EQ(store.RecordMemory(true, host_addr1, kSize, true, dev_map_addr1), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(true, host_addr2, kSize, true, dev_map_addr2), SUCCESS);
+  EXPECT_EQ(store.RecordMemory(false, client_addr, kSize, false, nullptr), SUCCESS);
+
+  // descriptor跨两区：remote [150, 250)，校验通过，转换后remote应落在 [1050, 1150)
+  HixlOneSideOpDesc desc_list[] = {{IntToPtr(150), client_addr, kSize}};
+  EXPECT_EQ(store.BatchValidateMemoryAccess(1, desc_list), SUCCESS);
+  EXPECT_EQ(store.BatchConvertHostAddr(1, desc_list), SUCCESS);
+  EXPECT_EQ(desc_list[0].remote_buf, IntToPtr(1050));
+}
+
 }  // namespace hixl
