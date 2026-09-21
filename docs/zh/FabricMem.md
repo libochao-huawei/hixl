@@ -26,7 +26,7 @@ FabricMem 模式的底层依赖于CANN的 **Virtual Memory Manager** 机制, 实
 3. 将物理地址映射到访问进程的页表中。
 4. 发起SDMA访问，可读写任何进程的片上内存和DRAM内存。
 
-![示意图](https://raw.gitcode.com/user-images/assets/7838749/4c57e5b8-7005-4184-be6a-8012509da066/截屏2026-02-14_16.29.00.png "截屏2026-02-14 16.29.00.png")
+![示意图](https://raw.gitcode.com/user-images/assets/7838749/4c57e5b8-7005-4184-be6a-8012509da066/截屏2026-02-14_16.29.00.png "Fabric内存数据流示意图")
 
 从本地NPU的片上内存直接往远程的HOST内存写数据的数据流向：
 
