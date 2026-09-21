@@ -90,9 +90,9 @@ void ExchangeAddr(bool is_client, void *local_buf, uintptr_t &remote_addr, int &
     recv(fd, &remote_addr, sizeof(remote_addr), 0);
     printf("[INFO] Got remote addr: 0x%lx\n", remote_addr);
   } else {
-    int lfd = socket(AF_INET, SOCK_STREAM, 0);
-    int opt = 1;
-    setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    const int lfd = socket(AF_INET, SOCK_STREAM, 0);
+    constexpr int kReuseAddr = 1;
+    setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &kReuseAddr, sizeof(kReuseAddr));
     struct sockaddr_in addr {};
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -102,7 +102,7 @@ void ExchangeAddr(bool is_client, void *local_buf, uintptr_t &remote_addr, int &
     printf("[INFO] Server waiting on port %d...\n", kSocketPort);
     fd = accept(lfd, nullptr, nullptr);
     close(lfd);
-    uintptr_t local_addr = reinterpret_cast<uintptr_t>(local_buf);
+    const uintptr_t local_addr = reinterpret_cast<uintptr_t>(local_buf);
     send(fd, &local_addr, sizeof(local_addr), 0);
     printf("[INFO] Sent local addr: %p\n", local_buf);
   }
@@ -111,8 +111,8 @@ void ExchangeAddr(bool is_client, void *local_buf, uintptr_t &remote_addr, int &
 void VerifyData(void *buf) {
   std::vector<uint8_t> host(kBufSize);
   ACL_EXIT_ON_FAILURE(aclrtMemcpy(host.data(), kBufSize, buf, kBufSize, ACL_MEMCPY_DEVICE_TO_HOST));
-  std::vector<uint8_t> expected(kBufSize, kFillValue);
-  bool ok = (memcmp(host.data(), expected.data(), kBufSize) == 0);
+  const std::vector<uint8_t> expected(kBufSize, kFillValue);
+  const bool ok = (memcmp(host.data(), expected.data(), kBufSize) == 0);
   HixlExitOnFailure(ok, "Verify failed");
   printf("[INFO] Verify success\n");
 }
@@ -181,7 +181,7 @@ void RunServer() {
   ACL_EXIT_ON_FAILURE(aclrtMalloc(&ctx.buf, kBufSize, ACL_MEM_MALLOC_HUGE_ONLY));
   ctx.desc.addr = reinterpret_cast<uintptr_t>(ctx.buf);
   ctx.desc.len = kBufSize;
-  std::vector<uint8_t> fill(kBufSize, kFillValue);
+  const std::vector<uint8_t> fill(kBufSize, kFillValue);
   ACL_EXIT_ON_FAILURE(aclrtMemcpy(ctx.buf, kBufSize, fill.data(), kBufSize, ACL_MEMCPY_HOST_TO_DEVICE));
 
   HixlExitOnFailure(ctx.engine.RegisterMem(ctx.desc, MEM_DEVICE, ctx.handle), "RegisterMem");
@@ -202,7 +202,7 @@ int main(int32_t argc, char **argv) {
   bool is_client = false;
   bool has_role = false;
   for (int32_t i = 1; i < argc; ++i) {
-    std::string arg = argv[i];
+    const std::string arg = argv[i];
     if (arg == "--role=client") {
       is_client = true;
       has_role = true;

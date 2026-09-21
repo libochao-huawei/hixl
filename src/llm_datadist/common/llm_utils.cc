@@ -159,7 +159,7 @@ ge::Status LLMUtils::IntToIp(uint32_t ip_int, std::string &ip_str) {
   constexpr uint32_t kByteMask = 0xFFU;
   ip_str.clear();
   for (uint32_t i = 0; i < kNumBytes; ++i) {
-    uint8_t byte = (ip_int >> (i * kNumBits)) & kByteMask;
+    const uint8_t byte = (ip_int >> (i * kNumBits)) & kByteMask;
     ip_str += std::to_string(byte);
     if (i < kNumBytes - 1) {
       ip_str += ".";
@@ -192,21 +192,21 @@ ge::Status LLMUtils::ParseDeviceId(const std::map<ge::AscendString, ge::AscendSt
 
 ge::Status LLMUtils::ParseListenIpInfo(const std::map<ge::AscendString, ge::AscendString> &options, std::string &ip,
                                        uint32_t &port) {
-  auto it = options.find(llm_datadist::OPTION_LISTEN_IP_INFO);
+  const auto it = options.find(llm_datadist::OPTION_LISTEN_IP_INFO);
   LLM_CHK_BOOL_RET_STATUS(it != options.cend(), ge::LLM_PARAM_INVALID, "option llm.ListenIpInfo not set");
   LLMLOGI("Option %s = %s", llm_datadist::OPTION_LISTEN_IP_INFO, it->second.GetString());
-  std::string option_str(it->second.GetString());
+  const std::string option_str(it->second.GetString());
   LLM_CHK_STATUS_RET(ParseListenIpInfo(option_str, ip, port));
   return ge::SUCCESS;
 }
 
 ge::Status LLMUtils::ParseListenIpInfo(const std::string &option, std::string &ip, uint32_t &port) {
   std::vector<std::string> ip_and_port;
-  size_t left = option.find('[');
-  size_t right = option.find(']');
+  const size_t left = option.find('[');
+  const size_t right = option.find(']');
   if (left != std::string::npos && right != std::string::npos && left < right) {
     ip_and_port.emplace_back(option.substr(left + 1, right - left - 1));
-    size_t colon = option.find(':', right);
+    const size_t colon = option.find(':', right);
     if (colon != std::string::npos) {
       ip_and_port.emplace_back(option.substr(colon + 1));
     }
@@ -254,7 +254,7 @@ bool LLMUtils::CheckMultiplyOverflowInt64(int64_t a, int64_t b) {
 }
 
 int64_t LLMUtils::CeilDiv(int64_t a, int64_t b) {
-  int64_t res = a / b;
+  const int64_t res = a / b;
   return (res * b == a) ? res : (res + 1);
 }
 
@@ -322,8 +322,8 @@ ge::Status LLMUtils::CalcTensorMemSize(const std::vector<int64_t> &dims, const g
 }
 
 bool LLMUtils::IsTimeout(const std::chrono::high_resolution_clock::time_point &start_time, int32_t timeout_ms) {
-  auto now = std::chrono::high_resolution_clock::now();
-  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time);
+  const auto now = std::chrono::high_resolution_clock::now();
+  const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_time);
   return (elapsed.count() >= timeout_ms);
 }
 
