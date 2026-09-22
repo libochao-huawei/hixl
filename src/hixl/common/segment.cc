@@ -90,7 +90,7 @@ bool Segment::Contains(uint64_t start, uint64_t end) const {
   }
 
   for (; it != ranges_.end(); ++it) {
-    if (it->first > (max_reached + 1)) {
+    if (it->first > max_reached) {
       break;
     }
     if (it->second > max_reached) {

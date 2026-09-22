@@ -20,7 +20,7 @@ constexpr uint32_t kSegmentStart1 = 100;
 constexpr uint32_t kSegmentMiddle = 150;
 constexpr uint32_t kSegmentStart2 = 200;
 constexpr uint32_t kSegmentEnd2 = 205;
-constexpr uint32_t kSegmentStart3 = 206;
+constexpr uint32_t kSegmentStart3 = 205;
 constexpr uint32_t kSegmentEnd3 = 300;
 constexpr uint32_t kSegmentQueryStart2 = 201;
 constexpr uint32_t kSegmentQueryEnd = 310;
@@ -42,6 +42,15 @@ TEST_F(SegmentTableUTest, TestContains) {
   ASSERT_NE(channel, nullptr);
   channel = table.FindSegment(kChannelId, kSegmentStart3, kSegmentEnd3);
   ASSERT_NE(channel, nullptr);
+}
+
+TEST_F(SegmentTableUTest, TestDoesNotBridgeOneByteGap) {
+  SegmentTable table;
+  table.AddRange(kChannelId, kSegmentStart3 + 1, kSegmentEnd3, MemType::MEM_DEVICE);
+  table.AddRange(kChannelId, kSegmentStart2, kSegmentEnd2, MemType::MEM_DEVICE);
+  table.AddRange(kChannelId, kSegmentStart1, kSegmentStart2, MemType::MEM_DEVICE);
+
+  EXPECT_EQ(table.FindSegment(kChannelId, kSegmentQueryStart2, kSegmentEnd3), nullptr);
 }
 
 TEST_F(SegmentTableUTest, TestRemoveContains) {

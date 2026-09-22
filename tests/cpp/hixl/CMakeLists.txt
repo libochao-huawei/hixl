@@ -15,6 +15,7 @@ set(HIXL_TEST_FILES
         common/json_utils_ut.cc
         proxy/hccp_proxy_ut.cc
         proxy/dcmi_proxy_ut.cc
+        common/segment_ut.cc
         llm_datadist_timer_ut.cc
         proxy/dsmi_proxy_ut.cc
         common/log_macro_ut.cc
