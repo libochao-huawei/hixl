@@ -1854,7 +1854,119 @@ struct TestCacheSummary {
   uint32_t cache_mem_type;
   uint64_t tensor_addresses[0];
 };
+
+struct TestCacheIndex {
+  int64_t cache_id;
+  uint64_t req_id;
+  uint64_t model_id;
+};
+
+std::vector<uint8_t> MakeCacheTable(uint64_t version, const std::vector<int64_t> &cache_ids,
+                                    const std::vector<TestCacheIndex> &indices) {
+  const size_t header_size = sizeof(TestCacheTableHeader);
+  const size_t summary_size = sizeof(TestCacheSummary) * cache_ids.size();
+  const size_t index_size = sizeof(TestCacheIndex) * indices.size();
+  std::vector<uint8_t> buffer(header_size + summary_size + index_size, 0U);
+  auto *header = reinterpret_cast<TestCacheTableHeader *>(buffer.data());
+  header->version_num = version;
+  header->num_caches = cache_ids.size();
+  header->num_cache_indices = indices.size();
+  for (size_t i = 0U; i < cache_ids.size(); ++i) {
+    auto *summary = reinterpret_cast<TestCacheSummary *>(buffer.data() + header_size + i * sizeof(TestCacheSummary));
+    summary->cache_id = cache_ids[i];
+    summary->batch_size = 1U;
+    summary->tensor_size = 64U;
+    summary->stride = 64U;
+    summary->placement = 1U;
+    summary->remote_accessible = true;
+    summary->cache_mem_type = 0U;
+  }
+  auto *cache_indices = reinterpret_cast<TestCacheIndex *>(buffer.data() + header_size + summary_size);
+  for (size_t i = 0U; i < indices.size(); ++i) {
+    cache_indices[i] = indices[i];
+  }
+  return buffer;
+}
+
+std::vector<uint8_t> MakeTruncatedSummaryTable(uint64_t version, int64_t first_cache_id, int64_t second_cache_id) {
+  auto buffer = MakeCacheTable(version, {first_cache_id, second_cache_id}, {});
+  auto *second_summary =
+      reinterpret_cast<TestCacheSummary *>(buffer.data() + sizeof(TestCacheTableHeader) + sizeof(TestCacheSummary));
+  second_summary->num_tensors = 1U;
+  return buffer;
+}
+
+void ExpectCacheTableState(const llm::CacheAccessTable &cache_table, uint64_t version, int64_t cache_id,
+                           uint64_t req_id, uint64_t model_id) {
+  EXPECT_EQ(cache_table.version_num_, version);
+  ASSERT_EQ(cache_table.cache_id_to_entry_.size(), 1U);
+  EXPECT_EQ(cache_table.cache_id_to_entry_.count(cache_id), 1U);
+  ASSERT_EQ(cache_table.cache_key_to_cache_id_.size(), 1U);
+  EXPECT_EQ(cache_table.cache_key_to_cache_id_.at(std::make_pair(req_id, model_id)), cache_id);
+}
 }  // namespace
+
+TEST(CacheAccessTableTest, LoadFromBufferSummaryFailureKeepsSnapshot) {
+  llm::CacheAccessTable cache_table;
+  auto valid_table = MakeCacheTable(7U, {101}, {{101, 11U, 22U}});
+  ASSERT_EQ(cache_table.LoadFromBuffer(valid_table.data(), valid_table.size()), ge::SUCCESS);
+
+  std::vector<uint8_t> short_header(sizeof(TestCacheTableHeader) - 1U, 0U);
+  EXPECT_EQ(cache_table.LoadFromBuffer(short_header.data(), short_header.size()), ge::LLM_PARAM_INVALID);
+  ExpectCacheTableState(cache_table, 7U, 101, 11U, 22U);
+
+  auto invalid_table = MakeTruncatedSummaryTable(8U, 202, 303);
+  EXPECT_EQ(cache_table.LoadFromBuffer(invalid_table.data(), invalid_table.size()), ge::LLM_PARAM_INVALID);
+  ExpectCacheTableState(cache_table, 7U, 101, 11U, 22U);
+  EXPECT_EQ(cache_table.cache_id_to_entry_.count(202), 0U);
+  EXPECT_EQ(cache_table.cache_id_to_entry_.count(303), 0U);
+}
+
+TEST(CacheAccessTableTest, LoadFromBufferIndexFailureKeepsSnapshot) {
+  llm::CacheAccessTable cache_table;
+  auto valid_table = MakeCacheTable(7U, {101}, {{101, 11U, 22U}});
+  ASSERT_EQ(cache_table.LoadFromBuffer(valid_table.data(), valid_table.size()), ge::SUCCESS);
+
+  auto invalid_table = MakeCacheTable(8U, {202}, {{202, 33U, 44U}, {999, 55U, 66U}});
+  EXPECT_EQ(cache_table.LoadFromBuffer(invalid_table.data(), invalid_table.size()), ge::FAILED);
+  ExpectCacheTableState(cache_table, 7U, 101, 11U, 22U);
+  EXPECT_EQ(cache_table.cache_id_to_entry_.count(202), 0U);
+  EXPECT_EQ(cache_table.cache_key_to_cache_id_.count(std::make_pair(33U, 44U)), 0U);
+}
+
+TEST(CacheAccessTableTest, LoadFromBufferAllowsSameIdRetryAfterSummaryFailure) {
+  llm::CacheAccessTable cache_table;
+  auto invalid_table = MakeTruncatedSummaryTable(8U, 101, 202);
+  ASSERT_EQ(cache_table.LoadFromBuffer(invalid_table.data(), invalid_table.size()), ge::LLM_PARAM_INVALID);
+
+  auto retry_table = MakeCacheTable(9U, {101}, {{101, 11U, 22U}});
+  ASSERT_EQ(cache_table.LoadFromBuffer(retry_table.data(), retry_table.size()), ge::SUCCESS);
+  ExpectCacheTableState(cache_table, 9U, 101, 11U, 22U);
+  EXPECT_EQ(cache_table.cache_id_to_entry_.count(202), 0U);
+}
+
+TEST(CacheAccessTableTest, LoadFromBufferAllowsDifferentIdRetryAfterSummaryFailure) {
+  llm::CacheAccessTable cache_table;
+  auto invalid_table = MakeTruncatedSummaryTable(8U, 101, 202);
+  ASSERT_EQ(cache_table.LoadFromBuffer(invalid_table.data(), invalid_table.size()), ge::LLM_PARAM_INVALID);
+
+  auto retry_table = MakeCacheTable(9U, {202}, {{202, 33U, 44U}});
+  ASSERT_EQ(cache_table.LoadFromBuffer(retry_table.data(), retry_table.size()), ge::SUCCESS);
+  ExpectCacheTableState(cache_table, 9U, 202, 33U, 44U);
+  EXPECT_EQ(cache_table.cache_id_to_entry_.count(101), 0U);
+}
+
+TEST(CacheAccessTableTest, LoadFromBufferValidSnapshotControl) {
+  llm::CacheAccessTable cache_table;
+  auto valid_table = MakeCacheTable(7U, {101}, {{101, 11U, 22U}});
+  ASSERT_EQ(cache_table.LoadFromBuffer(valid_table.data(), valid_table.size()), ge::SUCCESS);
+  ExpectCacheTableState(cache_table, 7U, 101, 11U, 22U);
+
+  auto replacement_table = MakeCacheTable(8U, {202}, {{202, 33U, 44U}});
+  ASSERT_EQ(cache_table.LoadFromBuffer(replacement_table.data(), replacement_table.size()), ge::SUCCESS);
+  ExpectCacheTableState(cache_table, 8U, 202, 33U, 44U);
+  EXPECT_EQ(cache_table.cache_id_to_entry_.count(101), 0U);
+}
 
 TEST_F(DataCacheEngineTest, LoadFromBufferOverflowNumTensors) {
   llm::CacheAccessTable cache_table;

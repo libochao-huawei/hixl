@@ -227,6 +227,8 @@ ge::Status CacheAccessTable::LoadFromBuffer(const uint8_t *buffer, size_t buffer
   LLM_CHK_BOOL_RET_STATUS(buffer_size >= sizeof(CacheTableHeader), ge::LLM_PARAM_INVALID,
                           "Buffer too small for header, size = %zu", buffer_size);
   auto &header = *PtrToPtr<uint8_t, CacheTableHeader>(buffer);
+  std::map<int64_t, CacheEntry> cache_id_to_entry;
+  std::map<std::pair<uint64_t, uint64_t>, int64_t> cache_key_to_cache_id;
   LLMLOGI("version_num = %lu, num_caches = %lu, num_cache_indices = %lu", header.version_num, header.num_caches,
           header.num_cache_indices);
   LLM_CHK_BOOL_RET_STATUS(header.num_caches <= (buffer_size - sizeof(CacheTableHeader)) / sizeof(CacheSummary),
@@ -255,7 +257,7 @@ ge::Status CacheAccessTable::LoadFromBuffer(const uint8_t *buffer, size_t buffer
         "tensor_size = %lu, stride = %lu, placement = %u, num_tensors = %zu",
         cache_summary.cache_id, cache_entry.num_blocks, cache_entry.batch_size, cache_entry.tensor_size,
         cache_entry.stride, static_cast<uint32_t>(cache_entry.placement), cache_entry.cache_addrs.size());
-    LLM_CHK_BOOL_RET_STATUS(cache_id_to_entry_.emplace(cache_summary.cache_id, std::move(cache_entry)).second,
+    LLM_CHK_BOOL_RET_STATUS(cache_id_to_entry.emplace(cache_summary.cache_id, std::move(cache_entry)).second,
                             ge::LLM_PARAM_INVALID, "duplicate cache_id: %ld", cache_summary.cache_id);
   }
   LLM_CHK_BOOL_RET_STATUS(cache_summary_offset <= buffer_size, ge::LLM_PARAM_INVALID,
@@ -271,16 +273,18 @@ ge::Status CacheAccessTable::LoadFromBuffer(const uint8_t *buffer, size_t buffer
   auto *cache_indices = PtrToPtr<uint8_t, CacheIndex>(buffer + cache_summary_offset);
   for (uint64_t i = 0U; i < header.num_cache_indices; ++i) {
     const auto &cache_index = cache_indices[i];
-    LLM_CHK_BOOL_RET_STATUS(cache_id_to_entry_.find(cache_index.cache_id) != cache_id_to_entry_.cend(), ge::FAILED,
+    LLM_CHK_BOOL_RET_STATUS(cache_id_to_entry.find(cache_index.cache_id) != cache_id_to_entry.cend(), ge::FAILED,
                             "Cache access table is inconsistent, cache_id:%ld not found", cache_index.cache_id);
     auto cache_key = std::make_pair(cache_index.req_id, cache_index.model_id);
-    LLM_CHK_BOOL_RET_STATUS(cache_key_to_cache_id_.emplace(cache_key, cache_index.cache_id).second,
+    LLM_CHK_BOOL_RET_STATUS(cache_key_to_cache_id.emplace(cache_key, cache_index.cache_id).second,
                             ge::LLM_PARAM_INVALID, "cache_key: (%lu, %lu) already bound to cache_id: %ld",
-                            cache_key.first, cache_key.second, cache_key_to_cache_id_.at(cache_key));
+                            cache_key.first, cache_key.second, cache_key_to_cache_id.at(cache_key));
     LLMLOGI("CacheIndex added, cache_id = %lu, cache_key = (%lu, %lu)", cache_index.cache_id, cache_key.first,
             cache_key.second);
   }
   LLMLOGI("Load cache table success");
+  cache_id_to_entry_.swap(cache_id_to_entry);
+  cache_key_to_cache_id_.swap(cache_key_to_cache_id);
   version_num_ = header.version_num;
   return ge::SUCCESS;
 }
