@@ -94,12 +94,13 @@ Export the host/CPU-side EID (2-port PG) and NPU-side EID of every local NPU int
 ### 3.2 Usage
 
 ```
-hixl_tool host_route [--output <dir>]
+hixl_tool host_route [--output <dir>] [--topo_file_path <path>]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--output <dir>` | Output directory | `/etc/` |
+| `--topo_file_path <path>` | Hardware topology JSON file path; die info is parsed from this file | Resolved by mainboard_id |
 
 ### 3.3 Output format
 

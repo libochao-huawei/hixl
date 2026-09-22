@@ -94,12 +94,13 @@ bash build.sh --examples
 ### 3.2 用法
 
 ```
-hixl_tool host_route [--output <dir>]
+hixl_tool host_route [--output <dir>] [--topo_file_path <path>]
 ```
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `--output <dir>` | 输出目录 | `/etc/` |
+| `--topo_file_path <path>` | 硬件拓扑 JSON 文件路径，die 信息从该文件解析 | 按 mainboard_id 自动解析 |
 
 ### 3.3 产物格式
 
