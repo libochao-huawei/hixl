@@ -43,6 +43,30 @@ Status ValidateProtocolHeader(const ProtocolHeader &header, const std::string &c
                            channel_id.c_str(), kMaxControlMsgBodySizeInBytes);
   return SUCCESS;
 }
+
+// A disconnect request must target exactly the channel it arrives on. A mismatched target id means the peer is
+// trying to disconnect a link it does not own, so reject it to protect other links on this engine.
+Status ValidateDisconnectRequest(const ChannelPtr &channel, const RequestDisconnectMsg &req_msg) {
+  if (req_msg.channel_id != channel->GetChannelId()) {
+    LLMLOGW("Reject disconnect request: target channel:%s mismatches receiving channel:%s, req_id:%lu.",
+            req_msg.channel_id.c_str(), channel->GetChannelId().c_str(), req_msg.req_id);
+    return PARAM_INVALID;
+  }
+  return SUCCESS;
+}
+
+// Best-effort send of the disconnect response. A send failure is logged and swallowed: the outcome is carried in
+// the response body, and the caller only needs to report that the request has been handled (see the call site),
+// so this always returns SUCCESS by design.
+Status SendRequestDisconnectResp(const ChannelPtr &channel, const RequestDisconnectResp &resp) {
+  const Status send_ret = channel->SendControlMsg([&resp](int32_t fd) {
+    return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnectResp, resp, kSendMsgTimeout);
+  });
+  if (send_ret != SUCCESS) {
+    LLMLOGW("Failed to send disconnect response for channel %s", resp.channel_id.c_str());
+  }
+  return SUCCESS;
+}
 }  // namespace
 
 void ChannelManager::ResetRecvState(const ChannelPtr &channel) {
@@ -323,19 +347,30 @@ Status ChannelManager::HandleRequestDisconnectMessage(const ChannelPtr &channel,
   ADXL_CHK_BOOL_RET_STATUS(req_msg.timeout <= static_cast<uint64_t>(INT32_MAX), PARAM_INVALID,
                            "Invalid disconnect timeout:%lu ms for channel:%s, max supported:%d ms.", req_msg.timeout,
                            req_msg.channel_id.c_str(), INT32_MAX);
-  bool can_disconnect = (channel->GetTransferCount() == 0);
   RequestDisconnectResp resp;
   resp.channel_id = req_msg.channel_id;
   resp.req_id = req_msg.req_id;
-  resp.can_disconnect = can_disconnect;
+  resp.can_disconnect = false;
   resp.disconnected = false;
   resp.error_code = 0U;
   resp.error_message = "";
+  if (ValidateDisconnectRequest(channel, req_msg) != SUCCESS) {
+    resp.error_code = static_cast<uint32_t>(PARAM_INVALID);
+    resp.error_message = "Requested channel id does not match the receiving channel";
+    // Return SUCCESS on purpose: the request has been handled and the peer learns the rejection from the response
+    // body. A non-SUCCESS return would make the caller treat the socket as broken and drop the receiving channel,
+    // which must not happen for a rejected request.
+    return SendRequestDisconnectResp(channel, resp);
+  }
+  bool can_disconnect = (channel->GetTransferCount() == 0);
+  resp.can_disconnect = can_disconnect;
   if (can_disconnect && disconnect_callback_) {
     int32_t timeout_ms = static_cast<int32_t>(req_msg.timeout);
-    Status ret = disconnect_callback_(req_msg.channel_id, timeout_ms);
+    // Act on the receiving channel's own id instead of the peer-declared one, so a forged request can never
+    // disconnect another link even if the validation above is bypassed.
+    Status ret = disconnect_callback_(channel->GetChannelId(), timeout_ms);
     if (ret == SUCCESS) {
-      LLMLOGI("Successfully disconnected channel %s by request", req_msg.channel_id.c_str());
+      LLMLOGI("Successfully disconnected channel %s by request", channel->GetChannelId().c_str());
       return SUCCESS;
     } else {
       resp.error_code = static_cast<uint32_t>(ret);
@@ -353,13 +388,7 @@ Status ChannelManager::HandleRequestDisconnectMessage(const ChannelPtr &channel,
     LLMLOGI("Disconnect callback not set, cannot disconnect channel %s", req_msg.channel_id.c_str());
   }
 
-  Status send_ret = channel->SendControlMsg([&resp](int32_t fd) {
-    return ControlMsgHandler::SendMsg(fd, ControlMsgType::kRequestDisconnectResp, resp, kSendMsgTimeout);
-  });
-  if (send_ret != SUCCESS) {
-    LLMLOGW("Failed to send disconnect response for channel %s", req_msg.channel_id.c_str());
-  }
-  return SUCCESS;
+  return SendRequestDisconnectResp(channel, resp);
 }
 
 Status ChannelManager::HandleNotifyMessage(const ChannelPtr &channel, const std::string &msg_str) const {
