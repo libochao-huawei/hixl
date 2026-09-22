@@ -58,6 +58,19 @@ bool CheckRegionsContiguous(const MemoryRegion &prev, const MemoryRegion &curr) 
 Status HixlMemStore::RecordMemory(bool is_server, const void *addr, size_t size, bool is_host_mem,
                                   void *register_dev_addr) {
   std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHK_BOOL_RET_STATUS(addr != nullptr && size != size_t{0}, PARAM_INVALID,
+                           "Memory region address must be non-null and size must be non-zero, addr:%p, size:%zu", addr,
+                           size);
+  const uintptr_t start = reinterpret_cast<uintptr_t>(addr);
+  uintptr_t end = 0;
+  HIXL_CHK_BOOL_RET_STATUS(!ge::AddOverflow(start, size, end), PARAM_INVALID,
+                           "Memory region address overflows, addr:%p, size:%zu", addr, size);
+  if (register_dev_addr != nullptr) {
+    const uintptr_t dev_start = reinterpret_cast<uintptr_t>(register_dev_addr);
+    uintptr_t dev_end = 0;
+    HIXL_CHK_BOOL_RET_STATUS(!ge::AddOverflow(dev_start, size, dev_end), PARAM_INVALID,
+                             "Registered device memory address overflows, addr:%p, size:%zu", register_dev_addr, size);
+  }
   const MemoryRegion new_region(addr, size, is_host_mem, register_dev_addr);
   if (is_server) {  // server侧内存注册
     auto it = server_regions_.find(addr);
@@ -103,16 +116,15 @@ bool HixlMemStore::CheckMemoryForRegister(bool is_server, const void *check_addr
   if (check_size == size_t{0}) {
     return true;
   }  // 地址大小为0，无效，视为不允许注册
-  if (regions.empty()) {
-    return false;
-  }  // regions为空，没有已注册，允许注册
-
   const uintptr_t s = reinterpret_cast<uintptr_t>(check_addr);
   uintptr_t e = 0;
   if (ge::AddOverflow(s, check_size, e)) {
     HIXL_LOGE(PARAM_INVALID, "Address overflow in CheckMemoryForRegister, addr:%p, size:%zu.", check_addr, check_size);
     return true;
   }
+  if (regions.empty()) {
+    return false;
+  }  // regions为空，没有已注册，允许注册
 
   auto overlaps = [s, e](const MemoryRegion &r) {
     auto rs = reinterpret_cast<uintptr_t>(r.addr);

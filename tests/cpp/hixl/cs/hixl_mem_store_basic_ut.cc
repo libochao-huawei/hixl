@@ -204,4 +204,45 @@ TEST(HixlMemStoreBasicTest, CheckMemoryForRegisterOverflowDetected) {
   // check_size=100 > uintptr_t::max - near_max=50, so s + check_size overflows -> returns true (overlap detected)
   EXPECT_TRUE(store.CheckMemoryForRegister(true, server_addr, 100));
 }
+
+TEST(HixlMemStoreBasicTest, CheckMemoryForRegisterOverflowDetectedOnEmptyStore) {
+  HixlMemStore store;
+  uintptr_t near_max = std::numeric_limits<uintptr_t>::max() - 50;
+  void *overflow_addr = reinterpret_cast<void *>(near_max);
+
+  EXPECT_TRUE(store.CheckMemoryForRegister(true, overflow_addr, 100));
+  EXPECT_TRUE(store.CheckMemoryForRegister(false, overflow_addr, 100));
+}
+
+TEST(HixlMemStoreBasicTest, RecordMemoryRejectsInvalidRegions) {
+  HixlMemStore server_store;
+  uint8_t server_buf[64] = {};
+  void *overflow_addr = reinterpret_cast<void *>(std::numeric_limits<uintptr_t>::max() - 7);
+
+  EXPECT_EQ(server_store.RecordMemory(true, nullptr, 1), PARAM_INVALID);
+  EXPECT_EQ(server_store.UnrecordMemory(true, nullptr), PARAM_INVALID);
+  EXPECT_EQ(server_store.RecordMemory(true, server_buf, 0), PARAM_INVALID);
+  EXPECT_EQ(server_store.UnrecordMemory(true, server_buf), PARAM_INVALID);
+  EXPECT_EQ(server_store.RecordMemory(true, overflow_addr, 8), PARAM_INVALID);
+  EXPECT_EQ(server_store.UnrecordMemory(true, overflow_addr), PARAM_INVALID);
+  EXPECT_EQ(server_store.RecordMemory(true, server_buf, sizeof(server_buf)), SUCCESS);
+  EXPECT_EQ(server_store.ValidateMemoryAccess(server_buf, sizeof(server_buf), nullptr), PARAM_INVALID);
+
+  HixlMemStore client_store;
+  uint8_t client_buf[64] = {};
+  EXPECT_EQ(client_store.RecordMemory(false, nullptr, 1), PARAM_INVALID);
+  EXPECT_EQ(client_store.RecordMemory(false, client_buf, 0), PARAM_INVALID);
+  EXPECT_EQ(client_store.RecordMemory(false, overflow_addr, 8), PARAM_INVALID);
+  EXPECT_EQ(client_store.RecordMemory(false, client_buf, sizeof(client_buf)), SUCCESS);
+  EXPECT_EQ(client_store.ValidateMemoryAccess(nullptr, 1, client_buf), PARAM_INVALID);
+}
+
+TEST(HixlMemStoreBasicTest, RecordMemoryRejectsOverflowingDeviceRegion) {
+  HixlMemStore store;
+  uint8_t host_buf[64] = {};
+  void *overflow_dev_addr = reinterpret_cast<void *>(std::numeric_limits<uintptr_t>::max() - 7);
+
+  EXPECT_EQ(store.RecordMemory(true, host_buf, sizeof(host_buf), true, overflow_dev_addr), PARAM_INVALID);
+  EXPECT_EQ(store.RecordMemory(true, host_buf, sizeof(host_buf), true, nullptr), SUCCESS);
+}
 }  // namespace hixl
