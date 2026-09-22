@@ -16,6 +16,7 @@ set(LLM_DATADIST_TEST_FILES
         llm_utils_v2_unittest.cc
         data_cache_engine_unittest.cc
         comm_mem_manager_unittest.cc
+        comm_statistic_manager_unittest.cc
         rank_table_generator_unittest.cc
         transfer_message_limits_unittest.cc
         transfer_request_validation_unittest.cc

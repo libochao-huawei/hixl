@@ -82,8 +82,8 @@ void CommStatisticManager::AddCommPrepareCost(const uint64_t cost) {
 
 void CommStatisticManager::AddBatchPutCost(const uint64_t cost) {
   std::lock_guard<std::mutex> lock(statistic_mutex_);
-  send_statistic_info_.batch_put_times++;
-  send_statistic_info_.batch_put_total_cost += cost;
+  UpdateCost(cost, send_statistic_info_.batch_put_times, send_statistic_info_.batch_put_min_cost,
+             send_statistic_info_.batch_put_max_cost, send_statistic_info_.batch_put_total_cost);
 }
 
 void CommStatisticManager::AddAllocTimes() {
