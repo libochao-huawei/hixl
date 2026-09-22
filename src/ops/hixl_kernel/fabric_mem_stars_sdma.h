@@ -103,7 +103,7 @@ class FabricMemStarsSdma {
                            const FabricMemRtsqState &state, FabricMemA3SdmaSqe &sqe);
   static bool BuildNotifySqe(uint32_t notify_id, uint32_t task_id, const FabricMemRtsqState &state,
                              FabricMemA3NotifySqe &sqe);
-  static bool CopySqeBatchToRing(FabricMemRtsqState &state, const FabricMemRtsqBatch &batch);
+  static bool CopySqeBatchToRing(const FabricMemRtsqState &state, const FabricMemRtsqBatch &batch);
   static bool CommitRtsqTail(FabricMemRtsqState &state, uint32_t new_tail, uint32_t batch_count);
   static bool PublishRtsqBatch(FabricMemRtsqState &state, FabricMemRtsqBatch &batch, uint64_t deadline);
   static bool AppendDescriptorTasks(const FabricMemAicpuTransferDesc &desc, FabricMemRtsqState &state,

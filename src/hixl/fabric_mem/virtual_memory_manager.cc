@@ -74,9 +74,9 @@ Status VirtualMemoryManager::SetGlobalStartAddress(size_t start_addr_in_tb) {
 
 Status VirtualMemoryManager::ReserveMemAddress(void *&virtual_address, size_t size) const {
   const uintptr_t start_va = global_start_va_.value_or(kGlobalVirtualMemoryStartAddr);
-  void *global_start_va = reinterpret_cast<void *>(start_va);
+  void *const global_start_va = reinterpret_cast<void *>(start_va);
   if (IsA3Soc() && &aclrtReserveMemAddressNoUCMemory != nullptr) {
-    auto ret = aclrtReserveMemAddressNoUCMemory(&virtual_address, size, 0, global_start_va, kReserveFlagHugePage);
+    const auto ret = aclrtReserveMemAddressNoUCMemory(&virtual_address, size, 0, global_start_va, kReserveFlagHugePage);
     if (ret == ACL_ERROR_NONE) {
       HIXL_LOGI("Reserve virtual memory without UC memory on A3, size:%zu.", size);
       return SUCCESS;

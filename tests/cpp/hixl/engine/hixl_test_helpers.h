@@ -26,7 +26,7 @@ namespace hixl {
 namespace test_helpers {
 
 inline bool CheckIpv6Supported() {
-  int fd = socket(AF_INET6, SOCK_STREAM, 0);
+  const int fd = socket(AF_INET6, SOCK_STREAM, 0);
   if (fd < 0) {
     return false;
   }
@@ -34,7 +34,7 @@ inline bool CheckIpv6Supported() {
   addr.sin6_family = AF_INET6;
   (void)inet_pton(AF_INET6, "::1", &addr.sin6_addr);
   addr.sin6_port = htons(0U);
-  bool ok = (connect(fd, (sockaddr *)&addr, sizeof(addr)) != -1 || errno != EADDRNOTAVAIL);
+  const bool ok = (connect(fd, (sockaddr *)&addr, sizeof(addr)) != -1 || errno != EADDRNOTAVAIL);
   close(fd);
   return ok;
 }

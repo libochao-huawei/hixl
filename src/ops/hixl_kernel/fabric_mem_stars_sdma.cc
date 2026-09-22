@@ -477,7 +477,7 @@ bool FabricMemStarsSdma::BuildNotifySqe(uint32_t notify_id, uint32_t task_id, co
   return true;
 }
 
-bool FabricMemStarsSdma::CopySqeBatchToRing(FabricMemRtsqState &state, const FabricMemRtsqBatch &batch) {
+bool FabricMemStarsSdma::CopySqeBatchToRing(const FabricMemRtsqState &state, const FabricMemRtsqBatch &batch) {
   auto *sq_base = reinterpret_cast<uint8_t *>(static_cast<uintptr_t>(state.base_addr));
   const uint32_t first_count = std::min(batch.count, state.depth - state.tail);
   const size_t first_bytes = static_cast<size_t>(first_count) * kFabricMemA3RtsqEntryBytes;

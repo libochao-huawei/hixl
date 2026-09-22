@@ -94,7 +94,7 @@ Status FabricMemTransferService::FreeMem(void *ptr) {
   return FabricMemAllocator::FreeMem(ptr);
 }
 
-Status FabricMemTransferService::ExportToShareableHandle(void *addr, aclrtMemFabricHandle &share_handle) {
+Status FabricMemTransferService::ExportToShareableHandle(const void *addr, aclrtMemFabricHandle &share_handle) {
   HIXL_CHK_BOOL_RET_STATUS(addr != nullptr, PARAM_INVALID, "Fabric memory address cannot be nullptr.");
   return FabricMemAllocator::ExportToShareableHandle(reinterpret_cast<uintptr_t>(addr), share_handle);
 }

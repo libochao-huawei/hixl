@@ -90,6 +90,10 @@ class PageSpan : public ge::MemBlock, public LinkNode<PageSpan> {
     return pa_list_;
   }
 
+  const std::vector<size_t> &GetPaList() const {
+    return pa_list_;
+  }
+
  private:
   BlockAddr block_addr_{nullptr};
   PageLen page_len_{0};

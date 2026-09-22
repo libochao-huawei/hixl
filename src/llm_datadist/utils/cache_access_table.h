@@ -39,12 +39,12 @@ class CacheAccessTableUpdater {
   ge::Status Initialize(bool enable);
   void Finalize();
   ge::Status UpdateTableBuffer(const std::map<int64_t, CacheEntry> &cache_id_to_entry,
-                               std::map<std::pair<uint64_t, uint64_t>, int64_t> &cache_key_to_id);
+                               const std::map<std::pair<uint64_t, uint64_t>, int64_t> &cache_key_to_id);
   std::pair<void *, size_t> GetDevBufferAndSize() const;
 
  private:
   static ge::Status ToBuffer(uint64_t version_num, const std::map<int64_t, CacheEntry> &cache_id_to_entry,
-                             std::map<std::pair<uint64_t, uint64_t>, int64_t> &cache_key_to_id,
+                             const std::map<std::pair<uint64_t, uint64_t>, int64_t> &cache_key_to_id,
                              std::vector<uint8_t> &buffer);
 
   uint64_t version_num_ = 0UL;

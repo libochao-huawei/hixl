@@ -47,11 +47,11 @@ struct Link {
       next_ = nullptr;
     }
 
-    T *operator->() noexcept {
+    T *operator->() const noexcept {
       return elem_;
     }
 
-    T &operator*() noexcept {
+    T &operator*() const noexcept {
       return *elem_;
     }
 
@@ -114,11 +114,11 @@ struct Link {
       next_ = nullptr;
     }
 
-    T *operator->() noexcept {
+    T *operator->() const noexcept {
       return elem_;
     }
 
-    T &operator*() noexcept {
+    T &operator*() const noexcept {
       return *elem_;
     }
 

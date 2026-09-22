@@ -146,7 +146,7 @@ void CacheAccessTableUpdater::Finalize() {
 
 ge::Status CacheAccessTableUpdater::UpdateTableBuffer(
     const std::map<int64_t, CacheEntry> &cache_id_to_entry,
-    std::map<std::pair<uint64_t, uint64_t>, int64_t> &cache_key_to_id) {
+    const std::map<std::pair<uint64_t, uint64_t>, int64_t> &cache_key_to_id) {
   uint64_t version_num = ++version_num_;  // start from 1
   LLM_CHK_BOOL_RET_STATUS(version_num != UINT64_MAX, ge::FAILED, "version_num reached UINT64_MAX");
   std::vector<uint8_t> buffer;
@@ -164,13 +164,13 @@ ge::Status CacheAccessTableUpdater::UpdateTableBuffer(
 
 ge::Status CacheAccessTableUpdater::ToBuffer(uint64_t version_num,
                                              const std::map<int64_t, CacheEntry> &cache_id_to_entry,
-                                             std::map<std::pair<uint64_t, uint64_t>, int64_t> &cache_key_to_id,
+                                             const std::map<std::pair<uint64_t, uint64_t>, int64_t> &cache_key_to_id,
                                              std::vector<uint8_t> &buffer) {
   size_t total_size = sizeof(CacheTableHeader);
   total_size += sizeof(CacheIndex) * cache_key_to_id.size();
   std::unordered_map<int64_t, size_t> cache_id_to_summary_size;
   for (const auto &cache_id_and_entry : cache_id_to_entry) {
-    auto size = sizeof(CacheSummary) + sizeof(uint64_t) * cache_id_and_entry.second.cache_addrs.size();
+    const auto size = sizeof(CacheSummary) + sizeof(uint64_t) * cache_id_and_entry.second.cache_addrs.size();
     (void)cache_id_to_summary_size.emplace(cache_id_and_entry.first, size);
     total_size += size;
   }
