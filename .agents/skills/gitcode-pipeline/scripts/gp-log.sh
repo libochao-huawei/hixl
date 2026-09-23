@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
 # gp-log.sh - 查询失败 Job 的日志（末尾错误摘要）
 #
 # 用途: 获取指定 Job 的日志末尾，并用 grep 提取 error/fail/fatal 相关行

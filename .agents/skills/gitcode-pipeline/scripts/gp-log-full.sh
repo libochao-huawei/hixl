@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
 # gp-log-full.sh - 下载 Job 的全量日志
 #
 # 原理: 使用 raw.gitcode.com 的 download-log 接口下载全量文本日志
@@ -54,9 +53,11 @@ if [ -z "${GP_OWNER:-}" ] || [ -z "${GP_REPO:-}" ]; then
   fi
 fi
 
-mkdir -p pipeline_logs
-OUTPUT_FILE="pipeline_logs/${JOB_ID}_full.log"
-RESPONSE_FILE="pipeline_logs/${JOB_ID}_full.response"
+# 落盘根目录默认 /tmp，不写 cwd（本脚本通常必须在仓库里执行，相对路径会污染用户仓库）
+LOG_ROOT="${GP_LOG_DIR:-${GP_ANALYZE_LOG_DIR:-${TMPDIR:-/tmp}/gitcode_pipeline_logs}}"
+mkdir -p "$LOG_ROOT"
+OUTPUT_FILE="${LOG_ROOT}/${JOB_ID}_full.log"
+RESPONSE_FILE="${LOG_ROOT}/${JOB_ID}_full.response"
 rm -f "$OUTPUT_FILE" "$RESPONSE_FILE"
 
 DETAIL_RESPONSE=$(curl -s --request POST \

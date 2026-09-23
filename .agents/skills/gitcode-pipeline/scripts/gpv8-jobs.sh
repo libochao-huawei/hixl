@@ -8,44 +8,44 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-# gp-sub-output.sh - 查询子流水线步骤输出
+# gpv8-jobs.sh - 查询 v8 Actions run 的 jobs + steps 明细
 #
-# 用途: 对于 task=official_devcloud_subPipeline 的 Job，获取其子流水线的 pipeline_id 和 pipeline_run_id
-# 适用: 定位子流水线后，获取子流水线标识以调用 gp-detail.sh
+# 用途: Actions 模式（mode=actions）下获取 run 的全部 job 及其 step 执行状态
+# 适用: 需要完整步骤列表（含已完成的）或 gpv8-detail.sh 信息不足时
 #
 # 入参:
-#   $1  pipeline_id (父流水线的 pipeline_id)
-#   $2  pipeline_run_id (父流水线的 pipeline_run_id)
-#   $3  pipeline_detail (完整 JSON 字符串)
-#   $4  step_run_id (子流水线步骤的 step id)
+#   $1  run_id (必填，来自 gpv8-list.sh 输出的 run_id 字段)
+#   $2  --all (可选，输出全部 job；默认只输出非 COMPLETED 的 job)
 #
 # 环境变量:
 #   GITCODE_API_TOKEN  (必填)
 #   GP_OWNER           (可选，默认从 git remote 自动检测)
 #   GP_REPO            (可选，默认从 git remote 自动检测)
 #
-# 返回值 (stdout, 纯文本):
-#   sub_pipeline_id=<子流水线pipeline_id> sub_pipeline_run_id=<子流水线run_id>
+# 返回值 (stdout):
+#   JOB: <name> id=<id> status=<status>
+#     step[<seq>] <name>: <status>
 #
 # 示例:
-#   $ ./gp-sub-output.sh c85338dd... 979a91be... '{"hook_id":"42205",...}' 20357724a95b48aa98b5f3934c833cfe
-#   sub_pipeline_id=dcd161850837402293f0c47cda6b9921 sub_pipeline_run_id=c3d9c3663189481ca8d812c3046a4d95
+#   $ ./gpv8-jobs.sh 5a3f1fbf8970408d9300ac332bc04ee5
+#   JOB: UT_Test_ge_common id=53d06e26074d446e8b34c0ec117146f1 status=FAILED
+#   JOB: ut id=1c837c66fc4d474b874be96b515104fb status=FAILED
+#     step[0] 初始化步骤: COMPLETED
+#     step[4] ut_acc: FAILED
 
 set -euo pipefail
 
-if [ -z "${1:-}" ] || [ -z "${2:-}" ] || [ -z "${3:-}" ] || [ -z "${4:-}" ]; then
-  echo "用法: gp-sub-output.sh <pipeline_id> <pipeline_run_id> <pipeline_detail> <step_run_id>" >&2
+if [ -z "${1:-}" ]; then
+  echo "用法: gpv8-jobs.sh <RUN_ID> [--all]" >&2
   exit 1
 fi
 
-PIPELINE_ID="$1"
-PIPELINE_RUN_ID="$2"
-PIPELINE_DETAIL="$3"
-STEP_RUN_ID="$4"
+RUN_ID="$1"
+SHOW_ALL="${2:-}"
 TOKEN="${GITCODE_API_TOKEN:?GITCODE_API_TOKEN 未设置}"
 
 if [ -z "${GP_OWNER:-}" ] || [ -z "${GP_REPO:-}" ]; then
-  repo_url=$(git remote get-url origin 2>/dev/null)
+  repo_url=$(git remote get-url origin 2>/dev/null || true)
   if [[ "$repo_url" == git@* ]]; then
     GP_OWNER=$(echo "$repo_url" | sed 's|.*:\([^/]*\)/\([^/]*\)\.git$|\1|')
     GP_REPO=$(echo "$repo_url" | sed 's|.*:\([^/]*\)/\([^/]*\)\.git$|\2|')
@@ -58,14 +58,16 @@ if [ -z "${GP_OWNER:-}" ] || [ -z "${GP_REPO:-}" ]; then
   fi
 fi
 
-BODY=$(jq -n --arg detail "$PIPELINE_DETAIL" --arg step_id "$STEP_RUN_ID" \
-  '{pipeline_detail: $detail, step_run_ids: $step_id}')
+API="https://api.gitcode.com/api/v8/repos/${GP_OWNER}/${GP_REPO}/actions/runs/${RUN_ID}/jobs"
+AUTH_HEADER="Authorization: Bearer ${TOKEN}"
 
-curl -s --request POST \
-  "https://api.gitcode.com/api/v5/repos/${GP_OWNER}/${GP_REPO}/pipelines/${PIPELINE_ID}/pipeline-runs/${PIPELINE_RUN_ID}/steps/gitcode/outputs?access_token=${TOKEN}" \
-  --header 'Content-Type: application/json' \
-  --data-raw "$BODY" \
-  | jq -r '
-    (.step_outputs[0].output_result[]? | select(.key == "recordId") | "sub_record_id=\(.value)"),
-    (.step_outputs[0].output_result[] as $item | "sub_\($item.key)=\($item.value)")
-  ' | paste -sd' ' -
+if [ "$SHOW_ALL" = "--all" ]; then
+  FILTER='.jobs[]?'
+else
+  FILTER='.jobs[]? | select(.status != "COMPLETED" and .status != "SUCCESS" and .status != "INIT")'
+fi
+
+curl -s "$API" -H "$AUTH_HEADER" | jq -r "
+  $FILTER |
+  \"JOB: \(.name) id=\(.id) status=\(.status)\",
+  (.steps[]? | \"  step[\(.sequence)] \(.name): \(.status)\")" 2>/dev/null

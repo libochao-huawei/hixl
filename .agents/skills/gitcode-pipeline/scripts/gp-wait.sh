@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
 # gp-wait.sh - 循环轮询流水线状态直到完成
 #
 # 用途: 自动每隔 60 秒查询一次流水线状态，直到状态变为 success/failed/canceled
@@ -56,9 +55,17 @@ while true; do
   TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
   # 调用 gp-list.sh 获取当前状态
-  RESULT=$(bash "${SCRIPT_DIR}/gp-list.sh" "${PR_NUMBER}")
+  # 必须 `|| true`：gp-list.sh 在 v5 接口无记录时以退出码 3 结束，
+  # 本脚本 set -euo pipefail，直接赋值会在这一行静默退出，连"等待重试"分支都进不去。
+  RESULT=$(bash "${SCRIPT_DIR}/gp-list.sh" "${PR_NUMBER}" 2>/dev/null || true)
 
   if [ -z "${RESULT}" ]; then
+    if [ "$ITERATION" -eq 1 ]; then
+      echo "[${TIMESTAMP}] ⚠️ v5 pipeline 接口对该 PR 返回 0 条，可能是：" >&2
+      echo "    - 仓库已迁 v8 Actions → 跑 gp-detect.sh ${PR_NUMBER} 确认，改用 gpv8-wait.sh" >&2
+      echo "    - Legacy 流水线由外部系统上报，v5 查不到 → 用 gp-comments.sh ${PR_NUMBER} 读 PR 评论" >&2
+      echo "    推荐直接用 gp-gate-wait.sh ${PR_NUMBER}：以门禁 label 为终态，两套系统都覆盖。" >&2
+    fi
     echo "[${TIMESTAMP}] 未找到流水线记录，等待 60 秒后重试..."
     sleep 60
     continue
@@ -76,9 +83,19 @@ while true; do
     echo "[${TIMESTAMP}] status=${STATUS} sha=${SHA} elapsed=${ELAPSED_MINUTES}m"
     if [ "${STATUS}" = "success" ]; then
       echo "✅ 流水线完成: ${STATUS}"
+      GATE=$(bash "${SCRIPT_DIR}/_gp_pr_meta.sh" "${PR_NUMBER}" gate 2>/dev/null || echo "unknown")
+      echo "   门禁 label gate=${GATE}（能否合入以此为准；完整门禁面板见 gp-gate-wait.sh ${PR_NUMBER}）"
       exit 0
     else
       echo "❌ 流水线结束: ${STATUS}"
+      # 交叉校验门禁 label：本脚本只盯 Legacy 一套，双 CI 并存的仓库里它失败不代表门禁失败
+      GATE=$(bash "${SCRIPT_DIR}/_gp_pr_meta.sh" "${PR_NUMBER}" gate 2>/dev/null || echo "unknown")
+      if [ "$GATE" != "failed" ]; then
+        echo "⚠️ Legacy 流水线 ${STATUS}，但门禁 label gate=${GATE}（不是 failed）。" >&2
+        echo "   两套 CI 结论可能不一致，请先复核再决定是否改代码：" >&2
+        echo "     bash gp-gate-wait.sh ${PR_NUMBER} <分钟>   # 以门禁 label 为终态轮询（推荐）" >&2
+        echo "     bash gp-comments.sh ${PR_NUMBER}           # 从 PR 评论读各系统 job 状态表" >&2
+      fi
       exit 1
     fi
   fi

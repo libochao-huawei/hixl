@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
 # gp-cov.sh - 获取覆盖率报告并解压
 #
 # 用法: gp-cov.sh <pipeline_id> <pipeline_run_id> <job_id> <pipeline_detail> [output_dir]
@@ -39,12 +38,14 @@ PIPELINE_ID="$1"
 PIPELINE_RUN_ID="$2"
 JOB_ID="$3"
 PIPELINE_DETAIL="$4"
-OUTPUT_DIR="${5:-pipeline_cov}"
+# 落盘默认 /tmp，不写 cwd（与 gp-log-full.sh / gpv8-log.sh 保持一致）
+LOG_ROOT="${GP_LOG_DIR:-${GP_ANALYZE_LOG_DIR:-${TMPDIR:-/tmp}/gitcode_pipeline_logs}}"
+OUTPUT_DIR="${5:-${TMPDIR:-/tmp}/gitcode_pipeline_cov}"
 
 echo "[Step 1] 获取全量日志..."
 bash "${SCRIPT_DIR}/gp-log-full.sh" "$PIPELINE_ID" "$PIPELINE_RUN_ID" "$JOB_ID" "$PIPELINE_DETAIL"
 
-LOG_FILE="pipeline_logs/${JOB_ID}_full.log"
+LOG_FILE="${LOG_ROOT}/${JOB_ID}_full.log"
 if [ ! -f "$LOG_FILE" ]; then
   echo "日志文件不存在: $LOG_FILE" >&2
   exit 1

@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
 # gp-analyze-failure.sh - 一键分析流水线失败原因
 #
 # 用途: 自动穿透子流水线层级，获取所有失败Job的日志摘要
@@ -44,7 +43,9 @@ fi
 
 PR_NUMBER="$1"
 TOKEN="${GITCODE_API_TOKEN:?GITCODE_API_TOKEN 未设置}"
-LOG_DIR="${GP_ANALYZE_LOG_DIR:-pipeline_logs}"
+# 落盘根目录默认 /tmp，不写 cwd：本脚本通常必须在仓库里执行（owner/repo 自动探测依赖
+# `git remote get-url origin`），相对路径会在用户仓库里留下未跟踪的 pipeline_logs/。
+LOG_DIR="${GP_LOG_DIR:-${GP_ANALYZE_LOG_DIR:-${TMPDIR:-/tmp}/gitcode_pipeline_logs}}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ -z "${GP_OWNER:-}" ] || [ -z "${GP_REPO:-}" ]; then
@@ -139,7 +140,23 @@ analyze_pipeline() {
   done
 }
 
-PIPELINES=$(bash "${SCRIPT_DIR}/gp-list.sh" "$PR_NUMBER")
+# gp-list.sh 退出码 3 = v5 接口对该 PR 无记录（仓库已迁 v8 Actions，或 Legacy 由外部系统上报）。
+# 必须显式捕获：本脚本 set -euo pipefail，直接 PIPELINES=$(...) 会在赋值处静默退出，
+# 表现是"什么都不输出"，让人误判成该 PR 没有流水线。
+rc=0
+PIPELINES=$(bash "${SCRIPT_DIR}/gp-list.sh" "$PR_NUMBER" 2>&1) || rc=$?
+
+if [ "$rc" -ne 0 ] || [ -z "$PIPELINES" ]; then
+  echo "=== 无法分析：gp-list.sh 未取到 v5 流水线记录（退出码 ${rc}）==="
+  [ -n "$PIPELINES" ] && echo "$PIPELINES"
+  echo ""
+  echo "下一步（按顺序）："
+  echo "  1) bash gp-detect.sh ${PR_NUMBER}     # 先确认仓库用的是 Actions 还是 Legacy"
+  echo "  2) mode=actions → bash gpv8-list.sh ${PR_NUMBER} 取 run_id，再 gpv8-detail.sh / gpv8-log.sh"
+  echo "  3) Legacy 由外部系统上报（v5 查不到但流水线在跑）→ bash gp-comments.sh ${PR_NUMBER} 读 PR 评论里的 job 状态表"
+  echo "  4) 门禁是否通过以 label 为准 → bash _gp_pr_meta.sh ${PR_NUMBER}"
+  exit 3
+fi
 
 LATEST_LINE=$(echo "$PIPELINES" | head -1)
 LATEST_STATUS=$(echo "$LATEST_LINE" | grep -oP 'status=\K[^\s]+')

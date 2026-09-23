@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
 # gp-retry-api.sh - 通过 API 重试指定流水线
 #
 # 用途: 使用 retry API 重跑指定流水线，不产生新 pipeline 记录

@@ -1,4 +1,7 @@
-# GitCode 流水线 API 使用摘要
+# v5 Legacy Pipeline API 参考（Legacy 模式）
+
+> 适用 `mode=legacy` 的仓库。工作流程见 `pipeline_guide_legacy.md`。
+> v8 Actions 模式的仓库请使用 `pipeline_api_actions.md`。
 
 > **核心规则**: 所有接口调用中的 `pipeline_detail` 字段均来自**步骤1流水线列表**返回的 `pipeline_detail` 字段。
 

@@ -8,7 +8,6 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
 # gp-retry.sh - 重触发 CI 并自动轮询直到完成
 #
 # 用途: 先尝试 API retry（重跑已有流水线），失败则评论触发全新流水线
