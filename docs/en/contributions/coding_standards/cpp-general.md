@@ -20,7 +20,7 @@
 | 3.1 | Avoid abusing typedef/#define type aliases | Data Types |
 | 3.2 | Use using instead of typedef to define aliases | Data Types |
 | 4.1 | Do not use macros to represent constants | Constants |
-| 4.2 | Do not use magic numbers/strings | Constants |
+| 4.2 | Do not use hard-to-understand literals | Constants |
 | 4.3 | Each constant should have a single responsibility | Constants |
 | 5.1 | Prefer namespaces to manage global constants | Variables |
 | 5.2 | Avoid global variables; use singletons with caution | Variables |
@@ -217,7 +217,44 @@ typedef std::shared_ptr<FooBar> FooBarPtr;
 
 ##### Rule 4.1 Do not use macros to represent constants
 
-##### Rule 4.2 Do not use magic numbers\strings
+##### Rule 4.2 Do not use hard-to-understand literals
+
+A hard-to-understand literal is a literal whose business meaning cannot be clearly determined from the surrounding code context, including integer, floating-point, boolean, and string literals. Whether a literal is hard to understand is not black and white; it must be judged against the code context and business knowledge. For example, for the same integer literal 1000, `value = 1000;` conveys no meaning, whereas `millisecond = second * 1000;` can be understood as the ratio for converting seconds to milliseconds.
+
+```cpp
+// Incorrect example: the integer literals 1 and 2 are used directly, and which type each represents is unclear
+int current_type = in_param->GetValue("servType");
+if (current_type == 1) {
+  ...
+} else if (current_type == 2) {
+  ...
+} else {
+  ...
+}
+
+// Incorrect example: naming constants after the numbers themselves does not aid understanding
+constexpr uint32_t kNumberOne = 1;
+constexpr uint32_t kNumberTwo = 2;
+
+// Correct example: use constants that convey the meaning
+enum ServType {
+  SERV_TYPE_RESERVED,
+  SERV_TYPE_SET,
+  SERV_TYPE_QUERY,
+  ...
+};
+
+int current_type = in_param->GetValue("servType");
+if (current_type == SERV_TYPE_SET) {
+  ...
+} else if (current_type == SERV_TYPE_QUERY) {
+  ...
+} else {
+  ...
+}
+```
+
+Remediation: if a literal is used frequently and carries a fixed meaning in its context, define it as a named constant or an enum. The name should be self-explanatory; if it is not, add a comment to clarify. Exception: if a literal is used in only one place and does not need to be extracted as a constant, add a comment explaining its meaning.
 
 ##### Recommendation 4.3 Each constant should have a single responsibility
 

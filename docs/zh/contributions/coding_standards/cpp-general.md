@@ -20,7 +20,7 @@
 | 3.1 | 避免滥用 typedef/#define 类型别名 | 数据类型 |
 | 3.2 | 使用 using 而非 typedef 定义别名 | 数据类型 |
 | 4.1 | 禁止使用宏表示常量 | 常量 |
-| 4.2 | 禁止使用魔鬼数字/字符串 | 常量 |
+| 4.2 | 不要使用难以理解的字面量 | 常量 |
 | 4.3 | 每个常量保证单一职责 | 常量 |
 | 5.1 | 优先使用命名空间管理全局常量 | 变量 |
 | 5.2 | 避免全局变量，谨慎使用单例 | 变量 |
@@ -219,7 +219,44 @@ typedef std::shared_ptr<FooBar> FooBarPtr;
 
 ##### 规则 4.1 禁止使用宏表示常量
 
-##### 规则 4.2 禁止使用魔鬼数字\字符串
+##### 规则 4.2 不要使用难以理解的字面量
+
+难以理解的字面量是指通过代码上下文难以明确业务含义的字面量，包括整型字面量、浮点数字面量、布尔字面量和字符串字面量等。字面量是否难以理解并非非黑即白，需要结合代码上下文和业务相关知识判断，例如同样的整型字面量1000，`value = 1000;`不能理解其表示的含义，而`millisecond = second * 1000;`则可以理解其中的1000是将秒数转换成毫秒数的比例。
+
+```cpp
+// 错误示范：直接使用整型字面量1和2，不易理解其具体表示哪种类型
+int current_type = in_param->GetValue("servType");
+if (current_type == 1) {
+  ...
+} else if (current_type == 2) {
+  ...
+} else {
+  ...
+}
+
+// 错误示范：用无意义的标识符命名解释数字含义，这种做法无益于理解
+constexpr uint32_t kNumberOne = 1;
+constexpr uint32_t kNumberTwo = 2;
+
+// 正确示范：使用能表达含义的常量
+enum ServType {
+  SERV_TYPE_RESERVED,
+  SERV_TYPE_SET,
+  SERV_TYPE_QUERY,
+  ...
+};
+
+int current_type = in_param->GetValue("servType");
+if (current_type == SERV_TYPE_SET) {
+  ...
+} else if (current_type == SERV_TYPE_QUERY) {
+  ...
+} else {
+  ...
+}
+```
+
+修复建议：如果某个字面量经常使用、在使用的上下文中具有固定的含义，应定义为具名常量或枚举；命名应能自注释，不能自注释的，必要时可添加注释加以说明。例外：如果字面量仅在某一处使用、无需提取常量，可添加注释说明其含义。
 
 ##### 建议 4.3 建议每个常量保证单一职责
 
