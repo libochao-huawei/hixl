@@ -1270,11 +1270,19 @@ Status HixlCSClient::ExchangeEndpointAndCreateChannel(uint32_t timeout_ms) {
                            global_config_.MaxTransferCountPerBatch()};
   HIXL_CHK_STATUS_RET(local_endpoint_->CreateChannel(channel_desc, channel_handle, timeout_ms),
                       "[HixlClient] Endpoint CreateChannel failed. Dst[id:0x%x]", remote_endpoint_.commAddr.id);
+  HIXL_DISMISSABLE_GUARD(channel_rollback, ([this, channel_handle]() {
+                           const Status ret = local_endpoint_->DestroyChannel(channel_handle);
+                           if (ret != SUCCESS) {
+                             HIXL_LOGW("[HixlClient] Rollback channel failed. handle=%" PRIu64 ", ret=%u",
+                                       channel_handle, static_cast<uint32_t>(ret));
+                           }
+                         }));
   HIXL_CHK_STATUS_RET(ConnMsgHandler::RecvCreateChannelResponse(socket_, timeout_ms),
                       "[HixlClient] RecvCreateChannelResponse failed. fd=%d, timeout=%u ms", socket_, timeout_ms);
   HIXL_LOGI("[HixlClient] Connect: remote endpoint handle = %" PRIu64, remote_endpoint_handle_);
   client_channel_handle_ = channel_handle;
   HIXL_LOGI("[HixlClient] Channel Ready. client_channel_handle_=%p", client_channel_handle_);
+  HIXL_DISMISS_GUARD(channel_rollback);
   return SUCCESS;
 }
 

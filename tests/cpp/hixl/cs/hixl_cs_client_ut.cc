@@ -1051,9 +1051,11 @@ TEST_F(HixlCSClientUT, ConnectRetryAfterExchangeFailReconnects) {
   EXPECT_NE(client_.Connect(kDefaultConnectTimeoutMs), SUCCESS);
   EXPECT_EQ(client_.socket_, -1);
   EXPECT_FALSE(client_.is_connected_);
+  EXPECT_TRUE(client_.local_endpoint_->channels_.empty());
   StartServer(MiniSrvMode::kNormal, MiniSrvMode::kNormal);
   EXPECT_EQ(client_.Connect(kDefaultConnectTimeoutMs), SUCCESS);
   EXPECT_TRUE(client_.is_connected_);
+  ASSERT_EQ(client_.local_endpoint_->channels_.size(), 1U);
   EXPECT_EQ(client_.Connect(kDefaultConnectTimeoutMs), ALREADY_CONNECTED);
 }
 
