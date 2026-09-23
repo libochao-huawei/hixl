@@ -10,6 +10,17 @@
 
 #include "common/llm_log.h"
 #include "comm_statistic_manager.h"
+
+namespace {
+template <typename Compare>
+void UpdateAtomicExtremum(std::atomic<uint64_t> &value, const uint64_t candidate, Compare should_update) {
+  auto current = value.load(std::memory_order_relaxed);
+  while (should_update(current, candidate) &&
+         !value.compare_exchange_weak(current, candidate, std::memory_order_relaxed, std::memory_order_relaxed)) {
+  }
+}
+}  // namespace
+
 namespace llm {
 CommStatisticManager &CommStatisticManager::GetInstance() {
   static CommStatisticManager instance;
@@ -28,12 +39,10 @@ void CommStatisticManager::UpdateCost(const uint64_t cost, std::atomic<uint64_t>
                                       std::atomic<uint64_t> &total_cost) {
   (void)total_times.fetch_add(1U);
   (void)total_cost.fetch_add(cost);
-  if (max_cost.load() < cost) {
-    max_cost.store(cost);
-  }
-  if (min_cost.load() > cost) {
-    min_cost.store(cost);
-  }
+  UpdateAtomicExtremum(max_cost, cost,
+                       [](const uint64_t current, const uint64_t candidate) { return current < candidate; });
+  UpdateAtomicExtremum(min_cost, cost,
+                       [](const uint64_t current, const uint64_t candidate) { return current > candidate; });
 }
 
 void CommStatisticManager::AddExchangeMemCost(const uint64_t cost) {
