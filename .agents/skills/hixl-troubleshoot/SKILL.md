@@ -109,6 +109,22 @@ JWT 缓存在 `~/.hixl-troubleshoot/gitcode_access_token`（约 24h 过期；HTT
 
 ### 步骤 2 备选：无浏览器自动化
 
+默认的浏览器自动化工具不可用时，优先使用系统浏览器直接下载附件；浏览器会话已登录
+gitcode.com 时通常无需 JWT 即可拿到 zip。具体操作按当前操作系统和可用浏览器选择（例如通过
+系统自动化接口驱动已打开的浏览器导航到附件 URL，或直接打开附件 URL 触发下载），下载完成后在
+浏览器的默认下载目录中找到新增的 zip（浏览器通常会为同名文件添加 ` (1)` 之类的去重后缀）。
+
+拿到 zip 后把它放到脚本约定的目录并解压：
+
+```bash
+mkdir -p ~/hixl-troubleshooting/issues/cann-hixl-<issue_no>/extracted
+unzip -o -q <download_dir>/<attachment>.zip -d ~/hixl-troubleshooting/issues/cann-hixl-<issue_no>/extracted
+```
+
+如果系统浏览器未登录 gitcode.com、下载返回 401/登录页，再退回 JWT 方案。
+
+### 步骤 2 备选：无浏览器自动化
+
 告知用户：当前 issue 有日志附件（共 N 个，链接见 `attachment_urls.txt` 或 issue 页
 `https://gitcode.com/cann/hixl/issues/<issue_no>`），需自行下载并解压，**请提供解压后的日志目录路径**。
 收到路径后继续步骤 3，对该路径跑 log-triage。
