@@ -31,6 +31,7 @@
 #include "host_register_proxy.h"
 #include "mem_msg_handler.h"
 #include "proxy/hcomm_proxy.h"
+#include "cs/ubmem/ubmem_engine.h"
 
 namespace hixl {
 namespace {
@@ -119,22 +120,20 @@ void BuildTagPtrs(std::vector<std::vector<char>> &storage, std::vector<char *> &
   }
 }
 
-void CloseImportedBufs(EndpointHandle ep_handle, const std::vector<hixl::HixlMemDesc> &bufs) {
-  if (ep_handle == nullptr) {
+void CloseImportedBufs(Endpoint &endpoint, const std::vector<hixl::HixlMemDesc> &bufs) {
+  if (endpoint.GetHandle() == nullptr) {
     return;
   }
   for (const auto &b : bufs) {
     if (!b.is_imported) {
       continue;
     }
-    const HcclResult ret = HcommProxy::MemUnimport(ep_handle, b.export_desc, b.export_len);
-    if (ret != HCCL_SUCCESS) {
-      HIXL_REPORT_ERR_MSG("E19999",
-                          "Call api:HcommMemUnimport failed, ret:0x%X, ep_handle:%p, addr:%p, size:%" PRIu64 " bytes",
-                          static_cast<uint32_t>(ret), ep_handle, b.mem.addr, b.mem.size);
-      HIXL_LOGW("[HixlClient] Call api:HcommMemUnimport failed, ret:0x%X, ep_handle:%p, addr:%p, size:%" PRIu64
-                " bytes",
-                static_cast<uint32_t>(ret), ep_handle, b.mem.addr, b.mem.size);
+    const hixl::Status ret = endpoint.UnimportMem(b.export_desc, b.export_len);
+    if (ret != hixl::SUCCESS) {
+      HIXL_REPORT_ERR_MSG("E19999", "Call api:MemUnimport failed, ret:%u, addr:%p, size:%" PRIu64 " bytes",
+                          static_cast<uint32_t>(ret), b.mem.addr, b.mem.size);
+      HIXL_LOGW("[HixlClient] Call api:MemUnimport failed, ret:%u, addr:%p, size:%" PRIu64 " bytes",
+                static_cast<uint32_t>(ret), b.mem.addr, b.mem.size);
     }
   }
 }
@@ -154,7 +153,7 @@ void UnrecordAddrs(hixl::HixlMemStore &store, std::vector<void *> &addrs) {
 
 hixl::Status ImportOneDesc(hixl::ImportCtx &ctx, uint32_t idx, hixl::HixlMemDesc &desc) {
   CommMem buf{};
-  hixl::Status ret = ctx.ep->MemImport(desc.export_desc, desc.export_len, buf);
+  hixl::Status ret = ctx.ep->ImportMem(desc.export_desc, desc.export_len, buf);
   const char *safe_tag = desc.tag.empty() ? "<empty>" : desc.tag.c_str();
   if (ret != hixl::SUCCESS) {
     HIXL_LOGE(ret, "[HixlClient] MemImport failed, idx=%u, tag=%s", idx, safe_tag);
@@ -313,7 +312,7 @@ Status HixlCSClient::InitDeviceResource(const EndpointDesc &ep) {
 }
 
 Status HixlCSClient::InitNotifyResources(const EndpointDesc &ep) {
-  if (!IsDeviceEndpoint(ep)) {
+  if (!IsDeviceEndpoint(ep) || IsUbMemProtocol(ep.protocol)) {
     return SUCCESS;
   }
 
@@ -345,6 +344,12 @@ Status HixlCSClient::Create(const HixlClientDesc *client_desc, const HixlClientC
   HIXL_CHK_STATUS_RET(
       GlobalConfig::Parse(config->global_resource_config, global_config_, GlobalConfig::ParseTarget::kClient),
       "[HixlClient] Failed to parse global_resource_config");
+  if (IsUbMemProtocol(client_desc->local_endpoint->protocol) &&
+      global_config_.MaxTransferCountPerBatch() > kMaxFixedQueueTransferCountPerBatch) {
+    HIXL_LOGE(PARAM_INVALID, "[HixlClient] max_transfer_count_per_batch=%u exceeds UB_MEM range [1, %u]",
+              global_config_.MaxTransferCountPerBatch(), kMaxFixedQueueTransferCountPerBatch);
+    return PARAM_INVALID;
+  }
   HIXL_EVENT(
       "[HixlClient] Create begin. Server=%s:%u. "
       "SrcEndpoint[Loc:%d, protocol:%s, commAddr.Type:%d, commAddr.id:0x%x], "
@@ -354,7 +359,7 @@ Status HixlCSClient::Create(const HixlClientDesc *client_desc, const HixlClientC
       client_desc->local_endpoint->commAddr.id, client_desc->remote_endpoint->loc.locType,
       ProtocolToString(client_desc->remote_endpoint->protocol).c_str(), client_desc->remote_endpoint->commAddr.type,
       client_desc->remote_endpoint->commAddr.id);
-  local_endpoint_ = MakeShared<Endpoint>(*(client_desc->local_endpoint), *(client_desc->remote_endpoint));
+  local_endpoint_ = Endpoint::Create(*(client_desc->local_endpoint), *(client_desc->remote_endpoint), global_config_);
   HIXL_CHECK_NOTNULL(local_endpoint_);
   HIXL_CHK_STATUS_RET(InitDeviceResource(*(client_desc->local_endpoint)), "[HixlClient] InitDeviceResource failed");
   HIXL_DISMISSABLE_GUARD(pool_rollback, ([this]() {
@@ -369,6 +374,10 @@ Status HixlCSClient::Create(const HixlClientDesc *client_desc, const HixlClientC
   HIXL_CHK_STATUS_RET(InitBaseClient(client_desc), "[HixlClient] InitBaseClient failed");
   HIXL_CHK_STATUS_RET(InitRdmaRetryConfig(), "[HixlClient] InitRdmaRetryConfig failed");
   HIXL_CHK_STATUS_RET(InitNotifyResources(*(client_desc->local_endpoint)), "[HixlClient] InitNotifyResources failed");
+  if (IsDeviceEndpoint(*(client_desc->local_endpoint)) && IsUbMemProtocol(client_desc->local_endpoint->protocol)) {
+    ubmem_engine_ = MakeUnique<UbMemEngine>(device_id_, global_config_, *local_endpoint_);
+    HIXL_CHECK_NOTNULL(ubmem_engine_);
+  }
   HIXL_DISMISS_GUARD(pool_rollback);
   EndpointHandle endpoint_handle = local_endpoint_->GetHandle();
   HIXL_EVENT("[HixlClient] Create success. server=%s:%u, src_ep_handle=%p", server_ip_.c_str(), server_port_,
@@ -387,6 +396,18 @@ Status HixlCSClient::RegMemLocked(const char *mem_tag, const CommMem *mem, MemHa
   auto ctx_guard = GetContextGuard();
   (void)ctx_guard;
   HIXL_CHECK_NOTNULL(mem);
+  HIXL_CHK_BOOL_RET_STATUS(mem->addr != nullptr && mem->size > 0U, PARAM_INVALID,
+                           "[HixlClient] Invalid memory registration, mem_addr:%p, mem_size:%lu bytes", mem->addr,
+                           mem->size);
+  // On the ubmem path the server and the client may register the same physical memory, while ACL allows a
+  // PA handle to be exported only once. The server side already exported it, so skip the client side
+  // registration and hand back the address as the handle to keep the returned handle non-null.
+  if (ubmem_engine_ != nullptr) {
+    HIXL_LOGI("[HixlClient] Skip client mem registration for ubmem, mem_addr:%p, mem_size:%lu bytes", mem->addr,
+              mem->size);
+    *mem_handle = mem->addr;
+    return SUCCESS;
+  }
   auto check_result = mem_store_.CheckMemoryForRegister(false, mem->addr, mem->size);
   if (check_result) {
     HIXL_LOGE(PARAM_INVALID,
@@ -445,11 +466,12 @@ Status HixlCSClient::ReleaseCompleteHandle(CompleteHandleInfo *query_handle) {
 }
 
 Status HixlCSClient::ValidateAddress(uint32_t list_num, const HixlOneSideOpDesc *desc_list) const {
-  // hccs:device链路通过片内HCCS直接访问本地device内存，本地内存无需注册，跳过本地内存校验
+  // hccs/ubmem:device链路不经hcomm注册本地内存，跳过本地内存校验
   bool check_local_mem = true;
   if (local_endpoint_ != nullptr) {
     const EndpointDesc &local_ep = local_endpoint_->GetEndpoint();
-    check_local_mem = !(local_ep.protocol == COMM_PROTOCOL_HCCS && IsDeviceEndpoint(local_ep));
+    check_local_mem = !((local_ep.protocol == COMM_PROTOCOL_HCCS || IsUbMemProtocol(local_ep.protocol)) &&
+                        IsDeviceEndpoint(local_ep));
   }
   HIXL_CHK_STATUS_RET(mem_store_.BatchValidateMemoryAccess(list_num, desc_list, check_local_mem),
                       "Validate address failed, list_num=%u", list_num);
@@ -1015,7 +1037,9 @@ Status HixlCSClient::BatchTransferSync(bool is_get, uint32_t list_num, const Hix
   const EndpointDesc endpoint = local_endpoint_->GetEndpoint();
   Status ret = FAILED;
   if (IsDeviceEndpoint(endpoint)) {
-    if (local_endpoint_->NeedHostVaMapping()) {
+    if (ubmem_engine_ != nullptr) {
+      ret = ubmem_engine_->SubmitSync(is_get, list_num, desc_list, timeout_ms);
+    } else if (local_endpoint_->NeedHostVaMapping()) {
       std::vector<HixlOneSideOpDesc> mutable_descs(desc_list, desc_list + list_num);
       HIXL_CHK_STATUS_RET(ConvertHostMappedDescs(list_num, mutable_descs.data()),
                           "[HixlClient] convert host mapped descs failed.");
@@ -1055,7 +1079,9 @@ Status HixlCSClient::BatchTransferAsync(bool is_get, uint32_t list_num, const Hi
   const EndpointDesc ep = local_endpoint_->GetEndpoint();
   Status ret = FAILED;
   if (IsDeviceEndpoint(ep)) {
-    if (local_endpoint_->NeedHostVaMapping()) {
+    if (ubmem_engine_ != nullptr) {
+      ret = ubmem_engine_->SubmitAsync(is_get, list_num, desc_list, query_handle);
+    } else if (local_endpoint_->NeedHostVaMapping()) {
       std::vector<HixlOneSideOpDesc> mutable_descs(desc_list, desc_list + list_num);
       HIXL_CHK_STATUS_RET(ConvertHostMappedDescs(list_num, mutable_descs.data()),
                           "[HixlClient] convert host mapped descs failed.");
@@ -1161,6 +1187,14 @@ Status HixlCSClient::CheckStatusLocked(void *query_handle, HixlCompleteStatus *s
     return CheckStatusDevice(*device_handle, *status);
   }
 
+  if (ubmem_engine_ != nullptr && ubmem_engine_->OwnsHandle(head)) {
+    const Status ret = ubmem_engine_->CheckStatus(query_handle, *status);
+    if ((ret == SUCCESS && *status == HixlCompleteStatus::HIXL_COMPLETE_STATUS_FAILED) ||
+        (ret == FAILED && *status == HixlCompleteStatus::HIXL_COMPLETE_STATUS_FAILED)) {
+      LatchTransferFailure(FAILED);
+    }
+    return ret;
+  }
   if (head == kRoceCompleteMagic) {
     CompleteHandleInfo *legacy = static_cast<CompleteHandleInfo *>(query_handle);
     return CheckStatusHost(*legacy, *status);
@@ -1176,6 +1210,11 @@ Status HixlCSClient::UnRegMem(MemHandle mem_handle) {
   auto ctx_guard = GetContextGuard();
   (void)ctx_guard;
   HIXL_CHECK_NOTNULL(mem_handle);
+  // The ubmem path skips client side registration, so its deregistration is skipped as well.
+  if (ubmem_engine_ != nullptr) {
+    HIXL_LOGI("[HixlClient] Skip client mem deregistration for ubmem, mem_handle:%p", mem_handle);
+    return SUCCESS;
+  }
   HixlMemDesc desc;
   Status query_status = local_endpoint_->GetMemDesc(mem_handle, desc);
   HIXL_CHK_BOOL_RET_STATUS(query_status == SUCCESS, PARAM_INVALID,
@@ -1403,7 +1442,10 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, CommMe
   Status ret = ImportAllDescs(ctx, desc_list);
   if (ret != SUCCESS) {
     HIXL_LOGW("[HixlClient] RollbackImport triggered. Cleaning up %zu imported bufs.", desc_list.size());
-    CloseImportedBufs(ctx.ep_handle, desc_list);
+    CloseImportedBufs(*local_endpoint_, desc_list);
+    // Descriptors imported before the failing one were already recorded in the mem store; drop those
+    // records too, otherwise a later transfer passes validation and then fails during translation.
+    UnrecordAddrs(*ctx.store, ctx.recorded_addrs);
     return ret;
   }
   desc_list_ = std::move(desc_list);
@@ -1413,17 +1455,16 @@ Status HixlCSClient::ImportRemoteMem(std::vector<HixlMemDesc> &desc_list, CommMe
 }
 
 Status HixlCSClient::ClearRemoteMemInfo() {
-  EndpointHandle ep_handle = (local_endpoint_ != nullptr) ? local_endpoint_->GetHandle() : nullptr;
   const size_t buf_cnt = imported_remote_bufs_.size();
   const size_t addr_cnt = recorded_remote_addrs_.size();
   if (buf_cnt > 0U || addr_cnt > 0U) {
     HIXL_LOGI("[HixlClient] Cleaning up remote mem info. Bufs=%zu, Addrs=%zu", buf_cnt, addr_cnt);
   }
   if (!desc_list_.empty()) {
-    if (ep_handle != nullptr) {
-      CloseImportedBufs(ep_handle, desc_list_);
+    if (local_endpoint_ != nullptr) {
+      CloseImportedBufs(*local_endpoint_, desc_list_);
     } else {
-      HIXL_LOGW("[HixlClient] ClearRemoteMemInfo: endpoint handle null, skip MemClose for %zu bufs", desc_list_.size());
+      HIXL_LOGW("[HixlClient] ClearRemoteMemInfo: endpoint null, skip MemUnimport for %zu bufs", desc_list_.size());
     }
     for (auto &desc : desc_list_) {
       if (desc.export_desc != nullptr) {
@@ -1511,6 +1552,10 @@ Status HixlCSClient::Destroy() {
     HIXL_EVENT("[HixlClient] Destroy start. fd=%d, imported_bufs=%zu, recorded_addrs=%zu", socket_,
                imported_remote_bufs_.size(), recorded_remote_addrs_.size());
     ReleaseLegacyHandles();
+    if (ubmem_engine_ != nullptr) {
+      ubmem_engine_->Finalize();
+      ubmem_engine_.reset();
+    }
     AbortAllPendingDeviceHandles();
     ReleaseDeviceResources();
     Status ret = ClearRemoteMemInfo();

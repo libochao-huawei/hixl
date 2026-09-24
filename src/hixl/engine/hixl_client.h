@@ -11,6 +11,7 @@
 #ifndef CANN_HIXL_SRC_HIXL_ENGINE_HIXL_CLIENT_H_
 #define CANN_HIXL_SRC_HIXL_ENGINE_HIXL_CLIENT_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <mutex>
@@ -39,6 +40,7 @@ struct ClientConfig {
   uint32_t multi_worker_num = 1U;
   uint32_t multi_channel_split_batch_size = kDefaultSplitBatchSize;
   bool is_lazy = false;
+  UbMemoryConfig fabric_memory;
 };
 
 class HixlClient {
@@ -59,7 +61,8 @@ class HixlClient {
         max_active_channels_(config.max_active_channels),
         max_transfer_count_per_batch_(config.max_transfer_count_per_batch),
         multi_worker_num_(config.multi_worker_num),
-        multi_channel_split_batch_size_(config.multi_channel_split_batch_size) {}
+        multi_channel_split_batch_size_(config.multi_channel_split_batch_size),
+        fabric_memory_(config.fabric_memory) {}
   ~HixlClient() = default;
 
   /**
@@ -164,6 +167,7 @@ class HixlClient {
   uint32_t max_transfer_count_per_batch_{kDefaultMaxTransferCountPerBatch};
   uint32_t multi_worker_num_{1U};
   uint32_t multi_channel_split_batch_size_{kDefaultSplitBatchSize};
+  UbMemoryConfig fabric_memory_;
 };
 
 }  // namespace hixl

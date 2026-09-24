@@ -70,6 +70,7 @@ constexpr const char *kProtocolUbCtp = "ub_ctp";
 constexpr const char *kProtocolHccs = "hccs";
 constexpr const char *kProtocolUboe = "uboe";
 constexpr const char *kProtocolUbRtp = "ub_rtp";
+constexpr const char *kProtocolUbmem = "ubmem";
 constexpr const char *kUboeProtocolDesc = "uboe:device";
 constexpr const char *kUbRtpProtocolDesc = "ub_rtp:device";
 constexpr const char *kPlacementDevice = "device";

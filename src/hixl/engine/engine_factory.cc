@@ -11,7 +11,6 @@
 #include "engine_factory.h"
 
 #include "nlohmann/json.hpp"
-#include "fabric_mem_engine.h"
 #include "hixl_engine.h"
 #include "comm_engine.h"
 #include "hixl/hixl_types.h"
@@ -68,9 +67,9 @@ std::unique_ptr<Engine> EngineFactory::CreateEngine(const std::string local_engi
     return nullptr;
   }
 
-  if (parsed_options.EnableFabricMem().value_or(false)) {
-    LogSelectedEngine("fabric_mem", "EnableFabricMem is true", local_engine);
-    return std::make_unique<FabricMemEngine>(AscendString(local_engine.c_str()));
+  if (parsed_options.EnableUbMem().value_or(false)) {
+    LogSelectedEngine("hixl_cs", "EnableUbMem is true", local_engine);
+    return std::make_unique<HixlEngine>(AscendString(local_engine.c_str()));
   }
   auto lcr = parsed_options.LocalCommRes();
   if (lcr.has_value() && !lcr->empty()) {

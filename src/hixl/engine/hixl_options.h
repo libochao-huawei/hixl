@@ -22,15 +22,9 @@
 #include "hixl/hixl_types.h"
 #include "adxl/adxl_types.h"
 #include "common/transfer_config.h"
+#include "cs/ubmem/ubmem_types.h"
 
 namespace hixl {
-
-struct FabricMemoryConfig {
-  std::optional<size_t> max_capacity;
-  std::optional<size_t> start_address;
-  std::optional<size_t> task_stream_num;
-  std::optional<bool> enable_aicpu_unfold;
-};
 
 struct ConnectPoolConfig {
   std::optional<int32_t> thread_num;
@@ -51,7 +45,7 @@ struct TransferConfig {
 };
 
 struct GlobalResourceConfig {
-  FabricMemoryConfig fabric_memory;
+  UbMemoryConfig fabric_memory;
   ConnectPoolConfig connect_pool;
   CommResourceConfigDesc comm_resource_config;
   TransferConfig transfer_config;
@@ -77,8 +71,8 @@ class HixlOptions {
   std::optional<std::string> LocalCommRes() const {
     return local_comm_res_;
   }
-  std::optional<bool> EnableFabricMem() const {
-    return enable_fabric_mem_;
+  std::optional<bool> EnableUbMem() const {
+    return enable_ubmem_;
   }
   std::optional<bool> AutoConnect() const {
     return auto_connect_;
@@ -88,6 +82,7 @@ class HixlOptions {
     return global_resource_config_;
   }
   std::vector<std::string> GetProtocolDesc() const;
+  bool HasProtocolDesc(const std::string &token) const;
   std::optional<std::string> TopoFilePath() const;
 
  private:
@@ -97,17 +92,18 @@ class HixlOptions {
   std::optional<uint8_t> rdma_traffic_class_;
   std::optional<uint8_t> rdma_service_level_;
   std::optional<std::string> local_comm_res_;
-  std::optional<bool> enable_fabric_mem_;
+  std::optional<bool> enable_ubmem_;
   std::optional<bool> auto_connect_;
   std::optional<GlobalResourceConfig> global_resource_config_;
 
   Status ParseRdmaOptions(const std::map<AscendString, AscendString> &options);
   Status ParseEndpointOptions(const std::map<AscendString, AscendString> &options);
-  Status ParseFabricMemOptions(const std::map<AscendString, AscendString> &options);
+  Status ParseUbMemOptions(const std::map<AscendString, AscendString> &options);
   Status ParseAutoConnectOptions(const std::map<AscendString, AscendString> &options);
   Status ParseGlobalResourceConfig(const std::map<AscendString, AscendString> &options);
   Status ParseGlobalResourceConfig(const std::string &config_str);
   Status ResolveLocalCommResFromFile();
+  Status ApplyUbMemEquivalence();
 };
 
 }  // namespace hixl

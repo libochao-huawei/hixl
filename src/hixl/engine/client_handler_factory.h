@@ -17,6 +17,7 @@
 #include <vector>
 #include "common/hixl_inner_types.h"
 #include "common/transfer_config.h"
+#include "cs/ubmem/ubmem_types.h"
 #include "engine/client_handler.h"
 
 namespace hixl {
@@ -46,6 +47,7 @@ struct HandlerCreateArgs {
   int32_t ctrl_socket = -1;
   std::string local_engine;
   std::string remote_engine;
+  UbMemoryConfig fabric_memory;
 };
 
 class ClientHandlerFactory {

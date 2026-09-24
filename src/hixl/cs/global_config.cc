@@ -26,6 +26,10 @@ constexpr int64_t kMaxListenPort = 65535;
 constexpr int64_t kMinActiveChannels = 1;
 constexpr int64_t kMaxActiveChannels = 8192;
 constexpr const char *kMaxTransferCountPerBatchKey = "transfer_config.max_transfer_count_per_batch";
+constexpr const char *kUbMemMaxCapacity = "fabric_memory.max_capacity";
+constexpr const char *kUbMemStartAddress = "fabric_memory.start_address";
+constexpr const char *kUbMemTaskStreamNum = "fabric_memory.task_stream_num";
+constexpr const char *kUbMemEnableAicpuUnfold = "fabric_memory.enable_aicpu_unfold";
 
 Status ParseListenPort(const nlohmann::json &json, CommResourceConfig &config) {
   const auto it = json.find(kListenPort);
@@ -121,6 +125,50 @@ Status ParseCommResourceConfig(const nlohmann::json &json, CommResourceConfig &c
   HIXL_CHK_STATUS_RET(ParseMaxActiveChannels(json, config), "[GlobalConfig] Failed to parse max_active_channels");
   return SUCCESS;
 }
+
+Status ParseUbMemSizeField(const nlohmann::json &json, const char *key, int64_t min_val, int64_t max_val,
+                           std::optional<size_t> &out) {
+  const auto it = json.find(key);
+  if (it == json.end()) {
+    return SUCCESS;
+  }
+  const auto val = JsonToNumber<int64_t>(*it);
+  if (val < min_val || val > max_val) {
+    HIXL_LOGE(PARAM_INVALID, "[GlobalConfig] %s out of range: %ld, must be in [%ld, %ld]", key, val, min_val, max_val);
+    return PARAM_INVALID;
+  }
+  out = static_cast<size_t>(val);
+  HIXL_LOGI("[GlobalConfig] %s=%zu", key, *out);
+  return SUCCESS;
+}
+
+Status ParseUbMemBoolField(const nlohmann::json &json, const char *key, std::optional<bool> &out) {
+  const auto it = json.find(key);
+  if (it == json.end()) {
+    return SUCCESS;
+  }
+  HIXL_CHK_BOOL_RET_STATUS(it->is_boolean(), PARAM_INVALID, "[GlobalConfig] %s must be a boolean", key);
+  out = it->get<bool>();
+  HIXL_LOGI("[GlobalConfig] %s=%d", key, static_cast<int32_t>(*out));
+  return SUCCESS;
+}
+
+Status ParseUbMemoryConfig(const nlohmann::json &json, UbMemoryConfig &cfg) {
+  const int64_t min_capacity = static_cast<int64_t>(kMinUbMemCapacityTB);
+  const int64_t max_capacity_tb = static_cast<int64_t>(kMaxUbMemCapacityTB);
+  HIXL_CHK_STATUS_RET(ParseUbMemSizeField(json, kUbMemMaxCapacity, min_capacity, max_capacity_tb, cfg.max_capacity),
+                      "[GlobalConfig] Failed to parse fabric_memory.max_capacity");
+  const int64_t min_start = static_cast<int64_t>(kMinUbMemStartAddrTB);
+  const int64_t max_start = static_cast<int64_t>(kMaxUbMemStartAddrTB);
+  HIXL_CHK_STATUS_RET(ParseUbMemSizeField(json, kUbMemStartAddress, min_start, max_start, cfg.start_address),
+                      "[GlobalConfig] Failed to parse fabric_memory.start_address");
+  HIXL_CHK_STATUS_RET(ParseUbMemSizeField(json, kUbMemTaskStreamNum, static_cast<int64_t>(kMinTaskStreamNum),
+                                          static_cast<int64_t>(kMaxTaskStreamNum), cfg.task_stream_num),
+                      "[GlobalConfig] Failed to parse fabric_memory.task_stream_num");
+  HIXL_CHK_STATUS_RET(ParseUbMemBoolField(json, kUbMemEnableAicpuUnfold, cfg.enable_aicpu_unfold),
+                      "[GlobalConfig] Failed to parse fabric_memory.enable_aicpu_unfold");
+  return SUCCESS;
+}
 }  // namespace
 
 Status GlobalConfig::Parse(const char *config_str, GlobalConfig &result) {
@@ -146,6 +194,8 @@ Status GlobalConfig::Parse(const char *config_str, GlobalConfig &result, ParseTa
     }
     HIXL_CHK_STATUS_RET(ParseTransferConfig(json, result.transfer_config_, target),
                         "[GlobalConfig] Failed to parse transfer_config");
+    HIXL_CHK_STATUS_RET(ParseUbMemoryConfig(json, result.fabric_memory_),
+                        "[GlobalConfig] Failed to parse fabric_memory");
     return SUCCESS;
   } catch (const nlohmann::json::exception &e) {
     HIXL_LOGE(PARAM_INVALID, "[GlobalConfig] Failed to parse config: %s", e.what());
@@ -167,5 +217,17 @@ std::optional<uint32_t> GlobalConfig::MaxActiveChannels() const {
 
 uint32_t GlobalConfig::MaxTransferCountPerBatch() const {
   return transfer_config_.max_transfer_count_per_batch;
+}
+
+const UbMemoryConfig &GlobalConfig::UbMemory() const {
+  return fabric_memory_;
+}
+
+std::optional<size_t> GlobalConfig::UbMemMaxCapacity() const {
+  return fabric_memory_.max_capacity;
+}
+
+std::optional<size_t> GlobalConfig::UbMemStartAddress() const {
+  return fabric_memory_.start_address;
 }
 }  // namespace hixl

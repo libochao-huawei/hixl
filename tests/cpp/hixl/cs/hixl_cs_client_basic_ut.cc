@@ -96,6 +96,17 @@ void CreateHixlClient(hixl::HixlCSClient &cli, const char *ip, uint32_t port,
   EXPECT_EQ(cli.Create(&desc, &config), SUCCESS);
 }
 
+// These cases do not run Connect, so create a logical channel explicitly and attach its handle to the
+// client to make the existing HcommProxy path usable.
+void CreateDataPlaneChannel(hixl::HixlCSClient &cli) {
+  ChannelDesc channel_desc{};
+  channel_desc.channel_type = ChannelType::kClient;
+  channel_desc.remote_endpoint = MakeDstEp();
+  ChannelHandle handle = 0UL;
+  ASSERT_EQ(cli.local_endpoint_->CreateChannel(channel_desc, handle, 0U), SUCCESS);
+  cli.client_channel_handle_ = handle;
+}
+
 // 封装：创建连接 + 导入远端内存
 void PrepareConnectionAndImport(hixl::HixlCSClient &cli, const char *client_ip, uint32_t port,
                                 const char *global_resource_config = nullptr) {
@@ -106,6 +117,7 @@ void PrepareConnectionAndImport(hixl::HixlCSClient &cli, const char *client_ip, 
 
   ImportedRemote ret{};
   ASSERT_EQ(cli.ImportRemoteMem(descs, &ret.remote_mem_list, &ret.tags_buf, &ret.list_num), SUCCESS);
+  CreateDataPlaneChannel(cli);
 }
 
 // 注册本地内存
@@ -194,6 +206,7 @@ TEST_F(HixlCSClientFixture, BatchPutSuccessWithStubbedHccl) {
   const char *client_ip = "127.0.0.1";
   uint32_t port = 22335;
   CreateHixlClient(cli, client_ip, port);
+  CreateDataPlaneChannel(cli);
   std::cout << "cli已创建" << std::endl;
 
   // 导入远端内存，包含完成标志与一个数据区
@@ -216,11 +229,9 @@ TEST_F(HixlCSClientFixture, BatchPutSuccessWithStubbedHccl) {
   ASSERT_EQ(cli.BatchTransferAsync(false, 1, op_descs, &query_handle), SUCCESS);
   std::cout << "执行批量写入，返回queryhandle" << std::endl;
   ASSERT_NE(query_handle, nullptr);
-  CompleteHandleInfo *task_flag = static_cast<CompleteHandleInfo *>(query_handle);
-  // 首次检查通常为 NOT_READY（flag 还未被置 1)
+  auto *task_flag = static_cast<CompleteHandleInfo *>(query_handle);
   HixlCompleteStatus status_out = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
-  uint64_t *flag = task_flag->flag_address;
-  std::cout << "falg的值是：" << *flag << std::endl;
+  std::cout << "flag的值是：" << *task_flag->flag_address << std::endl;
   Status st = cli.CheckStatus(task_flag, &status_out);
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(status_out, HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED);
@@ -258,7 +269,7 @@ TEST_F(HixlCSClientFixture, BatchGetSuccessWithStubbedHccl) {
   HixlOneSideOpDesc descs[] = {{&kServerDataAddr, static_cast<void *>(&kClientBufAddr), 4}};
   ASSERT_EQ(cli.BatchTransferAsync(true, 1, descs, &query_handle), SUCCESS);
   ASSERT_NE(query_handle, nullptr);
-  CompleteHandleInfo *task_flag = static_cast<CompleteHandleInfo *>(query_handle);
+  auto *task_flag = static_cast<CompleteHandleInfo *>(query_handle);
   HixlCompleteStatus status_out = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
   EXPECT_EQ(cli.CheckStatus(task_flag, &status_out), SUCCESS);
   EXPECT_EQ(status_out, HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED);
@@ -499,6 +510,7 @@ TEST_F(HixlCSClientFixture, BatchTransferHostAsyncHandlesMaximumListNumWithoutCh
   void *query_handle = nullptr;
   SetNextNbiFailure(HCCL_E_PARA);
 
+  // An oversized count still exercises the chunk arithmetic without building that many descriptors.
   EXPECT_EQ(cli.BatchTransferHostAsync(false, std::numeric_limits<uint32_t>::max(), &desc, &query_handle),
             PARAM_INVALID);
   EXPECT_EQ(query_handle, nullptr);

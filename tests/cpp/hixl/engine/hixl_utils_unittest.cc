@@ -457,6 +457,7 @@ TEST_F(HixlUtilsUTest, ProtocolToStringMapsKnownProtocolsTest) {
   EXPECT_EQ(ProtocolToString(COMM_PROTOCOL_UBC_TP), std::string("UNKNOWN(5)"));
   EXPECT_EQ(ProtocolToString(COMM_PROTOCOL_UBOE), std::string("uboe"));
   EXPECT_EQ(ProtocolToString(COMM_PROTOCOL_UBG), std::string("ub_rtp"));
+  EXPECT_EQ(ProtocolToString(COMM_PROTOCOL_UB_MEM), std::string("ubmem"));
 }
 
 TEST_F(HixlUtilsUTest, ProtocolToStringUnknownProtocolTest) {

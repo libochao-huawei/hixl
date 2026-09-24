@@ -56,7 +56,7 @@ TRANSPORT_LABEL: dict[str, str] = {
     "roce": "ROCE",
     "uboe": "UBOE",
     "ub_rtp": "UB_RTP",
-    "fabric_mem": "FabricMem",
+    "fabric_mem": "UbMem",
     "ub": "UB",
 }
 BLOCK_SORT_ORDER = ['16K', '32K', '64K', '128K', '256K', '512K', '1M', '2M', '4M', '8M']
@@ -327,7 +327,7 @@ def _platform_intro_body(pid: str, deployment: str) -> str:
             '**测试方式**：在同一台机器上运行 `hixl_comm_bench` 的 target 和 initiator，'
             '测量不同 block size（16K～2M）下的有效带宽。\n\n'
             '**约束**：**HCCS** 在 A3（Ascend910-class）上支持 **D2D**（`D2rD` / `rD2D`）'
-            '以及 **H2rD** / **rD2H**；其余方向请使用 **RDMA** 或 **FabricMem**。\n\n'
+            '以及 **H2rD** / **rD2H**；其余方向请使用 **RDMA** 或 **UbMem**。\n\n'
         )
     if pid == 'a5':
         return (
@@ -335,7 +335,7 @@ def _platform_intro_body(pid: str, deployment: str) -> str:
             '**测试方式**：在同一台机器上运行 `hixl_comm_bench` 的 target 和 initiator，'
             '测量不同 block size（16K～2M）下的有效带宽。\n\n'
             '**约束**：**Ascend950-class 产品上 comm benchmark 不使用 HCCS**；'
-            '通信方向请查看 **RDMA** 或 **FabricMem** 列。表中 **HCCS** 列均为 **不支持**。\n\n'
+            '通信方向请查看 **RDMA** 或 **UbMem** 列。表中 **HCCS** 列均为 **不支持**。\n\n'
         )
     return ''
 

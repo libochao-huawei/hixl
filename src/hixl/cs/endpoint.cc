@@ -12,13 +12,17 @@
 
 #include <cinttypes>
 #include <string>
+#include <vector>
 
-#include "host_register_proxy.h"
-#include "common/hixl_utils.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
+#include "common/hixl_utils.h"
 #include "common/scope_guard.h"
-#include "proxy/hcomm_proxy.h"
+#include "cs/ubmem/ubmem_endpoint.h"
+#include "cs/ubmem/ubmem_channel.h"
+#include "hcomm_endpoint.h"
+#include "hcomm_channel.h"
+#include "host_register_proxy.h"
 
 namespace hixl {
 namespace {
@@ -107,6 +111,29 @@ Status InitChannelDesc(const EndpointDesc &endpoint, const ChannelDesc &channel_
 }
 }  // namespace
 
+EndpointPtr Endpoint::Create(const EndpointDesc &endpoint, const GlobalConfig &global_config) {
+  if (IsUbMemProtocol(endpoint.protocol)) {
+    return MakeShared<UbMemEndpoint>(endpoint, global_config);
+  }
+  return MakeShared<HcommEndpoint>(endpoint);
+}
+
+EndpointPtr Endpoint::Create(const EndpointDesc &local_endpoint, const EndpointDesc &remote_endpoint,
+                             const GlobalConfig &global_config) {
+  if (IsUbMemProtocol(local_endpoint.protocol)) {
+    return MakeShared<UbMemEndpoint>(local_endpoint, remote_endpoint, global_config);
+  }
+  return MakeShared<HcommEndpoint>(local_endpoint, remote_endpoint);
+}
+
+EndpointPtr Endpoint::Create(const EndpointDesc &endpoint, bool need_host_va_mapping,
+                             const GlobalConfig &global_config) {
+  if (IsUbMemProtocol(endpoint.protocol)) {
+    return MakeShared<UbMemEndpoint>(endpoint, need_host_va_mapping, global_config);
+  }
+  return MakeShared<HcommEndpoint>(endpoint, need_host_va_mapping);
+}
+
 Endpoint::Endpoint(const EndpointDesc &endpoint)
     : endpoint_(endpoint), need_host_va_mapping_(IsDefaultHostVaMappingEnabled(endpoint)) {}
 
@@ -119,12 +146,12 @@ Endpoint::Endpoint(const EndpointDesc &endpoint, bool need_host_va_mapping)
 
 Status Endpoint::Initialize() {
   std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_LOGI("HcommEndpointCreate start, %s", EndpointToString(endpoint_).c_str());
-  HIXL_CHK_HCCL_RET(HcommProxy::EndpointCreate(&endpoint_, &handle_),
-                    "HcommEndpointCreate failed, endpoint=[%s]. "
+  HIXL_LOGI("EndpointCreate start, %s", EndpointToString(endpoint_).c_str());
+  HIXL_CHK_HCCL_RET(EndpointCreate(handle_),
+                    "EndpointCreate failed, endpoint=[%s]. "
                     "Please check whether the endpoint address is valid and available in the current environment.",
                     EndpointToString(endpoint_).c_str());
-  HIXL_LOGI("HcommEndpointCreate success, handle_:%p", handle_);
+  HIXL_LOGI("EndpointCreate success, handle_:%p", handle_);
   return SUCCESS;
 }
 
@@ -132,34 +159,35 @@ Status Endpoint::Finalize() {
   std::lock_guard<std::mutex> lock(mutex_);
   Status ret = SUCCESS;
   for (const auto &it : channels_) {
-    auto chn_ret = it.second->Destroy();
-    if (chn_ret != SUCCESS) {
+    const Status chn_ret = it.second->Destroy();
+    if (chn_ret != SUCCESS && ret == SUCCESS) {
       ret = chn_ret;
       HIXL_LOGE(chn_ret, "Destroy channel failed, ret: %d", chn_ret);
     }
   }
-
+  channels_.clear();
   for (const auto &it : reg_mems_) {
-    auto mem_handle = it.first;
-    auto hccl_ret = HcommProxy::MemUnreg(handle_, mem_handle);
-    if (hccl_ret != HCCL_SUCCESS) {
-      ret = hixl::ConvertHcommErrorToStatus(hccl_ret);
-      HIXL_REPORT_ERR_MSG("E19999", "Call api:HcommMemUnreg failed, ret:%d, ep_handle:%p, mem_handle:%p", hccl_ret,
-                          handle_, mem_handle);
-      HIXL_LOGE(ret, "Call api:HcommMemUnreg failed, ret:%d, ep_handle:%p, mem_handle:%p", hccl_ret, handle_,
-                mem_handle);
+    if (handle_ != nullptr) {
+      const HcclResult hccl_ret = MemUnreg(it.first);
+      if (hccl_ret != HCCL_SUCCESS && ret == SUCCESS) {
+        ret = ConvertHcommErrorToStatus(hccl_ret);
+        HIXL_REPORT_ERR_MSG("E19999", "Call api:MemUnreg failed, ret:%d, ep_handle:%p, mem_handle:%p", hccl_ret,
+                            handle_, it.first);
+        HIXL_LOGE(ret, "Call api:MemUnreg failed, ret:%d, ep_handle:%p, mem_handle:%p", hccl_ret, handle_, it.first);
+      }
     }
-
     if (it.second.registered_dev_mem != nullptr) {
       (void)HostRegisterProxy::UnregisterByDev(endpoint_.loc.device.devPhyId, it.second.mem.addr);
     }
   }
   reg_mems_.clear();
-  auto hccl_ret = HcommProxy::EndpointDestroy(handle_);
-  if (hccl_ret != HCCL_SUCCESS) {
-    ret = hixl::ConvertHcommErrorToStatus(hccl_ret);
-    HIXL_REPORT_ERR_MSG("E19999", "Call api:HcommEndpointDestroy failed, ret:%d, ep_handle:%p", hccl_ret, handle_);
-    HIXL_LOGE(ret, "Call api:HcommEndpointDestroy failed, ret:%d, ep_handle:%p", hccl_ret, handle_);
+  if (handle_ != nullptr) {
+    const HcclResult hccl_ret = EndpointDestroy();
+    if (hccl_ret != HCCL_SUCCESS && ret == SUCCESS) {
+      ret = ConvertHcommErrorToStatus(hccl_ret);
+      HIXL_REPORT_ERR_MSG("E19999", "Call api:EndpointDestroy failed, ret:%d, ep_handle:%p", hccl_ret, handle_);
+      HIXL_LOGE(ret, "Call api:EndpointDestroy failed, ret:%d, ep_handle:%p", hccl_ret, handle_);
+    }
   }
   handle_ = nullptr;
   return ret;
@@ -177,9 +205,21 @@ bool Endpoint::NeedHostVaMapping() const {
   return need_host_va_mapping_;
 }
 
+CommEngine Endpoint::SelectEngine() const {
+  if (endpoint_.loc.locType == EndpointLocType::ENDPOINT_LOC_TYPE_HOST) {
+    return CommEngine::COMM_ENGINE_CPU;
+  }
+  if (endpoint_.loc.locType == EndpointLocType::ENDPOINT_LOC_TYPE_DEVICE) {
+    return CommEngine::COMM_ENGINE_AICPU;
+  }
+  return CommEngine::COMM_ENGINE_RESERVED;
+}
+
 Status Endpoint::RegisterMem(const char *mem_tag, const CommMem &mem, MemHandle &mem_handle) {
   std::lock_guard<std::mutex> lock(mutex_);
-  HcclResult hccl_ret = HCCL_SUCCESS;
+  HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[endpoint] RegisterMem called before Initialize");
+  const CommMem *reg_mem = &mem;
+  CommMem mapped_mem{};
   void *registered_dev_mem = nullptr;
   ScopeGuard reg_guard([this, &mem, &registered_dev_mem]() {
     if (registered_dev_mem != nullptr) {
@@ -191,21 +231,15 @@ Status Endpoint::RegisterMem(const char *mem_tag, const CommMem &mem, MemHandle 
         HostRegisterProxy::RegisterByDev(endpoint_.loc.device.devPhyId, mem.addr, mem.size, registered_dev_mem),
         "Register mem failed, as host mem register failed, host addr=%p, size=%lu, devPhyId=%d.", mem.addr, mem.size,
         endpoint_.loc.device.devPhyId);
-
-    CommMem reg_mem{};
-    reg_mem.type = COMM_MEM_TYPE_DEVICE;
-    reg_mem.addr = registered_dev_mem;
-    reg_mem.size = mem.size;
-    HIXL_LOGI("HcommMemReg start (host-mapped), ep_handle=%p, host_addr=%p, dev_addr=%p, size=%lu", handle_, mem.addr,
-              registered_dev_mem, mem.size);
-    hccl_ret = HcommProxy::MemReg(handle_, mem_tag, &reg_mem, &mem_handle);
-  } else {
-    hccl_ret = HcommProxy::MemReg(handle_, mem_tag, &mem, &mem_handle);
+    mapped_mem.type = COMM_MEM_TYPE_DEVICE;
+    mapped_mem.addr = registered_dev_mem;
+    mapped_mem.size = mem.size;
+    reg_mem = &mapped_mem;
   }
-  HIXL_CHK_BOOL_RET_STATUS(hccl_ret == HCCL_SUCCESS || hccl_ret == HCCL_E_AGAIN,
-                           hixl::ConvertHcommErrorToStatus(hccl_ret),
-                           "Call api:HcommMemReg failed, ret:%d, ep_handle:%p, addr:%p, size:%lu bytes", hccl_ret,
-                           handle_, mem.addr, mem.size);
+  const HcclResult hccl_ret = MemReg(mem_tag, reg_mem, &mem_handle);
+  HIXL_CHK_BOOL_RET_STATUS(hccl_ret == HCCL_SUCCESS || hccl_ret == HCCL_E_AGAIN, ConvertHcommErrorToStatus(hccl_ret),
+                           "Call api:MemReg failed, ret:%d, ep_handle:%p, addr:%p, size:%lu bytes", hccl_ret, handle_,
+                           mem.addr, mem.size);
   reg_guard.Dismiss();
   HixlMemDesc desc{};
   if (mem_tag != nullptr) {
@@ -214,8 +248,7 @@ Status Endpoint::RegisterMem(const char *mem_tag, const CommMem &mem, MemHandle 
   desc.mem = mem;
   desc.registered_dev_mem = registered_dev_mem;
   reg_mems_[mem_handle] = desc;
-  HIXL_LOGI("HcommMemReg success, ep_handle=%p, mem_handle=%p, addr=%p, size=%lu", handle_, mem_handle, mem.addr,
-            mem.size);
+  HIXL_LOGI("MemReg success, ep_handle=%p, mem_handle=%p, addr=%p, size=%lu", handle_, mem_handle, mem.addr, mem.size);
   return SUCCESS;
 }
 
@@ -226,7 +259,8 @@ Status Endpoint::DeregisterMem(MemHandle mem_handle) {
     HIXL_LOGW("mem handle:%p is not registered, please use the handle generated by register mem.", mem_handle);
     return SUCCESS;
   }
-  HIXL_CHK_HCCL_RET(HcommProxy::MemUnreg(handle_, mem_handle));
+  HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[endpoint] DeregisterMem called before Initialize");
+  HIXL_CHK_HCCL_RET(MemUnreg(mem_handle));
   if (it->second.registered_dev_mem != nullptr) {
     HIXL_CHK_STATUS_RET(HostRegisterProxy::UnregisterByDev(endpoint_.loc.device.devPhyId, it->second.mem.addr),
                         "Deregister mem failed, as host mem unregister failed, host addr=%p, devPhyId=%d.",
@@ -238,40 +272,33 @@ Status Endpoint::DeregisterMem(MemHandle mem_handle) {
 
 Status Endpoint::ExportMem(std::vector<HixlMemDesc> &mem_descs) {
   std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[endpoint] ExportMem called before Initialize");
   for (auto &it : reg_mems_) {
-    auto mem_handle = it.first;
-    auto &mem = it.second;
-    if (mem.export_desc == nullptr) {
-      HIXL_CHK_HCCL_RET(HcommProxy::MemExport(handle_, mem_handle, &mem.export_desc, &mem.export_len));
+    if (it.second.export_desc == nullptr) {
+      HIXL_CHK_HCCL_RET(MemExport(it.first, &it.second.export_desc, &it.second.export_len));
     }
-    mem_descs.emplace_back(mem);
+    mem_descs.emplace_back(it.second);
   }
   return SUCCESS;
 }
 
 Status Endpoint::CreateChannel(const ChannelDesc &channel_desc, ChannelHandle &channel_handle, uint32_t timeout_ms) {
   HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[channel] CreateChannel called before Initialize");
-  CommEngine engine = CommEngine::COMM_ENGINE_RESERVED;
-  if (endpoint_.loc.locType == EndpointLocType::ENDPOINT_LOC_TYPE_HOST) {
-    engine = CommEngine::COMM_ENGINE_CPU;
-  } else if (endpoint_.loc.locType == EndpointLocType::ENDPOINT_LOC_TYPE_DEVICE) {
-    engine = CommEngine::COMM_ENGINE_AICPU;
-  } else {
-    HIXL_LOGE(PARAM_INVALID, "[channel] invalid endpoint location=%d", static_cast<int32_t>(endpoint_.loc.locType));
-    return PARAM_INVALID;
-  }
+  const CommEngine engine = SelectEngine();
+  HIXL_CHK_BOOL_RET_STATUS(engine != CommEngine::COMM_ENGINE_RESERVED, PARAM_INVALID,
+                           "[channel] invalid endpoint location=%d", static_cast<int32_t>(endpoint_.loc.locType));
   HcommChannelDesc ch_desc{};
   std::string channel_name;
   HIXL_CHK_STATUS_RET(InitChannelDesc(endpoint_, channel_desc, port_, ch_desc, channel_name));
-
-  ChannelPtr channel = MakeShared<Channel>();
+  ChannelPtr channel = IsUbMemProtocol(endpoint_.protocol)
+                           ? std::static_pointer_cast<Channel>(MakeShared<UbMemChannel>())
+                           : std::static_pointer_cast<Channel>(MakeShared<HcommChannel>());
   HIXL_CHECK_NOTNULL(channel);
-
-  HIXL_CHK_STATUS_RET(channel->Create(handle_, ch_desc, engine, timeout_ms),
+  HIXL_CHK_STATUS_RET(channel->Create(*this, ch_desc, engine, timeout_ms),
                       "[Channel] Create failed, local=[%s], remote=[%s], type=%d, index=%" PRIu64,
                       EndpointToString(endpoint_).c_str(), EndpointToString(channel_desc.remote_endpoint).c_str(),
                       static_cast<int32_t>(channel_desc.channel_type), channel_desc.channel_index);
-  ChannelHandle h = channel->GetChannelHandle();
+  const ChannelHandle h = channel->GetHandle();
   {
     std::lock_guard<std::mutex> lock(mutex_);
     channels_[h] = channel;
@@ -288,20 +315,32 @@ Status Endpoint::DestroyChannel(ChannelHandle channel_handle) {
   auto it = channels_.find(channel_handle);
   HIXL_CHK_BOOL_RET_STATUS(it != channels_.end(), PARAM_INVALID, "DestroyChannel failed, channel not found, handle=%lu",
                            channel_handle);
-
   HIXL_CHK_STATUS_RET(it->second->Destroy(), "Channel::Destroy failed, handle=%lu", channel_handle);
-
   channels_.erase(it);
   HIXL_LOGI("Endpoint::DestroyChannel success, handle=%lu", channel_handle);
   return SUCCESS;
 }
 
-Status Endpoint::MemImport(const void *mem_desc, uint32_t desc_len, CommMem &out_buf) const {
+Status Endpoint::ImportMem(const void *mem_desc, uint32_t desc_len, CommMem &out_buf) {
   std::lock_guard<std::mutex> lock(mutex_);
-  HIXL_CHECK_NOTNULL(handle_);
   HIXL_CHECK_NOTNULL(mem_desc);
+  HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[endpoint] ImportMem called before Initialize");
+  HIXL_CHK_HCCL_RET(MemImport(mem_desc, desc_len, &out_buf));
+  return SUCCESS;
+}
 
-  HIXL_CHK_HCCL_RET(HcommProxy::MemImport(handle_, mem_desc, desc_len, &out_buf));
+Status Endpoint::UnimportMem(const void *mem_desc, uint32_t desc_len) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHK_BOOL_RET_STATUS(mem_desc != nullptr && desc_len > 0U, PARAM_INVALID, "[endpoint] invalid mem_desc");
+  HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[endpoint] UnimportMem called before Initialize");
+  HIXL_CHK_HCCL_RET(MemUnimport(mem_desc, desc_len));
+  return SUCCESS;
+}
+
+Status Endpoint::GetListenPort(uint32_t &port) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  HIXL_CHK_BOOL_RET_STATUS(handle_ != nullptr, FAILED, "[endpoint] GetListenPort called before Initialize");
+  HIXL_CHK_HCCL_RET(EndpointGetListenPort(port));
   return SUCCESS;
 }
 

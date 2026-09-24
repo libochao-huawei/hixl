@@ -23,6 +23,7 @@
 #include "common/scope_guard.h"
 #include "profiling/prof_reporter.h"
 #include "acl/acl.h"
+#include "cs/ubmem/ubmem_allocator.h"
 
 namespace hixl {
 namespace {
@@ -31,12 +32,12 @@ constexpr const char BUFFER_POOL_DISABLED[] = "0:0";
 }  // namespace
 
 const std::unordered_set<std::string> HixlEngine::kSupportedOptions = {
-    OPTION_RDMA_TRAFFIC_CLASS,    adxl::OPTION_RDMA_TRAFFIC_CLASS,
-    OPTION_RDMA_SERVICE_LEVEL,    adxl::OPTION_RDMA_SERVICE_LEVEL,
-    OPTION_LOCAL_COMM_RES,        adxl::OPTION_LOCAL_COMM_RES,
-    OPTION_BUFFER_POOL,           adxl::OPTION_BUFFER_POOL,
-    OPTION_AUTO_CONNECT,          adxl::OPTION_AUTO_CONNECT,
-    OPTION_GLOBAL_RESOURCE_CONFIG};
+    OPTION_ENABLE_USE_FABRIC_MEM,    OPTION_RDMA_TRAFFIC_CLASS,
+    adxl::OPTION_RDMA_TRAFFIC_CLASS, OPTION_RDMA_SERVICE_LEVEL,
+    adxl::OPTION_RDMA_SERVICE_LEVEL, OPTION_LOCAL_COMM_RES,
+    adxl::OPTION_LOCAL_COMM_RES,     OPTION_BUFFER_POOL,
+    adxl::OPTION_BUFFER_POOL,        OPTION_AUTO_CONNECT,
+    adxl::OPTION_AUTO_CONNECT,       OPTION_GLOBAL_RESOURCE_CONFIG};
 
 bool HixlEngine::IsInitialized() const {
   return is_initialized_.load(std::memory_order::memory_order_relaxed);
@@ -51,7 +52,7 @@ Status HixlEngine::InitServer(std::optional<uint32_t> listen_port, std::optional
                       "ipv6 should be '[host_ip]:host_port' or '[host_ip]' "
                       "current local_engine:%s",
                       local_engine_.c_str());
-  HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_, listen_port, max_active_channels),
+  HIXL_CHK_STATUS_RET(server_.Initialize(ip, port, endpoint_list_, listen_port, max_active_channels, fabric_memory_),
                       "[HixlEngine] Failed to initialize HixlEngine, local_engine:%s", local_engine_.c_str());
   return SUCCESS;
 }
@@ -60,6 +61,7 @@ Status HixlEngine::Initialize(const HixlOptions &options) {
   HIXL_EVENT("[HixlEngine] initialize start, local_engine:%s", local_engine_.c_str());
   std::lock_guard<std::shared_mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(options.CheckSupportedOptions(kSupportedOptions), "[HixlEngine] Unsupported option");
+  enable_ubmem_ = options.EnableUbMem().value_or(false);
   const auto &raw = options.RawOptions();
   const auto &hixl_bp_it = raw.find(hixl::OPTION_BUFFER_POOL);
   const auto &adxl_bp_it = raw.find(adxl::OPTION_BUFFER_POOL);
@@ -82,6 +84,7 @@ Status HixlEngine::Initialize(const HixlOptions &options) {
     multi_worker_num_ = global_resource_config->comm_resource_config.multi_worker_num.value_or(1U);
     multi_channel_split_batch_size_ =
         global_resource_config->comm_resource_config.multi_channel_split_batch_size.value_or(kDefaultSplitBatchSize);
+    fabric_memory_ = global_resource_config->fabric_memory;
   } else {
     listen_port.reset();
     qos_.reset();
@@ -89,15 +92,17 @@ Status HixlEngine::Initialize(const HixlOptions &options) {
     max_transfer_count_per_batch_ = kDefaultMaxTransferCountPerBatch;
     multi_worker_num_ = 1U;
     multi_channel_split_batch_size_ = kDefaultSplitBatchSize;
+    fabric_memory_ = {};
   }
   HIXL_CHK_STATUS_RET(aclrt_context_.CreateContext(), "[HixlEngine] Failed to create optional aclrt context");
-  HIXL_DISMISSABLE_GUARD(ctx_fail_guard, ([this]() { aclrt_context_.DestroyContext(); }));
-  {
-    auto with_context = aclrt_context_.GetContextGuard();
-    HIXL_CHK_STATUS_RET(InitServer(listen_port, max_active_channels_),
-                        "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
-                        local_engine_.c_str(), local_comm_res.c_str());
-  }
+  auto with_context = aclrt_context_.GetContextGuard();
+  HIXL_DISMISSABLE_GUARD(ctx_fail_guard, ([this]() {
+                           (void)server_.Finalize();
+                           (void)client_manager_.Finalize();
+                         }));
+  HIXL_CHK_STATUS_RET(InitServer(listen_port, max_active_channels_),
+                      "[HixlEngine] Failed to initialize server, local_engine:%s, local_comm_res:%s",
+                      local_engine_.c_str(), local_comm_res.c_str());
   rdma_traffic_class_ = options.RdmaTrafficClass();
   rdma_service_level_ = options.RdmaServiceLevel();
   auto_connect_ = options.AutoConnect().value_or(false);
@@ -111,15 +116,22 @@ Status HixlEngine::Initialize(const HixlOptions &options) {
 
 Status HixlEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
   HIXL_CHK_STATUS_RET(CheckInitialized(), "[HixlEngine] Failed to register mem, engine is not initialized");
+  // MallocMem memory is DEVICE VMM memory; treat it as DEVICE so the RoCE host-register path is
+  // not entered for addresses it allocated.
+  if (type == MemType::MEM_HOST && UbMemAllocator::IsAllocatedByMallocMem(mem.addr)) {
+    type = MemType::MEM_DEVICE;
+    HIXL_LOGI("[HixlEngine] RegisterMem treats adxl::MallocMem address as DEVICE, addr:0x%lx", mem.addr);
+  }
   HIXL_EVENT("[HixlEngine] register mem start, local_engine:%s, type:%s, addr:0x%lx, len:%zu", local_engine_.c_str(),
              MemTypeToString(type).c_str(), mem.addr, mem.len);
   auto with_context = aclrt_context_.GetContextGuard();
   std::lock_guard<std::shared_mutex> lock(mutex_);
   HIXL_CHK_STATUS_RET(server_.RegisterMem(mem, type, mem_handle),
-                      "[HixlEngine] Failed to register mem, type:%s, addr:0x%lx, size:%lu",
+                      "[HixlEngine] Failed to register mem, type:%s, addr:0x%lx, size:%zu bytes",
                       MemTypeToString(type).c_str(), mem.addr, mem.len);
-  MemHandleInfo mem_info = {mem_handle, mem, type};
-  mem_map_.emplace(mem_handle, mem_info);
+  if (mem_map_.find(mem_handle) == mem_map_.end()) {
+    mem_map_.emplace(mem_handle, MemHandleInfo{mem_handle, mem, type});
+  }
   HIXL_EVENT("[HixlEngine] register mem success, local_engine:%s, type:%s, addr:0x%lx, len:%zu, handle:%p",
              local_engine_.c_str(), MemTypeToString(type).c_str(), mem.addr, mem.len, mem_handle);
   return SUCCESS;
@@ -156,10 +168,11 @@ Status HixlEngine::DeregisterMem(MemHandle mem_handle) {
 
 Status HixlEngine::Connect(const AscendString &remote_engine, int32_t timeout_in_millis) {
   HIXL_CHK_STATUS_RET(CheckInitialized(), "[HixlEngine] Failed to connect, engine is not initialized");
-  HIXL_CHK_BOOL_RET_STATUS(strcmp(local_engine_.c_str(), remote_engine.GetString()) != 0, PARAM_INVALID,
-                           "[HixlEngine] Do not support connection with self, please check remote engine. "
-                           "local_engine:%s, remote_engine:%s",
-                           local_engine_.c_str(), remote_engine.GetString());
+  HIXL_CHK_BOOL_RET_SPECIAL_STATUS(!enable_ubmem_ && (strcmp(local_engine_.c_str(), remote_engine.GetString()) == 0),
+                                   PARAM_INVALID,
+                                   "[HixlEngine] Do not support connection with self, please check remote engine. "
+                                   "local_engine:%s, remote_engine:%s",
+                                   local_engine_.c_str(), remote_engine.GetString());
   HIXL_EVENT("[HixlEngine] connect start, local_engine:%s, remote_engine:%s, timeout_ms:%d", local_engine_.c_str(),
              remote_engine.GetString(), timeout_in_millis);
   auto with_context = aclrt_context_.GetContextGuard();
@@ -330,8 +343,8 @@ void HixlEngine::Finalize() {
   is_initialized_ = false;
   {
     auto with_context = aclrt_context_.GetContextGuard();
+    (void)client_manager_.Finalize();
     server_.Finalize();
-    client_manager_.Finalize();
     mem_map_.clear();
   }
   aclrt_context_.DestroyContext();
@@ -388,6 +401,7 @@ void HixlEngine::BuildClientConfig(const AscendString &remote_engine, ClientConf
   config.qos = qos_;
   config.max_active_channels = max_active_channels_;
   config.max_transfer_count_per_batch = max_transfer_count_per_batch_;
+  config.fabric_memory = fabric_memory_;
   config.is_lazy = is_lazy;
   config.multi_worker_num = multi_worker_num_;
   config.multi_channel_split_batch_size = multi_channel_split_batch_size_;
@@ -409,10 +423,11 @@ Status HixlEngine::AutoConnect(const AscendString &remote_engine, int32_t timeou
                              local_engine_.c_str(), remote_engine.GetString());
     return SUCCESS;
   }
-  HIXL_CHK_BOOL_RET_STATUS(strcmp(local_engine_.c_str(), remote_engine.GetString()) != 0, PARAM_INVALID,
-                           "[HixlEngine] Do not support connection with self, please check remote engine. "
-                           "local_engine:%s, remote_engine:%s",
-                           local_engine_.c_str(), remote_engine.GetString());
+  HIXL_CHK_BOOL_RET_SPECIAL_STATUS(!enable_ubmem_ && (strcmp(local_engine_.c_str(), remote_engine.GetString()) == 0),
+                                   PARAM_INVALID,
+                                   "[HixlEngine] Do not support connection with self, please check remote engine. "
+                                   "local_engine:%s, remote_engine:%s",
+                                   local_engine_.c_str(), remote_engine.GetString());
   client_ptr = client_manager_.GetClient(remote_engine.GetString());
   if (client_ptr != nullptr) {
     return SUCCESS;

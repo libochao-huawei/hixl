@@ -9,6 +9,7 @@
  */
 
 #include "hixl_cs_server.h"
+#include <algorithm>
 #include <atomic>
 #include <cinttypes>
 #include <memory>
@@ -19,7 +20,6 @@
 #include "common/ctrl_msg.h"
 #include "common/scope_guard.h"
 #include "common/ctrl_msg_plugin.h"
-#include "proxy/hcomm_proxy.h"
 #include "transfer_pool.h"
 #include "common/hixl_inner_types.h"
 
@@ -135,6 +135,9 @@ Status HixlCSServer::InitTransFinishedFlag() {
       continue;
     }
     const auto &desc = endpoint->GetEndpoint();
+    if (desc.loc.locType == ENDPOINT_LOC_TYPE_DEVICE && IsUbMemProtocol(desc.protocol)) {
+      continue;
+    }
     if (desc.loc.locType == ENDPOINT_LOC_TYPE_HOST) {
       host_endpoints.emplace_back(std::move(endpoint));
     } else if (desc.loc.locType == ENDPOINT_LOC_TYPE_DEVICE) {
@@ -185,7 +188,6 @@ Status HixlCSServer::RegisterDeviceTransFinishedFlag(const std::vector<EndpointP
                                                      bool resolve_notify_addr) {
   int32_t dev_id = 0;
   HIXL_CHK_ACL_RET(aclrtGetDevice(&dev_id), "Failed to aclrtGetDevice for CS server TransferPool");
-  // 创建context会切换当前context，因此需要在析构时恢复原用户context
   hixl::TemporaryRtContext with_context(nullptr);
   auto *pool = TransferPool::GetInstance(dev_id);
   HIXL_CHECK_NOTNULL(pool);
@@ -230,10 +232,10 @@ Status HixlCSServer::Initialize(const EndpointDesc *endpoint_list, uint32_t list
   HIXL_DISMISSABLE_GUARD(init_rollback, ([this]() { (void)Finalize(); }));
   for (uint32_t i = 0U; i < list_num; ++i) {
     EndpointHandle handle = nullptr;
-    HIXL_CHK_STATUS_RET(
-        endpoint_store_.CreateEndpoint(endpoint_list[i], handle,
-                                       NeedServerHostVaMapping(endpoint_list[i], ub_ctp_endpoints_all_device)),
-        "Failed to create endpoint, index:%u, %s", i, EndpointToString(endpoint_list[i]).c_str());
+    HIXL_CHK_STATUS_RET(endpoint_store_.CreateEndpoint(
+                            endpoint_list[i], handle,
+                            NeedServerHostVaMapping(endpoint_list[i], ub_ctp_endpoints_all_device), global_config_),
+                        "Failed to create endpoint, index:%u, %s", i, EndpointToString(endpoint_list[i]).c_str());
   }
   msg_handler_.RegisterMsgProcessor(CtrlMsgType::kMatchEndpointReq,
                                     [this](int32_t fd, const char *msg, uint64_t msg_len) -> Status {
@@ -342,6 +344,7 @@ Status HixlCSServer::Finalize() {
     (void)close(epoll_fd_);
     epoll_fd_ = -1;
   }
+  // Each endpoint owns a virtual-memory-pool reference; EndpointStore teardown releases the final one.
   HIXL_EVENT("[HixlServer] finalize end, ret:%u", ret);
   return ret;
 }
@@ -453,15 +456,15 @@ Status HixlCSServer::MatchEndpointMsg(int32_t fd, const char *msg, uint64_t msg_
     listen_port = global_config_.ListenPort().value();
     ep->SetPort(listen_port);
   } else {
-    auto ret = HcommProxy::EndpointGetListenPort(handle, &listen_port);
-    if (ret == HCCL_SUCCESS) {
+    const Status ret = ep->GetListenPort(listen_port);
+    if (ret == SUCCESS) {
       ep->SetPort(listen_port);
-    } else if (ret == HCCL_E_NOT_SUPPORT) {
-      HIXL_LOGW("HcommEndpointGetListenPort is not supported.");
+    } else if (ret == UNSUPPORTED) {
+      HIXL_LOGW("EndpointGetListenPort is not supported.");
     }
-    HIXL_CHK_BOOL_RET_STATUS(ret == HCCL_SUCCESS || ret == HCCL_E_NOT_SUPPORT, FAILED,
-                             "Call api:HcommEndpointGetListenPort failed, ret:0x%X, ep_handle:%p",
-                             static_cast<uint32_t>(ret), handle);
+    HIXL_CHK_BOOL_RET_STATUS(ret == SUCCESS || ret == UNSUPPORTED, FAILED,
+                             "Call api:EndpointGetListenPort failed, ret:%u, ep_handle:%p", static_cast<uint32_t>(ret),
+                             handle);
   }
   resp.result = SUCCESS;
   resp.dst_ep_handle = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(handle));

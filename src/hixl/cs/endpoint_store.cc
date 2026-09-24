@@ -13,15 +13,16 @@
 #include "common/hixl_utils.h"
 
 namespace hixl {
-Status EndpointStore::CreateEndpoint(const EndpointDesc &endpoint, EndpointHandle &endpoint_handle) {
-  auto ep = MakeShared<Endpoint>(endpoint);
+Status EndpointStore::CreateEndpoint(const EndpointDesc &endpoint, EndpointHandle &endpoint_handle,
+                                     const GlobalConfig &global_config) {
+  auto ep = Endpoint::Create(endpoint, global_config);
   HIXL_CHECK_NOTNULL(ep);
   return StoreEndpoint(ep, endpoint_handle);
 }
 
 Status EndpointStore::CreateEndpoint(const EndpointDesc &endpoint, EndpointHandle &endpoint_handle,
-                                     bool need_host_va_mapping) {
-  auto ep = MakeShared<Endpoint>(endpoint, need_host_va_mapping);
+                                     bool need_host_va_mapping, const GlobalConfig &global_config) {
+  auto ep = Endpoint::Create(endpoint, need_host_va_mapping, global_config);
   HIXL_CHECK_NOTNULL(ep);
   return StoreEndpoint(ep, endpoint_handle);
 }
@@ -58,6 +59,8 @@ inline bool operator==(const EndpointDesc &lhs, const EndpointDesc &rhs) {
   }
   if (lhs.protocol == COMM_PROTOCOL_HCCS) {
     return lhs.commAddr.id == rhs.commAddr.id;
+  } else if (lhs.protocol == COMM_PROTOCOL_UB_MEM) {
+    return lhs.loc.locType == rhs.loc.locType && lhs.commAddr.id == rhs.commAddr.id;
   } else if (lhs.protocol == COMM_PROTOCOL_UBC_TP || lhs.protocol == COMM_PROTOCOL_UBC_CTP ||
              lhs.protocol == COMM_PROTOCOL_UBG) {
     return std::memcmp(lhs.commAddr.eid, rhs.commAddr.eid, COMM_ADDR_EID_LEN) == 0;

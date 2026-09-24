@@ -26,7 +26,7 @@
 |   ├── hixl_example_d2rd.cpp                          // HIXL的D2rD单进程场景样例
 |   ├── hixl_example_d2rh.cpp                          // HIXL的D2rH单进程场景样例
 |   ├── hixl_example_d2rd_multiproc.cpp                // HIXL的D2rD多进程场景样例
-|   ├── fabric_mem_d2d.cpp                             // HIXL的fabric-mem模式下的d2d场景样例
+|   ├── ubmem_d2d.cpp                                  // HIXL的UBMEM模式下d2d场景样例
 |   ├── CMakeLists.txt                                 // 编译脚本
 ```
 
@@ -120,7 +120,7 @@
   - 说明：
     - 单进程用例（hixl_example_d2rd、hixl_example_d2rh）在一个进程内启动两个engine，无需分开终端，在大于等于CANN-9.1.0版本支持。
     - 多进程用例（hixl_example_d2rd_multiproc）需要分别在两个终端启动server和client，server先启动，无CANN版本要求。
-    - fabric_mem_d2d需要成对运行，两个终端分别启动。
+    - ubmem_d2d需要成对运行，两个终端分别启动。
 
   - HIXL样例进程参数说明
 
@@ -209,21 +209,21 @@
           ./hixl_example_d2rd_multiproc --role=client --protocol=roce:device --version=0
           ```
 
-    (4) 执行fabric_mem_d2d, fabric mem模式下，d2d场景
+    (4) 执行ubmem_d2d，UBMEM模式下d2d场景
 
     **注意**：
 
     - FabricMem仅支持Atlas A3 训练系列产品/Atlas A3 推理系列产品，最低支持HDK 25.5。
     - HDK 25.5不支持`aclrtMemRetainAllocationHandle`。在该版本上，FabricMem场景的Host内存必须使用ADXL提供的`MallocMem`/`FreeMem`进行申请和释放。
     - HDK 26.0及以上版本可以直接使用ACL接口管理FabricMem场景的Host内存。
-    - 当前`fabric_mem_d2d`样例在`AllocateBuffer`中直接使用ACL VMM接口`aclrtReserveMemAddress`、`aclrtMallocPhysical`和`aclrtMapMem`分配内存，随后以`MEM_DEVICE`注册，未通过ADXL的`AdxlEngine::MallocMem`分配。该注册路径需要`aclrtMemRetainAllocationHandle`，因此样例要求HDK 26.0及以上版本，不兼容HDK 25.5。样例中的`aclrtMallocHost`/`aclrtFreeHost`仅用于初始化和校验buffer，并非FabricMem Host内存注册。
+    - 当前`ubmem_d2d`样例在`AllocateBuffer`中直接使用ACL VMM接口`aclrtReserveMemAddress`、`aclrtMallocPhysical`和`aclrtMapMem`分配内存，随后以`MEM_DEVICE`注册，未通过ADXL的`AdxlEngine::MallocMem`分配。该注册路径需要`aclrtMemRetainAllocationHandle`，因此样例要求HDK 26.0及以上版本，不兼容HDK 25.5。样例中的`aclrtMallocHost`/`aclrtFreeHost`仅用于初始化和校验buffer，并非UBMEM Host内存注册。
 
-      - 执行server1 fabric_mem_d2d, 参数为device_id、local engine和remote engine, 其中device_id为当前engine要使用的device_id，如:
+      - 执行server1 ubmem_d2d，参数为device_id、local engine和remote engine，其中device_id为当前engine要使用的device_id，如:
           ```
-          ./fabric_mem_d2d 0 127.0.0.1:16000 127.0.0.1:16001
+          ./ubmem_d2d 0 127.0.0.1:16000 127.0.0.1:16001
           ```
 
-      - 执行server2 fabric_mem_d2d, 参数为device_id、local engine和remote engine, 其中device_id为当前engine要使用的device_id, 如:
+      - 执行server2 ubmem_d2d，参数为device_id、local engine和remote engine，其中device_id为当前engine要使用的device_id，如:
           ```
-          ./fabric_mem_d2d 1 127.0.0.1:16001 127.0.0.1:16000
+          ./ubmem_d2d 1 127.0.0.1:16001 127.0.0.1:16000
           ```

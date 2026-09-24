@@ -54,7 +54,7 @@ def get_port(scenario_idx, dev_id, role="server"):
 
     支持复合 role 名称，用于区分不同引擎类型：
     - "server" / "client": 基础端口
-    - "server_fabric" / "client_fabric": FabricMem 引擎端口 (+200)
+    - "server_fabric" / "client_fabric": UbMem 引擎端口 (+200)
     - "server_hccs" / "client_hccs": HCCS 引擎端口 (+200)
 
     端口分配示例（SCENARIO_IDX=3, dev_id=0）：

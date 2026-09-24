@@ -9,6 +9,7 @@
  */
 
 #include "comm_engine.h"
+#include "cs/ubmem/ubmem_allocator.h"
 #include "common/hixl_checker.h"
 
 namespace hixl {
@@ -34,6 +35,10 @@ bool CommEngine::IsInitialized() const {
 }
 
 Status CommEngine::RegisterMem(const MemDesc &mem, MemType type, MemHandle &mem_handle) {
+  if (type == MemType::MEM_HOST && UbMemAllocator::IsAllocatedByMallocMem(mem.addr)) {
+    type = MemType::MEM_DEVICE;
+    HIXL_LOGI("[CommEngine] RegisterMem treats adxl::MallocMem address as DEVICE, addr:0x%lx", mem.addr);
+  }
   adxl::MemDesc adxl_mem{mem.addr, mem.len};
   adxl::MemType adxl_type = static_cast<adxl::MemType>(type);
   return adxl_inner_engine_.RegisterMem(adxl_mem, adxl_type, mem_handle);

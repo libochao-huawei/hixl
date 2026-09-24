@@ -20,7 +20,7 @@
 #include "engine/hixl_options.h"
 #include "common/hixl_utils.h"
 #include "common/hixl_version.h"
-#include "fabric_mem/fabric_mem_transfer_service.h"
+#include "cs/ubmem/ubmem_allocator.h"
 #include "hixl/hixl.h"
 #include "hixl/hixl_types.h"
 
@@ -342,17 +342,17 @@ Status AdxlEngine::GetNotifies(std::vector<NotifyDesc> &notifies) {
 }
 
 Status AdxlEngine::MallocMem(MemType type, size_t size, void **ptr) {
-  return hixl::FabricMemTransferService::MallocMem(static_cast<hixl::MemType>(type), size, ptr);
+  return hixl::UbMemAllocator::MallocMem(static_cast<hixl::MemType>(type), size, ptr);
 }
 
 Status AdxlEngine::ExportToShareableHandle(void *addr, ShareableHandle &handle) {
-  const auto ret = hixl::FabricMemTransferService::ExportToShareableHandle(addr, handle);
+  const auto ret = hixl::UbMemAllocator::ExportToShareableHandle(reinterpret_cast<uintptr_t>(addr), handle);
   ADXL_CHK_BOOL_RET_STATUS(ret == SUCCESS, ret, "Failed to export shareable handle of addr:%p", addr);
   return SUCCESS;
 }
 
 Status AdxlEngine::FreeMem(void *ptr) {
-  return hixl::FabricMemTransferService::FreeMem(ptr);
+  return hixl::UbMemAllocator::FreeMem(ptr);
 }
 
 Status AdxlEngine::GetCapability(FeatureType feature_type, int32_t &value) {

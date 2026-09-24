@@ -25,7 +25,8 @@ enum class CommType : uint32_t {
   COMM_TYPE_ROCE = 4U,
   COMM_TYPE_HCCS = 5U,
   COMM_TYPE_UBOE = 6U,
-  COMM_TYPE_UBG = 7U
+  COMM_TYPE_UBG = 7U,
+  COMM_TYPE_UBMEM = 8U
 };
 
 enum class DumpLogLevel : uint32_t { EVENT = 0U, ERROR = 1U };
@@ -61,6 +62,8 @@ inline const char *CommTypeToString(CommType type) {
       return "UBOE";
     case CommType::COMM_TYPE_UBG:
       return "UB_RTP";
+    case CommType::COMM_TYPE_UBMEM:
+      return "UBMEM";
     default:
       return "UNKNOWN";
   }

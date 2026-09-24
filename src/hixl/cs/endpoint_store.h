@@ -24,8 +24,10 @@ class EndpointStore {
 
   ~EndpointStore() = default;
 
-  Status CreateEndpoint(const EndpointDesc &endpoint, EndpointHandle &endpoint_handle);
-  Status CreateEndpoint(const EndpointDesc &endpoint, EndpointHandle &endpoint_handle, bool need_host_va_mapping);
+  Status CreateEndpoint(const EndpointDesc &endpoint, EndpointHandle &endpoint_handle,
+                        const GlobalConfig &global_config = {});
+  Status CreateEndpoint(const EndpointDesc &endpoint, EndpointHandle &endpoint_handle, bool need_host_va_mapping,
+                        const GlobalConfig &global_config = {});
 
   EndpointPtr GetEndpoint(EndpointHandle endpoint_handle) const;
 

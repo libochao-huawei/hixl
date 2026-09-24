@@ -33,7 +33,7 @@ namespace fs = std::experimental::filesystem;
 #include "benchmark_log.h"
 
 #include "acl/acl.h"
-#include "fabric_mem/fabric_mem_transfer_service.h"
+#include "cs/ubmem/ubmem_allocator.h"
 #include "hixl/hixl.h"
 #include "kv_transfer_executor.h"
 #include "kvstore.h"
@@ -67,7 +67,7 @@ constexpr std::uint64_t kDefaultLocalBufferMinBytes = kBytesPerGiB;
 
 /// Transport type identifiers.
 constexpr const char *kTransportRoce = "roce";
-constexpr const char *kTransportFabricMem = "fabric_mem";
+constexpr const char *kTransportUbMem = "fabric_mem";
 constexpr const char *kTransportHccs = "hccs";
 constexpr const char *kTransportUboe = "uboe";
 constexpr const char *kTransportUbRtp = "ub_rtp";
@@ -80,7 +80,6 @@ constexpr std::uint32_t kPercentileIndexDenominator = 100U;
 constexpr std::uint32_t kTraceRank = 0U;
 
 using hixl::AscendString;
-using hixl::FabricMemTransferService;
 using hixl::Hixl;
 using hixl::MemDesc;
 using hixl::MemHandle;
@@ -88,6 +87,7 @@ using hixl::MemType;
 using hixl::SUCCESS;
 using hixl::TransferOp;
 using hixl::TransferOpDesc;
+using hixl::UbMemAllocator;
 using hixl_kv_benchmark::BufferView;
 using hixl_kv_benchmark::BuildWorkloadSlicePlan;
 using hixl_kv_benchmark::FindModelSpec;
@@ -333,7 +333,7 @@ KvBenchConfig ParseConfig(const std::vector<std::string> &argv) {
 
 bool ValidateConfig(const KvBenchConfig &cfg) {
   // KV workload uses host-side pool memory; HCCS comm path is restricted to D2D-only in benchmarks.
-  const bool transport_ok = cfg.transport == kTransportRoce || cfg.transport == kTransportFabricMem ||
+  const bool transport_ok = cfg.transport == kTransportRoce || cfg.transport == kTransportUbMem ||
                             cfg.transport == kTransportUboe || cfg.transport == kTransportUbRtp ||
                             cfg.transport == kTransportUb;
   const bool workload_ok = !cfg.key_counts.empty();
@@ -353,7 +353,7 @@ void ApplyTransportEnvironment(const KvBenchConfig &cfg) {
 std::map<AscendString, AscendString> BuildInitializeOptions(const KvBenchConfig &cfg) {
   std::map<AscendString, AscendString> options;
   options[AscendString(hixl::OPTION_BUFFER_POOL)] = AscendString("0:0");
-  if (cfg.transport == kTransportFabricMem) {
+  if (cfg.transport == kTransportUbMem) {
     options[AscendString(hixl::OPTION_ENABLE_USE_FABRIC_MEM)] = AscendString("1");
   }
   if (cfg.transport == kTransportUboe) {
@@ -596,8 +596,8 @@ void Barrier(const KvBenchConfig &cfg, const std::string &name) {
 }
 
 void AllocHostBuffer(const KvBenchConfig &cfg, std::uint64_t size, void **buffer) {
-  if (cfg.transport == kTransportFabricMem) {
-    const auto status = FabricMemTransferService::MallocMem(MemType::MEM_HOST, static_cast<size_t>(size), buffer);
+  if (cfg.transport == kTransportUbMem) {
+    const auto status = UbMemAllocator::MallocMem(MemType::MEM_HOST, static_cast<size_t>(size), buffer);
     if (status != SUCCESS) {
       throw std::runtime_error("fabric_mem host allocation failed");
     }
@@ -613,8 +613,8 @@ void FreeHostBuffer(const KvBenchConfig &cfg, void *buffer) {
   if (buffer == nullptr) {
     return;
   }
-  if (cfg.transport == kTransportFabricMem) {
-    (void)FabricMemTransferService::FreeMem(buffer);
+  if (cfg.transport == kTransportUbMem) {
+    (void)UbMemAllocator::FreeMem(buffer);
   } else {
     (void)aclrtFreeHost(buffer);
   }
@@ -656,7 +656,7 @@ void InitRuntime(const KvBenchConfig &cfg, std::uint64_t local_size, std::uint64
     throw std::runtime_error("device buffer allocation succeeded but returned null");
   }
   // fabric_mem: only host pool is registered; aclrtMalloc device local_buffer is used via TransferSync addresses only.
-  if (cfg.transport != kTransportFabricMem) {
+  if (cfg.transport != kTransportUbMem) {
     RegisterMem(runtime->hixl, runtime->local_buffer, local_size, MemType::MEM_DEVICE, &runtime->local_handle);
     runtime->local_registered = true;
   }
@@ -671,7 +671,7 @@ void InitRuntime(const KvBenchConfig &cfg, std::uint64_t local_size, std::uint64
 
 void CleanupRuntime(const KvBenchConfig &cfg, KvRuntime *runtime, const std::vector<RankMeta> &metas) {
   if (runtime->hixl_initialized) {
-    const bool disconnect_self = cfg.transport == kTransportFabricMem;
+    const bool disconnect_self = cfg.transport == kTransportUbMem;
     for (const auto &meta : metas) {
       if (meta.rank == cfg.rank && !disconnect_self) {
         continue;
@@ -703,7 +703,7 @@ void CleanupRuntime(const KvBenchConfig &cfg, KvRuntime *runtime, const std::vec
 }
 
 void ConnectPeers(const KvBenchConfig &cfg, KvRuntime *runtime, const std::vector<RankMeta> &metas) {
-  const bool connect_self = cfg.transport == kTransportFabricMem;
+  const bool connect_self = cfg.transport == kTransportUbMem;
   for (const auto &meta : metas) {
     if (meta.rank == cfg.rank && !connect_self) {
       continue;
@@ -878,7 +878,7 @@ TransferStageTiming ExecuteKvTransfer(const KvBenchConfig &cfg, KvTransferExecut
                                       const std::vector<std::uint64_t> &rank_pool_sizes, WorkloadTransferState *state,
                                       bool trace_transfer) {
   const auto plan_start = std::chrono::steady_clock::now();
-  const bool local_copy_for_self = cfg.transport != kTransportFabricMem;
+  const bool local_copy_for_self = cfg.transport != kTransportUbMem;
   if (op == hixl::WRITE) {
     GeneratePlacements(rank_pool_sizes, state);
   } else if (!state->placements_ready) {
@@ -1107,7 +1107,7 @@ std::vector<KvBenchResult> ExecuteKvBenchmark(const KvBenchConfig &cfg, KvRuntim
                                               const std::vector<RankMeta> &metas, const ModelSpec &model,
                                               const std::vector<KvWorkload> &workloads,
                                               const std::vector<std::uint64_t> &rank_pool_sizes) {
-  const bool local_copy_for_self = cfg.transport != kTransportFabricMem;
+  const bool local_copy_for_self = cfg.transport != kTransportUbMem;
   KvTransferExecutor transfer_executor(&runtime->hixl, BuildRankMetaByRank(metas), cfg.rank, cfg.transfer_threads,
                                        kDefaultTransferTimeoutMs, runtime->aclrt_context, RecentErrMsg,
                                        local_copy_for_self);

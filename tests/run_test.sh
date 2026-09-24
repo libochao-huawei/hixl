@@ -25,10 +25,10 @@ usage() {
   echo "Options:"
   echo "    -h, --help     Print usage"
   echo "    -t, --test     Test target (omit -t for cpp+py; bare -t same as all)"
-  echo "        cpp                C++ tests only (llm_datadist + adxl + channel_pool + hixl + fabric_mem)"
+  echo "        cpp                C++ tests only (llm_datadist + adxl + channel_pool + hixl + ubmem)"
   echo "        py                 Python tests only"
   echo "        TYPE may be glued (-tcpp) or spaced (-t cpp)."
-  echo "    -s, --suite    C++ test suite (llm_datadist, adxl, channel_pool, hixl, fabric_mem)"
+  echo "    -s, --suite    C++ test suite (llm_datadist, adxl, channel_pool, hixl, ubmem)"
   echo "                   Using -s without -t runs only that C++ suite."
   echo "    -c, --cov      Build test with coverage tag"
   echo "                   Please ensure that the environment has correctly installed lcov, gcov, and genhtml."
@@ -71,7 +71,7 @@ set_test_type() {
 
 set_test_suite() {
   case "$1" in
-    llm_datadist | adxl | channel_pool | hixl | fabric_mem)
+    llm_datadist | adxl | channel_pool | hixl | ubmem)
       TEST_SUITE="$1"
       ;;
     *)
@@ -90,7 +90,7 @@ select_cpp_suites() {
       CPP_TEST_SUITES=("${TEST_SUITE}")
     fi
   else
-    CPP_TEST_SUITES=(llm_datadist adxl channel_pool hixl fabric_mem)
+    CPP_TEST_SUITES=(llm_datadist adxl channel_pool hixl ubmem)
   fi
 }
 
@@ -385,8 +385,8 @@ run() {
             profiling_fallback)
               echo "${BUILD_PATH}/tests/cpp/hixl/profiling_fallback_test"
               ;;
-            fabric_mem)
-              echo "${BUILD_PATH}/tests/cpp/hixl/fabric_mem/fabric_mem_test"
+            ubmem)
+              echo "${BUILD_PATH}/tests/cpp/hixl/ubmem/ubmem_test"
               ;;
           esac
       }
@@ -675,8 +675,8 @@ run() {
                 hixl)
                   echo "${BUILD_PATH}/tests/cpp/hixl/CMakeFiles/hixl_test.dir"
                   ;;
-                fabric_mem)
-                  echo "${BUILD_PATH}/tests/cpp/hixl/fabric_mem/CMakeFiles/fabric_mem_test.dir"
+                ubmem)
+                  echo "${BUILD_PATH}/tests/cpp/hixl/ubmem/CMakeFiles/ubmem_test.dir"
                   ;;
               esac
           }

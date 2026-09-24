@@ -84,7 +84,7 @@ echo
 
 matches_file="$(mktemp)"
 trap 'rm -f "${matches_file}"' EXIT
-grep -rniE 'HCCL|HCCP|DRV|RUNTIME|ADXL|\[HIXL\]|HIXL CS|HixlClient|HixlServer|HixlCS|AscendDirect|HcclCommPrepare|LINK_ERROR_INFO|CheckMemCpyAttr|remoteBuffer|FabricMem|\[FabricMemEngine\]|Fabric mem transfer|Connect statistic|Direct transfer statistic|local_comm_res|halMemImport|suspect remote|cpu stuck' \
+grep -rniE 'HCCL|HCCP|DRV|RUNTIME|ADXL|\[HIXL\]|HIXL CS|HixlClient|HixlServer|HixlCS|AscendDirect|HcclCommPrepare|LINK_ERROR_INFO|CheckMemCpyAttr|remoteBuffer|UbMem|\[UbMem[A-Za-z]+\]|ubmem|Connect statistic|Direct transfer statistic|local_comm_res|halMemImport|suspect remote|cpu stuck' \
   "${log_dirs[@]}" 2>/dev/null > "${matches_file}" || true
 
 present() { grep -qiE "$1" "${matches_file}" 2>/dev/null && printf '  %s\n' "$2" || true; }
@@ -102,8 +102,8 @@ echo
 
 echo "--- Suggested Wiki pages ---"
 present '\[HixlClient\]|\[HixlServer\]|HixlCSClient|HixlCSServer' "HIXLCS性能分析.md (Wiki 参考；代码用 [HixlClient]/[HixlServer] 日志定位)"
-present '\[FabricMemEngine\]|Fabric mem transfer statistic|halMemImport|suspect remote' "FabricMem模式介绍.md"
-present 'Fabric mem transfer statistic' "性能统计日志解读.md (FabricMem 章节)"
+present '\[UbMem[A-Za-z]+\]|ubmem|halMemImport|suspect remote' "UbMem模式介绍.md"
+present '\[UbMem[A-Za-z]+\]' "性能统计日志解读.md (UbMem / UB_MEM 章节)"
 present 'HcclCommPrepare|LINK_ERROR_INFO|CheckMemCpyAttr|remoteBuffer|halMemImport|suspect remote|cpu stuck' "HIXL常见问题定位手册.md"
 present 'Connect statistic|Direct transfer statistic' "性能统计日志解读.md (ADXL/HCCL 章节)"
 present 'Mooncake|AscendDirect|MC_LOG' "Mooncake + HIXL 快速上手指南.md (Mooncake 日志仅作时间线参考)"
@@ -113,7 +113,7 @@ echo
 echo "--- Suggested code repos (${deps_dir}) ---"
 echo "  hixl (current workspace)"
 present '\[HixlClient\]|\[HixlServer\]|HixlCSClient|HixlCSServer' "hixl/src/hixl/cs/ (HIXL_CS engine)"
-present '\[FabricMemEngine\]|Fabric mem transfer statistic' "hixl/src/hixl/fabric_mem/ (FabricMem engine)"
+present '\[UbMem[A-Za-z]+\]|ubmem' "hixl/src/hixl/cs/ubmem/ (UB_MEM CS backend)"
 present 'HCCL|HcclCommPrepare|LINK_ERROR_INFO|remoteBuffer' "${deps_dir}/hcomm"
 present 'CheckMemCpyAttr|RtStreamSynchronize|RUNTIME' "${deps_dir}/runtime"
 present 'DRV|devmm|halShmem|HCCP' "${deps_dir}/driver"

@@ -107,7 +107,7 @@ git diff --check "$BASE_COMMIT"
 | --- | --- |
 | `src/llm_datadist/` 或对应测试 | `bash tests/run_test.sh -t cpp -s llm_datadist` |
 | `src/hixl/` 或公共 C++ 接口 | `bash tests/run_test.sh -t cpp -s hixl` |
-| fabric memory 相关改动 | `bash tests/run_test.sh -t cpp -s fabric_mem` |
+| fabric memory / UB_MEM 相关改动 | `bash tests/run_test.sh -t cpp -s ubmem` |
 | ADXL / channel pool 相关改动 | 对应 `-s adxl` 或 `-s channel_pool` |
 | 多个 C++ 模块、共享构建逻辑 | `bash tests/run_test.sh -t cpp` |
 | `src/python/` 或 Python 测试 | `bash tests/run_test.sh -t py` |

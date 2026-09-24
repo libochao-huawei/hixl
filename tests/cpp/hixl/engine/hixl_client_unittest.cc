@@ -32,6 +32,7 @@
 #include "engine/direct_multi_channel_handler.h"
 #include "engine/ub_client_handler.h"
 #undef private
+#include "engine/client_handler_factory.h"
 #include "engine/endpoint_generator/endpoint_generator.h"
 #include "engine/endpoint_matcher.h"
 #include "common/hixl_inner_types.h"
@@ -280,7 +281,8 @@ class MockHixlServer {
       if (i > 0) mem_info_json += ",";
       mem_info_json += R"({"type":)" + std::to_string(static_cast<int>(registered_mem_[i].type));
       mem_info_json += R"(,"addr":)" + std::to_string(registered_mem_[i].addr);
-      mem_info_json += R"(,"size":)" + std::to_string(registered_mem_[i].size) + "}";
+      mem_info_json += R"(,"size":)" + std::to_string(registered_mem_[i].size);
+      mem_info_json += R"(,"share_handle":[0]})";
     }
     mem_info_json += "]";
     SendResponseImpl(kMagicNumber, CtrlMsgType::kGetMemInfoResp, sizeof(CtrlMsgType) + mem_info_json.size(),
@@ -1223,16 +1225,13 @@ TEST_F(HixlClientUTest, DirectClientHandlerGetTransferStatusWaiting) {
   constexpr uint32_t kRoceCompleteMagicForTest = 0x524F4345U;
   HixlCSClient client;
   DirectClientHandler handler(static_cast<HixlClientHandle>(&client));
-
   uint64_t flag = 0;
   CompleteHandleInfo complete_handle{};
   complete_handle.magic = kRoceCompleteMagicForTest;
   complete_handle.flag_index = 0;
   complete_handle.flag_address = &flag;
-
   auto req = reinterpret_cast<TransferReq>(0x1234);
   handler.complete_handles_[req] = static_cast<CompleteHandle>(&complete_handle);
-
   TransferStatus status = TransferStatus::TIMEOUT;
   EXPECT_EQ(handler.GetTransferStatus(req, status), SUCCESS);
   EXPECT_EQ(status, TransferStatus::WAITING);
@@ -1681,7 +1680,6 @@ TEST_F(HixlClientUTest, UbClientHandlerGetTransferStatusInvalidReq) {
 TEST_F(HixlClientUTest, UbClientHandlerGetTransferStatusWaiting) {
   HixlCSClient client;
   UbClientHandler handler({{CommType::COMM_TYPE_UB_D2D, static_cast<HixlClientHandle>(&client)}});
-
   uint64_t flag = 0;
   auto *complete_handle = MakeHostCompleteHandle(&flag);
   auto req = reinterpret_cast<TransferReq>(0x1234);
@@ -1700,7 +1698,6 @@ TEST_F(HixlClientUTest, UbClientHandlerGetTransferStatusCompleted) {
   HixlCSClient client;
   ASSERT_EQ(CreateStatusHostClient(client), SUCCESS);
   UbClientHandler handler({{CommType::COMM_TYPE_UB_D2D, static_cast<HixlClientHandle>(&client)}});
-
   uint64_t flag = 1ULL;
   auto req = reinterpret_cast<TransferReq>(0x1234);
   handler.complete_handles_[req] = {
@@ -2516,6 +2513,85 @@ TEST_F(HixlClientUTest, UbNonLazyHandlerDoubleConnect) {
   Status st = client_->Connect(kDefaultTimeoutMs);
   EXPECT_EQ(st, ALREADY_CONNECTED);
   EXPECT_EQ(ub_handler->connected_types_.size(), 4U);
+}
+
+TEST_F(HixlClientUTest, EndpointMatcherSameSuperPodPrefersUbmemOverHccs) {
+  EndpointConfig local_ubmem = MakeDirectEp(kProtocolUbmem, "5");
+  EndpointConfig remote_ubmem = MakeDirectEp(kProtocolUbmem, "5");
+  EndpointConfig local_hccs = MakeDirectEp(kProtocolHccs, "5");
+  EndpointConfig remote_hccs = MakeDirectEp(kProtocolHccs, "5");
+  std::vector<HandlerCreateArgs::EndpointPair> pairs;
+  HandlerCreateArgs::HandlerType type{};
+  ASSERT_EQ(EndpointMatcher::MatchEndpoints({local_hccs, local_ubmem}, {remote_hccs, remote_ubmem}, pairs, type),
+            SUCCESS);
+  EXPECT_EQ(type, HandlerCreateArgs::HandlerType::DIRECT);
+  ASSERT_EQ(pairs.size(), 1U);
+  EXPECT_EQ(pairs[0].type, CommType::COMM_TYPE_UBMEM);
+  EXPECT_EQ(pairs[0].local.protocol, kProtocolUbmem);
+}
+
+TEST_F(HixlClientUTest, EndpointMatcherSameSuperPodRejectsHostUbmem) {
+  EndpointConfig local = MakeDirectEp(kProtocolUbmem, "5");
+  local.placement = kPlacementHost;
+  EndpointConfig remote = MakeDirectEp(kProtocolUbmem, "5");
+  remote.placement = kPlacementHost;
+  std::vector<HandlerCreateArgs::EndpointPair> pairs;
+  HandlerCreateArgs::HandlerType type{};
+  EXPECT_EQ(EndpointMatcher::MatchEndpoints({local}, {remote}, pairs, type), PARAM_INVALID);
+  EXPECT_TRUE(pairs.empty());
+}
+
+TEST_F(HixlClientUTest, EndpointMatcherCrossSuperPodSkipsUbmemAndUsesRoceDevice) {
+  EndpointConfig local_ubmem = MakeDirectEp(kProtocolUbmem, "5");
+  EndpointConfig remote_ubmem = MakeDirectEp(kProtocolUbmem, "6");
+  EndpointConfig local_roce = MakeDirectEp(kProtocolRoce, "5");
+  EndpointConfig remote_roce = MakeDirectEp(kProtocolRoce, "6");
+  std::vector<HandlerCreateArgs::EndpointPair> pairs;
+  HandlerCreateArgs::HandlerType type{};
+  EXPECT_EQ(EndpointMatcher::MatchEndpoints({local_ubmem}, {remote_ubmem}, pairs, type), PARAM_INVALID);
+  pairs.clear();
+  ASSERT_EQ(EndpointMatcher::MatchEndpoints({local_ubmem, local_roce}, {remote_ubmem, remote_roce}, pairs, type),
+            SUCCESS);
+  EXPECT_EQ(type, HandlerCreateArgs::HandlerType::DIRECT);
+  ASSERT_EQ(pairs.size(), 1U);
+  EXPECT_EQ(pairs[0].type, CommType::COMM_TYPE_ROCE);
+}
+
+TEST_F(HixlClientUTest, EndpointMatcherMixedProtocolUsesNetInstanceToSelectProtocol) {
+  const auto local_ubmem = MakeDirectEp(kProtocolUbmem, "superpod-1");
+  const auto remote_ubmem = MakeDirectEp(kProtocolUbmem, "superpod-1");
+  const auto local_roce = MakeDirectEp(kProtocolRoce, "superpod-1");
+  const auto remote_roce = MakeDirectEp(kProtocolRoce, "superpod-1");
+  std::vector<HandlerCreateArgs::EndpointPair> pairs;
+  HandlerCreateArgs::HandlerType type{};
+
+  ASSERT_EQ(EndpointMatcher::MatchEndpoints({local_roce, local_ubmem}, {remote_roce, remote_ubmem}, pairs, type),
+            SUCCESS);
+  EXPECT_EQ(type, HandlerCreateArgs::HandlerType::DIRECT);
+  ASSERT_EQ(pairs.size(), 1U);
+  EXPECT_EQ(pairs[0].type, CommType::COMM_TYPE_UBMEM);
+
+  pairs.clear();
+  auto cross_local_ubmem = local_ubmem;
+  auto cross_remote_ubmem = remote_ubmem;
+  auto cross_local_roce = local_roce;
+  auto cross_remote_roce = remote_roce;
+  cross_local_ubmem.net_instance_id = "superpod-2";
+  cross_remote_ubmem.net_instance_id = "superpod-3";
+  cross_local_roce.net_instance_id = "superpod-2";
+  cross_remote_roce.net_instance_id = "superpod-3";
+  ASSERT_EQ(EndpointMatcher::MatchEndpoints({cross_local_roce, cross_local_ubmem},
+                                            {cross_remote_roce, cross_remote_ubmem}, pairs, type),
+            SUCCESS);
+  EXPECT_EQ(type, HandlerCreateArgs::HandlerType::DIRECT);
+  ASSERT_EQ(pairs.size(), 1U);
+  EXPECT_EQ(pairs[0].type, CommType::COMM_TYPE_ROCE);
+}
+
+TEST_F(HixlClientUTest, EndpointMatcherUbMemRejectsEmptyEndpoints) {
+  std::vector<HandlerCreateArgs::EndpointPair> pairs;
+  HandlerCreateArgs::HandlerType type{};
+  EXPECT_EQ(EndpointMatcher::MatchEndpoints({}, {}, pairs, type), PARAM_INVALID);
 }
 
 }  // namespace hixl

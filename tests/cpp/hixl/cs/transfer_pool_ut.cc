@@ -21,9 +21,11 @@
 #include "depends/sys_api/src/sys_api_wrap.h"
 #include "depends/runtime/src/runtime_stub.h"
 #include "engine/test_mmpa_utils.h"
+#include "cs/hcomm_channel.h"
+#include "cs/transfer_pool.h"
+#include "cs/ubmem/ubmem_channel.h"
 #include "gtest/gtest.h"
 #include "hixl/hixl_types.h"
-#include "transfer_pool.h"
 
 extern "C" uint32_t GetThreadAllocCallCount();
 extern "C" uint32_t GetThreadFreeCallCount();
@@ -32,7 +34,7 @@ extern "C" void ResetThreadLifecycleStats();
 namespace hixl {
 namespace {
 
-// 使用非常规 device_id，避免与其它用例共享 GetInstance 单例时互相干扰
+// Use distinctive device IDs so the process-wide pool is not shared with unrelated tests.
 constexpr int32_t kTransferPoolUtDevId = 910246;
 constexpr int32_t kTransferPoolKernelDevId = 910247;
 constexpr int32_t kTransferPoolNotifyDevId = 910248;
@@ -132,6 +134,7 @@ constexpr int32_t kTransferPoolA5DevId = 910251;
 constexpr int32_t kTransferPoolSyncEntryDevId = 910252;
 constexpr int32_t kTransferPoolHostRegFailDevId = 910253;
 constexpr int32_t kTransferPoolInitFailDevId = 910254;
+constexpr int32_t kTransferPoolSkipHcommDevId = 910255;
 
 class InitNotifyIdFailureAclRuntimeStub : public llm::AclRuntimeStub {
  public:
@@ -193,6 +196,10 @@ class TransferPoolTest : public ::testing::Test {
     auto *init_fail_pool = TransferPool::GetInstance(kTransferPoolInitFailDevId);
     if (init_fail_pool != nullptr) {
       init_fail_pool->Finalize();
+    }
+    auto *skip_hcomm_pool = TransferPool::GetInstance(kTransferPoolSkipHcommDevId);
+    if (skip_hcomm_pool != nullptr) {
+      skip_hcomm_pool->Finalize();
     }
     AscendHalStubReset();
     llm::AclRuntimeStub::Reset();
@@ -515,11 +522,16 @@ TEST_F(TransferPoolTest, DeviceKernelHandlesAreLoadedOnceAndUnloadedOnce) {
   ASSERT_NE(pool, nullptr);
   ASSERT_EQ(pool->Initialize(1U), SUCCESS);
   EXPECT_EQ(acl_stub->load_count_, 1U);
-  EXPECT_EQ(acl_stub->func_names_.size(), 3U);
+  EXPECT_EQ(acl_stub->func_names_.size(), 5U);
+  EXPECT_EQ(acl_stub->func_names_[3], "HixlUbMemBatchRead");
+  EXPECT_EQ(acl_stub->func_names_[4], "HixlUbMemBatchWrite");
   EXPECT_EQ(acl_stub->sync_entry_h2d_count_, 1U);
   EXPECT_EQ(acl_stub->sync_state_d2h_count_, 1U);
   EXPECT_NE(pool->GetDeviceKernelFunc(true), nullptr);
   EXPECT_NE(pool->GetDeviceKernelFunc(false), nullptr);
+  EXPECT_NE(pool->GetDeviceKernelFunc(true, COMM_PROTOCOL_UB_MEM), nullptr);
+  EXPECT_NE(pool->GetDeviceKernelFunc(false, COMM_PROTOCOL_UB_MEM), nullptr);
+  EXPECT_NE(pool->GetDeviceKernelFunc(true, COMM_PROTOCOL_UB_MEM), pool->GetDeviceKernelFunc(true));
 
   ASSERT_EQ(pool->Initialize(1U), SUCCESS);
   EXPECT_EQ(acl_stub->load_count_, 1U);
@@ -682,6 +694,22 @@ TEST_F(TransferPoolTest, ErrFlagHostRegisterFailStillInitializes) {
   pool->Release(handle);
   AscendHalStubReset();
   pool->Finalize();
+}
+
+TEST_F(TransferPoolTest, InitializeAlwaysAllocatesHcommThreads) {
+  auto *pool = TransferPool::GetInstance(kTransferPoolSkipHcommDevId);
+  ASSERT_NE(pool, nullptr);
+  ResetThreadLifecycleStats();
+  ASSERT_EQ(pool->Initialize(1U), SUCCESS);
+  EXPECT_EQ(GetThreadAllocCallCount(), 1U);
+  TransferPool::SlotHandle handle{};
+  ASSERT_EQ(pool->Acquire(&handle), SUCCESS);
+  EXPECT_NE(handle.thread, static_cast<ThreadHandle>(0));
+  ASSERT_EQ(pool->EnsureUbMemStream(handle), SUCCESS);
+  EXPECT_NE(handle.ubmem_stream, nullptr);
+  pool->Release(handle);
+  pool->Finalize();
+  EXPECT_EQ(GetThreadFreeCallCount(), 1U);
 }
 
 }  // namespace

@@ -28,6 +28,23 @@ constexpr uintptr_t kTestHandleSeed = 7U;
 constexpr uint32_t kInvalidAddrType = 0xFFU;
 constexpr uint32_t kCaptureLogTimeoutMs = 1000U;
 
+// Endpoint is an abstract integration layer, so the host VA mapping decisions it makes at construction
+// are checked through the protocol-selected concrete type.
+bool NeedHostVaMappingOf(const EndpointDesc &endpoint) {
+  auto ep = Endpoint::Create(endpoint);
+  return ep != nullptr && ep->NeedHostVaMapping();
+}
+
+bool NeedHostVaMappingOf(const EndpointDesc &endpoint, bool need_host_va_mapping) {
+  auto ep = Endpoint::Create(endpoint, need_host_va_mapping);
+  return ep != nullptr && ep->NeedHostVaMapping();
+}
+
+bool NeedHostVaMappingOf(const EndpointDesc &local_endpoint, const EndpointDesc &remote_endpoint) {
+  auto ep = Endpoint::Create(local_endpoint, remote_endpoint);
+  return ep != nullptr && ep->NeedHostVaMapping();
+}
+
 EndpointDesc MakeUbEndpoint(CommProtocol protocol, const std::array<uint8_t, COMM_ADDR_EID_LEN> &eid) {
   EndpointDesc ep{};
   ep.loc.locType = ENDPOINT_LOC_TYPE_DEVICE;
@@ -80,7 +97,7 @@ TEST(EndpointStoreUt, MatchEndpointSucceedsForUbTpByEid) {
 
 TEST(EndpointStoreUt, EndpointInitializeFailureLogsEndpointDetailsAndAddressHint) {
   auto log_capture = std::make_shared<llm::LogCaptureStub>();
-  const std::vector<std::string> patterns = {"HcommEndpointCreate failed", "devPhyId=3",
+  const std::vector<std::string> patterns = {"EndpointCreate failed", "devPhyId=3",
                                              "EID[0011223344556677:8899aabbccddeeff]",
                                              "Please check whether the endpoint address is valid and available"};
   for (const auto &pattern : patterns) {
@@ -93,10 +110,11 @@ TEST(EndpointStoreUt, EndpointInitializeFailureLogsEndpointDetailsAndAddressHint
                                                       0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
   EndpointDesc endpoint_desc = MakeUbEndpoint(COMM_PROTOCOL_UBG, eid);
   endpoint_desc.loc.device.devPhyId = 3;
-  Endpoint endpoint(endpoint_desc);
+  auto endpoint = Endpoint::Create(endpoint_desc);
+  ASSERT_NE(endpoint, nullptr);
   SetEndpointCreateResult(1);
 
-  Status st = endpoint.Initialize();
+  Status st = endpoint->Initialize();
 
   EXPECT_NE(st, SUCCESS);
   EXPECT_TRUE(log_capture->WaitForAllPatternsCaptured(kCaptureLogTimeoutMs));
@@ -237,12 +255,12 @@ TEST(EndpointStoreUt, EndpointDefaultHostVaMappingEnabledForDeviceUboeUbgAndUbCt
   host_ub_ctp.loc.locType = ENDPOINT_LOC_TYPE_HOST;
   host_ubg.loc.locType = ENDPOINT_LOC_TYPE_HOST;
 
-  EXPECT_TRUE(Endpoint(uboe).NeedHostVaMapping());
-  EXPECT_TRUE(Endpoint(ubg).NeedHostVaMapping());
-  EXPECT_TRUE(Endpoint(ub_ctp).NeedHostVaMapping());
-  EXPECT_FALSE(Endpoint(ub_tp).NeedHostVaMapping());
-  EXPECT_FALSE(Endpoint(host_ub_ctp).NeedHostVaMapping());
-  EXPECT_FALSE(Endpoint(host_ubg).NeedHostVaMapping());
+  EXPECT_TRUE(NeedHostVaMappingOf(uboe));
+  EXPECT_TRUE(NeedHostVaMappingOf(ubg));
+  EXPECT_TRUE(NeedHostVaMappingOf(ub_ctp));
+  EXPECT_FALSE(NeedHostVaMappingOf(ub_tp));
+  EXPECT_FALSE(NeedHostVaMappingOf(host_ub_ctp));
+  EXPECT_FALSE(NeedHostVaMappingOf(host_ubg));
 }
 
 TEST(EndpointStoreUt, EndpointConfiguredHostVaMappingOverridesDefault) {
@@ -250,8 +268,8 @@ TEST(EndpointStoreUt, EndpointConfiguredHostVaMappingOverridesDefault) {
   EndpointDesc host_ub_ctp = MakeUbEndpoint(COMM_PROTOCOL_UBC_CTP, {});
   host_ub_ctp.loc.locType = ENDPOINT_LOC_TYPE_HOST;
 
-  EXPECT_FALSE(Endpoint(ub_ctp, false).NeedHostVaMapping());
-  EXPECT_TRUE(Endpoint(host_ub_ctp, true).NeedHostVaMapping());
+  EXPECT_FALSE(NeedHostVaMappingOf(ub_ctp, false));
+  EXPECT_TRUE(NeedHostVaMappingOf(host_ub_ctp, true));
 }
 
 TEST(EndpointStoreUt, EndpointPairDisablesHostVaMappingForDeviceToHostUbCtp) {
@@ -259,10 +277,10 @@ TEST(EndpointStoreUt, EndpointPairDisablesHostVaMappingForDeviceToHostUbCtp) {
   EndpointDesc host_ub_ctp = MakeUbEndpoint(COMM_PROTOCOL_UBC_CTP, {});
   host_ub_ctp.loc.locType = ENDPOINT_LOC_TYPE_HOST;
 
-  EXPECT_TRUE(Endpoint(device_ub_ctp, device_ub_ctp).NeedHostVaMapping());
-  EXPECT_FALSE(Endpoint(device_ub_ctp, host_ub_ctp).NeedHostVaMapping());
-  EXPECT_FALSE(Endpoint(host_ub_ctp, device_ub_ctp).NeedHostVaMapping());
-  EXPECT_FALSE(Endpoint(host_ub_ctp, host_ub_ctp).NeedHostVaMapping());
+  EXPECT_TRUE(NeedHostVaMappingOf(device_ub_ctp, device_ub_ctp));
+  EXPECT_FALSE(NeedHostVaMappingOf(device_ub_ctp, host_ub_ctp));
+  EXPECT_FALSE(NeedHostVaMappingOf(host_ub_ctp, device_ub_ctp));
+  EXPECT_FALSE(NeedHostVaMappingOf(host_ub_ctp, host_ub_ctp));
 }
 
 TEST(EndpointStoreUt, EndpointPairKeepsHostVaMappingForDeviceUboe) {
@@ -273,8 +291,8 @@ TEST(EndpointStoreUt, EndpointPairKeepsHostVaMappingForDeviceUboe) {
   host_uboe.loc.locType = ENDPOINT_LOC_TYPE_HOST;
   host_ubg.loc.locType = ENDPOINT_LOC_TYPE_HOST;
 
-  EXPECT_TRUE(Endpoint(device_uboe, host_uboe).NeedHostVaMapping());
-  EXPECT_TRUE(Endpoint(device_ubg, host_ubg).NeedHostVaMapping());
+  EXPECT_TRUE(NeedHostVaMappingOf(device_uboe, host_uboe));
+  EXPECT_TRUE(NeedHostVaMappingOf(device_ubg, host_ubg));
 }
 
 TEST(EndpointStoreUt, FinalizePropagatesEndpointDestroyFailure) {

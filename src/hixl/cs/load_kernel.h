@@ -21,6 +21,8 @@ namespace hixl {
 struct DeviceFuncHandles {
   aclrtFuncHandle batch_get;
   aclrtFuncHandle batch_put;
+  aclrtFuncHandle ubmem_batch_read;
+  aclrtFuncHandle ubmem_batch_write;
   aclrtFuncHandle sync_transfer_context;
 };
 

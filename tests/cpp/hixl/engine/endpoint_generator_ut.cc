@@ -584,6 +584,20 @@ TEST_F(EndpointGeneratorUTest, GenerateInfoForV3HonoursProtocolDesc) {
   (void)remove(file_path.c_str());
 }
 
+TEST_F(EndpointGeneratorUTest, GenerateInfoForV3BuildsUbmemEndpointWithDeviceId) {
+  acl_stub_->soc_name_ = "Ascend910_9391";
+  acl_stub_->phy_device_id_ = 23;
+  acl_stub_->super_pod_id_ = 88;
+
+  EndpointGenerator::LocCommResInfo info{};
+  const std::vector<std::string> protocol_desc = {kProtocolUbmem};
+  ASSERT_EQ(EndpointGenerator::GenerateInfo(0, "127.0.0.1:26000", protocol_desc, info), SUCCESS);
+  ASSERT_EQ(info.endpoint_list.size(), 1U);
+  EXPECT_EQ(info.endpoint_list[0].protocol, kProtocolUbmem);
+  EXPECT_EQ(info.endpoint_list[0].comm_id, "23");
+  EXPECT_EQ(info.endpoint_list[0].placement, kPlacementDevice);
+}
+
 TEST_F(EndpointGeneratorUTest, BuildEndpointListFromOptionsParsesManualJsonAndFillsDeviceInfo) {
   acl_stub_->soc_name_ = "Ascend910_9391";
   acl_stub_->device_id_ = 1;
@@ -1199,6 +1213,68 @@ TEST_F(EndpointGeneratorUTest, BuildEndpointListAcceptsUbCtpDeviceAndHostSelecto
                           [](const EndpointConfig &ep) { return ep.placement == kPlacementHost; }));
 }
 
+TEST_F(EndpointGeneratorUTest, BuildEndpointListKeepsEndpointsWhenProtocolDescIsUbmemOnly) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(kHixlLocalCommResJson);
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.protocol_desc":["ubmem"]})";
+
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
+
+  ASSERT_EQ(endpoint_list.size(), 1U);
+  EXPECT_EQ(endpoint_list[0].protocol, kProtocolUbmem);
+  EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListKeepsDeviceUbmemWhenAicpuUnfoldDisabled) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(kHixlLocalCommResJson);
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
+      R"({"fabric_memory":{"enable_aicpu_unfold":false},"comm_resource_config.protocol_desc":["ubmem"]})";
+
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
+
+  ASSERT_EQ(endpoint_list.size(), 1U);
+  EXPECT_EQ(endpoint_list[0].protocol, kProtocolUbmem);
+  EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListFiltersRoceDeviceWhenUbmemAndRoceDevice) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_LOCAL_COMM_RES] = R"({"version":"1.3","net_instance_id":"hixl_sp","endpoint_list":[)"
+                                         R"({"protocol":"roce","comm_id":"10.10.10.1","placement":"device"},)"
+                                         R"({"protocol":"roce","comm_id":"127.0.0.1","placement":"host"}]})";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.protocol_desc":["ubmem","roce:device"]})";
+
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
+
+  ASSERT_EQ(endpoint_list.size(), 2U);
+  EXPECT_TRUE(std::any_of(endpoint_list.begin(), endpoint_list.end(), [](const EndpointConfig &ep) {
+    return ep.protocol == kProtocolUbmem && ep.placement == kPlacementDevice;
+  }));
+  EXPECT_TRUE(std::any_of(endpoint_list.begin(), endpoint_list.end(), [](const EndpointConfig &ep) {
+    return ep.protocol == kProtocolRoce && ep.placement == kPlacementDevice;
+  }));
+}
+
+TEST_F(EndpointGeneratorUTest, BuildEndpointListRejectsUbmemPlacementSuffix) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(kHixlLocalCommResJson);
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.protocol_desc":["ubmem:device"]})";
+
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
+            PARAM_INVALID);
+}
+
 TEST_F(EndpointGeneratorUTest, BuildEndpointListRejectsBareNonUbCtpProtocolDesc) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_LOCAL_COMM_RES] = AscendString(kHixlLocalCommResJson);
@@ -1783,11 +1859,56 @@ TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceHccsUseDeviceInfoTest)
   EXPECT_EQ(st, SUCCESS);
   EXPECT_EQ(endpoint.protocol, COMM_PROTOCOL_HCCS);
   EXPECT_EQ(endpoint.loc.locType, ENDPOINT_LOC_TYPE_DEVICE);
+  EXPECT_EQ(endpoint.commAddr.type, COMM_ADDR_TYPE_ID);
   EXPECT_EQ(endpoint.commAddr.id, 5U);
   EXPECT_EQ(endpoint.loc.device.devPhyId, 2U);
   EXPECT_EQ(endpoint.loc.device.superDevId, 4U);
   EXPECT_EQ(endpoint.loc.device.superPodIdx, 8U);
   EXPECT_EQ(endpoint.loc.device.serverIdx, 0U);
+}
+
+TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescUbmemParsesNumericCommId) {
+  EndpointConfig ep;
+  ep.protocol = kProtocolUbmem;
+  ep.comm_id = "3";
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = 9;
+
+  EndpointDesc endpoint{};
+  ASSERT_EQ(EndpointGenerator::ConvertToEndpointDesc(ep, endpoint), SUCCESS);
+  EXPECT_EQ(endpoint.protocol, COMM_PROTOCOL_UB_MEM);
+  EXPECT_EQ(endpoint.loc.locType, ENDPOINT_LOC_TYPE_DEVICE);
+  EXPECT_EQ(endpoint.commAddr.type, COMM_ADDR_TYPE_ID);
+  EXPECT_EQ(endpoint.commAddr.id, 3U);
+}
+
+TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescUbmemUsesPhyIdWhenCommIdNotNumeric) {
+  EndpointConfig ep;
+  ep.protocol = kProtocolUbmem;
+  ep.comm_id = "10.10.10.1";
+  ep.placement = kPlacementDevice;
+  ep.device_info.phy_device_id = 7;
+
+  EndpointDesc endpoint{};
+  ASSERT_EQ(EndpointGenerator::ConvertToEndpointDesc(ep, endpoint), SUCCESS);
+  EXPECT_EQ(endpoint.protocol, COMM_PROTOCOL_UB_MEM);
+  EXPECT_EQ(endpoint.loc.locType, ENDPOINT_LOC_TYPE_DEVICE);
+  EXPECT_EQ(endpoint.commAddr.type, COMM_ADDR_TYPE_ID);
+  EXPECT_EQ(endpoint.commAddr.id, 7U);
+}
+
+TEST_F(EndpointGeneratorUTest, FilterEndpointListRejectsHostUbmem) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_LOCAL_COMM_RES] = R"(
+    {"version":"1.3","net_instance_id":"ubmem-host",
+     "endpoint_list":[{"protocol":"ubmem","comm_id":"3","placement":"host"}]})";
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  EXPECT_EQ(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list),
+            PARAM_INVALID);
 }
 
 TEST_F(EndpointGeneratorUTest, ConvertToEndpointDescDeviceHccsInvalidCommIdTest) {
@@ -2015,6 +2136,30 @@ TEST_F(EndpointGeneratorUTest, AutoGenA5SkipsWhenIntraRoceEnabled) {
   ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
   EXPECT_NE(EndpointGenerator::BuildEndpointList(parsed, "127.0.0.1:26000", local_comm_res, endpoint_list), SUCCESS);
   EXPECT_TRUE(endpoint_list.empty());
+}
+
+TEST_F(EndpointGeneratorUTest, AutoGenA5DoesNotAppendUbMemEndpoint) {
+  acl_stub_->soc_name_ = "Ascend950A";
+  acl_stub_->device_id_ = 0;
+  acl_stub_->phy_device_id_ = 3;
+
+  DsmiStubSetInterconType(4U);
+  SetupA5UbgDcmiDefaults();
+
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"(
+    {
+      "comm_resource_config.protocol_desc": ["ub_rtp:device", "ubmem"]
+    }
+  )";
+
+  std::string local_comm_res;
+  std::vector<EndpointConfig> endpoint_list;
+  CallBuildEndpointList(options, "127.0.0.1:26000", local_comm_res, endpoint_list);
+
+  ASSERT_EQ(endpoint_list.size(), 1U);
+  EXPECT_EQ(endpoint_list[0].protocol, kProtocolUbRtp);
+  EXPECT_EQ(endpoint_list[0].placement, kPlacementDevice);
 }
 
 TEST_F(EndpointGeneratorUTest, AutoGenNoScaleOutWhenRoceInterconTypeOnA5) {

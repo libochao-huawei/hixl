@@ -916,7 +916,7 @@ TEST_F(HixlUTest, TestCommEngineAcceptsSupportedOptions) {
   engine.Finalize();
 }
 
-TEST_F(HixlUTest, TestCommEngineAcceptsDisabledFabricMemOption) {
+TEST_F(HixlUTest, TestCommEngineAcceptsDisabledUbMemOption) {
   std::map<AscendString, AscendString> options;
   options[OPTION_ENABLE_USE_FABRIC_MEM] = "0";
   Hixl engine;

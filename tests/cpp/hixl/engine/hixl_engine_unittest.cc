@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <algorithm>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <thread>
@@ -125,6 +126,54 @@ std::string BuildVersionOnlyLocalCommRes(const std::string &version) {
 using MockEngineAclRuntimeStub = endpoint_test::MockAclRuntimeStub;
 
 class HixlEngineTest : public ::testing::Test {
+ private:
+  class HccpSysApiStub : public test::TestMmpaStub {
+   public:
+    void *DlOpen(const char *file_name, int32_t mode) override {
+      if (file_name != nullptr && std::strcmp(file_name, "libra.so") == 0) {
+        return hixl_test::RealDlOpen("libdl.so.2", mode);
+      }
+      return hixl_test::SysApiPassSentinelPtr();
+    }
+
+    void *DlSym(void *handle, const char *func_name) override {
+      (void)handle;
+      if (func_name != nullptr && std::strcmp(func_name, "RaRdevGetHandle") == 0) {
+        return reinterpret_cast<void *>(&MockRaRdevGetHandle);
+      }
+      if (func_name != nullptr && std::strcmp(func_name, "RaGetNotifyBaseAddr") == 0) {
+        return reinterpret_cast<void *>(&MockRaGetNotifyBaseAddr);
+      }
+      return hixl_test::SysApiPassSentinelPtr();
+    }
+
+    int32_t DlClose(void *handle) override {
+      (void)handle;
+      return 0;
+    }
+
+   private:
+    static int MockRaRdevGetHandle(unsigned int phy_id, void **out_handle) {
+      (void)phy_id;
+      static int dummy_handle = 0;
+      if (out_handle != nullptr) {
+        *out_handle = &dummy_handle;
+      }
+      return 0;
+    }
+
+    static int MockRaGetNotifyBaseAddr(void *handle, unsigned long long *addr, unsigned long long *size) {
+      (void)handle;
+      if (addr != nullptr) {
+        *addr = 0x1000ULL;
+      }
+      if (size != nullptr) {
+        *size = 0x10000ULL;
+      }
+      return 0;
+    }
+  };
+
  protected:
   std::map<AscendString, AscendString> options1;
   std::map<AscendString, AscendString> options2;
@@ -134,8 +183,8 @@ class HixlEngineTest : public ::testing::Test {
   std::map<AscendString, AscendString> options_4ub_pair;  // 与 options_4ub 互补的 UB endpoint
   void SetUp() override {
     SetSocStub("Ascend910B1", 0, 0, 9, 8);
-    mmpa_stub_ = std::make_shared<MockEngineMmpaStub>();
     // TransferPool initialization loads device kernels, so MmpaStub must be ready before Create.
+    mmpa_stub_ = std::make_shared<HccpSysApiStub>();
     mmpa_stub_->real_path_ok_ = true;
     mmpa_stub_->access_ok_ = true;
     hixl_test::InstallSysApiHooks(mmpa_stub_);
@@ -346,7 +395,6 @@ class HixlEngineTest : public ::testing::Test {
     mmpa_stub_->fake_real_path_ = file_path;
   }
 
- private:
   std::shared_ptr<MockEngineMmpaStub> mmpa_stub_;
   std::vector<std::string> temp_files_;
   std::string old_intra_roce_enable_;
@@ -1860,6 +1908,158 @@ TEST_F(HixlEngineTest, DeregisterMemConcurrentWithConnectRemovesMemFromNewClient
   EXPECT_EQ(engine2.DeregisterMem(handle2), SUCCESS);
   engine1.Finalize();
   engine2.Finalize();
+}
+
+TEST_F(HixlEngineTest, EngineFactoryUsesHixlEngineWhenUbmemProtocolDesc) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.protocol_desc":["ubmem"]})";
+  HixlOptions parsed;
+  auto engine = EngineFactory::CreateEngine("127.0.0.1:26000", options, parsed);
+  ASSERT_NE(engine, nullptr);
+  EXPECT_NE(dynamic_cast<HixlEngine *>(engine.get()), nullptr);
+  EXPECT_TRUE(parsed.EnableUbMem().value_or(false));
+}
+
+TEST_F(HixlEngineTest, EngineFactoryUsesHixlEngineWhenUbMemEnabled) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
+  HixlOptions parsed;
+  auto engine = EngineFactory::CreateEngine("127.0.0.1:26000", options, parsed);
+  ASSERT_NE(engine, nullptr);
+  EXPECT_NE(dynamic_cast<HixlEngine *>(engine.get()), nullptr);
+}
+
+TEST_F(HixlEngineTest, InitializeUbMemSucceedsAndRegisterMem) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+  SetHccnConfContent("address_23=10.10.10.23\n");
+  std::map<AscendString, AscendString> options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"fabric_memory":{"enable_aicpu_unfold":false}})";
+  HixlEngine engine("127.0.0.1");
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+  ASSERT_EQ(engine.Initialize(parsed), SUCCESS);
+  EXPECT_TRUE(engine.enable_ubmem_);
+  ASSERT_EQ(engine.endpoint_list_.size(), 1U);
+  EXPECT_EQ(engine.endpoint_list_[0].protocol, kProtocolUbmem);
+  EXPECT_EQ(engine.endpoint_list_[0].placement, kPlacementDevice);
+  EXPECT_FALSE(engine.auto_connect_);
+  EXPECT_FALSE(engine.client_manager_.heartbeat_sender_.joinable());
+  std::vector<uint8_t> buf(64, 0);
+  MemDesc mem{};
+  mem.addr = reinterpret_cast<uintptr_t>(buf.data());
+  mem.len = buf.size();
+  MemHandle handle = nullptr;
+  EXPECT_EQ(engine.RegisterMem(mem, MEM_HOST, handle), SUCCESS);
+  EXPECT_NE(handle, nullptr);
+  ASSERT_EQ(engine.mem_map_.count(handle), 1U);
+  EXPECT_EQ(engine.server_.handle_to_addr_.count(handle), 1U);
+  std::vector<MemInfo> mem_info = engine.server_.GetRegisteredMemInfo();
+  EXPECT_FALSE(mem_info.empty());
+  MemHandle duplicate_handle = nullptr;
+  EXPECT_EQ(engine.RegisterMem(mem, MEM_HOST, duplicate_handle), SUCCESS);
+  EXPECT_EQ(duplicate_handle, handle);
+  EXPECT_EQ(engine.DeregisterMem(handle), SUCCESS);
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, InitializeUbMemViaUbmemProtocolDesc) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+  SetHccnConfContent("address_23=10.10.10.23\n");
+  std::map<AscendString, AscendString> options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.protocol_desc":["ubmem"]})";
+  HixlEngine engine("127.0.0.1");
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+  ASSERT_EQ(engine.Initialize(parsed), SUCCESS);
+  EXPECT_TRUE(engine.enable_ubmem_);
+  ASSERT_EQ(engine.endpoint_list_.size(), 1U);
+  EXPECT_EQ(engine.endpoint_list_[0].protocol, kProtocolUbmem);
+  EXPECT_EQ(engine.endpoint_list_[0].placement, kPlacementDevice);
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, InitializeUbMemIgnoresOtherProtocolDescWhenSwitchEnabled) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+  SetHccnConfContent("address_23=10.10.10.23\n");
+  std::map<AscendString, AscendString> options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"fabric_memory":{"enable_aicpu_unfold":false},)"
+                                                 R"("comm_resource_config.protocol_desc":["roce:device"]})";
+  HixlEngine engine("127.0.0.1");
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+  ASSERT_EQ(engine.Initialize(parsed), SUCCESS);
+  ASSERT_EQ(engine.endpoint_list_.size(), 1U);
+  EXPECT_EQ(engine.endpoint_list_[0].protocol, kProtocolUbmem);
+  EXPECT_EQ(engine.endpoint_list_[0].placement, kPlacementDevice);
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, UbMemAutoConnectStartsHeartbeat) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+  SetHccnConfContent("address_23=10.10.10.23\n");
+  std::map<AscendString, AscendString> options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
+  options[hixl::OPTION_AUTO_CONNECT] = "1";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"fabric_memory":{"enable_aicpu_unfold":false}})";
+  HixlEngine engine("127.0.0.1");
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+  ASSERT_EQ(engine.Initialize(parsed), SUCCESS);
+  EXPECT_TRUE(engine.auto_connect_);
+  EXPECT_TRUE(engine.client_manager_.heartbeat_sender_.joinable());
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, UbMemCrossSuperPodKeepsUbmemAndRoceDevice) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+  SetHccnConfContent("address_23=10.10.10.23\n");
+  std::map<AscendString, AscendString> options = BuildOptions(BuildVersionOnlyLocalCommRes("1.3"));
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"fabric_memory":{"enable_aicpu_unfold":false},)"
+                                                 R"("comm_resource_config.protocol_desc":["ubmem","roce:device"]})";
+  HixlEngine engine("127.0.0.1");
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+  ASSERT_EQ(engine.Initialize(parsed), SUCCESS);
+  EXPECT_TRUE(engine.enable_ubmem_);
+  bool has_ubmem = false;
+  bool has_roce_device = false;
+  for (const auto &ep : engine.endpoint_list_) {
+    has_ubmem = has_ubmem || (ep.protocol == kProtocolUbmem && ep.placement == kPlacementDevice);
+    has_roce_device = has_roce_device || (ep.protocol == kProtocolRoce && ep.placement == kPlacementDevice);
+  }
+  EXPECT_TRUE(has_ubmem);
+  EXPECT_TRUE(has_roce_device);
+  std::vector<uint8_t> buf(64, 0);
+  MemDesc mem{};
+  mem.addr = reinterpret_cast<uintptr_t>(buf.data());
+  mem.len = buf.size();
+  MemHandle handle = nullptr;
+  EXPECT_EQ(engine.RegisterMem(mem, MEM_HOST, handle), SUCCESS);
+  EXPECT_NE(handle, nullptr);
+  ASSERT_EQ(engine.mem_map_.count(handle), 1U);
+  EXPECT_EQ(engine.mem_map_.at(handle).type, MEM_HOST);
+  EXPECT_EQ(engine.server_.handle_to_addr_.count(handle), 1U);
+  EXPECT_EQ(engine.DeregisterMem(handle), SUCCESS);
+  engine.Finalize();
+}
+
+TEST_F(HixlEngineTest, UbMemCrossSuperPodKeepsUbmemWhenRoceDeviceMissing) {
+  SetSocStub("Ascend910_9391", 1, 23, 45, 67);
+  SetHccnConfContent("address_23=10.10.10.23\n");
+  std::map<AscendString, AscendString> options =
+      BuildOptions(BuildLocalCommRes("superpod1_1", "1.3", {BuildHostRoceEndpoint("127.0.0.1")}));
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"fabric_memory":{"enable_aicpu_unfold":false},)"
+                                                 R"("comm_resource_config.protocol_desc":["ubmem","roce:device"]})";
+  HixlEngine engine("127.0.0.1");
+  HixlOptions parsed;
+  ASSERT_EQ(HixlOptions::Parse(options, parsed), SUCCESS);
+  ASSERT_EQ(engine.Initialize(parsed), SUCCESS);
+  ASSERT_EQ(engine.endpoint_list_.size(), 1U);
+  EXPECT_EQ(engine.endpoint_list_[0].protocol, kProtocolUbmem);
+  EXPECT_EQ(engine.endpoint_list_[0].placement, kPlacementDevice);
+  engine.Finalize();
 }
 
 }  // namespace hixl

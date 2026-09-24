@@ -12,8 +12,10 @@
 #define HIXL_SRC_HIXL_ENGINE_HIXL_ENGINE_H_
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
@@ -195,6 +197,8 @@ class HixlEngine : public hixl::Engine {
   uint32_t multi_worker_num_{1U};
   uint32_t multi_channel_split_batch_size_{kDefaultSplitBatchSize};
   OptionalAclrtContext aclrt_context_;
+  bool enable_ubmem_{false};
+  UbMemoryConfig fabric_memory_;
 };
 }  // namespace hixl
 

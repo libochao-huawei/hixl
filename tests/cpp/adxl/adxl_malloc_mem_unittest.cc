@@ -13,7 +13,7 @@
 #include <gtest/gtest.h>
 
 #include "adxl/adxl_engine.h"
-#include "fabric_mem/virtual_memory_manager.h"
+#include "cs/ubmem/ubmem_virtual_memory_manager.h"
 
 namespace adxl {
 namespace {

@@ -22,7 +22,7 @@ file(GLOB HIXL_SRC_LIST
         "${CMAKE_CURRENT_LIST_DIR}/engine/*.cc"
         "${CMAKE_CURRENT_LIST_DIR}/engine/endpoint_generator/*.cc"
         "${CMAKE_CURRENT_LIST_DIR}/common/*.cc"
-        "${CMAKE_CURRENT_LIST_DIR}/fabric_mem/*.cc"
+        "${CMAKE_CURRENT_LIST_DIR}/cs/ubmem/*.cc"
         "${CMAKE_CURRENT_LIST_DIR}/cs/*.cc"
         "${CMAKE_CURRENT_LIST_DIR}/profiling/*.cc"
         )

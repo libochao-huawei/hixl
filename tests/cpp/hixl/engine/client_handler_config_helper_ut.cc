@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <optional>
 #include <string>
 
@@ -19,7 +20,14 @@
 namespace hixl {
 namespace {
 HandlerCreateArgs MakeArgs(std::optional<uint8_t> qos, std::optional<uint8_t> tc, std::optional<uint8_t> sl) {
-  return HandlerCreateArgs{"127.0.0.1", 26666U, tc, sl, HandlerCreateArgs::HandlerType::DIRECT, {}, qos, {}};
+  HandlerCreateArgs args{};
+  args.server_ip = "127.0.0.1";
+  args.server_port = 26666U;
+  args.rdma_tc = tc;
+  args.rdma_sl = sl;
+  args.handler_type = HandlerCreateArgs::HandlerType::DIRECT;
+  args.qos = qos;
+  return args;
 }
 }  // namespace
 
@@ -69,6 +77,24 @@ TEST(ClientHandlerConfigHelperUT, QosUnconfiguredTcSlConfiguredWithMaxActiveChan
   EXPECT_FALSE(json.contains("comm_resource_config.qos"));
   ASSERT_TRUE(json.contains("comm_resource_config.max_active_channels"));
   EXPECT_EQ(json["comm_resource_config.max_active_channels"].get<uint32_t>(), 16U);
+}
+
+TEST(ClientHandlerConfigHelperUT, ForwardsUbMemoryConfig) {
+  auto args = MakeArgs(std::nullopt, std::nullopt, std::nullopt);
+  args.fabric_memory.max_capacity = 10U;
+  args.fabric_memory.start_address = 40U;
+  args.fabric_memory.task_stream_num = 4U;
+  args.fabric_memory.enable_aicpu_unfold = false;
+  const auto config = ClientHandlerConfigHelper::BuildGlobalResourceConfig(args);
+  const auto json = nlohmann::json::parse(config);
+  ASSERT_TRUE(json.contains("fabric_memory.max_capacity"));
+  EXPECT_EQ(json["fabric_memory.max_capacity"].get<size_t>(), 10U);
+  ASSERT_TRUE(json.contains("fabric_memory.start_address"));
+  EXPECT_EQ(json["fabric_memory.start_address"].get<size_t>(), 40U);
+  ASSERT_TRUE(json.contains("fabric_memory.task_stream_num"));
+  EXPECT_EQ(json["fabric_memory.task_stream_num"].get<size_t>(), 4U);
+  ASSERT_TRUE(json.contains("fabric_memory.enable_aicpu_unfold"));
+  EXPECT_FALSE(json["fabric_memory.enable_aicpu_unfold"].get<bool>());
 }
 
 TEST(ClientHandlerConfigHelperUT, QosUnconfiguredTcSlUnconfiguredWithMaxActiveChannels) {

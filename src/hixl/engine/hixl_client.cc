@@ -96,7 +96,8 @@ Status HixlClient::Initialize(const std::vector<EndpointConfig> &local_endpoint_
                          timeout_ms,
                          ctrl_socket_,
                          local_engine_,
-                         remote_engine_};
+                         remote_engine_,
+                         fabric_memory_};
   HIXL_CHK_STATUS_RET(ClientHandlerFactory::Create(args, client_handler_),
                       "ClientHandlerFactory create handler failed");
   HIXL_CHECK_NOTNULL(client_handler_, "ClientHandlerFactory create handler failed");

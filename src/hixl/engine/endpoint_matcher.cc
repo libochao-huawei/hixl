@@ -12,6 +12,7 @@
 #include <algorithm>
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
+#include "common/hixl_utils.h"
 #include "engine/client_handler_factory.h"
 
 namespace hixl {
@@ -44,6 +45,8 @@ constexpr MatchRule kCrossInstanceRules[] = {
 };
 
 constexpr MatchRule kSameInstanceRules[] = {
+    {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolUbmem, kPlacementDevice,
+     CommType::COMM_TYPE_UBMEM, "same-instance prefers device ubmem"},
     {MatchRuleType::GROUP, HandlerCreateArgs::HandlerType::UB, nullptr, nullptr, CommType::COMM_TYPE_UB_D2D,
      "same-instance prefers ub group"},
     {MatchRuleType::SINGLE, HandlerCreateArgs::HandlerType::DIRECT, kProtocolHccs, kPlacementDevice,
@@ -245,6 +248,7 @@ Status EndpointMatcher::TryMatchByPriority(const std::vector<EndpointConfig> &lo
                                            HandlerCreateArgs::HandlerType &handler_type) {
   auto try_match_rule = [&local, &remote, &pairs, &handler_type](const MatchRule &rule) -> Status {
     Status status = FAILED;
+    pairs.clear();
     switch (rule.rule_type) {
       case MatchRuleType::GROUP:
         status = TryMatchGroup(local, remote, pairs);
@@ -305,6 +309,8 @@ Status EndpointMatcher::MatchEndpoints(const std::vector<EndpointConfig> &local,
                                        const std::vector<EndpointConfig> &remote,
                                        std::vector<HandlerCreateArgs::EndpointPair> &matched_pairs,
                                        HandlerCreateArgs::HandlerType &handler_type) {
+  HIXL_CHK_BOOL_RET_STATUS(!local.empty() && !remote.empty(), PARAM_INVALID,
+                           "EndpointMatcher requires non-empty local and remote endpoints");
   const bool cross_instance = IsCrossInstance(local, remote);
   HIXL_EVENT("EndpointMatcher select start, cross_instance:%d, local_net_instance:%s, remote_net_instance:%s",
              static_cast<int32_t>(cross_instance), local[0].net_instance_id.c_str(), remote[0].net_instance_id.c_str());

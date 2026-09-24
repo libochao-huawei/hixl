@@ -19,8 +19,8 @@ add_library(cann_hixl_kernel SHARED
         hixl_batch_transfer.cc
         hixl_sync_transfer_context.cc
         transfer_context_manager.cc
-        fabric_mem_aicpu_kernel.cc
-        fabric_mem_stars_sdma.cc
+        ubmem_aicpu_kernel.cc
+        ubmem_stars_sdma.cc
         task_exception_handler.cc
 )
 

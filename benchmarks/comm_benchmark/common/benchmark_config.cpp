@@ -656,7 +656,7 @@ void BenchmarkConfigParser::PrintUsage(FILE *out) {
       "  --role|-r            target|initiator\n"
       "  --group              result grouping name (default default)\n"
       "  --transport          hccs|roce|fabric_mem|uboe|ub_rtp|ub "
-      "(hccs: D2D everywhere; extra H2rD|rD2H on A3-class SOC only; fabric_mem adds EnableUseFabricMem=1; "
+      "(hccs: D2D everywhere; extra H2rD|rD2H on A3-class SOC only; fabric_mem adds EnableUseUbMem=1; "
       "hccs/roce/uboe/ub_rtp add GlobalResourceConfig protocol_desc by default unless LocalCommRes is set; "
       "ub adds LocalCommRes with version:1.3, only on A5; "
       "roce: RDMA over Converged Ethernet, supported on A2, A3 and A5; on A5 uses HixlCS LocalCommRes with "

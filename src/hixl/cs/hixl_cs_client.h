@@ -30,6 +30,9 @@
 #include "hcomm/hcomm_res_defs.h"
 
 namespace hixl {
+
+class UbMemEngine;
+
 struct CompleteHandleInfo {
   uint32_t magic;
   int32_t flag_index;
@@ -160,7 +163,6 @@ class HixlCSClient {
   uint32_t retry_cnt_{kRdmaRetryCntDefault};
   uint32_t retry_interval_{kRdmaRetryIntervalDefault};
   GlobalConfig global_config_;
-  Channel client_channel_;
   ChannelHandle client_channel_handle_ = 0UL;
   uint64_t remote_endpoint_handle_{0U};
   static constexpr size_t kFlagQueueSize = 4096;  // 用于初始化队列和内存地址列表
@@ -187,6 +189,7 @@ class HixlCSClient {
   std::shared_ptr<TransferPool::SlotHandle> active_slot_;
   bool transfer_failure_latched_{false};
   Status transfer_failure_status_{SUCCESS};
+  std::unique_ptr<UbMemEngine> ubmem_engine_;
 };
 }  // namespace hixl
 

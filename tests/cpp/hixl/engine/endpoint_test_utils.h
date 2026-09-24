@@ -30,7 +30,6 @@ class MockAclRuntimeStub : public llm::AclRuntimeStub {
   int64_t super_pod_id_ = 8;
   int64_t super_pod_server_id_ = 8;
   uint32_t device_count_ = 1;
-  bool return_null_soc_name_ = false;
   bool device_count_failed_ = false;
   bool phy_dev_failed_ = false;
   bool device_info_failed_ = false;
@@ -57,9 +56,6 @@ class MockAclRuntimeStub : public llm::AclRuntimeStub {
 
   const char *aclrtGetSocName() override {
     ++get_soc_name_calls_;
-    if (return_null_soc_name_) {
-      return nullptr;
-    }
     return soc_name_.c_str();
   }
 

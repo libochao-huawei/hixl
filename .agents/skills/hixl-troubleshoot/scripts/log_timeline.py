@@ -40,7 +40,7 @@ COMM_PATTERN = re.compile(r"(?:commIdentifier|comm)\[([^\]]+)\]", re.IGNORECASE)
 
 MODULE_MARKERS = (
     ("HIXL_CS", ("HixlCS", "HixlClient", "HixlServer", "HIXL CS")),
-    ("FabricMem", ("FabricMem", "Fabric mem")),
+    ("UbMem", ("UbMem", "Fabric mem")),
     ("ADXL", ("ADXL", "Adxl", "AscendDirect")),
     ("HIXL", ("[HIXL]",)),
     ("HCCL", ("HCCL", "Hccl")),

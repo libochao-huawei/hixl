@@ -27,11 +27,10 @@ namespace fs = std::experimental::filesystem;
 #include "acl/acl.h"
 #include <unistd.h>
 
-#include "fabric_mem/fabric_mem_transfer_service.h"
+#include "cs/ubmem/ubmem_allocator.h"
 #include "benchmark_log.h"
 
 using hixl::AscendString;
-using hixl::FabricMemTransferService;
 using hixl::Hixl;
 using hixl::MemDesc;
 using hixl::MemHandle;
@@ -42,6 +41,7 @@ using hixl::TransferOp;
 using hixl::TransferOpDesc;
 using hixl::TransferReq;
 using hixl::TransferStatus;
+using hixl::UbMemAllocator;
 
 namespace {
 
@@ -114,7 +114,7 @@ void FreeHostBuffers(const std::vector<void *> &buffers, const std::string &tran
       continue;
     }
     if (transport == "fabric_mem") {
-      (void)FabricMemTransferService::FreeMem(element);
+      (void)UbMemAllocator::FreeMem(element);
     } else if (transport == "roce" && roce_endpoint_placement == "host") {
       std::free(element);
     } else {
@@ -155,7 +155,7 @@ int32_t AllocLocalBuffer(const BenchmarkConfig &cfg, bool *is_host, void **out_s
   *is_host = (cfg.initiator_memory_type == "host");
   void *tmp = nullptr;
   if (*is_host && cfg.transport == "fabric_mem") {
-    auto status = FabricMemTransferService::MallocMem(MemType::MEM_HOST, alloc_size, &tmp);
+    auto status = UbMemAllocator::MallocMem(MemType::MEM_HOST, alloc_size, &tmp);
     if (status != SUCCESS) {
       BENCH_LOGE("client fabric_mem host alloc failed status=%d\n", static_cast<int>(status));
       return -1;

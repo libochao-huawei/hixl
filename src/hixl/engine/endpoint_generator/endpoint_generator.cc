@@ -363,11 +363,10 @@ Status ParseEndpointPlacement(const EndpointConfig &endpoint_config, EndpointDes
 }
 
 Status ParseEndpointProtocol(const EndpointConfig &endpoint_config, EndpointDesc &endpoint) {
-  static const std::map<std::string, CommProtocol> kProtocolMap = {{kProtocolRoce, COMM_PROTOCOL_ROCE},
-                                                                   {kProtocolUbCtp, COMM_PROTOCOL_UBC_CTP},
-                                                                   {kProtocolUboe, COMM_PROTOCOL_UBOE},
-                                                                   {kProtocolUbRtp, COMM_PROTOCOL_UBG},
-                                                                   {kProtocolHccs, COMM_PROTOCOL_HCCS}};
+  static const std::map<std::string, CommProtocol> kProtocolMap = {
+      {kProtocolRoce, COMM_PROTOCOL_ROCE}, {kProtocolUbCtp, COMM_PROTOCOL_UBC_CTP},
+      {kProtocolUboe, COMM_PROTOCOL_UBOE}, {kProtocolUbRtp, COMM_PROTOCOL_UBG},
+      {kProtocolHccs, COMM_PROTOCOL_HCCS}, {kProtocolUbmem, COMM_PROTOCOL_UB_MEM}};
 
   const auto protocol_it = kProtocolMap.find(endpoint_config.protocol);
   HIXL_CHK_BOOL_RET_STATUS(protocol_it != kProtocolMap.end(), PARAM_INVALID, "Unsupported protocol:%s",
@@ -388,11 +387,14 @@ std::string BuildProtocolDescKey(const std::string &protocol, const std::string 
 }
 
 bool IsSupportedProtocolDesc(const std::string &protocol, const std::string &placement) {
-  static const std::set<std::string> kSupportedProtocols = {kProtocolRoce, kProtocolHccs, kProtocolUbCtp, kProtocolUboe,
-                                                            kProtocolUbRtp};
+  static const std::set<std::string> kSupportedProtocols = {kProtocolRoce, kProtocolHccs,  kProtocolUbCtp,
+                                                            kProtocolUboe, kProtocolUbRtp, kProtocolUbmem};
   static const std::set<std::string> kSupportedPlacements = {kPlacementHost, kPlacementDevice};
   if (kSupportedProtocols.find(protocol) == kSupportedProtocols.end() ||
       kSupportedPlacements.find(placement) == kSupportedPlacements.end()) {
+    return false;
+  }
+  if (protocol == kProtocolUbmem) {
     return false;
   }
   if ((protocol == kProtocolUboe || protocol == kProtocolUbRtp) && placement != kPlacementDevice) {
@@ -409,10 +411,14 @@ Status ParseProtocolDesc(const std::vector<std::string> &protocol_desc, std::set
       desc_set.insert(BuildProtocolDescKey(kProtocolUbCtp, kPlacementHost));
       continue;
     }
+    if (desc == kProtocolUbmem) {
+      desc_set.insert(kProtocolUbmem);
+      continue;
+    }
     const auto split_pos = desc.find(':');
     HIXL_CHK_BOOL_RET_STATUS(split_pos != std::string::npos && split_pos > 0U && split_pos + 1U < desc.size() &&
                                  desc.find(':', split_pos + 1U) == std::string::npos,
-                             PARAM_INVALID, "Invalid protocol_desc:%s, expected ub_ctp or protocol:placement",
+                             PARAM_INVALID, "Invalid protocol_desc:%s, expected ub_ctp, ubmem or protocol:placement",
                              desc.c_str());
     const std::string protocol = desc.substr(0, split_pos);
     const std::string placement = desc.substr(split_pos + 1U);
@@ -496,6 +502,46 @@ Status ResolveUbCtpNeedAndMode(const std::vector<std::string> &protocol_desc, bo
   return SUCCESS;
 }
 
+Status AppendUbMemEndpoint(std::vector<EndpointConfig> &endpoint_list, const std::string &placement,
+                           int32_t phy_device_id) {
+  for (const auto &ep : endpoint_list) {
+    if (ep.protocol == kProtocolUbmem) {
+      return SUCCESS;
+    }
+  }
+  EndpointConfig ub{};
+  ub.protocol = kProtocolUbmem;
+  ub.placement = placement;
+  if (!endpoint_list.empty()) {
+    const EndpointConfig *src = &endpoint_list[0];
+    for (const auto &ep : endpoint_list) {
+      if (ep.protocol == kProtocolHccs) {
+        src = &ep;
+        break;
+      }
+    }
+    ub.comm_id = src->comm_id;
+    ub.net_instance_id = src->net_instance_id;
+    ub.server_id = src->server_id;
+    ub.device_info = src->device_info;
+  } else {
+    HIXL_CHK_BOOL_RET_STATUS(phy_device_id >= 0, PARAM_INVALID,
+                             "[EndpointGenerator] cannot append ubmem endpoint without a valid device id");
+  }
+  endpoint_list.emplace_back(std::move(ub));
+  HIXL_LOGI("[EndpointGenerator] appended ubmem endpoint, placement=%s, comm_id=%s", placement.c_str(),
+            endpoint_list.back().comm_id.c_str());
+  return SUCCESS;
+}
+
+Status AppendUbMemIfRequested(const std::vector<std::string> &protocol_desc, const char *placement,
+                              std::vector<EndpointConfig> &endpoint_list, int32_t phy_device_id) {
+  if (std::find(protocol_desc.begin(), protocol_desc.end(), kProtocolUbmem) == protocol_desc.end()) {
+    return SUCCESS;
+  }
+  return AppendUbMemEndpoint(endpoint_list, placement, phy_device_id);
+}
+
 Status FilterEndpointsByProtocolDescList(const std::vector<std::string> &protocol_desc,
                                          std::vector<EndpointConfig> &endpoint_list) {
   if (protocol_desc.empty()) {
@@ -503,10 +549,16 @@ Status FilterEndpointsByProtocolDescList(const std::vector<std::string> &protoco
   }
   std::set<std::string> desc_set;
   HIXL_CHK_STATUS_RET(ParseProtocolDesc(protocol_desc, desc_set), "ParseProtocolDesc failed");
+  if (desc_set.empty()) {
+    return SUCCESS;
+  }
   std::vector<EndpointConfig> filtered;
   filtered.reserve(endpoint_list.size());
   for (auto &ep : endpoint_list) {
-    if (desc_set.find(BuildProtocolDescKey(ep.protocol, ep.placement)) != desc_set.end()) {
+    const bool keep = (ep.protocol == kProtocolUbmem)
+                          ? desc_set.count(kProtocolUbmem) > 0
+                          : desc_set.count(BuildProtocolDescKey(ep.protocol, ep.placement)) > 0;
+    if (keep) {
       filtered.emplace_back(std::move(ep));
     }
   }
@@ -613,6 +665,8 @@ struct AutoGenA5Input {
 };
 
 // Shared AutoGenA5 core: explicit device/phy/topo/protocol_desc.
+// ubmem is deliberately not appended here: FabricMem is available on A3 only, so A5 auto generation never
+// produces a ubmem endpoint even when protocol_desc carries the ubmem token.
 Status AutoGenA5Core(const AutoGenA5Input &input, std::vector<EndpointConfig> &endpoint_list,
                      std::string &net_instance_id) {
   endpoint_list.clear();
@@ -691,6 +745,8 @@ Status EndpointGenerator::FilterEndpointListByProtocolDesc(const HixlOptions &op
   }
 
   LogEndpointList("parsed or generated endpoint list", endpoint_list);
+  HIXL_CHK_STATUS_RET(AppendUbMemIfRequested(protocol_desc, kPlacementDevice, endpoint_list, -1),
+                      "AppendUbMemIfRequested failed");
   HIXL_CHK_STATUS_RET(FilterEndpointsByProtocolDescList(protocol_desc, endpoint_list),
                       "FilterEndpointsByProtocolDescList failed");
   LogEndpointList("endpoint list after protocol_desc filter", endpoint_list);
@@ -779,6 +835,8 @@ Status EndpointGenerator::AutoGenEndpointList(const HixlOptions &options, const 
   }
 
   if (endpoint_list.empty()) {
+    HIXL_CHK_STATUS_RET(FilterEndpointListByProtocolDesc(options, endpoint_list),
+                        "FilterEndpointListByProtocolDesc failed");
     return SUCCESS;
   }
   HIXL_CHK_STATUS_RET(FilterEndpointListByProtocolDesc(options, endpoint_list),
@@ -801,6 +859,22 @@ Status EndpointGenerator::ConvertToEndpointDesc(const EndpointConfig &endpoint_c
   if (endpoint_config.protocol == kProtocolHccs) {
     uint32_t device_id = 0;
     HIXL_CHK_STATUS_RET(ParseHccsCommId(endpoint_config.comm_id, device_id), "ParseHccsCommId failed");
+    endpoint.commAddr.type = COMM_ADDR_TYPE_ID;
+    endpoint.commAddr.id = device_id;
+    return SUCCESS;
+  }
+
+  if (endpoint_config.protocol == kProtocolUbmem) {
+    uint32_t device_id = 0U;
+    const std::string &comm_id = endpoint_config.comm_id;
+    const bool numeric =
+        !comm_id.empty() && comm_id.size() <= 10U &&
+        std::all_of(comm_id.begin(), comm_id.end(), [](unsigned char c) { return std::isdigit(c) != 0; });
+    if (numeric) {
+      HIXL_CHK_STATUS_RET(ParseHccsCommId(comm_id, device_id), "Parse ubmem comm_id failed");
+    } else if (endpoint_config.device_info.phy_device_id >= 0) {
+      device_id = static_cast<uint32_t>(endpoint_config.device_info.phy_device_id);
+    }
     endpoint.commAddr.type = COMM_ADDR_TYPE_ID;
     endpoint.commAddr.id = device_id;
     return SUCCESS;
@@ -1160,6 +1234,14 @@ Status EndpointGenerator::BuildDefaultDeviceEndpointInfoList(
     HIXL_CHK_STATUS_RET(BuildHccsEndpoint(phy_device_id, hccs_endpoint), "BuildHccsEndpoint failed, phy_device_id:%d",
                         phy_device_id);
     endpoint_list.emplace_back(std::move(hccs_endpoint));
+  }
+
+  if (std::find(protocol_desc.begin(), protocol_desc.end(), kProtocolUbmem) != protocol_desc.end()) {
+    EndpointInfo ubmem_endpoint{};
+    ubmem_endpoint.protocol = kProtocolUbmem;
+    ubmem_endpoint.comm_id = std::to_string(phy_device_id);
+    ubmem_endpoint.placement = kPlacementDevice;
+    endpoint_list.emplace_back(std::move(ubmem_endpoint));
   }
 
   return SUCCESS;

@@ -111,6 +111,10 @@ std::string FormatCommAddr(const CommAddr &addr);
 std::string ProtocolToString(CommProtocol protocol);
 std::string EndpointToString(const EndpointDesc &ep);
 
+inline bool IsUbMemProtocol(CommProtocol protocol) {
+  return protocol == COMM_PROTOCOL_UB_MEM;
+}
+
 bool IsIntraRoceEnabled();
 
 const char *IntraRoceEnableStatusStr();

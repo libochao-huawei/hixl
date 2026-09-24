@@ -15,15 +15,15 @@
 #include <vector>
 
 #include "acl/acl.h"
-#include "fabric_mem/fabric_mem_transfer_service.h"
+#include "cs/ubmem/ubmem_allocator.h"
 #include "benchmark_log.h"
 
 using hixl::AscendString;
-using hixl::FabricMemTransferService;
 using hixl::Hixl;
 using hixl::MemDesc;
 using hixl::MemType;
 using hixl::SUCCESS;
+using hixl::UbMemAllocator;
 
 namespace {
 
@@ -69,7 +69,7 @@ void FreeHostBuffers(const std::vector<void *> &buffers, const std::string &tran
       continue;
     }
     if (transport == "fabric_mem") {
-      (void)FabricMemTransferService::FreeMem(buffer);
+      (void)UbMemAllocator::FreeMem(buffer);
     } else if (transport == "roce" && roce_endpoint_placement == "host") {
       std::free(buffer);
     } else {
@@ -86,7 +86,7 @@ void FreeDeviceBuffers(const std::vector<void *> &buffers, const std::string &tr
       continue;
     }
     if (transport == "fabric_mem") {
-      (void)FabricMemTransferService::FreeMem(buffer);
+      (void)UbMemAllocator::FreeMem(buffer);
     } else {
       (void)aclrtFree(buffer);
     }
@@ -155,14 +155,14 @@ void ServerRunner::ReleaseServerResources() {
   if (buffer_allocated_) {
     if (is_host_) {
       if (cfg_.transport == "fabric_mem") {
-        (void)FabricMemTransferService::FreeMem(buffer_);
+        (void)UbMemAllocator::FreeMem(buffer_);
       } else if (cfg_.transport == "roce" && cfg_.roce_endpoint_placement == "host") {
         std::free(buffer_);
       } else {
         (void)aclrtFreeHost(buffer_);
       }
     } else if (cfg_.transport == "fabric_mem") {
-      (void)FabricMemTransferService::FreeMem(buffer_);
+      (void)UbMemAllocator::FreeMem(buffer_);
     } else {
       (void)aclrtFree(buffer_);
     }
@@ -192,7 +192,7 @@ bool ServerRunner::AllocServerBufferForRun() {
   is_host_ = (cfg_.target_memory_type == "host");
   const size_t alloc_size = static_cast<size_t>(cfg_.buffer_size);
   if (is_host_ && cfg_.transport == "fabric_mem") {
-    auto status = FabricMemTransferService::MallocMem(MemType::MEM_HOST, alloc_size, &buffer_);
+    auto status = UbMemAllocator::MallocMem(MemType::MEM_HOST, alloc_size, &buffer_);
     if (status != SUCCESS) {
       BENCH_LOGE("server fabric_mem alloc failed status=%d\n", static_cast<int>(status));
       return false;
@@ -210,7 +210,7 @@ bool ServerRunner::AllocServerBufferForRun() {
       return false;
     }
   } else if (cfg_.transport == "fabric_mem") {
-    auto status = FabricMemTransferService::MallocMem(MemType::MEM_DEVICE, alloc_size, &buffer_);
+    auto status = UbMemAllocator::MallocMem(MemType::MEM_DEVICE, alloc_size, &buffer_);
     if (status != SUCCESS) {
       BENCH_LOGE("server fabric_mem device alloc failed status=%d\n", static_cast<int>(status));
       return false;

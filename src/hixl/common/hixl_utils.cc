@@ -376,6 +376,8 @@ std::string ProtocolToString(CommProtocol protocol) {
       return kProtocolUboe;
     case COMM_PROTOCOL_UBG:
       return kProtocolUbRtp;
+    case COMM_PROTOCOL_UB_MEM:
+      return kProtocolUbmem;
     default:
       return "UNKNOWN(" + std::to_string(static_cast<int32_t>(protocol)) + ")";
   }

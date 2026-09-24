@@ -62,6 +62,16 @@ HixlStatus HixlCSServerCreate(const HixlServerDesc *server_desc, const HixlServe
   HIXL_CHK_BOOL_RET_STATUS(server_desc->server_port <= kMaxPort, HIXL_PARAM_INVALID,
                            "[HixlCSServerCreate] server_port out of range: %u, must be in [0, %u]",
                            server_desc->server_port, kMaxPort);
+  if (server_desc->endpoint_list_num > 0U) {
+    HIXL_CHECK_NOTNULL(server_desc->endpoint_list);
+  }
+  for (uint32_t i = 0U; i < server_desc->endpoint_list_num; ++i) {
+    const EndpointDesc &endpoint = server_desc->endpoint_list[i];
+    HIXL_CHK_BOOL_RET_STATUS(
+        endpoint.protocol != COMM_PROTOCOL_UB_MEM || endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE,
+        HIXL_PARAM_INVALID, "[HixlCSServerCreate] UB_MEM endpoint must be DEVICE, endpoint index:%u, locType:%d", i,
+        static_cast<int32_t>(endpoint.loc.locType));
+  }
   hixl::GlobalConfig global_config;
   HIXL_CHK_STATUS_RET(hixl::GlobalConfig::Parse(config->global_resource_config, global_config,
                                                 hixl::GlobalConfig::ParseTarget::kServer),
@@ -129,6 +139,16 @@ HixlStatus HixlCSClientCreate(const HixlClientDesc *client_desc, const HixlClien
   HIXL_CHK_BOOL_RET_STATUS(client_desc->server_port >= kMinClientPort && client_desc->server_port <= kMaxPort,
                            HIXL_PARAM_INVALID, "[HixlCSClientCreate] server_port out of range: %u, must be in [%u, %u]",
                            client_desc->server_port, kMinClientPort, kMaxPort);
+  const EndpointDesc &local_endpoint = *client_desc->local_endpoint;
+  HIXL_CHK_BOOL_RET_STATUS(
+      local_endpoint.protocol != COMM_PROTOCOL_UB_MEM || local_endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE,
+      HIXL_PARAM_INVALID, "[HixlCSClientCreate] UB_MEM local endpoint must be DEVICE, locType:%d",
+      static_cast<int32_t>(local_endpoint.loc.locType));
+  const EndpointDesc &remote_endpoint = *client_desc->remote_endpoint;
+  HIXL_CHK_BOOL_RET_STATUS(
+      remote_endpoint.protocol != COMM_PROTOCOL_UB_MEM || remote_endpoint.loc.locType == ENDPOINT_LOC_TYPE_DEVICE,
+      HIXL_PARAM_INVALID, "[HixlCSClientCreate] UB_MEM remote endpoint must be DEVICE, locType:%d",
+      static_cast<int32_t>(remote_endpoint.loc.locType));
   auto *client = new (std::nothrow) hixl::HixlCSClient();
   HIXL_CHECK_NOTNULL(client);
   HIXL_DISMISSABLE_GUARD(rollback, ([client]() { delete client; }));

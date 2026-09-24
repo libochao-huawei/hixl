@@ -42,7 +42,7 @@ TEST_F(HixlOptionsUTest, ParseEmptyOptions) {
   EXPECT_FALSE(result.RdmaTrafficClass().has_value());
   EXPECT_FALSE(result.RdmaServiceLevel().has_value());
   EXPECT_FALSE(result.LocalCommRes().has_value());
-  EXPECT_FALSE(result.EnableFabricMem().has_value());
+  EXPECT_FALSE(result.EnableUbMem().has_value());
   EXPECT_FALSE(result.AutoConnect().has_value());
   EXPECT_FALSE(result.GlobalResourceCfg().has_value());
 }
@@ -165,25 +165,26 @@ TEST_F(HixlOptionsUTest, ParseBufferPoolNonZero) {
   EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
 }
 
-TEST_F(HixlOptionsUTest, ParseEnableFabricMemTrue) {
+TEST_F(HixlOptionsUTest, ParseEnableUbMemTrue) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
   HixlOptions result;
   EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
-  ASSERT_TRUE(result.EnableFabricMem().has_value());
-  EXPECT_TRUE(*result.EnableFabricMem());
+  ASSERT_TRUE(result.EnableUbMem().has_value());
+  EXPECT_TRUE(*result.EnableUbMem());
+  EXPECT_TRUE(result.HasProtocolDesc("ubmem"));
 }
 
-TEST_F(HixlOptionsUTest, ParseEnableFabricMemFalse) {
+TEST_F(HixlOptionsUTest, ParseEnableUbMemFalse) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "0";
   HixlOptions result;
   EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
-  ASSERT_TRUE(result.EnableFabricMem().has_value());
-  EXPECT_FALSE(*result.EnableFabricMem());
+  ASSERT_TRUE(result.EnableUbMem().has_value());
+  EXPECT_FALSE(*result.EnableUbMem());
 }
 
-TEST_F(HixlOptionsUTest, ParseEnableFabricMemInvalid) {
+TEST_F(HixlOptionsUTest, ParseEnableUbMemInvalid) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "2";
   HixlOptions result;
@@ -215,7 +216,7 @@ TEST_F(HixlOptionsUTest, ParseAutoConnectEmpty) {
   EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigFabricMemory) {
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigUbMemory) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
       R"({"fabric_memory":{"max_capacity":"10","start_address":"50","task_stream_num":"4","enable_aicpu_unfold":false}})";
@@ -278,7 +279,7 @@ TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigDefaultAicpuUnfoldRejectsNonOn
   EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigFabricMemoryAicpuUnfold) {
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigUbMemoryAicpuUnfold) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"fabric_memory":{"enable_aicpu_unfold":true}})";
   HixlOptions result;
@@ -288,9 +289,97 @@ TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigFabricMemoryAicpuUnfold) {
   EXPECT_TRUE(*result.GlobalResourceCfg()->fabric_memory.enable_aicpu_unfold);
 }
 
-TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigFabricMemoryAicpuUnfoldRejectsNonBoolean) {
+TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigUbMemoryAicpuUnfoldRejectsNonBoolean) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"fabric_memory.enable_aicpu_unfold":"true"})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
+}
+
+TEST_F(HixlOptionsUTest, ParseProtocolDescUbmemEnablesUbMem) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.protocol_desc":["ubmem"]})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.EnableUbMem().has_value());
+  EXPECT_TRUE(*result.EnableUbMem());
+  EXPECT_TRUE(result.HasProtocolDesc("ubmem"));
+  EXPECT_FALSE(result.HasProtocolDesc("roce:device"));
+}
+
+TEST_F(HixlOptionsUTest, ParseProtocolDescUbmemAndRoceDevice) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.protocol_desc":["ubmem","roce:device"]})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.EnableUbMem().has_value());
+  EXPECT_TRUE(*result.EnableUbMem());
+  EXPECT_TRUE(result.HasProtocolDesc("ubmem"));
+  EXPECT_TRUE(result.HasProtocolDesc("roce:device"));
+}
+
+TEST_F(HixlOptionsUTest, ParseEnableUbMemWithOtherProtocolDescKeepsOnlyUbMem) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
+      R"({"comm_resource_config.protocol_desc":["roce:device","hccs:device"]})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.EnableUbMem().has_value());
+  EXPECT_TRUE(*result.EnableUbMem());
+  EXPECT_TRUE(result.HasProtocolDesc("ubmem"));
+  EXPECT_FALSE(result.HasProtocolDesc("roce:device"));
+  EXPECT_FALSE(result.HasProtocolDesc("hccs:device"));
+}
+
+TEST_F(HixlOptionsUTest, ParseEnableUbMemKeepsExplicitUbmemAndRoceDevice) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.protocol_desc":["ubmem","roce:device"]})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  EXPECT_TRUE(result.HasProtocolDesc("ubmem"));
+  EXPECT_TRUE(result.HasProtocolDesc("roce:device"));
+}
+
+TEST_F(HixlOptionsUTest, ParseEnableUbMemMapsTaskStreamNumToNumWorkers) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
+      R"({"fabric_memory":{"enable_aicpu_unfold":false,"task_stream_num":"4"}})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  EXPECT_EQ(*result.GlobalResourceCfg()->fabric_memory.task_stream_num, 4U);
+  EXPECT_EQ(*result.GlobalResourceCfg()->comm_resource_config.multi_worker_num, 4U);
+}
+
+TEST_F(HixlOptionsUTest, ParseEnableUbMemMapsNumWorkersToTaskStreamNum) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
+      R"({"fabric_memory":{"enable_aicpu_unfold":false},"comm_resource_config.multi_channel.num_workers":"2"})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), SUCCESS);
+  ASSERT_TRUE(result.GlobalResourceCfg().has_value());
+  EXPECT_EQ(*result.GlobalResourceCfg()->comm_resource_config.multi_worker_num, 2U);
+  EXPECT_EQ(*result.GlobalResourceCfg()->fabric_memory.task_stream_num, 2U);
+}
+
+TEST_F(HixlOptionsUTest, ParseEnableUbMemRejectsMismatchedStreamAndWorkerNum) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] =
+      R"({"fabric_memory":{"enable_aicpu_unfold":false,"task_stream_num":"4"},)"
+      R"("comm_resource_config.multi_channel.num_workers":"2"})";
+  HixlOptions result;
+  EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
+}
+
+TEST_F(HixlOptionsUTest, ParseEnableUbMemAicpuRejectsNumWorkersGreaterThanOne) {
+  std::map<AscendString, AscendString> options;
+  options[hixl::OPTION_ENABLE_USE_FABRIC_MEM] = "1";
+  options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"comm_resource_config.multi_channel.num_workers":"2"})";
   HixlOptions result;
   EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
@@ -608,21 +697,21 @@ TEST_F(HixlOptionsUTest, ParseGlobalResourceConfigNotObject) {
   EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlOptionsUTest, ParseFabricMemCapacityOutOfRange) {
+TEST_F(HixlOptionsUTest, ParseUbMemCapacityOutOfRange) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"fabric_memory":{"max_capacity":"2048"}})";
   HixlOptions result;
   EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlOptionsUTest, ParseFabricMemStartAddressOutOfRange) {
+TEST_F(HixlOptionsUTest, ParseUbMemStartAddressOutOfRange) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"fabric_memory":{"start_address":"1025"}})";
   HixlOptions result;
   EXPECT_EQ(HixlOptions::Parse(options, result), PARAM_INVALID);
 }
 
-TEST_F(HixlOptionsUTest, ParseFabricMemTaskStreamNumOutOfRange) {
+TEST_F(HixlOptionsUTest, ParseUbMemTaskStreamNumOutOfRange) {
   std::map<AscendString, AscendString> options;
   options[hixl::OPTION_GLOBAL_RESOURCE_CONFIG] = R"({"fabric_memory":{"task_stream_num":"16"}})";
   HixlOptions result;

@@ -11,11 +11,13 @@
 #ifndef CANN_HIXL_SRC_HIXL_CS_GLOBAL_CONFIG_H_
 #define CANN_HIXL_SRC_HIXL_CS_GLOBAL_CONFIG_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
 #include "hixl/hixl_types.h"
 #include "common/transfer_config.h"
+#include "cs/ubmem/ubmem_types.h"
 
 namespace hixl {
 
@@ -43,10 +45,14 @@ class GlobalConfig {
   std::optional<uint8_t> Qos() const;
   std::optional<uint32_t> MaxActiveChannels() const;
   uint32_t MaxTransferCountPerBatch() const;
+  const UbMemoryConfig &UbMemory() const;
+  std::optional<size_t> UbMemMaxCapacity() const;
+  std::optional<size_t> UbMemStartAddress() const;
 
  private:
   CommResourceConfig comm_resource_config_;
   TransferConfigDesc transfer_config_;
+  UbMemoryConfig fabric_memory_;
 };
 
 }  // namespace hixl

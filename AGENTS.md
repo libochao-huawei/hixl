@@ -37,8 +37,8 @@ bash build.sh --examples                   # 同时编译示例和 benchmark
 
 # 测试
 bash tests/run_test.sh                     # 并行执行全部 C++ suite，成功后再跑 Python
-bash tests/run_test.sh -t cpp              # 仅并行执行 C++（llm_datadist + adxl + channel_pool + hixl + fabric_mem）
-bash tests/run_test.sh -s hixl             # 仅执行指定 C++ suite（llm_datadist / adxl / channel_pool / hixl / fabric_mem）
+bash tests/run_test.sh -t cpp              # 仅并行执行 C++（llm_datadist + adxl + channel_pool + hixl + ubmem）
+bash tests/run_test.sh -s hixl             # 仅执行指定 C++ suite（llm_datadist / adxl / channel_pool / hixl / ubmem）
 bash tests/run_test.sh -t py               # 仅执行 Python 测试
 bash tests/run_test.sh --cov               # 按覆盖率模式构建并运行测试
 
@@ -65,7 +65,7 @@ pre-commit run --files <changed-files>     # 只检查受影响文件
 
 - 测试文件命名：C++ 以 `_unittest.cc` 或 `_ut.cc` 结尾，Python 以 `test_*.py` 命名。
 - 行为变更必须补齐或更新测试。
-- C++ 用例按 suite 放置：`tests/cpp/llm_datadist/`、`tests/cpp/adxl/`、`tests/cpp/hixl/`（含 `fabric_mem/`）；端口规划见 `tests/cpp/TEST_PORTS.md`。
+- C++ 用例按 suite 放置：`tests/cpp/llm_datadist/`、`tests/cpp/adxl/`、`tests/cpp/hixl/`（含 `ubmem/`）；端口规划见 `tests/cpp/TEST_PORTS.md`。
 - Python 用例放在 `tests/python/test_*.py`。
 
 ## 提交前检查与提交规范

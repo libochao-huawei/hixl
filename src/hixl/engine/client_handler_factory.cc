@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "common/hixl_checker.h"
+#include "common/hixl_inner_types.h"
 #include "common/hixl_log.h"
 #include "engine/direct_client_handler.h"
 #include "engine/direct_multi_channel_handler.h"

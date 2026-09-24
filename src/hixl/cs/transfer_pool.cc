@@ -17,15 +17,16 @@
 #include <unordered_map>
 
 #include "acl/acl.h"
+#include "acl/acl_rt.h"
 #include "common/hixl_checker.h"
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
 #include "common/llm_utils.h"
 #include "common/scope_guard.h"
+#include "proxy/hcomm_proxy.h"
 #include "load_kernel.h"
 #include "notify_addr_resolver.h"
 #include "proxy/ascend_hal_proxy.h"
-#include "proxy/hcomm_proxy.h"
 
 namespace {
 constexpr uint64_t kFlagInitValue = 0ULL;
@@ -38,6 +39,8 @@ constexpr uint32_t kSyncContextRetryIntervalMs = 100U;
 constexpr const char *kDeviceFuncGet = "HixlBatchGet";
 constexpr const char *kDeviceFuncPut = "HixlBatchPut";
 constexpr const char *kDeviceFuncSyncContext = "HixlSyncTransferContext";
+constexpr const char *kUbMemFuncRead = "HixlUbMemBatchRead";
+constexpr const char *kUbMemFuncWrite = "HixlUbMemBatchWrite";
 }  // namespace
 
 namespace hixl {
@@ -277,6 +280,7 @@ void TransferPool::FillHandleFromSlot(int32_t device_id, uint32_t index, const S
   handle->err_flag_host_addr = slot.err_flag_host_addr;
   handle->err_flag_dev_addr = slot.err_flag_dev_addr;
   handle->launched_tasks = slot.launched_tasks;
+  handle->ubmem_stream = slot.ubmem_stream;
 }
 
 Status TransferPool::InitAllSlotsLocked() {
@@ -344,16 +348,25 @@ void TransferPool::AbortInUseStreamsLocked() const {
 
 void TransferPool::AbortInUseStreamLocked(const Slot &slot) {
   hixl::TemporaryRtContext guard(slot.ctx);
+  if (slot.ubmem_stream != nullptr) {
+    HIXL_CHK_ACL(aclrtStreamStop(slot.ubmem_stream), "[TransferPool] aclrtStreamStop ubmem stream failed in Finalize");
+  }
   if (slot.stream != nullptr) {
     HIXL_CHK_ACL(aclrtStreamAbort(slot.stream), "[TransferPool] aclrtStreamAbort failed in Finalize");
   }
 }
 
 void TransferPool::AbortSlotRuntimeLocked(Slot &slot) const {
-  hixl::TemporaryRtContext guard(slot.ctx);
-  if (slot.stream != nullptr) {
-    HIXL_CHK_ACL(aclrtStreamAbort(slot.stream), "[TransferPool] aclrtStreamAbort failed");
+  // Abort drains the host-visible stream that memcpy submissions use. The device-only AICPU worker
+  // stream has no host-visible completion, so destroying it releases the device resources after abort.
+  {
+    hixl::TemporaryRtContext guard(slot.ctx);
+    if (slot.stream != nullptr) {
+      HIXL_CHK_ACL(aclrtStreamAbort(slot.stream), "[TransferPool] aclrtStreamAbort failed");
+    }
   }
+  (void)DestroyUbMemStreamLocked(slot);
+  slot.stream = nullptr;
   ResetAbortSlotNotifyLocked(slot);
 }
 
@@ -374,15 +387,19 @@ Status TransferPool::DeleteSlotThreadContextForAbortLocked(Slot &slot, uint32_t 
                                                            uint64_t *out_dispatched) const {
   Status sync_ret = SUCCESS;
   if (slot.thread != 0U) {
-    const ThreadHandle thread = slot.thread;
     sync_ret =
         SyncOneTransferContextLocked(slot, TRANSFER_CONTEXT_OP_DELETE, TRANSFER_THREAD_STATE_DELETED, out_dispatched);
     HIXL_CHK_STATUS(sync_ret,
                     "[TransferPool] delete transfer context failed in AbortSlotByIndexLocked, slot=%u device_id=%d",
                     slot_index, device_id_);
+  }
+  if (slot.thread != 0U) {
+    const ThreadHandle thread = slot.thread;
     const hixl::TemporaryRtContext rts_guard(rts_context_);
-    HIXL_CHK_ACL(HcommProxy::ThreadFree(&slot.thread, 1U), "HcommThreadFree failed");
-    HIXL_EVENT("[TransferPool] Hcomm thread free success, device_id=%d, thread=%lu, scene=abort", device_id_,
+    HIXL_CHK_ACL(HcommProxy::ThreadFree(&slot.thread, 1U),
+                 "[TransferPool] HcommThreadFree failed in AbortSlotByIndexLocked, device_id=%d, thread=%lu",
+                 device_id_, static_cast<uint64_t>(thread));
+    HIXL_EVENT("[TransferPool] slot thread free success, device_id=%d, thread=%lu, scene=abort", device_id_,
                static_cast<uint64_t>(thread));
     slot.thread = 0U;
   }
@@ -468,7 +485,7 @@ void TransferPool::DeinitAllSlotsLocked() {
   }
   for (uint32_t i = 0U; i < pool_size_; ++i) {
     if ((slots_[i].ctx != nullptr) || (slots_[i].stream != nullptr) || (slots_[i].thread != 0U) ||
-        (slots_[i].notify != nullptr)) {
+        (slots_[i].notify != nullptr) || (slots_[i].ubmem_stream != nullptr)) {
       HIXL_CHK_STATUS(DestroySlotLocked(slots_[i], false),
                       "[TransferPool] DeinitAllSlotsLocked destroy slot failed, idx=%u", i);
     }
@@ -526,8 +543,53 @@ Status TransferPool::EnsureThreadLocked(Slot &slot) const {
   }
   uint32_t notify_num = kDefaultNotifyNumPerThread;
   HIXL_CHK_HCCL_RET(HcommProxy::ThreadAlloc(kDefaultEngine, kDefaultThreadNum, &notify_num, &slot.thread));
-  HIXL_EVENT("[TransferPool] Hcomm thread alloc success, device_id=%d, thread=%lu", device_id_,
+  HIXL_EVENT("[TransferPool] slot thread alloc success, device_id=%d, thread=%lu", device_id_,
              static_cast<uint64_t>(slot.thread));
+  return SUCCESS;
+}
+
+Status TransferPool::CreateUbMemStreamLocked(Slot &slot) const {
+  if (slot.ubmem_stream != nullptr) {
+    return SUCCESS;
+  }
+  HIXL_CHK_BOOL_RET_STATUS(slot.ctx != nullptr, FAILED, "[TransferPool] CreateUbMemStreamLocked: slot.ctx is null");
+  const hixl::TemporaryRtContext guard(slot.ctx);
+  aclrtStream stream = nullptr;
+  HIXL_CHK_ACL_RET(aclrtCreateStreamWithConfig(&stream, 0U, ACL_STREAM_DEVICE_USE_ONLY),
+                   "[TransferPool] aclrtCreateStreamWithConfig ubmem stream failed");
+  slot.ubmem_stream = stream;
+  return SUCCESS;
+}
+
+void TransferPool::DestroyUbMemStreamLocked(Slot &slot) {
+  if (slot.ubmem_stream == nullptr) {
+    return;
+  }
+  const hixl::TemporaryRtContext guard(slot.ctx);
+  HIXL_CHK_ACL(aclrtDestroyStream(slot.ubmem_stream), "[TransferPool] aclrtDestroyStream ubmem stream failed");
+  slot.ubmem_stream = nullptr;
+}
+
+bool TransferPool::IsInitialized() const {
+  std::lock_guard<std::mutex> lock(mu_);
+  return inited_;
+}
+
+Status TransferPool::EnsureUbMemStream(SlotHandle &handle) {
+  std::lock_guard<std::mutex> lock(mu_);
+  HIXL_CHK_BOOL_RET_STATUS(inited_, FAILED, "[TransferPool] EnsureUbMemStream failed: not initialized, device_id:%d",
+                           device_id_);
+  HIXL_CHK_BOOL_RET_STATUS(handle.device_id == device_id_, PARAM_INVALID,
+                           "[TransferPool] EnsureUbMemStream device_id mismatch. pool=%d handle=%d", device_id_,
+                           handle.device_id);
+  HIXL_CHK_BOOL_RET_STATUS(handle.slot_index < pool_size_, PARAM_INVALID,
+                           "[TransferPool] EnsureUbMemStream invalid slot index %u", handle.slot_index);
+  Slot &slot = slots_[handle.slot_index];
+  HIXL_CHK_BOOL_RET_STATUS(slot.in_use, FAILED, "[TransferPool] EnsureUbMemStream slot %u is not in use",
+                           handle.slot_index);
+  HIXL_CHK_STATUS_RET(CreateUbMemStreamLocked(slot), "[TransferPool] CreateUbMemStreamLocked failed, slot=%u",
+                      handle.slot_index);
+  handle.ubmem_stream = slot.ubmem_stream;
   return SUCCESS;
 }
 
@@ -696,6 +758,21 @@ Status TransferPool::EnsureDeviceKernelsLocked() {
   HIXL_CHECK_NOTNULL(device_func_handles_.batch_get, "[TransferPool] batch get func is null");
   HIXL_CHECK_NOTNULL(device_func_handles_.batch_put, "[TransferPool] batch put func is null");
   HIXL_CHECK_NOTNULL(device_func_handles_.sync_transfer_context, "[TransferPool] sync transfer context func is null");
+  HIXL_CHK_STATUS_RET(LoadOptionalUbMemKernelsLocked(), "[TransferPool] LoadOptionalUbMemKernelsLocked failed");
+  return SUCCESS;
+}
+
+Status TransferPool::LoadOptionalUbMemKernelsLocked() {
+  std::vector<aclrtFuncHandle> handles;
+  const Status ret = LoadDeviceKernelFunctions({kUbMemFuncRead, kUbMemFuncWrite}, kernel_bin_handle_, handles);
+  if (ret != SUCCESS || handles.size() != 2U || handles[0U] == nullptr || handles[1U] == nullptr) {
+    HIXL_LOGW("[TransferPool] UbMem AICPU kernels are unavailable, device_id=%d", device_id_);
+    device_func_handles_.ubmem_batch_read = nullptr;
+    device_func_handles_.ubmem_batch_write = nullptr;
+    return SUCCESS;
+  }
+  device_func_handles_.ubmem_batch_read = handles[0U];
+  device_func_handles_.ubmem_batch_write = handles[1U];
   return SUCCESS;
 }
 
@@ -881,6 +958,11 @@ std::vector<HixlTransferContextSyncEntry> TransferPool::BuildSyncEntriesFromSlot
 }
 
 Status TransferPool::DestroySlotLocked(Slot &slot, bool sync_context) const {
+  DestroyUbMemStreamLocked(slot);
+  if (sync_context) {
+    Status ret = SyncOneTransferContextLocked(slot, TRANSFER_CONTEXT_OP_DELETE, TRANSFER_THREAD_STATE_DELETED);
+    HIXL_CHK_STATUS(ret, "[TransferPool] delete transfer context failed before slot destroy");
+  }
   {
     hixl::TemporaryRtContext with_context(slot.ctx);
     if (slot.notify != nullptr) {
@@ -892,14 +974,12 @@ Status TransferPool::DestroySlotLocked(Slot &slot, bool sync_context) const {
     }
   }
   if (slot.thread != 0U) {
-    if (sync_context) {
-      Status ret = SyncOneTransferContextLocked(slot, TRANSFER_CONTEXT_OP_DELETE, TRANSFER_THREAD_STATE_DELETED);
-      HIXL_CHK_STATUS(ret, "[TransferPool] delete transfer context failed before ThreadFree");
-    }
     const ThreadHandle thread = slot.thread;
     const hixl::TemporaryRtContext rts_guard(rts_context_);
-    HIXL_CHK_ACL(HcommProxy::ThreadFree(&slot.thread, 1U), "HcommThreadFree failed");
-    HIXL_EVENT("[TransferPool] Hcomm thread free success, device_id=%d, thread=%lu, scene=deinit", device_id_,
+    HIXL_CHK_ACL(HcommProxy::ThreadFree(&slot.thread, 1U),
+                 "[TransferPool] HcommThreadFree failed in DestroySlotLocked, device_id=%d, thread=%lu", device_id_,
+                 static_cast<uint64_t>(thread));
+    HIXL_EVENT("[TransferPool] slot thread free success, device_id=%d, thread=%lu, scene=deinit", device_id_,
                static_cast<uint64_t>(thread));
     slot.thread = 0U;
   }
@@ -916,10 +996,16 @@ aclrtContext TransferPool::GetContext() const {
   return rts_context_;
 }
 
-aclrtFuncHandle TransferPool::GetDeviceKernelFunc(bool is_get) const {
-  HIXL_LOGD("[TransferPool] GetDeviceKernelFunc start. device_id=%d is_get=%d", device_id_, static_cast<int>(is_get));
+aclrtFuncHandle TransferPool::GetDeviceKernelFunc(bool is_get, CommProtocol protocol) const {
+  HIXL_LOGD("[TransferPool] GetDeviceKernelFunc start. device_id=%d is_get=%d protocol=%d", device_id_,
+            static_cast<int>(is_get), static_cast<int>(protocol));
   std::lock_guard<std::mutex> lock(mu_);
-  aclrtFuncHandle func = is_get ? device_func_handles_.batch_get : device_func_handles_.batch_put;
+  aclrtFuncHandle func = nullptr;
+  if (IsUbMemProtocol(protocol)) {
+    func = is_get ? device_func_handles_.ubmem_batch_read : device_func_handles_.ubmem_batch_write;
+  } else {
+    func = is_get ? device_func_handles_.batch_get : device_func_handles_.batch_put;
+  }
   HIXL_LOGD("[TransferPool] GetDeviceKernelFunc success. device_id=%d is_get=%d func=%p", device_id_,
             static_cast<int>(is_get), func);
   return func;

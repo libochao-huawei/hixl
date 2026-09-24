@@ -42,6 +42,10 @@ class TransferPool {
     uint8_t *err_flag_host_addr;
     uint64_t err_flag_dev_addr;
     uint64_t launched_tasks{0};
+    // Worker stream for the UB_MEM AICPU kernels, created on the first unfolded transfer because the
+    // kernel parameters carry its RTSQ metadata. The Host memcpy path uses slot.stream instead. Freed
+    // on slot teardown.
+    aclrtStream ubmem_stream{nullptr};
   };
 
   TransferPool(const TransferPool &) = delete;
@@ -52,10 +56,12 @@ class TransferPool {
   Status Acquire(SlotHandle *handle);
   void Release(const SlotHandle &handle);
   void Abort(const SlotHandle &handle);
+  bool IsInitialized() const;
+  Status EnsureUbMemStream(SlotHandle &handle);
   Status GetAllSlots(std::vector<SlotHandle> &out) const;
   Status ResolveNotifyAddr();
   aclrtContext GetContext() const;
-  aclrtFuncHandle GetDeviceKernelFunc(bool is_get) const;
+  aclrtFuncHandle GetDeviceKernelFunc(bool is_get, CommProtocol protocol = COMM_PROTOCOL_ROCE) const;
 
   explicit TransferPool(int32_t device_id);
   ~TransferPool();
@@ -73,6 +79,7 @@ class TransferPool {
     uint8_t *err_flag_host_addr;
     uint64_t err_flag_dev_addr;
     uint64_t launched_tasks{0};
+    aclrtStream ubmem_stream{nullptr};
   };
 
   void InitFreeListLocked();
@@ -88,6 +95,8 @@ class TransferPool {
   Status EnsureContextLocked(Slot &slot) const;
   Status EnsureDefaultStreamLocked(Slot &slot) const;
   Status EnsureThreadLocked(Slot &slot) const;
+  Status CreateUbMemStreamLocked(Slot &slot) const;
+  static void DestroyUbMemStreamLocked(Slot &slot);
   Status DestroySlotLocked(Slot &slot, bool sync_context = true) const;
 
   Status EnsureErrFlagMemLocked();
@@ -110,6 +119,7 @@ class TransferPool {
   void AbortSlotByIndexLocked(uint32_t slot_index, uint64_t launched);
 
   static void FillHandleFromSlot(int32_t device_id, uint32_t index, const Slot &slot, SlotHandle *handle);
+  Status LoadOptionalUbMemKernelsLocked();
   Status EnsureDevConstOneLocked();
   Status EnsureDeviceKernelsLocked();
   Status SyncContextsLocked(const std::vector<HixlTransferContextSyncEntry> &entries, uint32_t op,

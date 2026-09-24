@@ -128,12 +128,9 @@ class HixlCSClientDeviceFixture : public ::testing::Test {
     ASSERT_EQ(cli_.Create(&desc, &config), SUCCESS);
 
     cli_.client_channel_handle_ = static_cast<ChannelHandle>(1ULL);
-    cli_.device_remote_flag_inited_ = false;
     remote_flag_dev_ = 0ULL;
     const char *flag_name = (dst.loc.locType == ENDPOINT_LOC_TYPE_HOST) ? kTransFlagNameHost : kTransFlagNameDevice;
     FillTagMem(cli_, flag_name, static_cast<void *>(&remote_flag_dev_), sizeof(uint64_t));
-
-    // 手动初始化 remote flag，模拟 GetRemoteMemImpl 的行为
     ASSERT_EQ(cli_.EnsureDeviceRemoteFlagInited(), SUCCESS);
   }
 
@@ -277,35 +274,6 @@ TEST_F(HixlCSClientDeviceFixture, BatchGetDeviceSuccessUseMemcpyHackFlag) {
   HixlCompleteStatus st = HixlCompleteStatus::HIXL_COMPLETE_STATUS_WAITING;
   (void)PollUntilCompleted(cli_, qh, &st);
   EXPECT_EQ(st, HixlCompleteStatus::HIXL_COMPLETE_STATUS_COMPLETED);
-}
-
-TEST_F(HixlCSClientDeviceFixture, EnsureDeviceRemoteFlagInitedMissingTagNoError) {
-  cli_.device_remote_flag_inited_ = false;
-  cli_.device_remote_flag_addr_ = nullptr;  // 重置为 nullptr
-  cli_.tag_mem_descs_.clear();
-
-  // EnsureDeviceRemoteFlagInited 现在不报错，只跳过初始化
-  // 错误延迟到传输阶段的 PrepareDeviceRemoteFlagAndKernel
-  EXPECT_EQ(cli_.EnsureDeviceRemoteFlagInited(), SUCCESS);
-  EXPECT_EQ(cli_.device_remote_flag_addr_, nullptr);
-
-  // 实际传输时 PrepareDeviceRemoteFlagAndKernel 会检查并报错
-  void *remote_flag = nullptr;
-  EXPECT_EQ(cli_.PrepareDeviceRemoteFlagAndKernel(remote_flag), PARAM_INVALID);
-}
-
-TEST_F(HixlCSClientDeviceFixture, PrepareDeviceRemoteFlagAndKernelReturnsFlagAddr) {
-  // 设置 remote flag 已初始化，有正确的 tag
-  cli_.device_remote_flag_inited_ = false;
-  FillTagMem(cli_, kTransFlagNameDevice, static_cast<void *>(&remote_flag_dev_), sizeof(uint64_t));
-
-  // 先初始化 remote flag
-  EXPECT_EQ(cli_.EnsureDeviceRemoteFlagInited(), SUCCESS);
-
-  // PrepareDeviceRemoteFlagAndKernel 现在只返回已初始化的 flag 地址
-  void *remote_flag = nullptr;
-  EXPECT_EQ(cli_.PrepareDeviceRemoteFlagAndKernel(remote_flag), SUCCESS);
-  EXPECT_EQ(remote_flag, static_cast<void *>(&remote_flag_dev_));
 }
 
 TEST_F(HixlCSClientDeviceFixture, BatchPutDeviceSyncUsesStreamSyncNoMemcpy) {

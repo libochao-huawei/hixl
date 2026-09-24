@@ -100,6 +100,8 @@ Status LoadDeviceKernelAndGetHandles(const char *func_get, const char *func_put,
                                      DeviceFuncHandles &func_handles, const char *func_sync_context) {
   func_handles.batch_get = nullptr;
   func_handles.batch_put = nullptr;
+  func_handles.ubmem_batch_read = nullptr;
+  func_handles.ubmem_batch_write = nullptr;
   func_handles.sync_transfer_context = nullptr;
   std::string json_path;
   HIXL_CHK_STATUS_RET(GetKernelFilePath(json_path), "[LoadKernel] GetKernelFilePath failed");

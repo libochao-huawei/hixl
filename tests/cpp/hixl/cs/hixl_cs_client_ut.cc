@@ -1707,6 +1707,46 @@ TEST_F(HixlCSClientUT, ParseConfigMaxTransferCountPerBatchRejectsOutOfRange) {
   }
 }
 
+TEST_F(HixlCSClientUT, ParseConfigUbMemoryAcceptsCapacityAndStartAddress) {
+  GlobalConfig config;
+  EXPECT_EQ(GlobalConfig::Parse(R"({"fabric_memory.max_capacity":10,"fabric_memory.start_address":40})", config),
+            SUCCESS);
+  ASSERT_TRUE(config.UbMemMaxCapacity().has_value());
+  EXPECT_EQ(*config.UbMemMaxCapacity(), 10U);
+  ASSERT_TRUE(config.UbMemStartAddress().has_value());
+  EXPECT_EQ(*config.UbMemStartAddress(), 40U);
+}
+
+TEST_F(HixlCSClientUT, ParseConfigUbMemoryAcceptsAllFields) {
+  GlobalConfig config;
+  EXPECT_EQ(GlobalConfig::Parse(R"({"fabric_memory.max_capacity":10,"fabric_memory.start_address":40,)"
+                                R"("fabric_memory.task_stream_num":4,"fabric_memory.enable_aicpu_unfold":false})",
+                                config),
+            SUCCESS);
+  ASSERT_TRUE(config.UbMemory().max_capacity.has_value());
+  EXPECT_EQ(*config.UbMemory().max_capacity, 10U);
+  ASSERT_TRUE(config.UbMemory().start_address.has_value());
+  EXPECT_EQ(*config.UbMemory().start_address, 40U);
+  ASSERT_TRUE(config.UbMemory().task_stream_num.has_value());
+  EXPECT_EQ(*config.UbMemory().task_stream_num, 4U);
+  ASSERT_TRUE(config.UbMemory().enable_aicpu_unfold.has_value());
+  EXPECT_FALSE(*config.UbMemory().enable_aicpu_unfold);
+}
+
+TEST_F(HixlCSClientUT, ParseConfigUbMemoryRejectsOutOfRange) {
+  for (const char *config_str : {R"({"fabric_memory.max_capacity":0})", R"({"fabric_memory.max_capacity":1025})",
+                                 R"({"fabric_memory.start_address":-1})", R"({"fabric_memory.start_address":1025})",
+                                 R"({"fabric_memory.task_stream_num":0})", R"({"fabric_memory.task_stream_num":9})"}) {
+    GlobalConfig config;
+    EXPECT_EQ(GlobalConfig::Parse(config_str, config), PARAM_INVALID) << config_str;
+  }
+}
+
+TEST_F(HixlCSClientUT, ParseConfigUbMemoryRejectsNonBooleanAicpuUnfold) {
+  GlobalConfig config;
+  EXPECT_EQ(GlobalConfig::Parse(R"({"fabric_memory.enable_aicpu_unfold":"true"})", config), PARAM_INVALID);
+}
+
 TEST_F(HixlCSClientUT, ParseConfigMaxActiveChannelsMin) {
   port_ = kPort;
   HixlClientDesc desc{};

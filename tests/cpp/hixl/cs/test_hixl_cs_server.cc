@@ -1028,11 +1028,29 @@ TEST_F(HixlCSTest, TestCreateServerRejectsClientTransferConfig) {
   }
 }
 
+TEST_F(HixlCSTest, TestCreateServerRejectsInvalidUbMemoryConfig) {
+  for (const char *config_str : {R"({"fabric_memory.max_capacity":0})", R"({"fabric_memory.max_capacity":1025})",
+                                 R"({"fabric_memory.start_address":-1})", R"({"fabric_memory.start_address":1025})",
+                                 R"({"fabric_memory.task_stream_num":0})", R"({"fabric_memory.task_stream_num":9})",
+                                 R"({"fabric_memory.enable_aicpu_unfold":"true"})"}) {
+    HixlServerConfig config{};
+    config.global_resource_config = config_str;
+    HixlServerHandle server_handle = reinterpret_cast<HixlServerHandle>(this);
+    HixlServerDesc desc{};
+    desc.server_ip = "127.0.0.1";
+    desc.server_port = kPort;
+    desc.endpoint_list = &default_eps[0];
+    desc.endpoint_list_num = default_eps.size();
+    EXPECT_EQ(HixlCSServerCreate(&desc, &config, &server_handle), HIXL_PARAM_INVALID) << "config_str=" << config_str;
+    EXPECT_EQ(server_handle, nullptr) << "config_str=" << config_str;
+  }
+}
+
 // 覆盖 EndpointGetListenPort 返回 HCCL_E_NOT_SUPPORT 分支：记录警告日志，端口号保持为0
 TEST_F(HixlCSTest, TestEndpointGetListenPortNotSupported) {
   auto log_capture = std::make_shared<llm::LogCaptureStub>();
   log_capture->SetLevel(DLOG_WARN);
-  log_capture->AddCapturePattern("HcommEndpointGetListenPort is not supported");
+  log_capture->AddCapturePattern("EndpointGetListenPort is not supported");
   llm::SlogStub::SetInstance(log_capture);
   SetListenPortResult(static_cast<int32_t>(HCCL_E_NOT_SUPPORT));
 
@@ -1046,7 +1064,7 @@ TEST_F(HixlCSTest, TestEndpointGetListenPortNotSupported) {
   (void)close(client_fd);
 
   EXPECT_TRUE(log_capture->WaitForAllPatternsCaptured(kCaptureLogTimeoutMs));
-  EXPECT_TRUE(log_capture->IsPatternCaptured("HcommEndpointGetListenPort is not supported"));
+  EXPECT_TRUE(log_capture->IsPatternCaptured("EndpointGetListenPort is not supported"));
   EXPECT_EQ(HixlCSServerDestroy(server_handle), SUCCESS);
   llm::SlogStub::SetInstance(nullptr);
 }

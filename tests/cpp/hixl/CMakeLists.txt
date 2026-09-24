@@ -21,6 +21,7 @@ set(HIXL_TEST_FILES
         proxy/dsmi_proxy_ut.cc
         common/log_macro_ut.cc
         cs/endpoint_store_ut.cc
+        cs/endpoint_factory_ut.cc
         cs/test_hixl_cs_server.cc
         cs/hixl_cs_client_ut.cc
         cs/hixl_mem_store_basic_ut.cc
@@ -35,6 +36,7 @@ set(HIXL_TEST_FILES
         engine/hixl_utils_unittest.cc
         engine/hixl_options_unittest.cc
         engine/client_handler_config_helper_ut.cc
+        engine/client_handler_factory_ut.cc
         engine/hixl_engine_unittest.cc
         engine/hixl_api_unittest.cc
         engine/test_hixl_api.cc
@@ -52,7 +54,7 @@ set(HIXL_TEST_FILES
 
 file(GLOB HIXL_SRC_LIST
         "${HIXL_CODE_DIR}/src/hixl/common/*.cc"
-        "${HIXL_CODE_DIR}/src/hixl/fabric_mem/*.cc"
+        "${HIXL_CODE_DIR}/src/hixl/cs/ubmem/*.cc"
         "${HIXL_CODE_DIR}/src/hixl/engine/*.cc"
         "${HIXL_CODE_DIR}/src/hixl/engine/endpoint_generator/*.cc"
         "${HIXL_CODE_DIR}/src/hixl/cs/*.cc"
@@ -222,7 +224,7 @@ set_target_properties(hixl_test PROPERTIES
         LINK_FLAGS "-Wl,--disable-new-dtags -Wl,--wrap=dlopen -Wl,--wrap=dlsym -Wl,--wrap=dlclose -Wl,--wrap=dlerror -Wl,--wrap=access -Wl,--wrap=realpath"
 )
 
-add_subdirectory(fabric_mem)
+add_subdirectory(ubmem)
 
 include(CTest)
 enable_testing()

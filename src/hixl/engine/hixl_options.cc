@@ -10,6 +10,7 @@
 
 #include "hixl_options.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <climits>
 #include <cstdlib>
@@ -28,13 +29,10 @@
 #include "common/json_utils.h"
 #include "common/scope_guard.h"
 #include "common/transfer_config.h"
-#include "fabric_mem/fabric_mem_config.h"
+#include "cs/ubmem/ubmem_types.h"
 
 namespace hixl {
 namespace {
-constexpr size_t kMaxCapacityTB = 1024UL;
-constexpr size_t kMinTaskStreamNum = 1U;
-constexpr size_t kMaxTaskStreamNum = 8U;
 constexpr uint32_t kMinListenPort = 1U;
 constexpr uint32_t kMaxListenPort = 65535U;
 constexpr uint32_t kMinActiveChannels = 1U;
@@ -143,12 +141,12 @@ Status ReadLocalCommResFile(const std::string &path, std::string &content) {
   return SUCCESS;
 }
 
-Status ParseFabricMemoryFields(const nlohmann::json &json, FabricMemoryConfig &cfg) {
-  IntegerFieldRange capacity_range = {"max_capacity", 1, static_cast<int64_t>(kMaxCapacityTB), " TB"};
+Status ParseUbMemoryFields(const nlohmann::json &json, UbMemoryConfig &cfg) {
+  IntegerFieldRange capacity_range = {"max_capacity", 1, static_cast<int64_t>(kMaxUbMemCapacityTB), " TB"};
   HIXL_CHK_STATUS_RET(ParseIntegerFieldInRange(json, capacity_range, cfg.max_capacity),
                       "Failed to parse fabric_memory.max_capacity");
-  IntegerFieldRange start_addr_range = {"start_address", static_cast<int64_t>(kMinFabricMemStartAddrTB),
-                                        static_cast<int64_t>(kMaxFabricMemStartAddrTB), " TB"};
+  IntegerFieldRange start_addr_range = {"start_address", static_cast<int64_t>(kMinUbMemStartAddrTB),
+                                        static_cast<int64_t>(kMaxUbMemStartAddrTB), " TB"};
   HIXL_CHK_STATUS_RET(ParseIntegerFieldInRange(json, start_addr_range, cfg.start_address),
                       "Failed to parse fabric_memory.start_address");
   IntegerFieldRange stream_num_range = {"task_stream_num", static_cast<int64_t>(kMinTaskStreamNum),
@@ -161,16 +159,16 @@ Status ParseFabricMemoryFields(const nlohmann::json &json, FabricMemoryConfig &c
   return SUCCESS;
 }
 
-Status ParseFabricMemoryConfig(const nlohmann::json &json, FabricMemoryConfig &cfg) {
+Status ParseUbMemoryConfig(const nlohmann::json &json, UbMemoryConfig &cfg) {
   if (json.contains("fabric_memory") && json.at("fabric_memory").is_object()) {
-    HIXL_CHK_STATUS_RET(ParseFabricMemoryFields(json.at("fabric_memory"), cfg),
-                        "Failed to parse nested FabricMemoryConfig");
+    HIXL_CHK_STATUS_RET(ParseUbMemoryFields(json.at("fabric_memory"), cfg), "Failed to parse nested UbMemoryConfig");
   }
-  IntegerFieldRange capacity_range = {"fabric_memory.max_capacity", 1, static_cast<int64_t>(kMaxCapacityTB), " TB"};
+  IntegerFieldRange capacity_range = {"fabric_memory.max_capacity", 1, static_cast<int64_t>(kMaxUbMemCapacityTB),
+                                      " TB"};
   HIXL_CHK_STATUS_RET(ParseIntegerFieldInRange(json, capacity_range, cfg.max_capacity),
                       "Failed to parse fabric_memory.max_capacity");
-  IntegerFieldRange start_addr_range = {"fabric_memory.start_address", static_cast<int64_t>(kMinFabricMemStartAddrTB),
-                                        static_cast<int64_t>(kMaxFabricMemStartAddrTB), " TB"};
+  IntegerFieldRange start_addr_range = {"fabric_memory.start_address", static_cast<int64_t>(kMinUbMemStartAddrTB),
+                                        static_cast<int64_t>(kMaxUbMemStartAddrTB), " TB"};
   HIXL_CHK_STATUS_RET(ParseIntegerFieldInRange(json, start_addr_range, cfg.start_address),
                       "Failed to parse fabric_memory.start_address");
   IntegerFieldRange stream_num_range = {"fabric_memory.task_stream_num", static_cast<int64_t>(kMinTaskStreamNum),
@@ -309,7 +307,7 @@ Status MaybeValidateTopoFilePath(const HixlOptions &opts) {
 }
 
 Status ParseGlobalResourceConfigJson(const nlohmann::json &json, GlobalResourceConfig &cfg) {
-  HIXL_CHK_STATUS_RET(ParseFabricMemoryConfig(json, cfg.fabric_memory), "Failed to parse FabricMemoryConfig");
+  HIXL_CHK_STATUS_RET(ParseUbMemoryConfig(json, cfg.fabric_memory), "Failed to parse UbMemoryConfig");
   HIXL_CHK_STATUS_RET(ParseConnectPoolConfig(json, cfg.connect_pool), "Failed to parse ConnectPoolConfig");
   HIXL_CHK_STATUS_RET(ParseCommResourceConfig(json, cfg.comm_resource_config), "Failed to parse CommResourceConfig");
   HIXL_CHK_STATUS_RET(ParseTransferConfig(json, cfg.transfer_config), "Failed to parse TransferConfig");
@@ -330,9 +328,10 @@ Status HixlOptions::Parse(const std::map<AscendString, AscendString> &options, H
   }
   HIXL_CHK_STATUS_RET(result.ParseRdmaOptions(options), "Failed to parse RDMA options.");
   HIXL_CHK_STATUS_RET(result.ParseEndpointOptions(options), "Failed to parse endpoint options.");
-  HIXL_CHK_STATUS_RET(result.ParseFabricMemOptions(options), "Failed to parse FabricMem options.");
+  HIXL_CHK_STATUS_RET(result.ParseUbMemOptions(options), "Failed to parse UbMem options.");
   HIXL_CHK_STATUS_RET(result.ParseAutoConnectOptions(options), "Failed to parse AutoConnect options.");
   HIXL_CHK_STATUS_RET(result.ParseGlobalResourceConfig(options), "Failed to parse GlobalResourceConfig.");
+  HIXL_CHK_STATUS_RET(result.ApplyUbMemEquivalence(), "Failed to apply ubmem protocol equivalence.");
   HIXL_CHK_STATUS_RET(result.ResolveLocalCommResFromFile(), "Failed to resolve LocalCommRes from file.");
   HIXL_CHK_STATUS_RET(MaybeValidateTopoFilePath(result), "Failed to validate topo_file_path");
   return SUCCESS;
@@ -352,6 +351,11 @@ std::vector<std::string> HixlOptions::GetProtocolDesc() const {
     return {};
   }
   return *global_resource_config_->comm_resource_config.protocol_desc;
+}
+
+bool HixlOptions::HasProtocolDesc(const std::string &token) const {
+  const auto protocol_desc = GetProtocolDesc();
+  return std::find(protocol_desc.begin(), protocol_desc.end(), token) != protocol_desc.end();
 }
 
 std::optional<std::string> HixlOptions::TopoFilePath() const {
@@ -424,7 +428,48 @@ Status HixlOptions::ParseEndpointOptions(const std::map<AscendString, AscendStri
   return SUCCESS;
 }
 
-Status HixlOptions::ParseFabricMemOptions(const std::map<AscendString, AscendString> &options) {
+Status HixlOptions::ApplyUbMemEquivalence() {
+  const bool enable = enable_ubmem_.value_or(false) || HasProtocolDesc(kProtocolUbmem);
+  if (!enable) {
+    return SUCCESS;
+  }
+  enable_ubmem_ = true;
+  if (!global_resource_config_.has_value()) {
+    global_resource_config_ = GlobalResourceConfig{};
+  }
+  auto &crc = global_resource_config_->comm_resource_config;
+  if (enable_ubmem_.value_or(false) && !HasProtocolDesc(kProtocolUbmem)) {
+    HIXL_EVENT(
+        "EnableUseFabricMem overrides protocol_desc to ubmem only; use explicit ubmem plus other protocol_desc "
+        "to enable both");
+    crc.protocol_desc = std::vector<std::string>{kProtocolUbmem};
+  } else if (!crc.protocol_desc.has_value()) {
+    crc.protocol_desc = std::vector<std::string>{};
+  }
+  if (std::find(crc.protocol_desc->begin(), crc.protocol_desc->end(), kProtocolUbmem) == crc.protocol_desc->end()) {
+    crc.protocol_desc->push_back(kProtocolUbmem);
+  }
+  auto &fm = global_resource_config_->fabric_memory;
+  if (fm.task_stream_num.has_value() && crc.multi_worker_num.has_value()) {
+    HIXL_CHK_BOOL_RET_STATUS(static_cast<uint32_t>(*fm.task_stream_num) == *crc.multi_worker_num, PARAM_INVALID,
+                             "fabric_memory.task_stream_num and multi_channel.num_workers mismatch, stream_num:%zu, "
+                             "num_workers:%u",
+                             *fm.task_stream_num, *crc.multi_worker_num);
+  } else if (fm.task_stream_num.has_value()) {
+    crc.multi_worker_num = static_cast<uint32_t>(*fm.task_stream_num);
+  } else if (crc.multi_worker_num.has_value()) {
+    fm.task_stream_num = static_cast<size_t>(*crc.multi_worker_num);
+  }
+  if (fm.enable_aicpu_unfold.value_or(true) && crc.multi_worker_num.value_or(1U) > 1U) {
+    HIXL_LOGE(PARAM_INVALID, "aicpu_unfold mode only supports multi_channel.num_workers=1, got %u",
+              crc.multi_worker_num.value_or(1U));
+    return PARAM_INVALID;
+  }
+  HIXL_EVENT("ApplyUbMemEquivalence success: protocol_desc has ubmem, task_stream_num maps to num_workers");
+  return SUCCESS;
+}
+
+Status HixlOptions::ParseUbMemOptions(const std::map<AscendString, AscendString> &options) {
   const auto &efm_it = options.find(hixl::OPTION_ENABLE_USE_FABRIC_MEM);
   if (efm_it != options.end() && !std::string(efm_it->second.GetString()).empty()) {
     uint32_t enabled = 0U;
@@ -432,8 +477,8 @@ Status HixlOptions::ParseFabricMemOptions(const std::map<AscendString, AscendStr
                         hixl::OPTION_ENABLE_USE_FABRIC_MEM, efm_it->second.GetString());
     HIXL_CHK_BOOL_RET_STATUS(enabled == 0U || enabled == 1U, PARAM_INVALID, "%s is invalid, should be zero or one.",
                              hixl::OPTION_ENABLE_USE_FABRIC_MEM);
-    enable_fabric_mem_ = (enabled == 1U);
-    HIXL_EVENT("ParseFabricMemOptions success: enable_fabric_mem=%d", enable_fabric_mem_.value());
+    enable_ubmem_ = (enabled == 1U);
+    HIXL_EVENT("ParseUbMemOptions success: enable_fabric_mem=%s", enable_ubmem_.value() ? "true" : "false");
   }
   return SUCCESS;
 }

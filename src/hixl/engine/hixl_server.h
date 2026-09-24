@@ -11,13 +11,16 @@
 #ifndef CANN_HIXL_SRC_HIXL_ENGINE_HIXL_SERVER_H
 #define CANN_HIXL_SRC_HIXL_ENGINE_HIXL_SERVER_H
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <vector>
 #include "hixl/hixl_types.h"
 #include "common/hixl_inner_types.h"
+#include "cs/ubmem/ubmem_types.h"
 #include "engine.h"
 
 namespace hixl {
@@ -35,7 +38,8 @@ class HixlServer {
    */
   Status Initialize(const std::string &ip, int32_t port, const std::vector<EndpointConfig> &data_endpoint_config_list,
                     std::optional<uint32_t> listen_port = std::nullopt,
-                    std::optional<uint32_t> max_active_channels = std::nullopt);
+                    std::optional<uint32_t> max_active_channels = std::nullopt,
+                    const UbMemoryConfig &fabric_memory = {});
 
   /**
    * @brief 注册内存

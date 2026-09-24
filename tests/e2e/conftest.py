@@ -48,7 +48,7 @@ def pytest_collection_modifyitems(config, items):
             npu_name = _get_npu_name()
             if "Ascend910" in npu_name:
                 item.add_marker(
-                    pytest.mark.skip(reason=f"FabricMem requires A3, got {npu_name}")
+                    pytest.mark.skip(reason=f"UbMem requires A3, got {npu_name}")
                 )
 
 

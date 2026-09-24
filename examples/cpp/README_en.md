@@ -26,7 +26,7 @@ Function: Implements KV Cache transmission functionality in disaggregated deploy
 |   ├── hixl_example_d2rd.cpp                          // HIXL D2rD single-process scenario sample
 |   ├── hixl_example_d2rh.cpp                          // HIXL D2rH single-process scenario sample
 |   ├── hixl_example_d2rd_multiproc.cpp                // HIXL D2rD multi-process scenario sample
-|   ├── fabric_mem_d2d.cpp                             // HIXL fabric-mem mode d2d scenario sample
+|   ├── ubmem_d2d.cpp                                  // HIXL UBMEM mode d2d scenario sample
 |   ├── CMakeLists.txt                                 // Build script
 ```
 
@@ -129,7 +129,7 @@ Function: Implements KV Cache transmission functionality in disaggregated deploy
 
     - Single-process samples (hixl_example_d2rd, hixl_example_d2rh) start two engines in one process, no need for separate terminals. Supported on CANN-9.1.0 or later.
     - Multi-process sample (hixl_example_d2rd_multiproc) requires starting server and client in two separate terminals. Server starts first. No CANN version requirement.
-    - fabric_mem_d2d must run in pairs, started in two terminals.
+    - ubmem_d2d must run in pairs, started in two terminals.
 
   - HIXL Sample Process Parameter Description
 
@@ -221,23 +221,23 @@ Function: Implements KV Cache transmission functionality in disaggregated deploy
           ./hixl_example_d2rd_multiproc --role=client --protocol=roce:device --version=0
           ```
 
-    (4) Run fabric_mem_d2d, fabric mem mode D2D scenario
+    (4) Run ubmem_d2d, UBMEM mode D2D scenario
 
     **Note**:
 
     - FabricMem only supports Atlas A3 training series products / Atlas A3 inference series products, with a minimum HDK version of 25.5.
     - HDK 25.5 does not support `aclrtMemRetainAllocationHandle`. On this version, Host memory in FabricMem scenarios must be allocated and freed using the ADXL-provided `MallocMem`/`FreeMem`.
     - HDK 26.0 and above can directly use ACL interfaces to manage Host memory in FabricMem scenarios.
-    - The current `fabric_mem_d2d` example directly uses ACL VMM interfaces `aclrtReserveMemAddress`, `aclrtMallocPhysical`, and `aclrtMapMem` in `AllocateBuffer` to allocate memory, then registers it as `MEM_DEVICE`, rather than allocating through ADXL's `AdxlEngine::MallocMem`. This registration path requires `aclrtMemRetainAllocationHandle`, so the example requires HDK 26.0 or later and is not compatible with HDK 25.5. The `aclrtMallocHost`/`aclrtFreeHost` in the example are only used for initialization and buffer verification, not for FabricMem Host memory registration.
+    - The current `ubmem_d2d` example directly uses ACL VMM interfaces `aclrtReserveMemAddress`, `aclrtMallocPhysical`, and `aclrtMapMem` in `AllocateBuffer` to allocate memory, then registers it as `MEM_DEVICE`, rather than allocating through ADXL's `AdxlEngine::MallocMem`. This registration path requires `aclrtMemRetainAllocationHandle`, so the example requires HDK 26.0 or later and is not compatible with HDK 25.5. The `aclrtMallocHost`/`aclrtFreeHost` in the example are only used for initialization and buffer verification, not for UBMEM Host memory registration.
 
-      - Run server1 fabric_mem_d2d with parameters device_id, local engine and remote engine, where device_id is the device ID used by the current engine. For example:
+      - Run server1 ubmem_d2d with parameters device_id, local engine and remote engine, where device_id is the device ID used by the current engine. For example:
 
           ```cpp
-          ./fabric_mem_d2d 0 127.0.0.1:16000 127.0.0.1:16001
+          ./ubmem_d2d 0 127.0.0.1:16000 127.0.0.1:16001
           ```
 
-      - Run server2 fabric_mem_d2d with parameters device_id, local engine and remote engine, where device_id is the device ID used by the current engine. For example:
+      - Run server2 ubmem_d2d with parameters device_id, local engine and remote engine, where device_id is the device ID used by the current engine. For example:
 
           ```cpp
-          ./fabric_mem_d2d 1 127.0.0.1:16001 127.0.0.1:16000
+          ./ubmem_d2d 1 127.0.0.1:16001 127.0.0.1:16000
           ```
