@@ -31,6 +31,7 @@
 namespace hixl {
 namespace {
 constexpr uint32_t kBufferMaxSize = 128U;
+constexpr int32_t kMaxTcpPort = 65535;
 constexpr const char kHccnConfPath[] = "/etc/hccn.conf";
 constexpr const char kHccnToolPath[] = "/usr/local/Ascend/driver/tools/hccn_tool";
 constexpr const char kHccnConfIpv4KeyPrefix[] = "address_";
@@ -276,6 +277,8 @@ Status ParseListenInfo(const std::string &listen_info, std::string &listen_ip, i
                       listen_info.c_str());
   if (listen_infos.size() > 1U) {
     HIXL_CHK_STATUS_RET(ToNumber(listen_infos[1], listen_port), "Port:%s is invalid.", listen_infos[1].c_str());
+    HIXL_CHK_BOOL_RET_STATUS(listen_port <= kMaxTcpPort, PARAM_INVALID,
+                             "Port:%d is out of range, must be no greater than %d.", listen_port, kMaxTcpPort);
   }
   return SUCCESS;
 }

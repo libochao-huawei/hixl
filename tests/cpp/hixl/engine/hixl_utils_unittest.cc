@@ -240,6 +240,29 @@ TEST_F(HixlUtilsUTest, GetBondIpAddress) {
   EXPECT_EQ(bond_ip, "192.168.1.111");
 }
 
+TEST(ParseListenInfoTest, RejectsPortAboveTcpRange) {
+  std::string listen_ip;
+  int32_t listen_port = 0;
+
+  EXPECT_EQ(ParseListenInfo("127.0.0.1:65535", listen_ip, listen_port), SUCCESS);
+  EXPECT_EQ(listen_ip, "127.0.0.1");
+  EXPECT_EQ(listen_port, 65535);
+
+  EXPECT_EQ(ParseListenInfo("127.0.0.1:65536", listen_ip, listen_port), PARAM_INVALID);
+  EXPECT_EQ(ParseListenInfo("[::1]:65536", listen_ip, listen_port), PARAM_INVALID);
+}
+
+TEST(ParseListenInfoTest, PreservesNonPositivePortSemantics) {
+  std::string listen_ip;
+  int32_t listen_port = -1;
+
+  EXPECT_EQ(ParseListenInfo("127.0.0.1:0", listen_ip, listen_port), SUCCESS);
+  EXPECT_EQ(listen_port, 0);
+
+  EXPECT_EQ(ParseListenInfo("127.0.0.1:-1", listen_ip, listen_port), SUCCESS);
+  EXPECT_EQ(listen_port, -1);
+}
+
 TEST_F(HixlUtilsUTest, EndpointToStringRoceIpv4DeviceTest) {
   EndpointDesc ep{};
   ep.protocol = COMM_PROTOCOL_ROCE;
