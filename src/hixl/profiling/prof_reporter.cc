@@ -8,27 +8,23 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef AIR_TESTS_DEPENDS_MMPA_SRC_MSPROF_STUB_H_
-#define AIR_TESTS_DEPENDS_MMPA_SRC_MSPROF_STUB_H_
+#include <utility>
 
-#include <cstdint>
+#include "prof_proxy.h"
+#include "prof_reporter.h"
 
-#define PROF_CTRL_SWITCH 1
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-typedef int32_t (*ProfCommandHandle)(uint32_t, void *, uint32_t);
-
-ProfCommandHandle GetHixlProfCallback(void);
-
-void SetMsprofRegTypeInfoRet(int32_t ret);
-void SetMsprofRegisterCallbackRet(int32_t ret);
-uint64_t GetMsprofReportApiCount(void);
-
-#ifdef __cplusplus
+namespace hixl {
+ProfStartPtr GetProfStart(const HixlProfType prof_type) {
+  return std::make_shared<ProfStart>(prof_type);
 }
-#endif
 
-#endif  // AIR_TESTS_DEPENDS_MMPA_SRC_MSPROF_STUB_H_
+HixlProfilingReporter::HixlProfilingReporter(const HixlProfType api_id) : prof_start_(GetProfStart(api_id)) {}
+
+HixlProfilingReporter::HixlProfilingReporter(ProfStartPtr prof_start) : prof_start_(std::move(prof_start)) {}
+
+HixlProfilingReporter::~HixlProfilingReporter() noexcept {
+  if (prof_start_ != nullptr) {
+    prof_start_->Stop();
+  }
+}
+}  // namespace hixl

@@ -66,6 +66,7 @@ target_link_libraries(llm_datadist PRIVATE
         $<BUILD_INTERFACE:acl_rt_headers>
         $<BUILD_INTERFACE:runtime_headers>
         $<BUILD_INTERFACE:msprof_headers>
+        msprofiler
         $<BUILD_INTERFACE:error_manager_headers>
         PUBLIC c_sec
         cann_hixl

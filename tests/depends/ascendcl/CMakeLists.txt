@@ -23,9 +23,9 @@ target_link_libraries(ascendcl_stub
     PRIVATE
         intf_pub
         c_sec
-        msprof_headers
     PUBLIC
         acl_rt_headers
+        acl_prof_headers
 )
 
 stub_module(acl_rt ascendcl_stub)

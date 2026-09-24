@@ -80,6 +80,7 @@ class AdxlInnerEngine {
                                uint64_t &npu_pool_size);
   Status ParseAutoConnectConfig(const std::map<AscendString, AscendString> &options);
   Status DisconnectOnError(const std::string &remote_engine, int32_t timeout_in_millis);
+  void ClearTransferReqs();
 
   std::string local_engine_;
   ChannelManager channel_manager_;

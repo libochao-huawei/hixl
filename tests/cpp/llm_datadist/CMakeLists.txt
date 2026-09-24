@@ -91,16 +91,17 @@ target_link_libraries(llm_datadist_test
         hccl_headers
         acl_rt_headers
         runtime_headers
+        acl_prof_headers
+        msprof_headers
         metadef_headers
         intf_pub
         json
         slog_stub
         mmpa_stub
+        msprof_stub
         ascendcl_stub
         runtime_stub
         hccl_stub
-        msprof_stub
-        msprof_headers
         sys_api_wrap
         -ldl
         GTest::gtest GTest::gtest_main

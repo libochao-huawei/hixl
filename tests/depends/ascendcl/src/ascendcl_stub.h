@@ -24,6 +24,22 @@ namespace llm {
 std::string &GetAclStubMock();
 void SetStubMallocHostFailOn(int32_t failOn);
 void ResetStubMallocHostCounter();
+void SetAclProfCreateStampEnabled(bool enabled);
+uint64_t GetAclProfStampCreateCount();
+uint64_t GetAclProfStampDestroyCount();
+uint64_t GetAclProfRangeStopCount();
+
+class AclProfStampEnabled {
+ public:
+  AclProfStampEnabled() {
+    SetAclProfCreateStampEnabled(true);
+  }
+  ~AclProfStampEnabled() {
+    SetAclProfCreateStampEnabled(false);
+  }
+  AclProfStampEnabled(const AclProfStampEnabled &) = delete;
+  AclProfStampEnabled &operator=(const AclProfStampEnabled &) = delete;
+};
 
 #define RUTIME_MOCK_QUERY_EVENT_INTERVAL 5
 class AclRuntimeStub {

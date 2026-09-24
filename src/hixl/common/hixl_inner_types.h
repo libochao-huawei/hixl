@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <sstream>
 #include "hixl/hixl_types.h"
@@ -62,6 +63,8 @@ struct HixlTransferContextSyncParam {
 };
 
 namespace hixl {
+class ProfStart;
+
 constexpr const char *kProtocolRoce = "roce";
 constexpr const char *kProtocolUbCtp = "ub_ctp";
 constexpr const char *kProtocolHccs = "hccs";
@@ -148,7 +151,7 @@ struct MemHandleInfo {
 };
 
 struct TransferInfo {
-  uint64_t start_time;
+  std::shared_ptr<ProfStart> prof_start;
   TransferOp op_type;
   AscendString remote_engine;
 };

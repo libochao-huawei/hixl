@@ -301,7 +301,8 @@ inline int32_t RecvRawFabricMemMsg(int32_t fd, std::string &payload) {
 inline void RegisterServiceAsyncRecord(FabricMemTransferService &service,
                                        const std::shared_ptr<FabricMemChannel> &channel,
                                        const FabricMemTransferContext &context, TransferReq req, AsyncSlot &&slot,
-                                       uint64_t transfer_bytes, uint64_t op_desc_count, TransferOp op = WRITE) {
+                                       uint64_t transfer_bytes, uint64_t op_desc_count, TransferOp op = WRITE,
+                                       ProfStartPtr prof_start = nullptr) {
   const uint64_t req_id = reinterpret_cast<uintptr_t>(req);
   AsyncRecord record;
   record.slot = std::move(slot);
@@ -314,6 +315,7 @@ inline void RegisterServiceAsyncRecord(FabricMemTransferService &service,
   record.statistic_channel_id = context.statistic_channel_id;
   record.stat_info = context.stat_info;
   record.op_type = op;
+  record.prof_start = std::move(prof_start);
   {
     std::lock_guard<std::mutex> lock(channel->records_mutex);
     channel->async_records[req_id] = std::move(record);

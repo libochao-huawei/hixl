@@ -7,6 +7,8 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#include <atomic>
+#include <cstdint>
 #include <string>
 #include <map>
 #include <queue>
@@ -16,9 +18,7 @@
 #include "ascendcl_stub.h"
 #include "common/hixl_inner_types.h"
 #include "mmpa/mmpa_api.h"
-
-#include <atomic>
-#include <cstdint>
+#include "acl/acl_prof.h"
 
 extern "C" __attribute__((weak)) uint32_t HixlSyncTransferContext(HixlTransferContextSyncParam *param);
 
@@ -38,6 +38,46 @@ static std::mutex g_kernel_args_mu;
 static uintptr_t g_next_stub_handle = 0x87654321U;
 static std::unordered_map<aclrtFuncHandle, std::string> g_stub_func_names;
 static std::unordered_map<aclrtArgsHandle, std::vector<uint8_t>> g_stub_arg_data;
+static std::atomic<uint32_t> g_next_prof_range_id{1U};
+static std::atomic<bool> g_aclprof_create_stamp_enabled{false};
+static std::atomic<uint64_t> g_aclprof_stamp_create_count{0};
+static std::atomic<uint64_t> g_aclprof_stamp_destroy_count{0};
+static std::atomic<uint64_t> g_aclprof_range_stop_count{0};
+
+extern "C" void *aclprofCreateStamp() {
+  if (!g_aclprof_create_stamp_enabled.load(std::memory_order_relaxed)) {
+    return nullptr;
+  }
+  g_aclprof_stamp_create_count.fetch_add(1U, std::memory_order_relaxed);
+  return new uint8_t(0U);
+}
+
+extern "C" void aclprofDestroyStamp(void *stamp) {
+  if (stamp != nullptr) {
+    g_aclprof_stamp_destroy_count.fetch_add(1U, std::memory_order_relaxed);
+  }
+  delete static_cast<uint8_t *>(stamp);
+}
+
+extern "C" aclError aclprofSetStampTraceMessage(void *, const char *, uint32_t) {
+  return ACL_SUCCESS;
+}
+
+extern "C" aclError aclprofRangeStart(void *stamp, uint32_t *range_id) {
+  if (stamp == nullptr || range_id == nullptr) {
+    return ACL_ERROR_INVALID_PARAM;
+  }
+  *range_id = g_next_prof_range_id.fetch_add(1U, std::memory_order_relaxed);
+  return ACL_SUCCESS;
+}
+
+extern "C" aclError aclprofRangeStop(uint32_t range_id) {
+  if (range_id == 0U) {
+    return ACL_ERROR_INVALID_PARAM;
+  }
+  g_aclprof_range_stop_count.fetch_add(1U, std::memory_order_relaxed);
+  return ACL_SUCCESS;
+}
 
 #define EVENT_LENTH 10
 #define NOTIFY_LENTH 10
@@ -54,6 +94,22 @@ void SetStubMallocHostFailOn(int32_t failOn) {
 void ResetStubMallocHostCounter() {
   g_stub_malloc_host_count.store(0U, std::memory_order_relaxed);
   g_stub_malloc_host_fail_on.store(-1, std::memory_order_relaxed);
+}
+
+void SetAclProfCreateStampEnabled(bool enabled) {
+  g_aclprof_create_stamp_enabled.store(enabled, std::memory_order_relaxed);
+}
+
+uint64_t GetAclProfStampCreateCount() {
+  return g_aclprof_stamp_create_count.load(std::memory_order_relaxed);
+}
+
+uint64_t GetAclProfStampDestroyCount() {
+  return g_aclprof_stamp_destroy_count.load(std::memory_order_relaxed);
+}
+
+uint64_t GetAclProfRangeStopCount() {
+  return g_aclprof_range_stop_count.load(std::memory_order_relaxed);
 }
 
 struct aclrtContextStub {

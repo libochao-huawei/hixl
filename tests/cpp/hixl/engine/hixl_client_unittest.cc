@@ -35,6 +35,8 @@
 #include "engine/endpoint_generator/endpoint_generator.h"
 #include "engine/endpoint_matcher.h"
 #include "common/hixl_inner_types.h"
+#include "profiling/prof_reporter.h"
+#include "depends/ascendcl/src/ascendcl_stub.h"
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "depends/sys_api/src/sys_api_wrap.h"
 #include "depends/runtime/src/runtime_stub.h"
@@ -2206,6 +2208,24 @@ class FailClientHandler : public IClientHandler {
   void Dump(const char *, DumpLogLevel) const override {}
 };
 
+TEST_F(HixlClientUTest, GetTransferStatusFailureDestroysProfRange) {
+  llm::AclProfStampEnabled acl_prof_stamp;
+  client_->client_handler_ = std::make_unique<FailClientHandler>();
+  auto req = reinterpret_cast<TransferReq>(0xABCD);
+  const uint64_t create_count = llm::GetAclProfStampCreateCount();
+  const uint64_t destroy_count = llm::GetAclProfStampDestroyCount();
+  auto prof_start = GetProfStart(HixlProfType::HixlOpBatchWrite);
+  EXPECT_EQ(llm::GetAclProfStampCreateCount(), create_count + 1U);
+  client_->req_map_[req] = TransferInfo{prof_start, WRITE, AscendString()};
+  prof_start.reset();
+
+  TransferStatus status = TransferStatus::WAITING;
+  EXPECT_EQ(client_->GetTransferStatus(req, status), SUCCESS);
+  EXPECT_EQ(status, TransferStatus::FAILED);
+  EXPECT_TRUE(client_->req_map_.empty());
+  EXPECT_EQ(llm::GetAclProfStampDestroyCount(), destroy_count + 1U);
+}
+
 static bool ReadHeartbeatFromPeer(int32_t fd) {
   CtrlMsgHeader header{};
   if (read(fd, &header, sizeof(header)) != static_cast<ssize_t>(sizeof(header))) {
@@ -2263,6 +2283,7 @@ TEST_F(HixlClientUTest, TransferSyncFailureChecksLinkAlive) {
 }
 
 TEST_F(HixlClientUTest, TransferAsyncFailureChecksLinkAlive) {
+  llm::AclProfStampEnabled acl_prof_stamp;
   CtrlMsgPlugin::Initialize();
   int32_t fds[2] = {-1, -1};
   ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
@@ -2275,8 +2296,12 @@ TEST_F(HixlClientUTest, TransferAsyncFailureChecksLinkAlive) {
   TransferOpDesc desc{reinterpret_cast<uintptr_t>(&local_mem), reinterpret_cast<uintptr_t>(&remote_mem),
                       sizeof(uint32_t)};
   TransferReq req = nullptr;
+  const uint64_t create_count = llm::GetAclProfStampCreateCount();
+  const uint64_t destroy_count = llm::GetAclProfStampDestroyCount();
 
   EXPECT_NE(client.TransferAsync({desc}, READ, {}, req), SUCCESS);
+  EXPECT_EQ(llm::GetAclProfStampCreateCount(), create_count + 1U);
+  EXPECT_EQ(llm::GetAclProfStampDestroyCount(), destroy_count + 1U);
   EXPECT_TRUE(ReadHeartbeatFromPeer(fds[1]));
   EXPECT_GE(client.ctrl_socket_, 0);
 

@@ -1426,6 +1426,7 @@ TEST_F(FabricMemTransferServiceUTest, TransferSyncFailureAbortsStreams) {
 }
 
 TEST_F(FabricMemTransferServiceUTest, TransferAsyncFailureAbortsSlot) {
+  llm::AclProfStampEnabled acl_prof_stamp;
   uint8_t local[kLen * 2U] = {};
   uint8_t remote[kLen * 2U] = {};
   ASSERT_EQ(InitService(1U, 1U), SUCCESS);
@@ -1437,7 +1438,11 @@ TEST_F(FabricMemTransferServiceUTest, TransferAsyncFailureAbortsSlot) {
 
   TransferReq req = nullptr;
   auto op_descs = BuildTwoOpDescs(local, remote);
+  const uint64_t create_before = llm::GetAclProfStampCreateCount();
+  const uint64_t destroy_before = llm::GetAclProfStampDestroyCount();
   EXPECT_NE(service_.TransferAsync(remote_engine, WRITE, op_descs, req), SUCCESS);
+  EXPECT_EQ(llm::GetAclProfStampCreateCount(), create_before + 1U);
+  EXPECT_EQ(llm::GetAclProfStampDestroyCount(), destroy_before + 1U);
   EXPECT_TRUE(service_.slot_pool_.slot_pool_.empty());
   EXPECT_TRUE(service_.channel_manager_.req_2_channel_.empty());
   EXPECT_EQ(runtime_->stream_abort_count_, 1U);
@@ -1461,6 +1466,44 @@ TEST_F(FabricMemTransferServiceUTest, TransferAsyncHostFlagCopyFailureAbortsSlot
   EXPECT_TRUE(service_.slot_pool_.slot_pool_.empty());
   EXPECT_TRUE(service_.channel_manager_.req_2_channel_.empty());
   EXPECT_EQ(runtime_->stream_abort_count_, 1U);
+}
+
+TEST_F(FabricMemTransferServiceUTest, DisconnectStopsUnfinishedAsyncProfRange) {
+  llm::AclProfStampEnabled acl_prof_stamp;
+
+  uint8_t local[kLen] = {};
+  uint8_t remote[kLen] = {};
+  ASSERT_EQ(InitService(1U, 1U), SUCCESS);
+  const std::string remote_engine = "127.0.0.1:13021";
+  AddMappedServiceChannel(service_, remote_engine, remote, sizeof(remote));
+  TransferReq req = nullptr;
+  const uint64_t create_before = llm::GetAclProfStampCreateCount();
+  const uint64_t destroy_before = llm::GetAclProfStampDestroyCount();
+  ASSERT_EQ(service_.TransferAsync(remote_engine, WRITE, BuildOpDescs(local, remote), req), SUCCESS);
+  EXPECT_GT(llm::GetAclProfStampCreateCount(), create_before);
+  EXPECT_EQ(llm::GetAclProfStampDestroyCount(), destroy_before);
+
+  EXPECT_EQ(service_.Disconnect(AscendString(remote_engine.c_str()), kClientTimeoutMs), SUCCESS);
+  EXPECT_EQ(llm::GetAclProfStampCreateCount() - create_before, llm::GetAclProfStampDestroyCount() - destroy_before);
+}
+
+TEST_F(FabricMemTransferServiceUTest, FinalizeStopsUnfinishedAsyncProfRange) {
+  llm::AclProfStampEnabled acl_prof_stamp;
+
+  uint8_t local[kLen] = {};
+  uint8_t remote[kLen] = {};
+  ASSERT_EQ(InitService(1U, 1U), SUCCESS);
+  const std::string remote_engine = "127.0.0.1:13022";
+  AddMappedServiceChannel(service_, remote_engine, remote, sizeof(remote));
+  TransferReq req = nullptr;
+  const uint64_t create_before = llm::GetAclProfStampCreateCount();
+  const uint64_t destroy_before = llm::GetAclProfStampDestroyCount();
+  ASSERT_EQ(service_.TransferAsync(remote_engine, WRITE, BuildOpDescs(local, remote), req), SUCCESS);
+  EXPECT_GT(llm::GetAclProfStampCreateCount(), create_before);
+  EXPECT_EQ(llm::GetAclProfStampDestroyCount(), destroy_before);
+
+  service_.Finalize();
+  EXPECT_EQ(llm::GetAclProfStampCreateCount() - create_before, llm::GetAclProfStampDestroyCount() - destroy_before);
 }
 
 TEST_F(FabricMemTransferServiceUTest, TransferSyncRejectsUnknownRemote) {
@@ -1990,6 +2033,7 @@ TEST(FabricMemEngineUTest, GetTransferStatusReturnsNotFoundForUnknownReq) {
 }
 
 TEST(FabricMemEngineUTest, GetTransferStatusAsyncFailureDisconnectsWhenAutoConnect) {
+  llm::AclProfStampEnabled acl_prof_stamp;
   auto runtime = std::make_shared<FabricMemRuntimeStub>();
   auto scoped_runtime = std::make_unique<ScopedRuntimeMock>(runtime);
 
@@ -2012,7 +2056,11 @@ TEST(FabricMemEngineUTest, GetTransferStatusAsyncFailureDisconnectsWhenAutoConne
 
   const uint64_t req_id = 0xABCDUL;
   TransferReq req = reinterpret_cast<TransferReq>(req_id);
-  RegisterServiceAsyncRecord(service, channel, context, req, std::move(slot), 64U, 1U);
+  const uint64_t stop_before = llm::GetAclProfRangeStopCount();
+  const uint64_t destroy_before = llm::GetAclProfStampDestroyCount();
+  auto prof_start = GetProfStart(HixlProfType::HixlOpBatchWrite);
+  RegisterServiceAsyncRecord(service, channel, context, req, std::move(slot), 64U, 1U, WRITE, prof_start);
+  prof_start.reset();
   {
     std::lock_guard<std::mutex> lock(channel->records_mutex);
     for (void *host_flag : channel->async_records[req_id].slot.host_flags) {
@@ -2024,8 +2072,47 @@ TEST(FabricMemEngineUTest, GetTransferStatusAsyncFailureDisconnectsWhenAutoConne
   TransferStatus status = TransferStatus::WAITING;
   EXPECT_EQ(engine.GetTransferStatus(req, status), SUCCESS);
   EXPECT_EQ(status, TransferStatus::FAILED);
+  EXPECT_EQ(llm::GetAclProfRangeStopCount(), stop_before);
+  EXPECT_EQ(llm::GetAclProfStampDestroyCount(), destroy_before + 1U);
   EXPECT_TRUE(service.channel_manager_.req_2_channel_.empty());
   EXPECT_FALSE(EngineManager(engine).IsConnected(remote));
+
+  service.Finalize();
+  engine.fabric_mem_transfer_service_.reset();
+  scoped_runtime.reset();
+  runtime.reset();
+}
+
+TEST(FabricMemEngineUTest, GetTransferStatusCompletedStopsAndDestroysProfRange) {
+  llm::AclProfStampEnabled acl_prof_stamp;
+  auto runtime = std::make_shared<FabricMemRuntimeStub>();
+  auto scoped_runtime = std::make_unique<ScopedRuntimeMock>(runtime);
+  FabricMemEngine engine(AscendString("test_engine"));
+  AttachTestContext(engine);
+
+  const std::string remote = "127.0.0.1:12346";
+  auto channel = AddEngineChannel(engine, remote);
+  auto &service = *engine.fabric_mem_transfer_service_;
+  AsyncSlot slot;
+  ASSERT_EQ(service.slot_pool_.AcquireAsync(slot), SUCCESS);
+  ASSERT_EQ(service.AppendHostFlagCopies(slot), SUCCESS);
+
+  FabricMemTransferContext context;
+  context.channel_id = remote;
+  context.statistic_channel_id = FabricMemStatistic::GetClientStatisticChannelId(remote);
+  const uint64_t req_id = 0xABCEUL;
+  TransferReq req = reinterpret_cast<TransferReq>(req_id);
+  const uint64_t stop_before = llm::GetAclProfRangeStopCount();
+  const uint64_t destroy_before = llm::GetAclProfStampDestroyCount();
+  auto prof_start = GetProfStart(HixlProfType::HixlOpBatchWrite);
+  RegisterServiceAsyncRecord(service, channel, context, req, std::move(slot), 64U, 1U, WRITE, prof_start);
+  prof_start.reset();
+
+  TransferStatus status = TransferStatus::WAITING;
+  EXPECT_EQ(engine.GetTransferStatus(req, status), SUCCESS);
+  EXPECT_EQ(status, TransferStatus::COMPLETED);
+  EXPECT_EQ(llm::GetAclProfRangeStopCount(), stop_before + 1U);
+  EXPECT_EQ(llm::GetAclProfStampDestroyCount(), destroy_before + 1U);
 
   service.Finalize();
   engine.fabric_mem_transfer_service_.reset();

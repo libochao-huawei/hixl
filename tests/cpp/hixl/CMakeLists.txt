@@ -106,8 +106,43 @@ target_link_libraries(log_fallback_test PRIVATE
         slog_headers
         GTest::gtest
         GTest::gtest_main
+        -pthread
 )
 set_target_properties(log_fallback_test PROPERTIES CXX_STANDARD 17)
+
+file(GLOB PROFILING_SRC_LIST "${HIXL_CODE_DIR}/src/hixl/profiling/*.cc")
+add_executable(profiling_fallback_test
+        engine/hixl_profiling_fallback_ut.cc
+        ${PROFILING_SRC_LIST})
+target_compile_options(profiling_fallback_test PRIVATE ${DT_COMMON_COMPILE_OPTION} -Wall -Wfloat-equal)
+target_compile_definitions(profiling_fallback_test PRIVATE _GLIBCXX_USE_CXX11_ABI=0)
+target_include_directories(profiling_fallback_test PRIVATE
+        ${HIXL_CODE_DIR}/include
+        ${HIXL_CODE_DIR}/src/hixl
+        ${HIXL_CODE_DIR}/src/hixl/common
+        ${HIXL_CODE_DIR}/src/hixl/profiling
+        ${HIXL_CODE_DIR}/src/llm_datadist
+        ${HIXL_CODE_DIR}/tests
+)
+target_link_libraries(profiling_fallback_test PRIVATE
+        ${ASAN_LINK_OPTION}
+        ${GCOV_LINK_OPTION}
+        c_sec
+        runtime_headers
+        acl_rt_headers
+        metadef_headers
+        slog_headers
+        msprof_headers
+        error_manager_headers
+        msprof_stub
+        GTest::gtest
+        GTest::gtest_main
+        -pthread
+)
+set_target_properties(profiling_fallback_test PROPERTIES
+        CXX_STANDARD 17
+        BUILD_RPATH "${CMAKE_BINARY_DIR}/tests/depends/msprof"
+)
 
 target_compile_options(hixl_test PRIVATE
         ${DT_COMMON_COMPILE_OPTION}
@@ -142,6 +177,7 @@ target_include_directories(hixl_test PRIVATE
         ${HIXL_CODE_DIR}/tests/depends/hccl/src
         ${HIXL_CODE_DIR}/tests/depends/aicpu/src
         ${HIXL_CODE_DIR}/tests/depends/slog/src
+        ${HIXL_CODE_DIR}/tests/depends/msprof/src
         )
 
 set_target_properties(hixl_test PROPERTIES CXX_STANDARD 17)
@@ -153,6 +189,8 @@ target_link_libraries(hixl_test
         ascend_hal_headers
         hccl_headers
         runtime_headers
+        acl_prof_headers
+        msprof_headers
         metadef_headers
         intf_pub
         json
@@ -161,7 +199,6 @@ target_link_libraries(hixl_test
         msprof_stub
         ascendcl_stub
         runtime_stub
-        msprof_headers
         dcmi_stub
         drvdsmi_host_stub
         hixl_ascend_hal_stub

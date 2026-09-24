@@ -23,6 +23,7 @@
 #include "acl/acl.h"
 #include "fabric_mem/fabric_mem_aicpu_types.h"
 #include "hixl/hixl_types.h"
+#include "profiling/prof_reporter.h"
 
 namespace hixl {
 constexpr uint64_t kMillisToMicros = 1000UL;
@@ -85,7 +86,7 @@ struct AsyncRecord {
   std::string statistic_channel_id;
   std::shared_ptr<FabricMemTransferStatisticInfo> stat_info;
   TransferOp op_type = READ;
-  uint64_t prof_start_time{0U};
+  ProfStartPtr prof_start;
 };
 
 // One in-flight request bound to a slot that is being aborted. Its descriptor / status buffers may
@@ -97,7 +98,7 @@ struct FabricMemAicpuPendingRequest {
 
 struct AsyncTransferPollInfo {
   TransferOp op_type = READ;
-  uint64_t prof_start_time{0U};
+  ProfStartPtr prof_start;
   std::string channel_id;
 };
 

@@ -23,7 +23,7 @@
 #include "engine/client_handler_factory.h"
 #include "engine/endpoint_generator/endpoint_generator.h"
 #include "engine/endpoint_matcher.h"
-#include "profiling/prof_api_reg.h"
+#include "profiling/prof_reporter.h"
 #include "nlohmann/json.hpp"
 
 namespace hixl {
@@ -217,13 +217,14 @@ Status HixlClient::TransferAsync(const std::vector<TransferOpDesc> &op_descs, Tr
   HIXL_CHK_BOOL_RET_STATUS(is_connected_, NOT_CONNECTED, "HixlClient is not connected");
   HIXL_CHK_BOOL_RET_STATUS(client_handler_ != nullptr, FAILED, "HixlClient is not initialized");
   HIXL_DISMISSABLE_GUARD(dump_guard, [this]() { client_handler_->Dump("transfer async failed", DumpLogLevel::ERROR); });
+  HixlProfType prof_type = (operation == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
+  TransferInfo transfer_info = {GetProfStart(prof_type), operation, AscendString()};
   Status ret = client_handler_->TransferAsync(op_descs, operation, req);
   if (ret != SUCCESS) {
     CheckAliveAndLog("transfer async");
   }
   HIXL_CHK_STATUS_RET(ret, "HixlClient TransferAsync failed");
   HIXL_DISMISS_GUARD(dump_guard);
-  TransferInfo transfer_info = {HixlProfilingReporter::GetSysCycleTime(), operation, AscendString()};
   req_map_[req] = transfer_info;
   return SUCCESS;
 }
@@ -252,9 +253,7 @@ Status HixlClient::GetTransferStatus(const TransferReq &req, TransferStatus &sta
     return ret;
   }
   if (status == TransferStatus::COMPLETED) {
-    HixlProfType type =
-        (transfer_info.op_type == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
-    HIXL_API_PROFILING_WITH_TIME(type, transfer_info.start_time);
+    HIXL_API_PROFILING_WITH_PROF_START(transfer_info.prof_start);
     RemoveTransferReq(req);
   } else if (status == TransferStatus::FAILED) {
     RemoveTransferReq(req);

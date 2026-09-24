@@ -509,6 +509,7 @@ TEST_F(FabricMemAicpuUnfoldUTest, AicpuUnfoldSyncFailureAbortsAndReleasesImmedia
 }
 
 TEST_F(FabricMemAicpuUnfoldUTest, AicpuUnfoldAsyncSubmitFailureAbortsAndReleasesImmediately) {
+  llm::AclProfStampEnabled acl_prof_stamp;
   auto param = MakeServiceInitParam(&statistic_, &local_memory_);
   param.enable_aicpu_unfold = true;
   runtime_->soc_name_ = "Ascend910_9391";
@@ -523,7 +524,11 @@ TEST_F(FabricMemAicpuUnfoldUTest, AicpuUnfoldAsyncSubmitFailureAbortsAndReleases
   runtime_->kernel_launch_error_ = ACL_ERROR_INVALID_PARAM;
   runtime_->kernel_launch_fail_on_count_ = 2U;
   TransferReq req = nullptr;
+  const uint64_t create_before = llm::GetAclProfStampCreateCount();
+  const uint64_t destroy_before = llm::GetAclProfStampDestroyCount();
   EXPECT_NE(service_.TransferAsync(remote_engine, WRITE, BuildOpDescs(local, remote), req), SUCCESS);
+  EXPECT_EQ(llm::GetAclProfStampCreateCount(), create_before + 1U);
+  EXPECT_EQ(llm::GetAclProfStampDestroyCount(), destroy_before + 1U);
   // Sync ADD free (3) + descriptor/status/kernel-args free (3) + Sync DELETE free (3).
   EXPECT_EQ(runtime_->free_count_, free_count_before + 9U);
   std::lock_guard<std::mutex> lock(channel->records_mutex);
@@ -624,6 +629,52 @@ TEST_F(FabricMemAicpuUnfoldUTest, AicpuUnfoldFinalizeReleasesInFlightAsyncReques
   EXPECT_FALSE(service_.channel_manager_.HasChannels());
   EXPECT_GE(runtime_->free_count_, free_count_before + 3U);
   EXPECT_EQ(::close(keepalive_fd), -1);
+}
+
+TEST_F(FabricMemAicpuUnfoldUTest, AicpuUnfoldDisconnectStopsUnfinishedAsyncProfRange) {
+  llm::AclProfStampEnabled acl_prof_stamp;
+
+  auto param = MakeServiceInitParam(&statistic_, &local_memory_);
+  param.enable_aicpu_unfold = true;
+  runtime_->soc_name_ = "Ascend910_9391";
+  ASSERT_EQ(service_.Initialize(param), SUCCESS);
+
+  uint8_t local[kLen] = {};
+  uint8_t remote[kLen] = {};
+  const std::string remote_engine = "127.0.0.1:13023";
+  AddMappedServiceChannel(service_, remote_engine, remote, sizeof(remote));
+  TransferReq req = nullptr;
+  const uint64_t create_before = llm::GetAclProfStampCreateCount();
+  const uint64_t destroy_before = llm::GetAclProfStampDestroyCount();
+  ASSERT_EQ(service_.TransferAsync(remote_engine, WRITE, BuildOpDescs(local, remote), req), SUCCESS);
+  EXPECT_GT(llm::GetAclProfStampCreateCount(), create_before);
+  EXPECT_EQ(llm::GetAclProfStampDestroyCount(), destroy_before);
+
+  EXPECT_EQ(service_.Disconnect(AscendString(remote_engine.c_str()), kClientTimeoutMs), SUCCESS);
+  EXPECT_EQ(llm::GetAclProfStampCreateCount() - create_before, llm::GetAclProfStampDestroyCount() - destroy_before);
+}
+
+TEST_F(FabricMemAicpuUnfoldUTest, AicpuUnfoldFinalizeStopsUnfinishedAsyncProfRange) {
+  llm::AclProfStampEnabled acl_prof_stamp;
+
+  auto param = MakeServiceInitParam(&statistic_, &local_memory_);
+  param.enable_aicpu_unfold = true;
+  runtime_->soc_name_ = "Ascend910_9391";
+  ASSERT_EQ(service_.Initialize(param), SUCCESS);
+
+  uint8_t local[kLen] = {};
+  uint8_t remote[kLen] = {};
+  const std::string remote_engine = "127.0.0.1:13024";
+  AddMappedServiceChannel(service_, remote_engine, remote, sizeof(remote));
+  TransferReq req = nullptr;
+  const uint64_t create_before = llm::GetAclProfStampCreateCount();
+  const uint64_t destroy_before = llm::GetAclProfStampDestroyCount();
+  ASSERT_EQ(service_.TransferAsync(remote_engine, WRITE, BuildOpDescs(local, remote), req), SUCCESS);
+  EXPECT_GT(llm::GetAclProfStampCreateCount(), create_before);
+  EXPECT_EQ(llm::GetAclProfStampDestroyCount(), destroy_before);
+
+  service_.Finalize();
+  EXPECT_EQ(llm::GetAclProfStampCreateCount() - create_before, llm::GetAclProfStampDestroyCount() - destroy_before);
 }
 
 TEST_F(FabricMemAicpuUnfoldUTest, AicpuUnfoldReportsFailedLaunchStatus) {

@@ -8,27 +8,24 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef AIR_TESTS_DEPENDS_MMPA_SRC_MSPROF_STUB_H_
-#define AIR_TESTS_DEPENDS_MMPA_SRC_MSPROF_STUB_H_
+#ifndef CANN_HIXL_SRC_HIXL_PROFILING_PROF_TYPES_H_
+#define CANN_HIXL_SRC_HIXL_PROFILING_PROF_TYPES_H_
 
 #include <cstdint>
 
-#define PROF_CTRL_SWITCH 1
+namespace hixl {
+constexpr uint64_t kInvalidProfRange = UINT64_MAX;
+// 9.2.0 is encoded as 90200000 by aclsysGetVersionNum. aclprof requires runtime > 9.2.0.
+constexpr int32_t kAclProfRuntimeVersionThreshold = 90200000;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+enum class HixlProfType {
+  HixlOpBatchRead = 0,
+  HixlOpBatchWrite = 1,
+};
 
-typedef int32_t (*ProfCommandHandle)(uint32_t, void *, uint32_t);
-
-ProfCommandHandle GetHixlProfCallback(void);
-
-void SetMsprofRegTypeInfoRet(int32_t ret);
-void SetMsprofRegisterCallbackRet(int32_t ret);
-uint64_t GetMsprofReportApiCount(void);
-
-#ifdef __cplusplus
+inline const char *GetProfName(const HixlProfType api_id) {
+  return api_id == HixlProfType::HixlOpBatchRead ? "hixlOpBatchRead" : "hixlOpBatchWrite";
 }
-#endif
+}  // namespace hixl
 
-#endif  // AIR_TESTS_DEPENDS_MMPA_SRC_MSPROF_STUB_H_
+#endif  // CANN_HIXL_SRC_HIXL_PROFILING_PROF_TYPES_H_

@@ -93,6 +93,7 @@ target_link_libraries(fabric_mem_test
         msprof_stub
         ascendcl_stub
         runtime_stub
+        acl_prof_headers
         msprof_headers
         sys_api_wrap
         -ldl

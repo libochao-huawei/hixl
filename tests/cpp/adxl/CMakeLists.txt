@@ -110,6 +110,7 @@ function(add_adxl_family_test target_name test_files)
           hccl_headers
           acl_rt_headers
           runtime_headers
+          acl_prof_headers
           metadef_headers
           intf_pub
           json

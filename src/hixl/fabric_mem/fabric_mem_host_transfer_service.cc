@@ -17,7 +17,7 @@
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
 #include "common/scope_guard.h"
-#include "profiling/prof_api_reg.h"
+#include "profiling/prof_reporter.h"
 
 namespace hixl {
 
@@ -133,7 +133,7 @@ Status FabricMemHostTransferService::IssueAsyncCopyAndRegister(const std::shared
   record.statistic_channel_id = context.statistic_channel_id;
   record.stat_info = context.stat_info;
   record.op_type = invocation.operation;
-  record.prof_start_time = invocation.prof_start_time;
+  record.prof_start = invocation.prof_start;
   {
     std::lock_guard<std::mutex> reg(channel->records_mutex);
     channel->async_records[invocation.req_id] = std::move(record);
@@ -146,7 +146,8 @@ Status FabricMemHostTransferService::TransferAsync(const std::string &remote_eng
                                                    const std::vector<TransferOpDesc> &op_descs, TransferReq &req) {
   const uint64_t req_id = next_req_id_.fetch_add(1U, std::memory_order_relaxed);
   req = reinterpret_cast<TransferReq>(static_cast<uintptr_t>(req_id));
-  const uint64_t prof_start_time = HixlProfilingReporter::GetSysCycleTime();
+  const HixlProfType prof_type = (operation == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
+  auto prof_start = GetProfStart(prof_type);
   const auto start = std::chrono::steady_clock::now();
   std::shared_ptr<FabricMemChannel> channel;
   FabricMemTransferContext context;
@@ -158,7 +159,7 @@ Status FabricMemHostTransferService::TransferAsync(const std::string &remote_eng
   TransferInvocation invocation;
   invocation.operation = operation;
   invocation.req_id = req_id;
-  invocation.prof_start_time = prof_start_time;
+  invocation.prof_start = prof_start;
   invocation.transfer_start = start;
   invocation.real_copy_start = std::chrono::steady_clock::now();
   HIXL_CHK_STATUS_RET(IssueAsyncCopyAndRegister(channel, slot, context, op_descs_copy, invocation),
@@ -257,17 +258,20 @@ void FabricMemHostTransferService::CleanupAsyncTransfer(const TransferReq &req) 
     return;
   }
   AsyncSlot slot;
+  ProfStartPtr prof_start;
   bool found = false;
   {
     std::lock_guard<std::mutex> lock(channel->records_mutex);
     const auto it = channel->async_records.find(req_id);
     if (it != channel->async_records.end()) {
+      prof_start = std::move(it->second.prof_start);
       slot = std::move(it->second.slot);
       (void)channel->async_records.erase(it);
       found = true;
     }
   }
   if (found) {
+    prof_start.reset();
     slot_pool_.Release(slot, true);
   }
   channel_manager_.RemoveReqRoute(req_id);

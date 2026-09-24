@@ -21,7 +21,7 @@
 #include "common/hixl_utils.h"
 #include "common/llm_utils.h"
 #include "common/scope_guard.h"
-#include "profiling/prof_api_reg.h"
+#include "profiling/prof_reporter.h"
 #include "acl/acl.h"
 
 namespace hixl {

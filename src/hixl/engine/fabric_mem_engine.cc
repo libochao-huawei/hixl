@@ -23,7 +23,7 @@
 #include "fabric_mem/fabric_mem_aicpu_transfer_service.h"
 #include "fabric_mem/fabric_mem_host_transfer_service.h"
 #include "fabric_mem/virtual_memory_manager.h"
-#include "profiling/prof_api_reg.h"
+#include "profiling/prof_reporter.h"
 
 namespace hixl {
 namespace {
@@ -334,9 +334,7 @@ Status FabricMemEngine::GetTransferStatus(const TransferReq &req, TransferStatus
   }
   if (status != TransferStatus::WAITING) {
     if (status == TransferStatus::COMPLETED) {
-      const auto prof_type =
-          (poll_info.op_type == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
-      HIXL_API_PROFILING_WITH_TIME(prof_type, poll_info.prof_start_time);
+      HIXL_API_PROFILING_WITH_PROF_START(poll_info.prof_start);
     }
     if (status == TransferStatus::FAILED) {
       DisconnectOnTransferError(AscendString(poll_info.channel_id.c_str()));

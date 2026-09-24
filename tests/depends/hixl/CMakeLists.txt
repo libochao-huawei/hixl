@@ -65,6 +65,7 @@ target_link_libraries(cann_hixl_base PRIVATE
         $<BUILD_INTERFACE:slog_headers>
         $<BUILD_INTERFACE:acl_rt_headers>
         $<BUILD_INTERFACE:runtime_headers>
+        $<BUILD_INTERFACE:acl_prof_headers>
         $<BUILD_INTERFACE:msprof_headers>
         $<BUILD_INTERFACE:metadef_headers>
         $<BUILD_INTERFACE:error_manager_headers>

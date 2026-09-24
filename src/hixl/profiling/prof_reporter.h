@@ -8,37 +8,34 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef CANN_HIXL_SRC_HIXL_COMMON_PROF_API_REG_H_
-#define CANN_HIXL_SRC_HIXL_COMMON_PROF_API_REG_H_
+#ifndef CANN_HIXL_SRC_HIXL_PROFILING_PROF_REPORTER_H_
+#define CANN_HIXL_SRC_HIXL_PROFILING_PROF_REPORTER_H_
 
-#include <cstdint>
-#include "aprof_pub.h"
+#include <memory>
+
+#include "prof_types.h"
 
 namespace hixl {
-constexpr uint32_t kHixlProfTypeStartOffset = 0x009000U;
-enum class HixlProfType {
-  // start with 0x049000U
-  kProfTypeStart = MSPROF_REPORT_ACL_OTHERS_BASE_TYPE + kHixlProfTypeStartOffset,
-  HixlOpBatchRead,
-  HixlOpBatchWrite,
-  kProfTypeEnd
-};
+class ProfStart;
+using ProfStartPtr = std::shared_ptr<ProfStart>;
+
+ProfStartPtr GetProfStart(HixlProfType prof_type);
 
 class HixlProfilingReporter {
  public:
   explicit HixlProfilingReporter(const HixlProfType api_id);
-  HixlProfilingReporter(const HixlProfType api_id, uint64_t start_time);
-  static uint64_t GetSysCycleTime();
+  explicit HixlProfilingReporter(ProfStartPtr prof_start);
   ~HixlProfilingReporter() noexcept;
 
+  HixlProfilingReporter(const HixlProfilingReporter &) = delete;
+  HixlProfilingReporter &operator=(const HixlProfilingReporter &) = delete;
+
  private:
-  uint64_t start_time_ = 0UL;
-  const HixlProfType hixl_api_;
+  ProfStartPtr prof_start_;
 };
 }  // namespace hixl
 
 #define HIXL_API_PROFILING(api_id) const hixl::HixlProfilingReporter profilingReporter(api_id)
 
-#define HIXL_API_PROFILING_WITH_TIME(apiId, startTime) \
-  const hixl::HixlProfilingReporter profilingReporter(apiId, startTime)
-#endif
+#define HIXL_API_PROFILING_WITH_PROF_START(profStart) const hixl::HixlProfilingReporter profilingReporter((profStart))
+#endif  // CANN_HIXL_SRC_HIXL_PROFILING_PROF_REPORTER_H_

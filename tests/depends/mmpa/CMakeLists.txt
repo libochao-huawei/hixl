@@ -19,7 +19,6 @@ target_link_libraries(mmpa_stub
     PRIVATE
         metadef_headers
         acl_rt_headers
-        msprof_headers
         slog_headers
         c_sec
         -ldl

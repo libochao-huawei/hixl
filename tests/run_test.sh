@@ -382,6 +382,9 @@ run() {
             log_fallback)
               echo "${BUILD_PATH}/tests/cpp/hixl/log_fallback_test"
               ;;
+            profiling_fallback)
+              echo "${BUILD_PATH}/tests/cpp/hixl/profiling_fallback_test"
+              ;;
             fabric_mem)
               echo "${BUILD_PATH}/tests/cpp/hixl/fabric_mem/fabric_mem_test"
               ;;
@@ -561,6 +564,7 @@ run() {
           run_cpp_test_parallel "${suite}"
           if [[ "${suite}" == "hixl" ]]; then
               run_cpp_test_parallel "log_fallback"
+              run_cpp_test_parallel "profiling_fallback"
           fi
       done
 

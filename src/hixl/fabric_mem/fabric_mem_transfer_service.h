@@ -27,6 +27,7 @@
 #include "fabric_mem/fabric_mem_types.h"
 #include "hixl/hixl_types.h"
 #include "common/transfer_config.h"
+#include "profiling/prof_reporter.h"
 
 namespace hixl {
 
@@ -88,7 +89,7 @@ class FabricMemTransferService {
   struct TransferInvocation {
     TransferOp operation{READ};
     uint64_t req_id{0U};
-    uint64_t prof_start_time{0U};
+    ProfStartPtr prof_start;
     uint32_t rtsq_timeout_ms{0U};
     uint64_t transfer_bytes{0U};
     uint64_t op_desc_count{0U};

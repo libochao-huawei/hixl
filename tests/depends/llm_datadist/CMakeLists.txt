@@ -61,15 +61,16 @@ target_link_libraries(llm_datadist_base PRIVATE
         $<BUILD_INTERFACE:ascend_hal_headers>
         $<BUILD_INTERFACE:hccl_headers>
         $<BUILD_INTERFACE:acl_rt_headers>
+        $<BUILD_INTERFACE:acl_prof_headers>
+        $<BUILD_INTERFACE:msprof_headers>
         $<BUILD_INTERFACE:runtime_headers>
         metadef_headers
         intf_pub
         PUBLIC c_sec
         slog_stub
+        msprof_stub
         ascendcl_stub
         runtime_stub
-        msprof_headers
-        msprof_stub
         mmpa_stub
         sys_api_wrap
         json

@@ -28,6 +28,7 @@
 #include "depends/mmpa/src/mmpa_stub.h"
 #include "adxl_test_helpers.h"
 #include "depends/llm_datadist/src/data_cache_engine_test_helper.h"
+#include "depends/ascendcl/src/ascendcl_stub.h"
 #include "adxl_test_helpers.h"
 
 using namespace std;
@@ -590,6 +591,25 @@ TEST_F(AdxlEngineUTest, TestAdxlEngineTransferAsync) {
   EXPECT_EQ(mem.dst, 1);
 
   CleanupEngine(engine1, engine2, mem.handle1, mem.handle2);
+}
+
+TEST_F(AdxlEngineUTest, FinalizeStopsUnfinishedAsyncProfRange) {
+  llm::AclProfStampEnabled acl_prof_stamp;
+
+  AdxlEngine engine1;
+  AdxlEngine engine2;
+  auto mem = SetupInt32ConnectedEngines(engine1, engine2);
+  TransferOpDesc desc = MakeInt32TransferDesc(mem.src, mem.dst);
+  TransferReq req = nullptr;
+  const uint64_t create_before = llm::GetAclProfStampCreateCount();
+  const uint64_t destroy_before = llm::GetAclProfStampDestroyCount();
+  ASSERT_EQ(engine1.TransferAsync("127.0.0.1:28101", WRITE, {desc}, {}, req), SUCCESS);
+  EXPECT_GT(llm::GetAclProfStampCreateCount(), create_before);
+  EXPECT_EQ(llm::GetAclProfStampDestroyCount(), destroy_before);
+
+  engine1.Finalize();
+  engine2.Finalize();
+  EXPECT_EQ(llm::GetAclProfStampCreateCount() - create_before, llm::GetAclProfStampDestroyCount() - destroy_before);
 }
 
 TEST_F(AdxlEngineUTest, TestAdxlEngineTransferAsyncWithMultiThread) {

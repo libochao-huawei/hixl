@@ -17,7 +17,7 @@
 #include "common/hixl_utils.h"
 #include "statistic_manager.h"
 #include "adxl_utils.h"
-#include "profiling/prof_api_reg.h"
+#include "profiling/prof_reporter.h"
 
 namespace adxl {
 namespace {
@@ -302,7 +302,13 @@ Status AdxlInnerEngine::InitBufferTransferService(const std::map<ge::AscendStrin
   return SUCCESS;
 }
 
+void AdxlInnerEngine::ClearTransferReqs() {
+  std::lock_guard<std::mutex> lock(req2channel_mutex_);
+  req_map_.clear();
+}
+
 void AdxlInnerEngine::Finalize() {
+  ClearTransferReqs();
   {
     hixl::TemporaryRtContext with_context(aclrt_context_);
     if (buffer_transfer_service_ != nullptr) {
@@ -535,6 +541,9 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine, Transfe
                             channel->DecrementTransferCount();
                           }
                         }));
+  hixl::HixlProfType prof_type =
+      (operation == READ ? hixl::HixlProfType::HixlOpBatchRead : hixl::HixlProfType::HixlOpBatchWrite);
+  auto prof_start = hixl::GetProfStart(prof_type);
   Status trans_status = channel->TransferAsync(operation, op_descs, optional_args, req);
   if (trans_status != SUCCESS) {
     LLMLOGE(trans_status, "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
@@ -543,9 +552,7 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine, Transfe
     return trans_status;
   }
   LLM_DISMISS_GUARD(transfer_count_guard);
-  uint64_t start_time = 0;
-  start_time = hixl::HixlProfilingReporter::GetSysCycleTime();
-  hixl::TransferInfo transfer_info = {start_time, static_cast<hixl::TransferOp>(operation), remote_engine};
+  hixl::TransferInfo transfer_info = {prof_start, static_cast<hixl::TransferOp>(operation), remote_engine};
   std::lock_guard<std::mutex> lock(req2channel_mutex_);
   req_map_.emplace(id, transfer_info);
   return SUCCESS;
@@ -586,11 +593,8 @@ Status AdxlInnerEngine::GetTransferStatus(const TransferReq &req, TransferStatus
     if (user_config_channel_pool_) {
       channel->DecrementTransferCount();
     }
-    auto op_type = it->second.op_type;
-    auto start_time = it->second.start_time;
-    hixl::HixlProfType type = (op_type == hixl::TransferOp::READ ? hixl::HixlProfType::HixlOpBatchRead
-                                                                 : hixl::HixlProfType::HixlOpBatchWrite);
-    HIXL_API_PROFILING_WITH_TIME(type, start_time);
+    auto prof_start = it->second.prof_start;
+    HIXL_API_PROFILING_WITH_PROF_START(prof_start);
     req_map_.erase(it);
   }
   return ret;

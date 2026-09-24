@@ -292,7 +292,7 @@ void FabricMemTransferService::FillPollInfo(const AsyncRecord &record, AsyncTran
     return;
   }
   info->op_type = record.op_type;
-  info->prof_start_time = record.prof_start_time;
+  info->prof_start = record.prof_start;
   info->channel_id = record.channel_id;
 }
 

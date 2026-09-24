@@ -52,6 +52,12 @@ else ()
         ${ASCEND_INSTALL_PATH}/pkg_inc/toolchain
     )
 
+    add_library(acl_prof_headers INTERFACE)
+    target_include_directories(acl_prof_headers INTERFACE
+        ${ASCEND_INSTALL_PATH}/include
+        ${ASCEND_INSTALL_PATH}/include/external
+    )
+
     add_library(metadef_headers INTERFACE)
     target_include_directories(metadef_headers INTERFACE
         ${ASCEND_INSTALL_PATH}/include

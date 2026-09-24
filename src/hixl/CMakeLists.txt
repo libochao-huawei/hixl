@@ -54,6 +54,7 @@ target_link_libraries(cann_hixl PRIVATE
         $<BUILD_INTERFACE:acl_rt_headers>
         $<BUILD_INTERFACE:runtime_headers>
         $<BUILD_INTERFACE:msprof_headers>
+        msprofiler
         PUBLIC c_sec
         adxl_static
         hcomm_proxy_static

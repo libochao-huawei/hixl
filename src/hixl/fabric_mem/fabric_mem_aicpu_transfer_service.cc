@@ -14,7 +14,7 @@
 #include "common/hixl_log.h"
 #include "common/hixl_utils.h"
 #include "common/scope_guard.h"
-#include "profiling/prof_api_reg.h"
+#include "profiling/prof_reporter.h"
 
 #include <utility>
 
@@ -224,7 +224,8 @@ Status FabricMemAicpuTransferService::TransferAsync(const std::string &remote_en
                                                     const std::vector<TransferOpDesc> &op_descs, TransferReq &req) {
   const uint64_t req_id = next_req_id_.fetch_add(1U, std::memory_order_relaxed);
   req = reinterpret_cast<TransferReq>(static_cast<uintptr_t>(req_id));
-  const uint64_t prof_start_time = HixlProfilingReporter::GetSysCycleTime();
+  const HixlProfType prof_type = (operation == READ ? HixlProfType::HixlOpBatchRead : HixlProfType::HixlOpBatchWrite);
+  auto prof_start = GetProfStart(prof_type);
   const auto start = std::chrono::steady_clock::now();
   std::shared_ptr<FabricMemChannel> channel;
   FabricMemTransferContext context;
@@ -241,7 +242,7 @@ Status FabricMemAicpuTransferService::TransferAsync(const std::string &remote_en
   TransferInvocation invocation;
   invocation.operation = operation;
   invocation.req_id = req_id;
-  invocation.prof_start_time = prof_start_time;
+  invocation.prof_start = prof_start;
   invocation.transfer_start = start;
   HIXL_CHK_STATUS_RET(IssueCopyLocked(channel, slot, context, op_descs_copy, invocation, aicpu_resource),
                       "Fabric mem AICPU async copy failed.");
@@ -275,7 +276,7 @@ void FabricMemAicpuTransferService::RegisterAsyncTransferRecord(uint64_t req_id,
   record.statistic_channel_id = context.statistic_channel_id;
   record.stat_info = context.stat_info;
   record.op_type = invocation.operation;
-  record.prof_start_time = invocation.prof_start_time;
+  record.prof_start = invocation.prof_start;
   {
     std::lock_guard<std::mutex> reg(channel->records_mutex);
     channel->async_records[req_id] = std::move(record);
