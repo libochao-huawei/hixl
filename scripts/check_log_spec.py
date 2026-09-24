@@ -515,7 +515,7 @@ def check_text(text):
 
 def _directory_source_files(path):
     for candidate in path.rglob("*"):
-        if candidate.suffix in SOURCE_SUFFIXES:
+        if candidate.suffix.lower() in SOURCE_SUFFIXES:
             yield candidate
 
 
@@ -524,7 +524,7 @@ def _source_files(paths):
         if path.is_dir():
             yield from _directory_source_files(path)
             continue
-        if path.suffix in SOURCE_SUFFIXES and path.exists():
+        if path.suffix.lower() in SOURCE_SUFFIXES and path.exists():
             yield path
 
 

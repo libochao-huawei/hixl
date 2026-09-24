@@ -9,6 +9,7 @@
 import importlib.util
 from pathlib import Path
 import re
+import tempfile
 import unittest
 
 
@@ -26,6 +27,20 @@ class LogSpecCheckerTest(unittest.TestCase):
     def assert_invalid(self, source, expected):
         errors = CHECK_LOG_SPEC.check_text(source)
         self.assertTrue(any(expected in message for _, message in errors), errors)
+
+    def test_source_discovery_accepts_case_insensitive_cpp_suffixes(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            upper = root / "upper.CPP"
+            lower = root / "lower.cc"
+            ignored = root / "notes.TXT"
+            upper.write_text('HIXL_LOGI("ok");\n', encoding="utf-8")
+            lower.write_text('HIXL_LOGI("ok");\n', encoding="utf-8")
+            ignored.write_text('HIXL_LOGI("not scanned");\n', encoding="utf-8")
+
+            discovered = set(CHECK_LOG_SPEC._source_files([root]))
+
+        self.assertEqual(discovered, {upper, lower})
 
     def test_accepts_multiline_nested_arguments_and_pri_macro(self):
         self.assert_valid(
