@@ -14,6 +14,7 @@
 #include <cstring>
 #include <csignal>
 #include <chrono>
+#include <limits>
 #include <sys/poll.h>
 #include "securec.h"
 #include "hixl_checker.h"
@@ -25,6 +26,7 @@ constexpr int32_t kKeepAlive = 1;      // 启用 keepalive 机制
 constexpr int32_t kTcpKeepIdle = 60;   // 连接空闲 60 秒后开始发送 keepalive 探测包
 constexpr int32_t kTcpKeepIntvl = 10;  // keepalive 探测包发送间隔
 constexpr int32_t kTcpKeepCnt = 6;     // 连续 6 次探测失败后认为连接断开
+constexpr size_t kMaxTransferSize = static_cast<size_t>(std::numeric_limits<ssize_t>::max());
 }  // namespace
 void CtrlMsgPlugin::Initialize() {
   (void)std::signal(SIGPIPE, SIG_IGN);
@@ -228,6 +230,9 @@ Status CtrlMsgPlugin::Send(int32_t fd, const void *buf, size_t len) {
 
 Status CtrlMsgPlugin::Send(int32_t fd, const void *buf, size_t len, int32_t &err_no) {
   err_no = 0;
+  HIXL_CHK_BOOL_RET_STATUS(len <= kMaxTransferSize, PARAM_INVALID,
+                           "Socket write length exceeds ssize_t max, len:%zu bytes, max:%zu bytes", len,
+                           kMaxTransferSize);
   HIXL_LOGI("Socket write begin: %zu bytes, fd:%d", len, fd);
   const char *pos = static_cast<const char *>(buf);
   auto nbytes = static_cast<ssize_t>(len);
@@ -251,6 +256,9 @@ Status CtrlMsgPlugin::Send(int32_t fd, const void *buf, size_t len, int32_t &err
 }
 
 Status CtrlMsgPlugin::Recv(int32_t fd, void *buf, size_t len, uint32_t timeout_ms) {
+  HIXL_CHK_BOOL_RET_STATUS(len <= kMaxTransferSize, PARAM_INVALID,
+                           "Socket read length exceeds ssize_t max, len:%zu bytes, max:%zu bytes", len,
+                           kMaxTransferSize);
   HIXL_LOGI("Socket read begin: %zu bytes, fd:%d", len, fd);
   auto pos = static_cast<uint8_t *>(buf);
   auto nbytes = static_cast<ssize_t>(len);
