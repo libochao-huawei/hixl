@@ -101,7 +101,7 @@ void FinalizeTransferTasks(std::vector<TransferBlocksTask> &ret, uint32_t buffer
 
 ge::Status AppendLargeBlockChunkTasks(std::vector<TransferBlocksTask> &ret, uint32_t buffer_index,
                                       uint32_t tensor_index, uint32_t block_size, uint64_t block_index,
-                                      uint32_t chunk_buffer_size) {
+                                      uint32_t block_transfer_size, uint32_t chunk_buffer_size) {
   // chunk_buffer_size 由对端给的 dst_buffer_size 决定；为 0 时 cur_block_size 恒为 0，
   // 循环无法推进且每轮都追加任务。上游校验已拒绝该取值，这里再兜一层防止死循环。
   // 这条分支意味着数据没法切分下发，必须向上报错，不能只打日志后让流程"正常完成"。
@@ -110,7 +110,7 @@ ge::Status AppendLargeBlockChunkTasks(std::vector<TransferBlocksTask> &ret, uint
                           "block_index:%lu, block_size:%u",
                           buffer_index, tensor_index, block_index, block_size);
   auto tensor_offset = block_index * block_size;
-  auto remaining_block_size = block_size;
+  auto remaining_block_size = block_transfer_size;
   while (remaining_block_size > 0) {
     const auto cur_block_size = std::min(remaining_block_size, chunk_buffer_size);
     ret.emplace_back(TransferBlocksTask{kTaskTypeStartBlock, buffer_index, TransferBlockSpan{}});
@@ -391,13 +391,15 @@ void DataTransferTaskGenerator::GetNextBufBlockNum(uint32_t buffer_task_index,
   }
 }
 
-ge::Status DataTransferTaskGenerator::DoGenerateForLargeBlock(uint32_t block_size, uint32_t num_block_indices,
-                                                              const uint64_t *block_indices,
+ge::Status DataTransferTaskGenerator::DoGenerateForLargeBlock(uint32_t block_size, uint32_t tail_block_size,
+                                                              uint32_t num_block_indices, const uint64_t *block_indices,
                                                               std::vector<TransferBlocksTask> &tasks) const {
   const uint32_t buffer_index = 0;
   for (uint32_t i = 0U; i < static_cast<uint32_t>(num_tensors_); ++i) {
     for (size_t k = 0U; k < num_block_indices; ++k) {
-      LLM_CHK_STATUS_RET(AppendLargeBlockChunkTasks(tasks, buffer_index, i, block_size, block_indices[k], buffer_size_),
+      const auto cur_block_size = (k == num_block_indices - 1U) ? tail_block_size : block_size;
+      LLM_CHK_STATUS_RET(AppendLargeBlockChunkTasks(tasks, buffer_index, i, block_size, block_indices[k],
+                                                    cur_block_size, buffer_size_),
                          "Failed to chunk the block for the large block layout");
     }
   }
@@ -416,8 +418,8 @@ ge::Status DataTransferTaskGenerator::GenerateTasks(int64_t tensor_size, uint32_
   std::vector<uint64_t> block_indices(block_num);
   std::iota(block_indices.begin(), block_indices.end(), 0U);
   if (block_size > buffer_size_) {
-    return DoGenerateForLargeBlock(block_size, static_cast<uint32_t>(block_indices.size()), block_indices.data(),
-                                   tasks);
+    return DoGenerateForLargeBlock(block_size, static_cast<uint32_t>(tail_block_size),
+                                   static_cast<uint32_t>(block_indices.size()), block_indices.data(), tasks);
   }
   tasks = DoGenerate(static_cast<uint32_t>(block_size), static_cast<uint32_t>(tail_block_size),
                      static_cast<uint32_t>(block_indices.size()), block_indices.data());
@@ -430,7 +432,7 @@ ge::Status DataTransferTaskGenerator::GenerateTasks(uint32_t block_size, uint32_
                                                     const uint64_t *remote_block_indices) {
   LLMLOGD("GenerateTasks block_size:%u B, buffer_size:%u B", block_size, buffer_size_);
   if (block_size > buffer_size_) {
-    return DoGenerateForLargeBlock(block_size, num_block_indices, block_indices, tasks);
+    return DoGenerateForLargeBlock(block_size, block_size, num_block_indices, block_indices, tasks);
   } else if (remote_block_indices == nullptr) {
     tasks = DoGenerate(block_size, block_size, num_block_indices, block_indices);
   } else {

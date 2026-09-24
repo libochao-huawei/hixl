@@ -120,6 +120,30 @@ CacheKey MakeCacheKey(int64_t req_id, int64_t model_id, uint64_t prefix_id) {
 }
 }  // namespace
 
+TEST(DataTransferTaskGeneratorTest, LargeBlockPreservesTailRange) {
+  constexpr uint32_t kBufferSize = 32U * 1024U * 1024U;
+  constexpr uint32_t kBlockSize = kBufferSize + 4U;
+  constexpr int64_t kTensorSize = static_cast<int64_t>(kBlockSize) + kBufferSize;
+
+  DataTransferTaskGenerator generator(1U, 2U, kBufferSize);
+  std::vector<TransferBlocksTask> tasks;
+  ASSERT_EQ(generator.GenerateTasks(kTensorSize, kBlockSize, tasks), ge::SUCCESS);
+  std::vector<TransferBlockSpan> transfer_spans;
+  for (const auto &task : tasks) {
+    if (task.task_type == 1) {
+      transfer_spans.emplace_back(task.block_span);
+    }
+  }
+
+  ASSERT_EQ(transfer_spans.size(), 3U);
+  EXPECT_EQ(transfer_spans[0].tensor_offset, 0U);
+  EXPECT_EQ(transfer_spans[0].size, kBufferSize);
+  EXPECT_EQ(transfer_spans[1].tensor_offset, kBufferSize);
+  EXPECT_EQ(transfer_spans[1].size, 4U);
+  EXPECT_EQ(transfer_spans[2].tensor_offset, kBlockSize);
+  EXPECT_EQ(transfer_spans[2].size, kBufferSize);
+}
+
 TEST_F(DataCacheEngineTest, CacheOps) {
   std::map<ge::AscendString, ge::AscendString> options;
   // 4 * 64K
