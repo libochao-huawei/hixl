@@ -311,20 +311,26 @@ def main():
     )
     parser.add_argument("FILES", nargs="*", help=argparse.SUPPRESS)
     args = parser.parse_args()
-    outfile_path = "tf_kernel.json"
-    ini_file_paths = []
-
-    for arg in args.FILES:
-        if arg.endswith("ini"):
-            ini_file_paths.append(arg)
-        elif arg.endswith("json"):
-            outfile_path = arg
+    ini_file_paths, outfile_path = _classify_paths(args.FILES)
 
     if len(ini_file_paths) == 0:
         ini_file_paths.append("tf_kernel.ini")
 
     ini_parser = IniParser()
     ini_parser.parse(ini_file_paths, outfile_path, custom=args.custom)
+
+
+def _classify_paths(paths):
+    """Split CLI paths by their complete, case-insensitive file extension."""
+    outfile_path = "tf_kernel.json"
+    ini_file_paths = []
+    for path in paths:
+        suffix = os.path.splitext(path)[1].lower()
+        if suffix == ".ini":
+            ini_file_paths.append(path)
+        elif suffix == ".json":
+            outfile_path = path
+    return ini_file_paths, outfile_path
 
 
 if __name__ == "__main__":
